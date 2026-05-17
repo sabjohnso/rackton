@@ -25,9 +25,13 @@
     [(_ form ...)
      (define parsed
        (parse-toplevel-list (syntax->list #'(form ...))))
-     ;; Type-check.  Errors surface as exn:fail:syntax.
-     (infer-program parsed)
+     ;; Type-check.  Errors surface as exn:fail:syntax.  We also
+     ;; capture the resulting env so codegen can resolve tcon-info
+     ;; for instance dispatch tag generation.
+     (define env (infer-program parsed))
      (define compiled
-       (filter values (for/list ([f (in-list parsed)]) (compile-top f))))
+       (filter values
+               (for/list ([f (in-list parsed)])
+                 (compile-top f env))))
      (with-syntax ([(out ...) compiled])
        (syntax/loc stx (begin out ...)))]))

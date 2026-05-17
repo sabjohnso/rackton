@@ -32,6 +32,8 @@
          (struct-out ty:con)
          (struct-out ty:app)
          (struct-out ty:forall)
+         (struct-out ty:qual)
+         (struct-out constraint)
 
          (struct-out p:wild)
          (struct-out p:var)
@@ -42,6 +44,10 @@
          (struct-out top:dec)
          (struct-out top:data)
          (struct-out data-ctor)
+         (struct-out top:class)
+         (struct-out top:instance)
+         (struct-out method-sig)
+         (struct-out method-default)
 
          parse-expr
          parse-type
@@ -69,16 +75,24 @@
 (struct ty:con    (name stx) #:transparent)
 (struct ty:app    (head args stx) #:transparent)
 (struct ty:forall (vars body stx) #:transparent)
+(struct ty:qual   (constraints body stx) #:transparent)
+;; A constraint is `(C arg ...)` in surface syntax — class name + type args.
+(struct constraint (class args stx) #:transparent)
 
 (struct p:wild    (stx) #:transparent)
 (struct p:var     (name stx) #:transparent)
 (struct p:lit     (value stx) #:transparent)
 (struct p:ctor    (name args stx) #:transparent)
 
-(struct top:def   (name expr stx) #:transparent)
-(struct top:dec   (name type stx) #:transparent)
-(struct top:data  (name params ctors stx) #:transparent)
-(struct data-ctor (name field-types stx) #:transparent)
+(struct top:def      (name expr stx) #:transparent)
+(struct top:dec      (name type stx) #:transparent)
+(struct top:data     (name params ctors stx) #:transparent)
+(struct data-ctor    (name field-types stx) #:transparent)
+(struct top:class    (supers head methods stx) #:transparent)
+(struct top:instance (context head methods stx) #:transparent)
+;; Items inside a `define-class` body:
+(struct method-sig     (name type stx) #:transparent)
+(struct method-default (name expr stx) #:transparent)
 
 ;; ----- lexical classification ---------------------------------------
 
@@ -165,11 +179,17 @@
 
 (define (parse-type stx)
   (syntax-parse stx
-    #:datum-literals (All)
+    #:datum-literals (All =>)
     [(All (v:id ...) body)
      (ty:forall (map syntax->datum (syntax->list #'(v ...)))
                 (parse-type #'body)
                 stx)]
+    ;; Qualified type: (constraint ...+ => body)
+    [(c ...+ => body)
+     (ty:qual (for/list ([cstx (in-list (syntax->list #'(c ...)))])
+                (parse-constraint cstx))
+              (parse-type #'body)
+              stx)]
     [x:id
      (define name (syntax->datum #'x))
      (if (lowercase-id? name)
@@ -181,11 +201,23 @@
                (parse-type a))
              stx)]))
 
+;; Parse a constraint expression like `(Eq a)` or `(Foo (Maybe a))`.
+;; The head must be a non-lowercase identifier (a class name).
+(define (parse-constraint stx)
+  (syntax-parse stx
+    [(name:id arg ...+)
+     #:fail-unless (not (lowercase-id? (syntax->datum #'name)))
+     "class name in a constraint must be a non-lowercase identifier"
+     (constraint (syntax->datum #'name)
+                 (for/list ([a (in-list (syntax->list #'(arg ...)))])
+                   (parse-type a))
+                 stx)]))
+
 ;; ----- top-level forms ----------------------------------------------
 
 (define (parse-top stx)
   (syntax-parse stx
-    #:datum-literals (define define-data :)
+    #:datum-literals (define define-data define-class define-instance : =>)
     [(: name:id ty)
      (top:dec (syntax->datum #'name) (parse-type #'ty) stx)]
 
@@ -212,7 +244,66 @@
      (top:data (syntax->datum #'tname) '()
                (for/list ([c (in-list (syntax->list #'(ctor ...)))])
                  (parse-data-ctor c))
-               stx)]))
+               stx)]
+
+    ;; A class with a superclass list: ((C1 a) ... => (D a))
+    [(define-class (sup ...+ => head) body ...)
+     (top:class (for/list ([s (in-list (syntax->list #'(sup ...)))])
+                  (parse-constraint s))
+                (parse-constraint #'head)
+                (for/list ([m (in-list (syntax->list #'(body ...)))])
+                  (parse-class-method m))
+                stx)]
+    ;; A class with no superclasses: (D a)
+    [(define-class head body ...)
+     (top:class '()
+                (parse-constraint #'head)
+                (for/list ([m (in-list (syntax->list #'(body ...)))])
+                  (parse-class-method m))
+                stx)]
+
+    ;; Instance with context: ((Eq a) ... => (Eq (Maybe a)))
+    [(define-instance (ctx ...+ => head) body ...)
+     (top:instance (for/list ([c (in-list (syntax->list #'(ctx ...)))])
+                     (parse-constraint c))
+                   (parse-constraint #'head)
+                   (for/list ([m (in-list (syntax->list #'(body ...)))])
+                     (parse-instance-method m))
+                   stx)]
+    [(define-instance head body ...)
+     (top:instance '()
+                   (parse-constraint #'head)
+                   (for/list ([m (in-list (syntax->list #'(body ...)))])
+                     (parse-instance-method m))
+                   stx)]))
+
+;; A method form inside `define-class`: either a `(: name type)` signature
+;; or a `(define ...)` providing a default implementation.
+(define (parse-class-method stx)
+  (syntax-parse stx
+    #:datum-literals (: define)
+    [(: name:id ty)
+     (method-sig (syntax->datum #'name) (parse-type #'ty) stx)]
+    [(define (f:id arg:id ...) body)
+     (method-default (syntax->datum #'f)
+                     (e:lam (map syntax->datum (syntax->list #'(arg ...)))
+                            (parse-expr #'body)
+                            stx)
+                     stx)]
+    [(define x:id e)
+     (method-default (syntax->datum #'x) (parse-expr #'e) stx)]))
+
+;; An instance method must be a `define`.
+(define (parse-instance-method stx)
+  (syntax-parse stx
+    #:datum-literals (define)
+    [(define (f:id arg:id ...) body)
+     (top:def (syntax->datum #'f)
+              (e:lam (map syntax->datum (syntax->list #'(arg ...)))
+                     (parse-expr #'body) stx)
+              stx)]
+    [(define x:id e)
+     (top:def (syntax->datum #'x) (parse-expr #'e) stx)]))
 
 (define (parse-data-ctor stx)
   (syntax-parse stx

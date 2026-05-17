@@ -13,9 +13,9 @@ algebraic data types, and pattern matching — inside Racket, either as an
 @racket[(rackton ...)] form inside an ordinary module or as a whole-file
 @hash-lang[] @racketmodfont{rackton} program.
 
-This documentation describes the @bold{Phase 1} subset.  Type classes,
-host-language escape, and an extended standard library are planned for later
-phases and not yet implemented.
+This documentation describes the @bold{Phase 1 + 2} subset.  Host-language
+escape and an extended standard library are planned for later phases and
+not yet implemented.
 
 @section{Two surfaces, one elaborator}
 
@@ -116,9 +116,78 @@ Type errors are raised as @racket[exn:fail:syntax] at compile time, with the
 offending form's source location.  Ill-typed Rackton code never reaches the
 generated Racket runtime.
 
+@section{Type classes (Phase 2)}
+
+@subsection{Declaring a class}
+
+@codeblock|{
+(define-class (Eq a)
+  (: eq  (-> a (-> a Boolean)))
+  (: neq (-> a (-> a Boolean)))
+  (define (neq x y) (if (eq x y) #f #t)))
+}|
+
+A class declaration introduces one or more @italic{method signatures}
+(@racket[(: name type)]) and zero or more @italic{default implementations}
+(@racket[(define …)]).  Each method is added to the value environment with
+a qualified scheme @racket[(All (a) ((C a) => τ))], so a polymorphic use of
+the method automatically carries the class constraint.
+
+A class can declare superclass constraints in front of its head:
+
+@codeblock|{
+(define-class ((Eq a) => (Ord a))
+  (: lt (-> a (-> a Boolean)))
+  (: gt (-> a (-> a Boolean)))
+  (define (gt x y) (lt y x)))
+}|
+
+Superclass closure is followed during entailment: any program with an
+@racket[Ord] constraint on @racket[a] automatically discharges
+@racket[Eq] constraints on the same type.
+
+@subsection{Declaring an instance}
+
+@codeblock|{
+(define-instance (Eq Integer)
+  (define (eq x y) (= x y)))
+
+(define-instance ((Eq a) => (Eq (Maybe a)))
+  (define (eq x y)
+    (match x
+      [(None)   (match y [(None) #t] [(Some _) #f])]
+      [(Some u) (match y [(None) #f] [(Some v) (eq u v)])])))
+}|
+
+The head of an instance can include a context (@racket[((Eq a) => …)])
+that becomes a hypothesis when type-checking the body — and at runtime,
+the recursive method call dispatches on the inner value's tag rather than
+requiring an explicit dictionary parameter.
+
+If the instance omits a method, the class's default is used.
+
+@subsection{Constrained polymorphic functions}
+
+A function that uses a class method inherits its constraint:
+
+@codeblock|{
+(: contains? ((Eq a) => (-> a (-> (Maybe a) Boolean))))
+(define (contains? target m)
+  (match m
+    [(None)   #f]
+    [(Some x) (eq x target)]))
+}|
+
+The inferred scheme is
+@racket[(All (a) ((Eq a) => (-> a (-> (Maybe a) Boolean))))].  Phase 2
+discharges class constraints by dispatching at the runtime call site on
+the type tag of the first argument, so the constraint is fully erased
+from the runtime calling convention — no explicit dictionary is threaded
+through user code.
+
 @section{Not yet supported}
 
-Type classes (@tt{define-class}, @tt{define-instance}), host-language
-@tt{lisp}/@tt{racket} escapes, polymorphic recursion, kind polymorphism,
-the larger numeric / string / list prelude, and fatal exhaustiveness errors.
-These are tracked under later phases.
+Multi-parameter classes, functional dependencies, overlapping instances,
+host-language @tt{lisp}/@tt{racket} escapes, polymorphic recursion, kind
+polymorphism, the larger numeric / string / list prelude, and fatal
+exhaustiveness errors.  These are tracked under later phases.

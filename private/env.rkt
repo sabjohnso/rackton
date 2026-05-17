@@ -12,6 +12,8 @@
 (provide (struct-out env)
          (struct-out data-info)
          (struct-out tcon-info)
+         (struct-out class-info)
+         (struct-out instance-info)
 
          empty-env
          env-extend-var
@@ -20,6 +22,11 @@
          env-ref-data
          env-extend-tcon
          env-ref-tcon
+         env-extend-class
+         env-ref-class
+         env-extend-instance
+         env-instances
+         env-ref-method-class
          env-vars-free-vars
          apply-subst/env
 
@@ -30,7 +37,8 @@
 
 ;; ----- structures ----------------------------------------------------
 
-(struct env       (vars data-ctors tcons) #:transparent)
+(struct env (vars data-ctors tcons classes instance-table method-owners)
+  #:transparent)
 
 ;; A data-constructor's typing information.  `scheme` is the polymorphic
 ;; type assigned to the constructor when used as a value.  `arity` is
@@ -41,7 +49,25 @@
 ;; data constructor that produces this type — used for exhaustiveness.
 (struct tcon-info (name arity ctors) #:transparent)
 
-(define empty-env (env (hasheq) (hasheq) (hasheq)))
+;; A class's static information.
+;;   name     : symbol — the class name
+;;   params   : (Listof symbol) — class type parameters (single, for now)
+;;   supers   : (Listof pred) — superclass constraints, all over the params
+;;   methods  : (HashEq method-name → scheme)
+;;              — each method's qualified scheme as visible at the value
+;;                level (i.e. with the class constraint already attached).
+;;   defaults : (HashEq method-name → surface-expr)
+;;              — default-implementation expressions provided in the
+;;                class body, used when an instance omits the method.
+(struct class-info (name params supers methods defaults) #:transparent)
+
+;; An instance's information.
+;;   head    : pred — the instance head, e.g. (Eq Integer) or (Eq (Maybe a))
+;;   context : (Listof pred) — qualifying preds for this instance
+;;   methods : (HashEq method-name → surface-expr) — method bodies
+(struct instance-info (head context methods) #:transparent)
+
+(define empty-env (env (hasheq) (hasheq) (hasheq) (hasheq) (hasheq) (hasheq)))
 
 ;; ----- basic accessors ----------------------------------------------
 
@@ -62,6 +88,39 @@
 
 (define (env-ref-tcon e name [default #f])
   (hash-ref (env-tcons e) name default))
+
+;; ----- classes & instances ------------------------------------------
+
+(define (env-extend-class e name info)
+  (define vars*
+    ;; Make each method visible at the value level with its method scheme.
+    (for/fold ([acc (env-vars e)])
+              ([(method-name sch) (in-hash (class-info-methods info))])
+      (hash-set acc method-name sch)))
+  (define owners*
+    (for/fold ([acc (env-method-owners e)])
+              ([method-name (in-hash-keys (class-info-methods info))])
+      (hash-set acc method-name name)))
+  (struct-copy env e
+               [vars vars*]
+               [classes (hash-set (env-classes e) name info)]
+               [method-owners owners*]))
+
+(define (env-ref-class e name [default #f])
+  (hash-ref (env-classes e) name default))
+
+(define (env-extend-instance e class-name inst)
+  (struct-copy env e
+               [instance-table
+                (hash-update (env-instance-table e) class-name
+                             (lambda (cur) (append cur (list inst)))
+                             (lambda () '()))]))
+
+(define (env-instances e class-name)
+  (hash-ref (env-instance-table e) class-name '()))
+
+(define (env-ref-method-class e method [default #f])
+  (hash-ref (env-method-owners e) method default))
 
 ;; Free type variables across every value binding's scheme — needed
 ;; for `generalize` at let bindings.

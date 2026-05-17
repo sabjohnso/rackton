@@ -29,11 +29,13 @@
          "types.rkt"
          "env.rkt"
          "unify.rkt"
-         "surface.rkt")
+         "surface.rkt"
+         "entail.rkt")
 
 ;; ----- fresh type variables -----------------------------------------
 
-(define current-fresh-state (make-parameter #f))
+(define current-fresh-state    (make-parameter #f))
+(define current-pending-preds  (make-parameter #f))
 
 (define (fresh-tvar [prefix 'a])
   (define box (current-fresh-state))
@@ -44,42 +46,123 @@
   (tvar (string->symbol (format "~a~a" prefix n))))
 
 (define-syntax-rule (with-fresh body ...)
-  (parameterize ([current-fresh-state (box 0)]) body ...))
+  (parameterize ([current-fresh-state   (box 0)]
+                 [current-pending-preds (box '())])
+    body ...))
+
+;; ----- constraint accumulator ---------------------------------------
+
+(define (add-preds! ps)
+  (define b (current-pending-preds))
+  (set-box! b (append ps (unbox b))))
+
+(define (apply-subst-to-preds! s)
+  (define b (current-pending-preds))
+  (set-box! b (for/list ([p (in-list (unbox b))]) (apply-subst s p))))
+
+(define (snapshot-preds) (unbox (current-pending-preds)))
+
+(define (restore-preds! ps)
+  (set-box! (current-pending-preds) ps))
+
+;; Pull every pred whose free type vars share any var with `quantified-set`.
+;; Returns the pulled preds; the remaining preds stay in the box.
+(define (take-relevant-preds! quantified-set)
+  (define b (current-pending-preds))
+  (define-values (taken kept)
+    (partition (lambda (p)
+                 (not (set-empty? (set-intersect (type-vars p) quantified-set))))
+               (unbox b)))
+  (set-box! b kept)
+  taken)
 
 ;; ----- generalize / instantiate -------------------------------------
 
+;; Instantiate a scheme.  If the body is a qualified type, the constraints
+;; are added to the running pred-box and the bare type is returned.
 (define (instantiate sch)
-  (match sch
-    [(scheme '() body) body]
-    [(scheme vs body)
-     (define s
-       (for/fold ([s empty-subst]) ([v (in-list vs)])
-         (subst-extend s v (fresh-tvar v))))
-     (apply-subst s body)]))
+  (define raw
+    (match sch
+      [(scheme '() body) body]
+      [(scheme vs body)
+       (define s
+         (for/fold ([s empty-subst]) ([v (in-list vs)])
+           (subst-extend s v (fresh-tvar v))))
+       (apply-subst s body)]))
+  (cond
+    [(qual? raw)
+     (add-preds! (qual-constraints raw))
+     (qual-body raw)]
+    [else raw]))
 
 ;; Skolemize: replace each bound type variable with a fresh tcon, so the
 ;; declared signature acts rigidly — the body can't sneak a more specific
-;; type past a polymorphic declaration.
+;; type past a polymorphic declaration.  Returns (values body extra-preds);
+;; `extra-preds` are the skolem-instantiated constraints that callers must
+;; treat as hypotheses while checking the body.
 (define (skolemize sch)
   (match sch
-    [(scheme '() body) body]
+    [(scheme '() body)
+     (cond
+       [(qual? body) (values (qual-body body) (qual-constraints body))]
+       [else         (values body '())])]
     [(scheme vs body)
      (define s
        (for/fold ([s empty-subst]) ([v (in-list vs)])
          (subst-extend s v (tcon (gensym (format "$skolem.~a." v))))))
-     (apply-subst s body)]))
+     (define skol (apply-subst s body))
+     (cond
+       [(qual? skol) (values (qual-body skol) (qual-constraints skol))]
+       [else         (values skol '())])]))
 
-(define (generalize env ty)
+;; Generalize: take the type's quantifiable tvars, pull the constraints
+;; that mention them out of the pred-box, reduce them against the env,
+;; and wrap into a `(scheme vs (qual cs ty))`.  Bound tvars are renamed
+;; to nice sequential names (a, b, c, …) for readability.
+(define (generalize env ty [hypotheses '()])
   (define env-fv (env-vars-free-vars env))
   (define ty-fv  (type-vars ty))
-  (define quantified (sort (set->list (set-subtract ty-fv env-fv)) symbol<?))
-  (scheme quantified ty))
+  (define q-set  (set-subtract ty-fv env-fv))
+  (define preds  (take-relevant-preds! q-set))
+  (define reduced (reduce-context env hypotheses preds))
+  (define final-q
+    (for/fold ([acc q-set]) ([p (in-list reduced)])
+      (set-union acc (type-vars p))))
+  (define quantified-raw
+    (sort (set->list (set-subtract final-q env-fv)) symbol<?))
+  (define nice (nice-tvar-names (length quantified-raw) env-fv))
+  (define σ
+    (for/fold ([s empty-subst]) ([old (in-list quantified-raw)]
+                                 [new (in-list nice)])
+      (subst-extend s old (tvar new))))
+  (scheme nice (mqual (for/list ([p (in-list reduced)]) (apply-subst σ p))
+                      (apply-subst σ ty))))
+
+(define (nice-tvar-names n avoid)
+  (define (letter-name i)
+    (cond
+      [(< i 26)
+       (string->symbol
+        (string (integer->char (+ (char->integer #\a) i))))]
+      [else
+       (string->symbol
+        (format "~a~a"
+                (integer->char (+ (char->integer #\a) (modulo i 26)))
+                (quotient i 26)))]))
+  (let loop ([taken 0] [i 0] [acc '()])
+    (cond
+      [(>= taken n) (reverse acc)]
+      [else
+       (define name (letter-name i))
+       (cond
+         [(set-member? avoid name) (loop taken (add1 i) acc)]
+         [else (loop (add1 taken) (add1 i) (cons name acc))])])))
 
 ;; ----- type expression → type ---------------------------------------
 
-;; Resolve a parsed type AST to a raw type.  `(All ...)` wrappers are
-;; stripped at this level; for declarations we use `resolve-scheme`
-;; below, which preserves the quantifier.
+;; Resolve a parsed type AST to a core type or qualified type.
+;; `(All ...)` wrappers are stripped here; the explicit quantifier is
+;; preserved only by `resolve-scheme`.
 (define (resolve-type ty-ast)
   (match ty-ast
     [(ty:var n _)        (tvar n)]
@@ -87,7 +170,15 @@
     [(ty:app h args _)
      (make-tapp (resolve-type h)
                 (for/list ([a (in-list args)]) (resolve-type a)))]
-    [(ty:forall _ body _) (resolve-type body)]))
+    [(ty:forall _ body _) (resolve-type body)]
+    [(ty:qual cs body _)
+     (mqual (for/list ([c (in-list cs)]) (resolve-constraint c))
+            (resolve-type body))]))
+
+(define (resolve-constraint c)
+  (match c
+    [(constraint class args _)
+     (pred class (for/list ([a (in-list args)]) (resolve-type a)))]))
 
 ;; Resolve a parsed type AST as a scheme (for declarations).  A bare
 ;; `(All ...)` wraps the explicit quantifier; otherwise we generalize
@@ -186,6 +277,7 @@
          (define-values (s′ t)
            (infer-expr (cdr b) (apply-subst/env s env)))
          (define s-combined (subst-compose s′ s))
+         (apply-subst-to-preds! s-combined)
          (define env-for-gen (apply-subst/env s-combined env))
          (define sch (generalize env-for-gen (apply-subst s-combined t)))
          (values s-combined
@@ -228,7 +320,7 @@
 
     [(e:ann expr ty-ast stx)
      (define-values (s-e t-e) (infer-expr expr env))
-     (define declared (resolve-type ty-ast))
+     (define declared (qual-body-type (resolve-type ty-ast)))
      (define s-u
        (with-handlers
         ([exn:fail:unify?
@@ -356,19 +448,33 @@
        [(hash-has-key? declared name)
         (define decl-scheme (hash-ref declared name))
         ;; Skolemize bound vars so the body cannot covertly specialize them.
-        (define decl-ty (skolemize decl-scheme))
+        (define-values (decl-ty decl-preds) (skolemize decl-scheme))
         (define env-rec (env-extend-var env name (scheme '() decl-ty)))
         (define-values (s t) (infer-expr expr env-rec))
-        (with-handlers
-         ([exn:fail:unify?
-           (lambda (_)
-             (raise-syntax-error 'infer
-               (format "definition of ~s has type ~a, declared as ~a"
-                       name
-                       (type->datum (apply-subst s t))
-                       (scheme->datum decl-scheme))
-               stx))])
-         (unify (apply-subst s t) decl-ty))
+        (define s-u
+          (with-handlers
+           ([exn:fail:unify?
+             (lambda (_)
+               (raise-syntax-error 'infer
+                 (format "definition of ~s has type ~a, declared as ~a"
+                         name
+                         (type->datum (apply-subst s t))
+                         (scheme->datum decl-scheme))
+                 stx))])
+           (unify (apply-subst s t) decl-ty)))
+        ;; Discharge any constraints raised inside the body against the
+        ;; declaration's preds (hypotheses).
+        (apply-subst-to-preds! (subst-compose s-u s))
+        (define remaining-preds
+          (reduce-context env decl-preds (snapshot-preds)))
+        (cond
+          [(not (null? remaining-preds))
+           (raise-syntax-error 'infer
+             (format "unsolved constraints in ~s: ~s"
+                     name
+                     (map pred->datum remaining-preds))
+             stx)]
+          [else (restore-preds! '())])
         (values (env-extend-var env name decl-scheme)
                 (hash-remove declared name))]
        [else
@@ -379,10 +485,17 @@
         (define-values (s t) (infer-expr expr env-rec))
         (define s-rec (unify (apply-subst s α) (apply-subst s t)))
         (define s* (subst-compose s-rec s))
+        (apply-subst-to-preds! s*)
         (define final-ty (apply-subst s* t))
         (define final-env (apply-subst/env s* env))
         (values (env-extend-var final-env name (generalize final-env final-ty))
                 declared)])]
+
+    [(top:class supers head methods stx)
+     (handle-class-form supers head methods stx env declared)]
+
+    [(top:instance ctx head methods stx)
+     (handle-instance-form ctx head methods stx env declared)]
 
     [(top:data tname tparams ctors stx)
      (define result-type
@@ -405,3 +518,100 @@
                           (data-info tname (data-ctor-name c)
                                      (length field-tys) sch))))
      (values env** declared)]))
+
+;; ----- class / instance elaboration --------------------------------
+
+(define (handle-class-form supers head methods stx env declared)
+  (define class-name (constraint-class head))
+  (define class-args
+    (for/list ([a (in-list (constraint-args head))]) (resolve-type a)))
+  (define class-params
+    (sort
+     (set->list
+      (for/fold ([s (seteq)]) ([a (in-list class-args)])
+        (set-union s (type-vars a))))
+     symbol<?))
+  (define super-preds
+    (for/list ([s (in-list supers)]) (resolve-constraint s)))
+  (define head-pred (pred class-name class-args))
+  (define method-schemes
+    (for/fold ([acc (hasheq)]) ([m (in-list methods)])
+      (cond
+        [(method-sig? m)
+         (define raw (resolve-type (method-sig-type m)))
+         (define body (mqual (list head-pred) raw))
+         (define sch (scheme class-params body))
+         (hash-set acc (method-sig-name m) sch)]
+        [else acc])))
+  (define defaults
+    (for/fold ([acc (hasheq)]) ([m (in-list methods)])
+      (cond
+        [(method-default? m)
+         (hash-set acc (method-default-name m) (method-default-expr m))]
+        [else acc])))
+  (define info (class-info class-name class-params super-preds
+                           method-schemes defaults))
+  (values (env-extend-class env class-name info) declared))
+
+(define (handle-instance-form ctx head methods stx env declared)
+  (define head-pred (resolve-constraint head))
+  (define class-name (pred-class head-pred))
+  (define cinfo (env-ref-class env class-name))
+  (unless cinfo
+    (raise-syntax-error 'infer
+      (format "unknown class: ~s" class-name) stx))
+  (define inst-args (pred-args head-pred))
+  (define ctx-preds (for/list ([c (in-list ctx)]) (resolve-constraint c)))
+  (define user-impls
+    (for/fold ([acc (hasheq)]) ([m (in-list methods)])
+      (match m
+        [(top:def name expr _) (hash-set acc name expr)])))
+  (define checked-bodies
+    (for/fold ([acc (hasheq)])
+              ([(method-name method-sch)
+                (in-hash (class-info-methods cinfo))])
+      (define body
+        (cond
+          [(hash-ref user-impls method-name #f)]
+          [(hash-ref (class-info-defaults cinfo) method-name #f)]
+          [else
+           (raise-syntax-error 'infer
+             (format "instance ~s missing method ~s with no default"
+                     (pred->datum head-pred) method-name)
+             stx)]))
+      ;; Substitute class params → instance args in the method's body.
+      (define σ
+        (for/fold ([s empty-subst])
+                  ([p (in-list (class-info-params cinfo))]
+                   [a (in-list inst-args)])
+          (subst-extend s p a)))
+      (define inst-method-qual (apply-subst σ (scheme-body method-sch)))
+      (define expected-type (qual-body-type inst-method-qual))
+      (parameterize ([current-pending-preds (box '())])
+        (define-values (s t) (infer-expr body env))
+        (define s-u
+          (with-handlers
+           ([exn:fail:unify?
+             (lambda (_)
+               (raise-syntax-error 'infer
+                 (format "method ~s body has type ~a, expected ~a"
+                         method-name
+                         (type->datum (apply-subst s t))
+                         (type->datum expected-type))
+                 stx))])
+           (unify (apply-subst s t) expected-type)))
+        (apply-subst-to-preds! (subst-compose s-u s))
+        ;; The instance head itself is a hypothesis during method checking
+        ;; (so a method body can recursively use its own class methods).
+        (define leftovers
+          (reduce-context env (cons head-pred ctx-preds)
+                          (snapshot-preds)))
+        (unless (null? leftovers)
+          (raise-syntax-error 'infer
+            (format "instance ~s method ~s leaves unsolved constraints: ~s"
+                    (pred->datum head-pred) method-name
+                    (map pred->datum leftovers))
+            stx)))
+      (hash-set acc method-name body)))
+  (define info (instance-info head-pred ctx-preds checked-bodies))
+  (values (env-extend-instance env class-name info) declared))

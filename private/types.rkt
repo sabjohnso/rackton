@@ -20,9 +20,13 @@
          (struct-out tcon)
          (struct-out tapp)
          (struct-out scheme)
+         (struct-out qual)
+         (struct-out pred)
          type?
          type-vars
          scheme-free-vars
+         pred-vars
+         qual-body-type
 
          empty-subst
          subst?
@@ -34,9 +38,13 @@
          apply-subst
          apply-subst/scheme
 
+         ;; smart constructors
+         mqual
+
          ;; readability helpers
          type->datum
          scheme->datum
+         pred->datum
 
          ;; pre-built primitive types
          t-int t-bool t-string t-symbol t-unit
@@ -59,8 +67,23 @@
 (struct tapp   (head args)  #:transparent)
 (struct scheme (vars body)  #:transparent)
 
+;; A class predicate, e.g. (Eq a) or (Ord Integer).
+(struct pred   (class args) #:transparent)
+
+;; A qualified type: `(qual (pred ...) body)` reads "ρ ::= π ... => τ".
+;; Smart constructor `mqual` collapses an empty context to the bare body.
+(struct qual   (constraints body) #:transparent)
+
 (define (type? v)
   (or (tvar? v) (tcon? v) (tapp? v)))
+
+(define (mqual constraints body)
+  (cond
+    [(null? constraints) body]
+    [else (qual constraints body)]))
+
+(define (qual-body-type t)
+  (if (qual? t) (qual-body t) t))
 
 ;; ----- Pre-built primitive constructors ------------------------------
 
@@ -95,10 +118,19 @@
 
 (define (type-vars t)
   (match t
-    [(tvar a)      (seteq a)]
-    [(tcon _)      (seteq)]
-    [(tapp h args) (for/fold ([acc (type-vars h)]) ([a (in-list args)])
-                     (set-union acc (type-vars a)))]))
+    [(tvar a)        (seteq a)]
+    [(tcon _)        (seteq)]
+    [(tapp h args)   (for/fold ([acc (type-vars h)]) ([a (in-list args)])
+                       (set-union acc (type-vars a)))]
+    [(pred _ args)   (for/fold ([acc (seteq)]) ([a (in-list args)])
+                       (set-union acc (type-vars a)))]
+    [(qual cs body)  (for/fold ([acc (type-vars body)]) ([c (in-list cs)])
+                       (set-union acc (type-vars c)))]))
+
+;; The free type variables of a single predicate, exposed for callers
+;; that don't want to dispatch through `type-vars`.
+(define (pred-vars p)
+  (type-vars p))
 
 (define (scheme-free-vars sch)
   (match sch
@@ -135,7 +167,12 @@
        [(tcon _)      t]
        [(tapp h args) (tapp (apply-subst s h)
                             (for/list ([a (in-list args)])
-                              (apply-subst s a)))])]))
+                              (apply-subst s a)))]
+       [(pred c args) (pred c (for/list ([a (in-list args)])
+                                (apply-subst s a)))]
+       [(qual cs body)
+        (mqual (for/list ([c (in-list cs)]) (apply-subst s c))
+               (apply-subst s body))])]))
 
 (define (apply-subst/scheme s sch)
   (match sch
@@ -167,7 +204,13 @@
     [(tapp (tcon '->) (list d c))
      `(-> ,(type->datum d) ,(type->datum c))]
     [(tapp h args)
-     `(,(type->datum h) ,@(map type->datum args))]))
+     `(,(type->datum h) ,@(map type->datum args))]
+    [(qual cs body)
+     `(,@(map pred->datum cs) => ,(type->datum body))]))
+
+(define (pred->datum p)
+  (match p
+    [(pred c args) `(,c ,@(map type->datum args))]))
 
 (define (scheme->datum sch)
   (match sch

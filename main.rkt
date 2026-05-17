@@ -22,12 +22,15 @@
 
 (require "private/elaborate.rkt"
          "private/adt.rkt"
+         "private/dict.rkt"
          racket/match)
 
 (provide rackton
 
          ;; runtime support exposed for the macro's output
          define-data-ctor
+         define-class-method
+         register-instance-method!
          match
 
          ;; primitive operators that appear in the typing env

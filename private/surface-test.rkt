@@ -39,6 +39,12 @@
       [(ty:app?    v) (ty:app (strip (ty:app-head v))
                               (map strip (ty:app-args v)) #f)]
       [(ty:forall? v) (ty:forall (ty:forall-vars v) (strip (ty:forall-body v)) #f)]
+      [(ty:qual?   v) (ty:qual (map strip (ty:qual-constraints v))
+                               (strip (ty:qual-body v))
+                               #f)]
+      [(constraint? v) (constraint (constraint-class v)
+                                   (map strip (constraint-args v))
+                                   #f)]
       [(p:wild?    v) (p:wild #f)]
       [(p:var?     v) (p:var (p:var-name v) #f)]
       [(p:lit?     v) (p:lit (p:lit-value v) #f)]
@@ -52,6 +58,19 @@
                                              (map strip (data-ctor-field-types c))
                                              #f))
                                 #f)]
+      [(top:class? v) (top:class (map strip (top:class-supers v))
+                                 (strip (top:class-head v))
+                                 (map strip (top:class-methods v))
+                                 #f)]
+      [(top:instance? v) (top:instance (map strip (top:instance-context v))
+                                       (strip (top:instance-head v))
+                                       (for/list ([m (in-list (top:instance-methods v))])
+                                         (strip m))
+                                       #f)]
+      [(method-sig? v) (method-sig (method-sig-name v)
+                                   (strip (method-sig-type v)) #f)]
+      [(method-default? v) (method-default (method-default-name v)
+                                           (strip (method-default-expr v)) #f)]
       [else (error 'strip "unrecognized AST node: ~e" v)]))
 
   (define (pe s) (strip (parse-expr (datum->syntax #f s))))
@@ -172,4 +191,96 @@
                 (top:data 'Bool '()
                           (list (data-ctor 'True '() #f)
                                 (data-ctor 'False '() #f))
-                          #f)))
+                          #f))
+
+  ;; ----- qualified types -------------------------------------------
+
+  ;; Single-constraint qualified type:   (Eq a) => (-> a (-> a Boolean))
+  (check-equal? (pt '((Eq a) => (-> a (-> a Boolean))))
+                (ty:qual
+                  (list (constraint 'Eq (list (ty:var 'a #f)) #f))
+                  (ty:app (ty:con '-> #f)
+                          (list (ty:var 'a #f)
+                                (ty:app (ty:con '-> #f)
+                                        (list (ty:var 'a #f)
+                                              (ty:con 'Boolean #f)) #f)) #f)
+                  #f))
+
+  ;; Two-constraint qualified type
+  (check-equal? (pt '((Eq a) (Ord a) => a))
+                (ty:qual
+                  (list (constraint 'Eq  (list (ty:var 'a #f)) #f)
+                        (constraint 'Ord (list (ty:var 'a #f)) #f))
+                  (ty:var 'a #f)
+                  #f))
+
+  ;; ----- define-class ----------------------------------------------
+
+  ;; Bare class with one method sig
+  (check-equal? (ptop '(define-class (Eq a)
+                         (: == (-> a (-> a Boolean)))))
+                (top:class
+                  '()
+                  (constraint 'Eq (list (ty:var 'a #f)) #f)
+                  (list (method-sig '==
+                                    (ty:app (ty:con '-> #f)
+                                            (list (ty:var 'a #f)
+                                                  (ty:app (ty:con '-> #f)
+                                                          (list (ty:var 'a #f)
+                                                                (ty:con 'Boolean #f)) #f)) #f)
+                                    #f))
+                  #f))
+
+  ;; Class with superclass
+  (check-equal? (ptop '(define-class ((Eq a) => (Ord a))
+                         (: < (-> a (-> a Boolean)))))
+                (top:class
+                  (list (constraint 'Eq (list (ty:var 'a #f)) #f))
+                  (constraint 'Ord (list (ty:var 'a #f)) #f)
+                  (list (method-sig '<
+                                    (ty:app (ty:con '-> #f)
+                                            (list (ty:var 'a #f)
+                                                  (ty:app (ty:con '-> #f)
+                                                          (list (ty:var 'a #f)
+                                                                (ty:con 'Boolean #f)) #f)) #f)
+                                    #f))
+                  #f))
+
+  ;; Class with a default-method implementation
+  (check-equal? (ptop '(define-class (Foo a)
+                         (: bar (-> a Integer))
+                         (define (bar _x) 0)))
+                (top:class
+                  '()
+                  (constraint 'Foo (list (ty:var 'a #f)) #f)
+                  (list (method-sig 'bar
+                                    (ty:app (ty:con '-> #f)
+                                            (list (ty:var 'a #f)
+                                                  (ty:con 'Integer #f)) #f)
+                                    #f)
+                        (method-default 'bar
+                                        (e:lam '(_x) (e:literal 0 #f) #f) #f))
+                  #f))
+
+  ;; ----- define-instance --------------------------------------------
+
+  ;; Bare instance
+  (check-equal? (ptop '(define-instance (Eq Integer)
+                         (define == =)))
+                (top:instance
+                  '()
+                  (constraint 'Eq (list (ty:con 'Integer #f)) #f)
+                  (list (top:def '== (e:var '= #f) #f))
+                  #f))
+
+  ;; Instance with context
+  (check-equal? (ptop '(define-instance ((Eq a) => (Eq (Maybe a)))
+                         (define (== x y) x)))
+                (top:instance
+                  (list (constraint 'Eq (list (ty:var 'a #f)) #f))
+                  (constraint 'Eq (list (ty:app (ty:con 'Maybe #f)
+                                                (list (ty:var 'a #f)) #f)) #f)
+                  (list (top:def '==
+                                 (e:lam '(x y) (e:var 'x #f) #f)
+                                 #f))
+                  #f)))

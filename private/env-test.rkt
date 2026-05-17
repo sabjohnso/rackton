@@ -7,6 +7,7 @@
   (require rackunit
            racket/set
            "types.rkt"
+           "surface.rkt"
            "env.rkt")
 
   ;; ----- value-binding env ------------------------------------------
@@ -57,4 +58,28 @@
                         (make-arrow t-int (make-arrow t-int t-int))))
   (check-equal? (env-ref-var initial-env '<)
                 (scheme '()
-                        (make-arrow t-int (make-arrow t-int t-bool)))))
+                        (make-arrow t-int (make-arrow t-int t-bool))))
+
+  ;; ----- class env extensions ---------------------------------------
+
+  (define eq-info
+    (class-info 'Eq '(a) '()
+                (hasheq '== (scheme '(a)
+                                    (mqual (list (pred 'Eq (list (tvar 'a))))
+                                           (make-arrow (tvar 'a)
+                                                       (make-arrow (tvar 'a) t-bool)))))
+                (hasheq)))
+  (define eq-env (env-extend-class empty-env 'Eq eq-info))
+
+  (check-equal? (env-ref-class eq-env 'Eq) eq-info)
+  (check-false  (env-ref-class eq-env 'NoSuchClass))
+  (check-equal? (env-ref-method-class eq-env '==) 'Eq)
+  (check-false  (env-ref-method-class eq-env 'missing-method))
+
+  ;; instance registry
+  (define eq-int-inst
+    (instance-info (pred 'Eq (list t-int)) '()
+                   (hasheq '== (e:var '= #f))))
+  (define eq-env2 (env-extend-instance eq-env 'Eq eq-int-inst))
+  (check-equal? (env-instances eq-env2 'Eq) (list eq-int-inst))
+  (check-equal? (env-instances eq-env2 'Ord) '()))

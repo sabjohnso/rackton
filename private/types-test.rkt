@@ -124,4 +124,35 @@
                     (cond
                       [(hash-has-key? s α) (type-vars (hash-ref s α))]
                       [else                (seteq α)]))))
-     (subset? (type-vars (apply-subst s t)) expected))))
+     (subset? (type-vars (apply-subst s t)) expected)))
+
+  ;; ----- qualified types and predicates ----------------------------
+
+  ;; A predicate (Eq Integer) has no free tvars.
+  (check-equal? (type-vars (pred 'Eq (list t-int))) (seteq))
+  ;; (Eq a) is parameterised over `a`.
+  (check-equal? (type-vars (pred 'Eq (list (tvar 'a)))) (seteq 'a))
+
+  ;; Qualified types collect free tvars across constraints AND body.
+  (check-equal?
+   (type-vars (mqual (list (pred 'Eq (list (tvar 'a))))
+                     (make-arrow (tvar 'a) t-bool)))
+   (seteq 'a))
+
+  ;; Empty-context mqual collapses to the plain body.
+  (check-equal? (mqual '() (tvar 'a)) (tvar 'a))
+
+  ;; Non-empty mqual preserves the qual wrapper.
+  (let ([q (mqual (list (pred 'Eq (list (tvar 'a)))) (tvar 'a))])
+    (check-true (qual? q))
+    (check-equal? (qual-constraints q)
+                  (list (pred 'Eq (list (tvar 'a)))))
+    (check-equal? (qual-body q) (tvar 'a)))
+
+  ;; Substitution descends into both constraints and body.
+  (let* ([before (mqual (list (pred 'Eq (list (tvar 'a))))
+                        (make-arrow (tvar 'a) t-bool))]
+         [after  (apply-subst (subst-singleton 'a t-int) before)])
+    (check-equal? (qual-constraints after)
+                  (list (pred 'Eq (list t-int))))
+    (check-equal? (qual-body after) (make-arrow t-int t-bool))))

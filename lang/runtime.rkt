@@ -38,6 +38,8 @@
 
  ;; runtime support so the rackton macro's emitted code resolves
  define-data-ctor
+ define-class-method
+ register-instance-method!
  match
 
  ;; primitives the typing env knows about

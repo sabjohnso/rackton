@@ -7,9 +7,11 @@ Racket.
 
 ## Status
 
-**Phase 1** — typed lambda calculus, ADTs, pattern matching, two surfaces
-(`(rackton ...)` macro and `#lang rackton`).  Type classes, host-language
-escape, and a larger prelude are slated for later phases.
+**Phase 1 + 2** — typed lambda calculus, ADTs, pattern matching, two surfaces
+(`(rackton ...)` macro and `#lang rackton`), plus type classes with
+superclass constraints, qualifying contexts, default methods, and runtime
+dispatch.  Host-language escape and a larger standard library are slated
+for later phases.
 
 ## Quick start
 
