@@ -645,7 +645,17 @@
         [(method-sig? m)
          (define raw (resolve-type (method-sig-type m)))
          (define body (mqual (list head-pred) raw))
-         (define sch (scheme class-params body))
+         ;; Quantify over EVERY type variable that appears in the
+         ;; method type (including method-local ones like `a`/`b`
+         ;; in `(>>= : (m a) -> (a -> m b) -> m b)`).  Class params
+         ;; come first by convention.
+         (define body-vars (type-vars body))
+         (define extra-vars
+           (sort (set->list
+                  (set-subtract body-vars (list->seteq class-params)))
+                 symbol<?))
+         (define quantified (append class-params extra-vars))
+         (define sch (scheme quantified body))
          (hash-set acc (method-sig-name m) sch)]
         [else acc])))
   (define defaults

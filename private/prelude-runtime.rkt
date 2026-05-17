@@ -29,9 +29,13 @@
                     [max rkt:max]
                     [number->string rkt:number->string]
                     [string->number rkt:string->number]
-                    [read-line  rkt:read-line])
+                    [read-line  rkt:read-line]
+                    [reverse    rkt:reverse]
+                    [append     rkt:append]
+                    [sort       rkt:sort])
          racket/format
          racket/match
+         racket/file
          "adt.rkt"
          "dict.rkt")
 
@@ -71,7 +75,15 @@
  mod div abs min max integer->string string->integer
 
  ;; IO
- print println read-line pure-io run-io)
+ print println read-line pure-io run-io
+
+ ;; Mutable refs and file I/O
+ make-ref read-ref write-ref
+ read-file write-file file-exists?
+
+ ;; List + Pair helpers
+ reverse append zip take drop find sort
+ fst snd swap)
 
 ;; ----- ADTs -------------------------------------------------------
 
@@ -211,6 +223,87 @@
 
 (register-instance-method! $dispatch:fmap '$io io-fmap)
 (register-instance-method! $dispatch:>>=  '$io io-bind)
+
+;; ----- Mutable refs (in IO) -----------------------------------
+
+(define (make-ref v) ($io (lambda () (box v))))
+(define (read-ref r) ($io (lambda () (unbox r))))
+(define (write-ref r v) ($io (lambda () (set-box! r v) MkUnit)))
+
+;; ----- File I/O ------------------------------------------------
+
+(define (read-file path)
+  ($io (lambda () (file->string path))))
+(define (write-file path contents)
+  ($io (lambda ()
+         (with-output-to-file path #:exists 'replace
+           (lambda () (display contents)))
+         MkUnit)))
+(define (file-exists? path)
+  ($io (lambda () (rkt:file-exists?-impl path))))
+
+;; Bridge for racket/base's file-exists?  We aliased it under our own
+;; name above; here we reach Racket's definition directly.
+(require (rename-in racket/base [file-exists? rkt:file-exists?-impl]))
+
+;; ----- List helpers -------------------------------------------
+
+(define (reverse xs)
+  (let loop ([xs xs] [acc Nil])
+    (match xs
+      [(Nil) acc]
+      [(Cons h t) (loop t (Cons h acc))])))
+
+(define (append xs ys)
+  (match xs
+    [(Nil) ys]
+    [(Cons h t) (Cons h (append t ys))]))
+
+(define (zip as bs)
+  (match as
+    [(Nil) Nil]
+    [(Cons a at)
+     (match bs
+       [(Nil) Nil]
+       [(Cons b bt) (Cons (MkPair a b) (zip at bt))])]))
+
+(define (take n xs)
+  (cond
+    [(rkt:<= n 0) Nil]
+    [else
+     (match xs
+       [(Nil) Nil]
+       [(Cons h t) (Cons h (take (rkt:- n 1) t))])]))
+
+(define (drop n xs)
+  (cond
+    [(rkt:<= n 0) xs]
+    [else
+     (match xs
+       [(Nil) Nil]
+       [(Cons _ t) (drop (rkt:- n 1) t)])]))
+
+(define (find p xs)
+  (match xs
+    [(Nil) None]
+    [(Cons h t) (if (p h) (Some h) (find p t))]))
+
+;; Insertion-sort over Rackton's < (Ord).  O(n²) but simple and stable.
+(define (sort-insert x xs)
+  (match xs
+    [(Nil)      (Cons x Nil)]
+    [(Cons h t) (if (< x h) (Cons x xs) (Cons h (sort-insert x t)))]))
+
+(define (sort xs)
+  (match xs
+    [(Nil) Nil]
+    [(Cons h t) (sort-insert h (sort t))]))
+
+;; ----- Pair helpers -------------------------------------------
+
+(define (fst p)  (match p [(MkPair a _) a]))
+(define (snd p)  (match p [(MkPair _ b) b]))
+(define (swap p) (match p [(MkPair a b) (MkPair b a)]))
 
 ;; ----- Functor / Monad instance impls ------------------------
 

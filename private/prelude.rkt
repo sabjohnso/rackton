@@ -224,7 +224,96 @@
     (define (pure-io x) (racket (IO a) (x) #f))
 
     (: run-io    (-> (IO a) a))
-    (define (run-io io) (racket a (io) #f))))
+    (define (run-io io) (racket a (io) #f))
+
+    ;; --- Mutable references ----------------------------------
+
+    (define-data (Ref a))
+
+    (: make-ref  (-> a (IO (Ref a))))
+    (define (make-ref v) (racket (IO (Ref a)) (v) #f))
+
+    (: read-ref  (-> (Ref a) (IO a)))
+    (define (read-ref r) (racket (IO a) (r) #f))
+
+    (: write-ref (-> (Ref a) (-> a (IO Unit))))
+    (define (write-ref r v) (racket (IO Unit) (r v) #f))
+
+    ;; --- File I/O --------------------------------------------
+
+    (: read-file    (-> String (IO String)))
+    (define (read-file path) (racket (IO String) (path) #f))
+
+    (: write-file   (-> String (-> String (IO Unit))))
+    (define (write-file path contents) (racket (IO Unit) (path contents) #f))
+
+    (: file-exists? (-> String (IO Boolean)))
+    (define (file-exists? path) (racket (IO Boolean) (path) #f))
+
+    ;; --- List & pair helpers ---------------------------------
+
+    (: append (-> (List a) (-> (List a) (List a))))
+    (define (append xs ys)
+      (match xs
+        [(Nil)        ys]
+        [(Cons h t)   (Cons h (append t ys))]))
+
+    (: reverse (-> (List a) (List a)))
+    (define (reverse xs)
+      (foldr (lambda (h acc) (append acc (Cons h Nil))) Nil xs))
+
+    (: zip (-> (List a) (-> (List b) (List (Pair a b)))))
+    (define (zip as bs)
+      (match as
+        [(Nil) Nil]
+        [(Cons a at)
+         (match bs
+           [(Nil) Nil]
+           [(Cons b bt)
+            (Cons (MkPair a b) (zip at bt))])]))
+
+    (: take (-> Integer (-> (List a) (List a))))
+    (define (take n xs)
+      (if (<= n 0)
+          Nil
+          (match xs
+            [(Nil)        Nil]
+            [(Cons h t)   (Cons h (take (- n 1) t))])))
+
+    (: drop (-> Integer (-> (List a) (List a))))
+    (define (drop n xs)
+      (if (<= n 0)
+          xs
+          (match xs
+            [(Nil)        Nil]
+            [(Cons _ t)   (drop (- n 1) t)])))
+
+    (: find (-> (-> a Boolean) (-> (List a) (Maybe a))))
+    (define (find p xs)
+      (match xs
+        [(Nil)        None]
+        [(Cons h t)   (if (p h) (Some h) (find p t))]))
+
+    (: sort-insert ((Ord a) => (-> a (-> (List a) (List a)))))
+    (define (sort-insert x xs)
+      (match xs
+        [(Nil)        (Cons x Nil)]
+        [(Cons h t)   (if (< x h)
+                          (Cons x xs)
+                          (Cons h (sort-insert x t)))]))
+
+    (: sort ((Ord a) => (-> (List a) (List a))))
+    (define (sort xs)
+      (foldr sort-insert Nil xs))
+
+    (: fst (-> (Pair a b) a))
+    (define (fst p) (match p [(MkPair a _) a]))
+
+    (: snd (-> (Pair a b) b))
+    (define (snd p) (match p [(MkPair _ b) b]))
+
+    (: swap (-> (Pair a b) (Pair b a)))
+    (define (swap p) (match p [(MkPair a b) (MkPair b a)]))))
 
 (define prelude-env
   (let ([forms (for/list ([f (in-list prelude-source-forms)])

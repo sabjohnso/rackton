@@ -30,7 +30,9 @@
                                   substring string-length string-append
                                   modulo quotient abs min max
                                   number->string string->number
-                                  read-line print println)
+                                  read-line print println
+                                  reverse append sort
+                                  file-exists?)
                        (except-in racket/match ==)
                        "adt.rkt"
                        "dict.rkt"

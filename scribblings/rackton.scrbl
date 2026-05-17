@@ -4,7 +4,8 @@
                                compose + - * < > <= >=
                                not and or length foldr filter
                                substring string-length string-append
-                               abs min max read-line println print)]]
+                               abs min max read-line println print
+                               reverse append sort file-exists?)]]
 
 @title{Rackton}
 @author{sbj}
@@ -17,13 +18,16 @@ algebraic data types, and pattern matching — inside Racket, either as an
 @racket[(rackton ...)] form inside an ordinary module or as a whole-file
 @hash-lang[] @racketmodfont{rackton} program.
 
-This documentation describes the @bold{Phase 1 + 2 + 3 + 4 + 5 + 6 + 7}
-subset.  Phase 7 added a string and numeric prelude and an opaque
-@racket[IO] monad with @racket[Functor]/@racket[Monad] instances, so
-Rackton programs can do I/O without dropping into a @racket[racket]
-escape at every step.  Functional dependencies, polymorphic recursion,
-deriving @racket[Functor], and a richer numeric tower remain on the
-roadmap.
+This documentation describes the @bold{Phase 1 + 2 + 3 + 4 + 5 + 6 + 7
++ 8} subset.  Phase 8 added mutable @racket[Ref a] cells with their
+operations in @racket[IO], a file-I/O surface
+(@racket[read-file]/@racket[write-file]/@racket[file-exists?]), a
+larger list and pair stdlib (@racket[reverse], @racket[append],
+@racket[zip], @racket[take], @racket[drop], @racket[find],
+@racket[sort], @racket[fst], @racket[snd], @racket[swap]), and
+@racket[#:deriving Functor] for parameterised ADTs.  Functional
+dependencies, polymorphic recursion, and a richer numeric tower remain
+on the roadmap.
 
 @section{Two surfaces, one elaborator}
 
@@ -478,9 +482,63 @@ explicitly:
 (define _    (run-io main))
 }|
 
+@section{Mutable refs and file I/O (Phase 8)}
+
+A @racket[(Ref a)] is an opaque mutable cell.  All operations are IO
+actions:
+
+@itemlist[
+ @item{@racket[make-ref]  — @racket[(-> a (IO (Ref a)))]}
+ @item{@racket[read-ref]  — @racket[(-> (Ref a) (IO a))]}
+ @item{@racket[write-ref] — @racket[(-> (Ref a) (-> a (IO Unit)))]}]
+
+@codeblock|{
+(: counter-up (-> (Ref Integer) (IO Integer)))
+(define (counter-up r)
+  (do [n <- (read-ref r)]
+      [_ <- (write-ref r (+ n 1))]
+    (read-ref r)))
+}|
+
+File I/O is similarly IO-typed:
+
+@itemlist[
+ @item{@racket[read-file]    — @racket[(-> String (IO String))]}
+ @item{@racket[write-file]   — @racket[(-> String (-> String (IO Unit)))]}
+ @item{@racket[file-exists?] — @racket[(-> String (IO Boolean))]}]
+
+@section{List and pair stdlib growth (Phase 8)}
+
+@itemlist[
+ @item{@bold{List}: @racket[reverse], @racket[append] (binary),
+       @racket[zip], @racket[take], @racket[drop], @racket[find]
+       (returns @racket[(Maybe a)]), @racket[sort] (insertion sort
+       requiring @racket[Ord]).}
+ @item{@bold{Pair}: @racket[fst], @racket[snd], @racket[swap].}]
+
+@section{Deriving Functor (Phase 8)}
+
+@racket[#:deriving Functor] synthesises an @racket[fmap]
+implementation for any ADT whose last type parameter is the one being
+mapped over.  For each field of each constructor:
+
+@itemlist[
+ @item{a field of exactly the functor parameter is replaced with
+       @racket[(f field)];}
+ @item{a field whose type is a recursive use of the same data type is
+       transformed with @racket[(fmap f field)] — the dispatch lands
+       back on the same instance at runtime;}
+ @item{other fields pass through unchanged.}]
+
+@codeblock|{
+(define-data (Tree a)
+  Leaf
+  (Node (Tree a) a (Tree a))
+  #:deriving Functor)
+}|
+
 @section{Not yet supported}
 
 Functional dependencies, overlapping instances, polymorphic
-recursion, kind polymorphism (kind variables), deriving
-@racket[Functor], floating-point arithmetic, exceptions, and mutable
-state.  These are tracked under later phases.
+recursion, kind polymorphism (kind variables), floating-point
+arithmetic, and exceptions.  These are tracked under later phases.

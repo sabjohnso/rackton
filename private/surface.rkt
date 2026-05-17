@@ -62,7 +62,8 @@
 
          lowercase-id?)
 
-(require syntax/parse)
+(require syntax/parse
+         racket/match)
 
 ;; ----- AST -----------------------------------------------------------
 
@@ -244,6 +245,65 @@
               stx))
       (e:literal #f stx)
       (build-list arity values))]))
+
+;; Derived Functor: synthesize `fmap` for an ADT whose LAST type
+;; parameter is the one being mapped over.  For each field of each
+;; constructor:
+;;   - if the field's type is exactly the functor parameter, apply f;
+;;   - if the field's type is a recursive use of the same data type,
+;;     recurse via `fmap`;
+;;   - otherwise pass the field through unchanged.
+(define (synthesize-functor-instance tname tparams ctors stx)
+  (define fparam (car (reverse tparams)))     ; last tparam
+  (define other-tparams (reverse (cdr (reverse tparams))))
+  (define head-ty
+    (cond
+      [(null? other-tparams) (ty:con tname stx)]
+      [else (ty:app (ty:con tname stx)
+                    (for/list ([p (in-list other-tparams)]) (ty:var p stx))
+                    stx)]))
+  (define head (constraint 'Functor (list head-ty) stx))
+  (define fmap-body
+    (e:match
+     (e:var 'x stx)
+     (for/list ([c (in-list ctors)])
+       (define name (data-ctor-name c))
+       (define field-types (data-ctor-field-types c))
+       (define arity (length field-types))
+       (clause (ctor-x-pattern name arity stx)
+               (synthesize-functor-rebuild name field-types fparam tname stx)
+               stx))
+     stx))
+  (top:instance '() head
+                (list (top:def 'fmap
+                               (e:lam '(f x) fmap-body stx)
+                               stx))
+                stx))
+
+(define (synthesize-functor-rebuild ctor-name field-types fparam tname stx)
+  (cond
+    [(null? field-types)
+     ;; Nullary constructors are values — emit the bare reference.
+     (e:var ctor-name stx)]
+    [else
+     (define transformed
+       (for/list ([ft (in-list field-types)] [i (in-naturals)])
+         (transform-functor-field ft (a-name i) fparam tname stx)))
+     (e:app (e:var ctor-name stx) transformed stx)]))
+
+(define (transform-functor-field ft arg-name fparam tname stx)
+  (define arg-var (e:var arg-name stx))
+  (match ft
+    ;; field is exactly the functor parameter: apply `f`
+    [(ty:var n _) #:when (eq? n fparam)
+     (e:app (e:var 'f stx) (list arg-var) stx)]
+    ;; field is a recursive use of the same data type — recurse via fmap
+    [(ty:app (ty:con t _) _ _) #:when (eq? t tname)
+     (e:app (e:var 'fmap stx) (list (e:var 'f stx) arg-var) stx)]
+    [(ty:con t _) #:when (eq? t tname)
+     (e:app (e:var 'fmap stx) (list (e:var 'f stx) arg-var) stx)]
+    ;; otherwise leave the field unchanged
+    [_ arg-var]))
 
 (define (synthesize-show-instance tname tparams ctors stx)
   (define head-ty (data-head-type-ast tname tparams stx))
@@ -623,12 +683,20 @@
        (apply append
               (for/list ([cls (in-list classes-needing-eq)])
                 (case cls
-                  [(Eq)   (list (synthesize-eq-instance   tname tparams ctors ctx-stx))]
-                  [(Show) (list (synthesize-show-instance tname tparams ctors ctx-stx))]
-                  [(Ord)  (list (synthesize-ord-instance  tname tparams ctors ctx-stx))]
+                  [(Eq)   (list (synthesize-eq-instance      tname tparams ctors ctx-stx))]
+                  [(Show) (list (synthesize-show-instance    tname tparams ctors ctx-stx))]
+                  [(Ord)  (list (synthesize-ord-instance     tname tparams ctors ctx-stx))]
+                  [(Functor)
+                   (cond
+                     [(null? tparams)
+                      (raise-syntax-error 'define-data
+                        "cannot derive Functor for a type with no type parameters"
+                        stx)]
+                     [else
+                      (list (synthesize-functor-instance tname tparams ctors ctx-stx))])]
                   [else
                    (raise-syntax-error 'define-data
-                     (format "cannot derive ~s — supported: Eq, Ord, Show" cls)
+                     (format "cannot derive ~s — supported: Eq, Ord, Show, Functor" cls)
                      stx)]))))
      (cons data-form derived)]))
 
