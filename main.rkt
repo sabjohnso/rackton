@@ -1,50 +1,74 @@
 #lang racket/base
 
+;; Rackton — public entry point for the (rackton ...) macro form.
+;;
+;; This module re-exports everything a downstream user needs to embed
+;; Rackton code inside a regular Racket module:
+;;
+;;   (require rackton)
+;;
+;;   (rackton
+;;     (define-data (Maybe a) None (Some a))
+;;     (: from-just (-> a (-> (Maybe a) a)))
+;;     (define (from-just d m)
+;;       (match m [(None) d] [(Some x) x])))
+;;
+;; The supported subset (Phase 1) covers:
+;;   literals (Integer / Boolean / String),
+;;   lambda / application, let, if, ascription, match,
+;;   define / declare (:) / define-data,
+;;   Hindley–Milner inference with let-polymorphism,
+;;   ADTs with pattern matching.
+
+(require "private/elaborate.rkt"
+         "private/adt.rkt"
+         racket/match)
+
+(provide rackton
+
+         ;; runtime support exposed for the macro's output
+         define-data-ctor
+         match
+
+         ;; primitive operators that appear in the typing env
+         (rename-out [+  +]
+                     [-  -]
+                     [*  *]
+                     [<  <]
+                     [>  >]
+                     [=  =]
+                     [<= <=]
+                     [>= >=]))
+
 (module+ test
-  (require rackunit))
+  (require rackunit)
+  (rackton
+    (define (id x) x)
+    (define (compose f g) (lambda (x) (f (g x))))
 
-;; Notice
-;; To install (from within the package directory):
-;;   $ raco pkg install
-;; To install (once uploaded to pkgs.racket-lang.org):
-;;   $ raco pkg install <<name>>
-;; To uninstall:
-;;   $ raco pkg remove <<name>>
-;; To view documentation:
-;;   $ raco docs <<name>>
-;;
-;; For your convenience, we have included LICENSE-MIT and LICENSE-APACHE files.
-;; If you would prefer to use a different license, replace those files with the
-;; desired license.
-;;
-;; Some users like to add a `private/` directory, place auxiliary files there,
-;; and require them in `main.rkt`.
-;;
-;; See the current version of the racket style guide here:
-;; http://docs.racket-lang.org/style/index.html
+    (: fact (-> Integer Integer))
+    (define (fact n)
+      (if (= n 0) 1 (* n (fact (- n 1)))))
 
-;; Code here
+    (define-data (Maybe a) None (Some a))
 
+    (: from-maybe (-> a (-> (Maybe a) a)))
+    (define (from-maybe d m)
+      (match m
+        [(None)   d]
+        [(Some x) x]))
 
+    (: map-maybe (-> (-> a b) (-> (Maybe a) (Maybe b))))
+    (define (map-maybe f m)
+      (match m
+        [(None)   None]
+        [(Some x) (Some (f x))])))
 
-(module+ test
-  ;; Any code in this `test` submodule runs when this file is run using DrRacket
-  ;; or with `raco test`. The code here does not run when this file is
-  ;; required by another module.
-
-  (check-equal? (+ 2 2) 4))
-
-(module+ main
-  ;; (Optional) main submodule. Put code here if you need it to be executed when
-  ;; this file is run using DrRacket or the `racket` executable.  The code here
-  ;; does not run when this file is required by another module. Documentation:
-  ;; http://docs.racket-lang.org/guide/Module_Syntax.html#%28part._main-and-test%29
-
-  (require racket/cmdline)
-  (define who (box "world"))
-  (command-line
-    #:program "my-program"
-    #:once-each
-    [("-n" "--name") name "Who to say hello to" (set-box! who name)]
-    #:args ()
-    (printf "hello ~a~n" (unbox who))))
+  (check-equal? (id 42) 42)
+  (check-equal? ((compose (lambda (n) (* n 2)) (lambda (n) (+ n 1))) 5) 12)
+  (check-equal? (fact 5)  120)
+  (check-equal? (fact 6)  720)
+  (check-equal? (from-maybe 0 None) 0)
+  (check-equal? (from-maybe 0 (Some 7)) 7)
+  (check-equal? (map-maybe (lambda (n) (* n n)) (Some 4)) (Some 16))
+  (check-equal? (map-maybe (lambda (n) (* n n)) None) None))

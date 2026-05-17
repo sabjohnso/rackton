@@ -1,9 +1,12 @@
 #lang info
 (define collection "rackton")
 (define deps '("base"))
-(define build-deps '("scribble-lib" "racket-doc" "rackunit-lib"))
+(define build-deps '("scribble-lib"
+                     "racket-doc"
+                     "rackunit-lib"
+                     "rackcheck-lib"))
 (define scribblings '(("scribblings/rackton.scrbl" ())))
-(define pkg-desc "Description Here")
-(define version "0.0")
+(define pkg-desc "A Racket adaptation of the Coalton statically-typed functional language")
+(define version "0.1.0")
 (define pkg-authors '(sbj))
 (define license '(Apache-2.0 OR MIT))
