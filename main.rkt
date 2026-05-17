@@ -23,7 +23,8 @@
 (require "private/elaborate.rkt"
          "private/adt.rkt"
          "private/dict.rkt"
-         racket/match)
+         "private/prelude-runtime.rkt"
+         (except-in racket/match ==))
 
 (provide rackton
 
@@ -33,15 +34,8 @@
          register-instance-method!
          match
 
-         ;; primitive operators that appear in the typing env
-         (rename-out [+  +]
-                     [-  -]
-                     [*  *]
-                     [<  <]
-                     [>  >]
-                     [=  =]
-                     [<= <=]
-                     [>= >=]))
+         ;; prelude — class methods, ADTs, and combinators
+         (all-from-out "private/prelude-runtime.rkt"))
 
 (module+ test
   (require rackunit)

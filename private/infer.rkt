@@ -138,6 +138,27 @@
   (scheme nice (mqual (for/list ([p (in-list reduced)]) (apply-subst σ p))
                       (apply-subst σ ty))))
 
+;; For user-facing diagnostic output: rename a type's free tvars to
+;; nice sequential names (a, b, c, …) before converting to a datum.
+;; Without this, error messages show internal fresh names like `a12`.
+(define (pretty-type t)
+  (define fv (type-vars t))
+  (define vs (sort (set->list fv) symbol<?))
+  (define nice (nice-tvar-names (length vs) (seteq)))
+  (define σ
+    (for/fold ([s empty-subst]) ([old (in-list vs)] [new (in-list nice)])
+      (subst-extend s old (tvar new))))
+  (type->datum (apply-subst σ t)))
+
+(define (pretty-pred p)
+  (define fv (type-vars p))
+  (define vs (sort (set->list fv) symbol<?))
+  (define nice (nice-tvar-names (length vs) (seteq)))
+  (define σ
+    (for/fold ([s empty-subst]) ([old (in-list vs)] [new (in-list nice)])
+      (subst-extend s old (tvar new))))
+  (pred->datum (apply-subst σ p)))
+
 (define (nice-tvar-names n avoid)
   (define (letter-name i)
     (cond
@@ -261,8 +282,8 @@
           (lambda (e)
             (raise-syntax-error 'infer
               (format "type mismatch in application: cannot apply ~a to ~a"
-                      (type->datum actual)
-                      (for/list ([t ts-args]) (type->datum (apply-subst s-args t))))
+                      (pretty-type actual)
+                      (for/list ([t ts-args]) (pretty-type (apply-subst s-args t))))
               stx))])
         (unify actual expected)))
      (values (subst-compose s-u s-pre)
@@ -295,7 +316,7 @@
           (lambda (_)
             (raise-syntax-error 'infer
               (format "if-condition must be Boolean, got ~a"
-                      (type->datum (apply-subst s-c t-c)))
+                      (pretty-type (apply-subst s-c t-c)))
               stx))])
         (unify (apply-subst s-c t-c) t-bool)))
      (define s1 (subst-compose s-cb s-c))
@@ -311,8 +332,8 @@
           (lambda (_)
             (raise-syntax-error 'infer
               (format "if branches disagree: then ~a vs else ~a"
-                      (type->datum (apply-subst s3 t-then))
-                      (type->datum (apply-subst s3 t-else)))
+                      (pretty-type (apply-subst s3 t-then))
+                      (pretty-type (apply-subst s3 t-else)))
               stx))])
         (unify (apply-subst s3 t-then) (apply-subst s3 t-else))))
      (define s-final (subst-compose s-branches s3))
@@ -327,11 +348,20 @@
           (lambda (_)
             (raise-syntax-error 'infer
               (format "expression has type ~a but ascription says ~a"
-                      (type->datum (apply-subst s-e t-e))
-                      (type->datum declared))
+                      (pretty-type (apply-subst s-e t-e))
+                      (pretty-type declared))
               stx))])
         (unify (apply-subst s-e t-e) declared)))
      (values (subst-compose s-u s-e) (apply-subst s-u declared))]
+
+    [(e:escape ty-ast vars _ stx)
+     (define expected (qual-body-type (resolve-type ty-ast)))
+     (for ([v (in-list vars)])
+       (unless (env-ref-var env v)
+         (raise-syntax-error 'infer
+           (format "(racket …) escape references unbound name: ~s" v)
+           stx)))
+     (values empty-subst expected)]
 
     [(e:match scrut clauses stx)
      (define-values (s-scrut t-scrut) (infer-expr scrut env))
@@ -345,6 +375,7 @@
                          (apply-subst s result-tv)
                          (apply-subst/env s env)))
          (values (subst-compose s-cl s) _t)))
+     (check-exhaustive! (apply-subst s-final t-scrut) clauses stx env)
      (values s-final (apply-subst s-final result-tv))]))
 
 ;; Type a single match clause.  Pattern bindings extend the env for the
@@ -358,7 +389,7 @@
        (lambda (_)
          (raise-syntax-error 'infer
            (format "pattern type ~a does not match scrutinee type ~a"
-                   (type->datum pat-type) (type->datum scrut-type))
+                   (pretty-type pat-type) (pretty-type scrut-type))
            (clause-stx cl)))])
      (unify pat-type scrut-type)))
   (define env*
@@ -374,8 +405,8 @@
        (lambda (_)
          (raise-syntax-error 'infer
            (format "match clause body has type ~a but earlier arms have ~a"
-                   (type->datum (apply-subst s-acc t-body))
-                   (type->datum (apply-subst s-acc result-type)))
+                   (pretty-type (apply-subst s-acc t-body))
+                   (pretty-type (apply-subst s-acc result-type)))
            (clause-stx cl)))])
      (unify (apply-subst s-acc t-body)
             (apply-subst s-acc result-type))))
@@ -416,6 +447,61 @@
         (values (for/list ([b (in-list all-bindings)])
                   (cons (car b) (apply-subst s-acc (cdr b))))
                 (apply-subst s-acc result-ty))])]))
+
+;; Compile-time exhaustiveness check for `match`.  Tabular cases:
+;;   - any wildcard or variable pattern is a universal catchall.
+;;   - on a known ADT, every declared constructor must appear (unless
+;;     a catchall is present).
+;;   - on Boolean, both #t and #f literals must appear.
+;;   - on other primitive scrutinee types (Integer, String, …) and on
+;;     scrutinees whose type is still polymorphic, a catchall is required.
+(define (check-exhaustive! scrut-type clauses stx env)
+  (define head
+    (let loop ([t scrut-type])
+      (match t
+        [(tcon n)        n]
+        [(tapp (tcon n) _) n]
+        [_              #f])))
+  (define (catchall? c)
+    (or (p:wild? (clause-pattern c))
+        (p:var?  (clause-pattern c))))
+  (define has-catchall? (for/or ([c (in-list clauses)]) (catchall? c)))
+  (cond
+    [has-catchall? (void)]
+    [(eq? head 'Boolean)
+     (define hits
+       (for/fold ([acc '()]) ([c (in-list clauses)])
+         (match (clause-pattern c)
+           [(p:lit v _) (cons v acc)]
+           [_ acc])))
+     (unless (and (member #t hits) (member #f hits))
+       (raise-syntax-error 'infer
+         "non-exhaustive match on Boolean — both #t and #f must be covered"
+         stx))]
+    [head
+     (define ti (env-ref-tcon env head))
+     (cond
+       [(not ti)
+        (raise-syntax-error 'infer
+          "non-exhaustive match: needs a wildcard or variable pattern"
+          stx)]
+       [else
+        (define needed (tcon-info-ctors ti))
+        (define hit
+          (for/fold ([acc '()]) ([c (in-list clauses)])
+            (match (clause-pattern c)
+              [(p:ctor name _ _) (cons name acc)]
+              [_ acc])))
+        (define missing (filter (lambda (c) (not (member c hit))) needed))
+        (unless (null? missing)
+          (raise-syntax-error 'infer
+            (format "non-exhaustive match: missing constructor(s) ~s"
+                    missing)
+            stx))])]
+    [else
+     (raise-syntax-error 'infer
+       "non-exhaustive match: needs a wildcard or variable pattern"
+       stx)]))
 
 (define (unfold-arrow t n)
   (let loop ([t t] [n n] [acc '()])
@@ -458,7 +544,7 @@
                (raise-syntax-error 'infer
                  (format "definition of ~s has type ~a, declared as ~a"
                          name
-                         (type->datum (apply-subst s t))
+                         (pretty-type (apply-subst s t))
                          (scheme->datum decl-scheme))
                  stx))])
            (unify (apply-subst s t) decl-ty)))
@@ -472,7 +558,7 @@
            (raise-syntax-error 'infer
              (format "unsolved constraints in ~s: ~s"
                      name
-                     (map pred->datum remaining-preds))
+                     (map pretty-pred remaining-preds))
              stx)]
           [else (restore-preds! '())])
         (values (env-extend-var env name decl-scheme)
@@ -609,8 +695,8 @@
         (unless (null? leftovers)
           (raise-syntax-error 'infer
             (format "instance ~s method ~s leaves unsolved constraints: ~s"
-                    (pred->datum head-pred) method-name
-                    (map pred->datum leftovers))
+                    (pretty-pred head-pred) method-name
+                    (map pretty-pred leftovers))
             stx)))
       (hash-set acc method-name body)))
   (define info (instance-info head-pred ctx-preds checked-bodies))

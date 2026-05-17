@@ -1,6 +1,7 @@
 #lang scribble/manual
 @require[@for-label[rackton
-                    racket/base]]
+                    (except-in racket/base
+                               compose + - * < > <= >=)]]
 
 @title{Rackton}
 @author{sbj}
@@ -13,9 +14,13 @@ algebraic data types, and pattern matching — inside Racket, either as an
 @racket[(rackton ...)] form inside an ordinary module or as a whole-file
 @hash-lang[] @racketmodfont{rackton} program.
 
-This documentation describes the @bold{Phase 1 + 2} subset.  Host-language
-escape and an extended standard library are planned for later phases and
-not yet implemented.
+This documentation describes the @bold{Phase 1 + 2 + 3} subset.  Phase 3
+added a host-language escape, a built-in prelude (@racket[Eq],
+@racket[Ord], @racket[Num], @racket[Show]; @racket[Maybe], @racket[List],
+@racket[Result], @racket[Pair], @racket[Unit]; @racket[id], @racket[const]),
+fatal exhaustiveness checking, and pretty-printed type names in error
+messages.  Multi-parameter classes, functional dependencies, deriving,
+and polymorphic recursion remain on the roadmap.
 
 @section{Two surfaces, one elaborator}
 
@@ -185,9 +190,53 @@ the type tag of the first argument, so the constraint is fully erased
 from the runtime calling convention — no explicit dictionary is threaded
 through user code.
 
+@section{Host-language escape (Phase 3)}
+
+@codeblock|{
+(: greet (-> String String))
+(define (greet name)
+  (racket String (name)
+    (string-append "hello " name)))
+}|
+
+@racket[(racket τ (var ...) body)] drops into raw Racket and returns a
+value typed as @racket[τ].  The named Rackton bindings are guaranteed to
+be in scope inside @racket[body], which is spliced verbatim at codegen
+time.  The escape is the only way for Rackton code to reach Racket's
+standard library (string-manipulation, I/O, …).
+
+@section{Built-in prelude (Phase 3)}
+
+Every Rackton module — both @racket[(rackton ...)] forms and
+@hash-lang[] @racketmodfont{rackton} files — has the following bindings
+available without any local declaration:
+
+@itemlist[
+ @item{@bold{Classes}: @racket[Eq] (with @racket[==], @racket[/=]),
+       @racket[Ord] (with @racket[<], @racket[>], @racket[<=],
+       @racket[>=], superclass @racket[Eq]),
+       @racket[Num] (with @racket[+], @racket[-], @racket[*]),
+       @racket[Show] (with @racket[show]).}
+ @item{@bold{Instances}: @racket[Num], @racket[Eq], @racket[Ord],
+       @racket[Show] over @racket[Integer]; @racket[Eq], @racket[Show]
+       over @racket[Boolean] and @racket[String].}
+ @item{@bold{ADTs}: @racket[Maybe] (@racket[None], @racket[Some]),
+       @racket[List] (@racket[Nil], @racket[Cons]),
+       @racket[Pair] (@racket[MkPair]),
+       @racket[Result] (@racket[Ok], @racket[Err]),
+       @racket[Unit] (@racket[MkUnit]).}
+ @item{@bold{Combinators}: @racket[id], @racket[const].}]
+
+@section{Exhaustive @racket[match] (Phase 3)}
+
+A @racket[match] is checked at compile time and rejected if it omits a
+constructor of an ADT scrutinee, omits @racket[#t] or @racket[#f] on a
+@racket[Boolean] scrutinee, or lacks a catchall on an unconstrained
+scrutinee.  Add a wildcard (@racket[_]) or variable pattern to opt out.
+
 @section{Not yet supported}
 
 Multi-parameter classes, functional dependencies, overlapping instances,
-host-language @tt{lisp}/@tt{racket} escapes, polymorphic recursion, kind
-polymorphism, the larger numeric / string / list prelude, and fatal
-exhaustiveness errors.  These are tracked under later phases.
+polymorphic recursion, kind polymorphism, and a richer standard library
+(string ops, list helpers, IO monad).  These are tracked under later
+phases.

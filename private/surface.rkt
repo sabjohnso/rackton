@@ -26,6 +26,7 @@
          (struct-out e:if)
          (struct-out e:ann)
          (struct-out e:match)
+         (struct-out e:escape)
          (struct-out clause)
 
          (struct-out ty:var)
@@ -69,6 +70,11 @@
 (struct e:if      (test then else stx) #:transparent)
 (struct e:ann     (expr type stx) #:transparent)
 (struct e:match   (scrutinee clauses stx) #:transparent)
+;; A host-language escape: (racket τ (var ...) body) drops into raw
+;; Racket, returning a value typed as τ.  `vars` lists the Rackton
+;; bindings that must be in scope.  `body` is a single Racket syntax
+;; object that is spliced verbatim at codegen time.
+(struct e:escape  (type vars body stx) #:transparent)
 (struct clause    (pattern body stx) #:transparent)
 
 (struct ty:var    (name stx) #:transparent)
@@ -110,7 +116,7 @@
 
 (define (parse-expr stx)
   (syntax-parse stx
-    #:datum-literals (lambda λ let if ann match)
+    #:datum-literals (lambda λ let if ann match racket)
     [n:number  (e:literal (syntax->datum #'n) stx)]
     [b:boolean (e:literal (syntax->datum #'b) stx)]
     [s:string  (e:literal (syntax->datum #'s) stx)]
@@ -145,6 +151,13 @@
                         (parse-expr b-stx)
                         p-stx))
               stx)]
+
+    ;; (racket τ (var ...) body) — host-language escape
+    [(racket τ (v:id ...) body)
+     (e:escape (parse-type #'τ)
+               (map syntax->datum (syntax->list #'(v ...)))
+               #'body
+               stx)]
 
     [x:id  (e:var (syntax->datum #'x) stx)]
 

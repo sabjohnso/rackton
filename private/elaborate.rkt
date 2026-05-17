@@ -18,7 +18,8 @@
                      racket/list
                      "surface.rkt"
                      "infer.rkt"
-                     "codegen.rkt"))
+                     "codegen.rkt"
+                     "prelude.rkt"))
 
 (define-syntax (rackton stx)
   (syntax-parse stx
@@ -28,7 +29,7 @@
      ;; Type-check.  Errors surface as exn:fail:syntax.  We also
      ;; capture the resulting env so codegen can resolve tcon-info
      ;; for instance dispatch tag generation.
-     (define env (infer-program parsed))
+     (define env (infer-program parsed prelude-env))
      (define compiled
        (filter values
                (for/list ([f (in-list parsed)])

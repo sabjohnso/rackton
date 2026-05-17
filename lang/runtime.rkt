@@ -42,6 +42,5 @@
  register-instance-method!
  match
 
- ;; primitives the typing env knows about
- (rename-out [+ +] [- -] [* *]
-             [< <] [> >] [= =] [<= <=] [>= >=]))
+ ;; prelude classes, instances, ADTs, and combinators come from main.rkt
+ (all-from-out "../main.rkt"))

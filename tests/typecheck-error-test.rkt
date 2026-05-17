@@ -36,3 +36,22 @@
   (check-rackton-compile-error
    (: bad (-> a a))
    (define (bad x) 0))) ; body specializes a to Integer
+
+(test-case "non-exhaustive match on an ADT is rejected"
+  (check-rackton-compile-error
+   (define-data X A B C)
+   (define (f x) (match x [A 1] [B 2])))) ; missing C
+
+(test-case "non-exhaustive match on Boolean is rejected"
+  (check-rackton-compile-error
+   (define (f x) (match x [#t 1]))))
+
+(test-case "match without catchall on Integer is rejected"
+  (check-rackton-compile-error
+   (define (f n) (match n [0 99]))))
+
+(test-case "match with a wildcard is always exhaustive"
+  (define (ok-rackton)
+    (eval #'(rackton (define (f n) (match n [_ 99])))
+          (variable-reference->namespace (#%variable-reference))))
+  (check-not-exn ok-rackton))

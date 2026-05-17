@@ -70,6 +70,11 @@
     [(e:ann expr _ _)
      (compile-expr expr)]
 
+    [(e:escape _ty _vars body _stx)
+     ;; Body is an opaque Racket syntax object with the user's lexical
+     ;; context; splice verbatim.
+     body]
+
     [(e:match scrut clauses stx)
      (with-syntax
       ([sc (compile-expr scrut)]
