@@ -27,6 +27,7 @@
          (struct-out e:ann)
          (struct-out e:match)
          (struct-out e:escape)
+         (struct-out e:letrec)
          (struct-out clause)
 
          (struct-out ty:var)
@@ -50,6 +51,7 @@
          (struct-out method-sig)
          (struct-out method-default)
          (struct-out top:require)
+         (struct-out top:alias)
          (struct-out k:star)
          (struct-out k:arr)
          parse-kind-stx
@@ -80,6 +82,9 @@
 ;; bindings that must be in scope.  `body` is a single Racket syntax
 ;; object that is spliced verbatim at codegen time.
 (struct e:escape  (type vars body stx) #:transparent)
+;; A `(letrec ([name expr] ...) body)` form.  Each binding's rhs may
+;; reference every binding's name (mutual recursion).
+(struct e:letrec  (bindings body stx) #:transparent)
 (struct clause    (pattern body stx) #:transparent)
 
 (struct ty:var    (name stx) #:transparent)
@@ -110,6 +115,9 @@
 ;; A multi-file import: `(require "file.rkt" ...)` inside a rackton form.
 ;; Specs are the raw require specs (passed verbatim to Racket's require).
 (struct top:require    (specs stx) #:transparent)
+;; A type alias.  `params` is a list of symbols (possibly empty); `target`
+;; is a parsed surface type AST that may mention the params.
+(struct top:alias      (name params target stx) #:transparent)
 
 ;; Kinds at the surface level — used to annotate class parameters.
 (struct k:star ()        #:transparent)
@@ -358,7 +366,7 @@
 
 (define (parse-expr stx)
   (syntax-parse stx
-    #:datum-literals (lambda λ let if ann match racket do <-)
+    #:datum-literals (lambda λ let letrec if ann match racket do <-)
     [n:number  (e:literal (syntax->datum #'n) stx)]
     [b:boolean (e:literal (syntax->datum #'b) stx)]
     [s:string  (e:literal (syntax->datum #'s) stx)]
@@ -378,6 +386,13 @@
               (cons (syntax->datum id) (parse-expr r)))
             (parse-expr #'body)
             stx)]
+
+    [(letrec ([x:id rhs] ...) body)
+     (e:letrec (for/list ([id (in-list (syntax->list #'(x ...)))]
+                          [r  (in-list (syntax->list #'(rhs ...)))])
+                 (cons (syntax->datum id) (parse-expr r)))
+               (parse-expr #'body)
+               stx)]
 
     [(if c t e)
      (e:if (parse-expr #'c) (parse-expr #'t) (parse-expr #'e) stx)]
@@ -524,9 +539,21 @@
 
 (define (parse-top stx)
   (syntax-parse stx
-    #:datum-literals (define define-data define-struct define-class define-instance require : =>)
+    #:datum-literals (define define-data define-struct define-class define-instance define-alias require : =>)
     [(require spec ...)
      (top:require (syntax->list #'(spec ...)) stx)]
+
+    [(define-alias (aname:id aparam:id ...) target)
+     #:fail-unless (not (lowercase-id? (syntax->datum #'aname)))
+     "type alias name must be a non-lowercase identifier"
+     (top:alias (syntax->datum #'aname)
+                (map syntax->datum (syntax->list #'(aparam ...)))
+                (parse-type #'target)
+                stx)]
+    [(define-alias aname:id target)
+     #:fail-unless (not (lowercase-id? (syntax->datum #'aname)))
+     "type alias name must be a non-lowercase identifier"
+     (top:alias (syntax->datum #'aname) '() (parse-type #'target) stx)]
     [(: name:id ty)
      (top:dec (syntax->datum #'name) (parse-type #'ty) stx)]
 

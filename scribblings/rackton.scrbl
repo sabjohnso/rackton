@@ -19,15 +19,13 @@ algebraic data types, and pattern matching — inside Racket, either as an
 @hash-lang[] @racketmodfont{rackton} program.
 
 This documentation describes the @bold{Phase 1 + 2 + 3 + 4 + 5 + 6 + 7
-+ 8} subset.  Phase 8 added mutable @racket[Ref a] cells with their
-operations in @racket[IO], a file-I/O surface
-(@racket[read-file]/@racket[write-file]/@racket[file-exists?]), a
-larger list and pair stdlib (@racket[reverse], @racket[append],
-@racket[zip], @racket[take], @racket[drop], @racket[find],
-@racket[sort], @racket[fst], @racket[snd], @racket[swap]), and
-@racket[#:deriving Functor] for parameterised ADTs.  Functional
-dependencies, polymorphic recursion, and a richer numeric tower remain
-on the roadmap.
++ 8 + 9} subset.  Phase 9 added @racket[letrec] at expression scope,
+type aliases via @racket[define-alias], polymorphic recursion (a
+declared scheme is now used at every self-reference), a @racket[panic]
+primitive typed at bottom, multi-@racket[(rackton ...)]-block support
+in a single Racket module, and "did you mean?" suggestions on
+unbound-identifier errors.  Functional dependencies, kind polymorphism,
+floating-point arithmetic, and exceptions remain on the roadmap.
 
 @section{Two surfaces, one elaborator}
 
@@ -537,8 +535,77 @@ mapped over.  For each field of each constructor:
   #:deriving Functor)
 }|
 
+@section{letrec (Phase 9)}
+
+@codeblock|{
+(letrec ([even? (lambda (n) (if (== n 0) #t (odd?  (- n 1))))]
+         [odd?  (lambda (n) (if (== n 0) #f (even? (- n 1))))])
+  (even? 8))
+}|
+
+Bindings are mutually recursive: every right-hand side has all the
+names in scope.  Each binding is generalised independently against
+the surrounding environment after inference.
+
+@section{Type aliases (Phase 9)}
+
+@codeblock|{
+(define-alias Name           String)
+(define-alias (Endo a)       (-> a a))
+(define-alias (Pair3 a b c)  (Pair a (Pair b c)))
+}|
+
+Aliases expand inline during type resolution; they introduce no
+runtime cost.  Recursive aliases are rejected with a clear error.
+
+@section{Polymorphic recursion (Phase 9)}
+
+A function with a declared polymorphic scheme can call itself at a
+different instantiation than the enclosing call:
+
+@codeblock|{
+(: const-int (-> a Integer))
+(define (const-int x)
+  (if (== 0 0) 99 (const-int 5)))
+}|
+
+Without an explicit declaration, recursive calls are still
+monomorphic — only the declaration's scheme licenses fresh
+instantiations.
+
+@section{panic (Phase 9)}
+
+@racket[panic : (-> String a)] terminates the program with an error
+message.  Its return type is universally quantified, so it can appear
+in any branch:
+
+@codeblock|{
+(: pick-positive (-> Integer Integer))
+(define (pick-positive n)
+  (if (< n 0) (panic "negative not allowed") n))
+}|
+
+@section{Multi-block support (Phase 9)}
+
+A single Racket module may now contain any number of @racket[(rackton
+...)] invocations.  Each block elaborates independently against the
+prelude.  Cross-file imports (@racket[require]) still see only
+@hash-lang[] @racketmodfont{rackton} modules' schemes; multiple
+embedded @racket[(rackton …)] blocks are visible only at the runtime
+level, not via the typing channel.
+
+@section{"did you mean?" diagnostics (Phase 9)}
+
+An unbound-identifier error now searches the surrounding environment
+for a near-match (Levenshtein distance ≤ 2) and suggests it:
+
+@codeblock|{
+> (rackton (define n (legnth (Cons 1 Nil))))
+;; infer: unbound identifier: legnth (did you mean `length`?)
+}|
+
 @section{Not yet supported}
 
-Functional dependencies, overlapping instances, polymorphic
-recursion, kind polymorphism (kind variables), floating-point
-arithmetic, and exceptions.  These are tracked under later phases.
+Functional dependencies, overlapping instances, kind polymorphism,
+floating-point arithmetic, and exceptions / catch.  These are tracked
+under later phases.

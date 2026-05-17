@@ -27,6 +27,8 @@
          env-extend-instance
          env-instances
          env-ref-method-class
+         env-extend-alias
+         env-ref-alias
          env-vars-free-vars
          apply-subst/env
 
@@ -37,7 +39,7 @@
 
 ;; ----- structures ----------------------------------------------------
 
-(struct env (vars data-ctors tcons classes instance-table method-owners)
+(struct env (vars data-ctors tcons classes instance-table method-owners aliases)
   #:transparent)
 
 ;; A data-constructor's typing information.  `scheme` is the polymorphic
@@ -73,7 +75,7 @@
 ;;   methods : (HashEq method-name → surface-expr) — method bodies
 (struct instance-info (head context methods) #:transparent)
 
-(define empty-env (env (hasheq) (hasheq) (hasheq) (hasheq) (hasheq) (hasheq)))
+(define empty-env (env (hasheq) (hasheq) (hasheq) (hasheq) (hasheq) (hasheq) (hasheq)))
 
 ;; ----- basic accessors ----------------------------------------------
 
@@ -127,6 +129,18 @@
 
 (define (env-ref-method-class e method [default #f])
   (hash-ref (env-method-owners e) method default))
+
+;; ----- type aliases -----------------------------------------------
+;; `aliases` maps an alias name to (cons param-list target-ty-ast).
+;; The target-ty-ast is the surface ty:* AST so that resolution can
+;; substitute and recurse uniformly.
+
+(define (env-extend-alias e name params target)
+  (struct-copy env e
+               [aliases (hash-set (env-aliases e) name (cons params target))]))
+
+(define (env-ref-alias e name [default #f])
+  (hash-ref (env-aliases e) name default))
 
 ;; Free type variables across every value binding's scheme — needed
 ;; for `generalize` at let bindings.

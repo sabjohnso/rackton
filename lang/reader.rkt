@@ -24,7 +24,7 @@ rackton/lang/runtime
      ;; Wrap every user form in a single (rackton form ...) invocation
      ;; and auto-provide everything the program defines.
      (list (datum->syntax #f
-                          (cons 'rackton forms)
+                          (cons 'rackton/main forms)
                           (car forms))
            (datum->syntax #f
                           '(provide (all-defined-out))))]))

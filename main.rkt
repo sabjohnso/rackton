@@ -27,6 +27,7 @@
          (except-in racket/match ==))
 
 (provide rackton
+         rackton/main
 
          ;; runtime support exposed for the macro's output
          define-data-ctor

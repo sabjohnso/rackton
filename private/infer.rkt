@@ -37,6 +37,12 @@
 
 (define current-fresh-state    (make-parameter #f))
 (define current-pending-preds  (make-parameter #f))
+;; Map of alias-name → (cons params target-ty-ast), consulted by
+;; `resolve-type` to expand alias references at the type level.
+(define current-aliases        (make-parameter (hasheq)))
+;; Set of alias names currently being expanded — used to detect
+;; recursive aliases.
+(define current-expanding      (make-parameter (seteq)))
 
 (define (fresh-tvar [prefix 'a])
   (define box (current-fresh-state))
@@ -160,6 +166,48 @@
       (subst-extend s old (tvar new))))
   (pred->datum (apply-subst σ p)))
 
+;; -------- "did you mean?" suggestions ------------------------------
+
+;; Standard iterative Levenshtein distance.
+(define (edit-distance s1 s2)
+  (define m (string-length s1))
+  (define n (string-length s2))
+  (define prev (make-vector (add1 n)))
+  (define curr (make-vector (add1 n)))
+  (for ([j (in-range (add1 n))]) (vector-set! prev j j))
+  (for ([i (in-range 1 (add1 m))])
+    (vector-set! curr 0 i)
+    (for ([j (in-range 1 (add1 n))])
+      (define cost
+        (if (char=? (string-ref s1 (sub1 i))
+                    (string-ref s2 (sub1 j)))
+            0 1))
+      (vector-set! curr j
+                   (min (add1 (vector-ref prev j))
+                        (add1 (vector-ref curr (sub1 j)))
+                        (+ cost (vector-ref prev (sub1 j))))))
+    (for ([k (in-range (add1 n))])
+      (vector-set! prev k (vector-ref curr k))))
+  (vector-ref prev n))
+
+;; Search env for an identifier whose name is within edit distance ≤ 2
+;; of `wanted`.  Return a parenthesised suggestion string ("" if none).
+(define (suggest-similar wanted env)
+  (define wanted-str (symbol->string wanted))
+  (define candidates
+    (append (hash-keys (env-vars env))
+            (hash-keys (env-data-ctors env))))
+  (define best
+    (for/fold ([acc #f]) ([cand (in-list candidates)])
+      (define d (edit-distance wanted-str (symbol->string cand)))
+      (cond
+        [(> d 2) acc]
+        [(or (not acc) (< d (cdr acc))) (cons cand d)]
+        [else acc])))
+  (cond
+    [best (format " (did you mean `~s`?)" (car best))]
+    [else ""]))
+
 (define (nice-tvar-names n avoid)
   (define (letter-name i)
     (cond
@@ -184,11 +232,23 @@
 
 ;; Resolve a parsed type AST to a core type or qualified type.
 ;; `(All ...)` wrappers are stripped here; the explicit quantifier is
-;; preserved only by `resolve-scheme`.
+;; preserved only by `resolve-scheme`.  References to type aliases are
+;; expanded inline by substituting the alias's parameters with the
+;; supplied arguments and recursing on the alias target.
 (define (resolve-type ty-ast)
   (match ty-ast
     [(ty:var n _)        (tvar n)]
-    [(ty:con n _)        (tcon n)]
+    [(ty:con n stx)
+     (cond
+       [(hash-ref (current-aliases) n #f)
+        => (lambda (info) (expand-alias n info '() stx))]
+       [else (tcon n)])]
+    [(ty:app (and h (ty:con n _)) args stx)
+     (cond
+       [(hash-ref (current-aliases) n #f)
+        => (lambda (info) (expand-alias n info args stx))]
+       [else (make-tapp (tcon n)
+                        (for/list ([a (in-list args)]) (resolve-type a)))])]
     [(ty:app h args _)
      (make-tapp (resolve-type h)
                 (for/list ([a (in-list args)]) (resolve-type a)))]
@@ -196,6 +256,49 @@
     [(ty:qual cs body _)
      (mqual (for/list ([c (in-list cs)]) (resolve-constraint c))
             (resolve-type body))]))
+
+(define (expand-alias name info args stx)
+  (when (set-member? (current-expanding) name)
+    (raise-syntax-error 'infer
+      (format "recursive type alias: ~s" name) stx))
+  (define params (car info))
+  (define target (cdr info))
+  (unless (= (length params) (length args))
+    (raise-syntax-error 'infer
+      (format "type alias ~s expects ~a arg(s), got ~a"
+              name (length params) (length args))
+      stx))
+  (define sub (for/hasheq ([p (in-list params)] [a (in-list args)])
+                (values p a)))
+  (parameterize ([current-expanding (set-add (current-expanding) name)])
+    (resolve-type (substitute-tyvars sub target))))
+
+;; Walk a surface type AST and substitute ty:var occurrences whose name
+;; appears in `sub` with the corresponding replacement AST.
+(define (substitute-tyvars sub ty-ast)
+  (match ty-ast
+    [(ty:var n _)
+     (hash-ref sub n ty-ast)]
+    [(ty:con _ _) ty-ast]
+    [(ty:app h args stx)
+     (ty:app (substitute-tyvars sub h)
+             (for/list ([a (in-list args)]) (substitute-tyvars sub a))
+             stx)]
+    [(ty:forall vs body stx)
+     (define sub*
+       (for/fold ([s sub]) ([v (in-list vs)]) (hash-remove s v)))
+     (ty:forall vs (substitute-tyvars sub* body) stx)]
+    [(ty:qual cs body stx)
+     (ty:qual (for/list ([c (in-list cs)]) (substitute-constraint-tyvars sub c))
+              (substitute-tyvars sub body)
+              stx)]))
+
+(define (substitute-constraint-tyvars sub c)
+  (match c
+    [(constraint cls args stx)
+     (constraint cls
+                 (for/list ([a (in-list args)]) (substitute-tyvars sub a))
+                 stx)]))
 
 (define (resolve-constraint c)
   (match c
@@ -242,7 +345,8 @@
        [sch (values empty-subst (instantiate sch))]
        [else
         (raise-syntax-error 'infer
-                            (format "unbound identifier: ~s" x)
+                            (format "unbound identifier: ~s~a"
+                                    x (suggest-similar x env))
                             stx)])]
 
     [(e:lam params body _)
@@ -308,6 +412,38 @@
      (define-values (s-body t-body)
        (infer-expr body env-after))
      (values (subst-compose s-body s-acc) t-body)]
+
+    [(e:letrec bindings body _)
+     ;; Mutual recursion: pre-bind each name with a fresh monomorphic
+     ;; tvar so each rhs can reference every other binding (and itself).
+     ;; After inferring all rhs's, unify each tvar with the inferred
+     ;; type and generalize against the OUTER env's free-var set.
+     (define pre-bindings
+       (for/list ([b (in-list bindings)]) (cons (car b) (fresh-tvar))))
+     (define env-with-pre
+       (for/fold ([e env]) ([pb (in-list pre-bindings)])
+         (env-extend-var e (car pb) (scheme '() (cdr pb)))))
+     (define-values (s-final ts)
+       (for/fold ([s empty-subst] [ts '()])
+                 ([b  (in-list bindings)]
+                  [pb (in-list pre-bindings)])
+         (define-values (s′ t)
+           (infer-expr (cdr b) (apply-subst/env s env-with-pre)))
+         (define s-combined (subst-compose s′ s))
+         (define s-u
+           (unify (apply-subst s-combined (cdr pb))
+                  (apply-subst s-combined t)))
+         (define s-after (subst-compose s-u s-combined))
+         (values s-after (cons (apply-subst s-after (cdr pb)) ts))))
+     (apply-subst-to-preds! s-final)
+     (define env-after
+       (for/fold ([e (apply-subst/env s-final env)])
+                 ([b  (in-list bindings)]
+                  [t  (in-list (reverse ts))])
+         (env-extend-var e (car b)
+                         (generalize (apply-subst/env s-final env) t))))
+     (define-values (s-body t-body) (infer-expr body env-after))
+     (values (subst-compose s-body s-final) t-body)]
 
     [(e:if c t e stx)
      (define-values (s-c t-c) (infer-expr c env))
@@ -525,7 +661,11 @@
         (loop (cdr forms) env* declared*)]))))
 
 (define (handle-top-form form env declared)
-  (match form
+  (parameterize ([current-aliases (env-aliases env)])
+   (match form
+
+    [(top:alias name params target-ast stx)
+     (values (env-extend-alias env name params target-ast) declared)]
 
     [(top:dec name ty-ast _)
      (values env (hash-set declared name (resolve-scheme ty-ast)))]
@@ -536,7 +676,10 @@
         (define decl-scheme (hash-ref declared name))
         ;; Skolemize bound vars so the body cannot covertly specialize them.
         (define-values (decl-ty decl-preds) (skolemize decl-scheme))
-        (define env-rec (env-extend-var env name (scheme '() decl-ty)))
+        ;; Pre-register with the FULL polymorphic scheme rather than the
+        ;; skolemized monomorphic type, enabling polymorphic recursion:
+        ;; the body may call itself at different instantiations.
+        (define env-rec (env-extend-var env name decl-scheme))
         (define-values (s t) (infer-expr expr env-rec))
         (define s-u
           (with-handlers
@@ -607,7 +750,7 @@
          (env-extend-data e (data-ctor-name c)
                           (data-info tname (data-ctor-name c)
                                      (length field-tys) sch))))
-     (values env** declared)]))
+     (values env** declared)])))
 
 ;; ----- class / instance elaboration --------------------------------
 

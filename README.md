@@ -7,8 +7,9 @@ Racket.
 
 ## Status
 
-**Phase 1 + 2 + 3 + 4 + 5 + 6 + 7 + 8** — typed lambda calculus, ADTs,
-records (`define-struct`), pattern matching, two surfaces
+**Phase 1 + 2 + 3 + 4 + 5 + 6 + 7 + 8 + 9** — typed lambda calculus,
+ADTs, records (`define-struct`), pattern matching, `letrec`, type
+aliases (`define-alias`), two surfaces
 (`(rackton ...)` macro and `#lang rackton`), single- and multi-parameter
 type classes (superclass constraints, qualifying contexts, default
 methods, explicit-kind higher-kinded classes, first-arg runtime
@@ -17,12 +18,14 @@ dispatch), host-language `racket` escape, a built-in prelude
 `Pair`/`Unit`/`IO`/`Ref` + `id`/`const`/`compose`/`flip` +
 `not`/`and`/`or` + `length`/`foldr`/`filter`/`reverse`/`append`/
 `zip`/`take`/`drop`/`find`/`sort` + `fst`/`snd`/`swap` + string ops +
-numeric helpers + IO/file/ref primitives), fatal exhaustiveness
-checking, pretty-printed error messages,
-`#:deriving Eq Ord Show Functor` on ADTs, do-notation for any Monad,
-and multi-file imports that carry bindings, data types, records,
-classes, and instances across `#lang rackton` files via a sidecar
-submodule.
+numeric helpers + IO/file/ref primitives + `panic`), fatal
+exhaustiveness checking, pretty-printed error messages with
+"did-you-mean?" suggestions for unbound identifiers, polymorphic
+recursion via declared schemes, `#:deriving Eq Ord Show Functor` on
+ADTs, do-notation for any Monad, multiple `(rackton ...)` blocks per
+Racket module, and multi-file imports that carry bindings, data types,
+records, classes, and instances across `#lang rackton` files via a
+sidecar submodule.
 
 ## Quick start
 

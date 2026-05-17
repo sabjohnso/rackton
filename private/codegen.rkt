@@ -70,6 +70,16 @@
        [bdy (compile-expr body)])
        (syntax/loc stx (let (binding ...) bdy)))]
 
+    [(e:letrec bindings body stx)
+     (with-syntax
+      ([(binding ...)
+        (for/list ([b (in-list bindings)])
+          (with-syntax ([x (datum->syntax stx (car b) stx)]
+                        [r (compile-expr (cdr b))])
+            #'(x r)))]
+       [bdy (compile-expr body)])
+       (syntax/loc stx (letrec (binding ...) bdy)))]
+
     [(e:if c t e stx)
      (with-syntax ([cc (compile-expr c)]
                    [tt (compile-expr t)]
@@ -97,6 +107,7 @@
 (define (compile-top form env)
   (match form
     [(top:dec _ _ _) #f]
+    [(top:alias _ _ _ _) #f]
     [(top:def name expr stx)
      (with-syntax ([n (datum->syntax stx name stx)]
                    [e (compile-expr expr)])
@@ -211,6 +222,9 @@
     [(e:let bs body _)
      (e:let (for/list ([b (in-list bs)]) (cons (car b) (R (cdr b))))
             (R body) new-stx)]
+    [(e:letrec bs body _)
+     (e:letrec (for/list ([b (in-list bs)]) (cons (car b) (R (cdr b))))
+               (R body) new-stx)]
     [(e:if a b c _)      (e:if (R a) (R b) (R c) new-stx)]
     [(e:ann e t _)       (e:ann (R e) (R t) new-stx)]
     [(e:escape t vs body _)

@@ -83,7 +83,10 @@
 
  ;; List + Pair helpers
  reverse append zip take drop find sort
- fst snd swap)
+ fst snd swap
+
+ ;; Panic
+ panic)
 
 ;; ----- ADTs -------------------------------------------------------
 
@@ -304,6 +307,10 @@
 (define (fst p)  (match p [(MkPair a _) a]))
 (define (snd p)  (match p [(MkPair _ b) b]))
 (define (swap p) (match p [(MkPair a b) (MkPair b a)]))
+
+;; ----- panic ---------------------------------------------------
+
+(define (panic msg) (error 'rackton-panic msg))
 
 ;; ----- Functor / Monad instance impls ------------------------
 

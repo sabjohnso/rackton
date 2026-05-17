@@ -313,7 +313,12 @@
     (define (snd p) (match p [(MkPair _ b) b]))
 
     (: swap (-> (Pair a b) (Pair b a)))
-    (define (swap p) (match p [(MkPair a b) (MkPair b a)]))))
+    (define (swap p) (match p [(MkPair a b) (MkPair b a)]))
+
+    ;; Unrecoverable failure with a message.  Typed at bottom so it can
+    ;; appear anywhere; raises at runtime.
+    (: panic (-> String a))
+    (define (panic msg) (racket a (msg) #f))))
 
 (define prelude-env
   (let ([forms (for/list ([f (in-list prelude-source-forms)])
