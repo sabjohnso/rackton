@@ -49,6 +49,10 @@
          (struct-out top:instance)
          (struct-out method-sig)
          (struct-out method-default)
+         (struct-out top:require)
+         (struct-out k:star)
+         (struct-out k:arr)
+         parse-kind-stx
 
          parse-expr
          parse-type
@@ -94,11 +98,21 @@
 (struct top:dec      (name type stx) #:transparent)
 (struct top:data     (name params ctors stx) #:transparent)
 (struct data-ctor    (name field-types stx) #:transparent)
+;; A class declaration carries an explicit list of parameters with kinds
+;; (defaulting to *), the optional superclass list, the head class name,
+;; and the body (signatures + defaults).
 (struct top:class    (supers head methods stx) #:transparent)
 (struct top:instance (context head methods stx) #:transparent)
 ;; Items inside a `define-class` body:
 (struct method-sig     (name type stx) #:transparent)
 (struct method-default (name expr stx) #:transparent)
+;; A multi-file import: `(require "file.rkt" ...)` inside a rackton form.
+;; Specs are the raw require specs (passed verbatim to Racket's require).
+(struct top:require    (specs stx) #:transparent)
+
+;; Kinds at the surface level — used to annotate class parameters.
+(struct k:star ()        #:transparent)
+(struct k:arr  (dom cod) #:transparent)
 
 ;; ----- lexical classification ---------------------------------------
 
@@ -215,7 +229,11 @@
              stx)]))
 
 ;; Parse a constraint expression like `(Eq a)` or `(Foo (Maybe a))`.
-;; The head must be a non-lowercase identifier (a class name).
+;; The head must be a non-lowercase identifier (a class name).  The
+;; constraint args may be plain types OR — when this constraint appears
+;; as a class head — kind-annotated type vars `(var :: kind)`, in which
+;; case the kind annotation is stripped and the resulting type-var
+;; remembers its kind via the syntax property 'rackton:kind on its stx.
 (define (parse-constraint stx)
   (syntax-parse stx
     [(name:id arg ...+)
@@ -223,14 +241,38 @@
      "class name in a constraint must be a non-lowercase identifier"
      (constraint (syntax->datum #'name)
                  (for/list ([a (in-list (syntax->list #'(arg ...)))])
-                   (parse-type a))
+                   (parse-constraint-arg a))
                  stx)]))
+
+;; Constraint args may be either plain types or kind-annotated type
+;; variables `(var :: kind)`.  We parse the annotated form as a plain
+;; ty:var whose stx carries the kind as a property; the caller (the
+;; class-form handler) reads it back when computing param kinds.
+(define (parse-constraint-arg stx)
+  (syntax-parse stx
+    #:datum-literals (::)
+    [(v:id :: k)
+     #:fail-unless (lowercase-id? (syntax->datum #'v))
+     "kind-annotated class parameter must be a lowercase identifier"
+     (define kind (parse-kind-stx #'k))
+     (define annotated (syntax-property #'v 'rackton:kind kind))
+     (ty:var (syntax->datum #'v) annotated)]
+    [_ (parse-type stx)]))
+
+;; Parse a kind expression: `*` or `(-> k1 k2)`.
+(define (parse-kind-stx stx)
+  (syntax-parse stx
+    #:datum-literals (* ->)
+    [* (k:star)]
+    [(-> k1 k2) (k:arr (parse-kind-stx #'k1) (parse-kind-stx #'k2))]))
 
 ;; ----- top-level forms ----------------------------------------------
 
 (define (parse-top stx)
   (syntax-parse stx
-    #:datum-literals (define define-data define-class define-instance : =>)
+    #:datum-literals (define define-data define-class define-instance require : =>)
+    [(require spec ...)
+     (top:require (syntax->list #'(spec ...)) stx)]
     [(: name:id ty)
      (top:dec (syntax->datum #'name) (parse-type #'ty) stx)]
 

@@ -7,12 +7,15 @@ Racket.
 
 ## Status
 
-**Phase 1 + 2 + 3** — typed lambda calculus, ADTs, pattern matching, two
-surfaces (`(rackton ...)` macro and `#lang rackton`), type classes with
-superclass constraints / qualifying contexts / default methods / runtime
-dispatch, host-language `racket` escape, a built-in prelude
-(`Eq`/`Ord`/`Num`/`Show` + `Maybe`/`List`/`Result`/`Pair`/`Unit`),
-fatal exhaustiveness checking, and pretty-printed error messages.
+**Phase 1 + 2 + 3 + 4** — typed lambda calculus, ADTs, pattern matching,
+two surfaces (`(rackton ...)` macro and `#lang rackton`), type classes
+with superclass constraints / qualifying contexts / default methods,
+host-language `racket` escape, a built-in prelude
+(`Eq`/`Ord`/`Num`/`Show`/`Functor`/`Monad` + `Maybe`/`List`/`Result`/
+`Pair`/`Unit`), explicit-kind higher-kinded classes, fatal
+exhaustiveness checking, pretty-printed error messages, and multi-file
+imports (type schemes travel across `#lang rackton` files via a sidecar
+submodule).
 
 ## Quick start
 

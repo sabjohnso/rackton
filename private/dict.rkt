@@ -41,17 +41,20 @@
 (define (rackton-no-instance-error method-name v)
   (error method-name "no instance for: ~v" v))
 
-;; A generic-method definition.  Given a class's dispatch table, declares
-;; the named method to look up by first-argument tag.
+;; A generic-method definition.  Given a class's dispatch table and the
+;; argument index whose runtime tag selects the instance, declares the
+;; named method to look up via that position.  Defaults to position 0
+;; for back-compat with single-arg dispatch.
 (define-syntax (define-class-method stx)
   (syntax-parse stx
-    [(_ method:id table:id)
-     #'(define (method x . rest)
+    [(_ method:id table:id (~optional pos:nat #:defaults ([pos #'0])))
+     #'(define (method . args)
+         (define tagger (list-ref args 'pos))
          (define impl
-           (hash-ref table (dispatch-tag x)
+           (hash-ref table (dispatch-tag tagger)
                      (lambda ()
-                       (rackton-no-instance-error 'method x))))
-         (apply impl x rest))]))
+                       (rackton-no-instance-error 'method tagger))))
+         (apply impl args))]))
 
 (define (register-instance-method! table tag impl)
   (hash-set! table tag impl))

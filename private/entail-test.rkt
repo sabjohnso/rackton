@@ -19,9 +19,12 @@
   ;; ----- helpers ---------------------------------------------------
 
   (define (mk-class name params supers methods)
-    (class-info name params supers
+    (class-info name params
+                (for/hasheq ([p params]) (values p (kind-star)))
+                supers
                 (for/hasheq ([m methods]) (values (car m) (cdr m)))
-                (hasheq)))
+                (hasheq)
+                (for/hasheq ([m methods]) (values (car m) 0))))
 
   ;; A class env with:
   ;;   class Eq a

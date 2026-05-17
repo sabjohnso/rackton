@@ -50,16 +50,22 @@
 (struct tcon-info (name arity ctors) #:transparent)
 
 ;; A class's static information.
-;;   name     : symbol — the class name
-;;   params   : (Listof symbol) — class type parameters (single, for now)
-;;   supers   : (Listof pred) — superclass constraints, all over the params
-;;   methods  : (HashEq method-name → scheme)
-;;              — each method's qualified scheme as visible at the value
-;;                level (i.e. with the class constraint already attached).
-;;   defaults : (HashEq method-name → surface-expr)
-;;              — default-implementation expressions provided in the
-;;                class body, used when an instance omits the method.
-(struct class-info (name params supers methods defaults) #:transparent)
+;;   name        : symbol — the class name
+;;   params      : (Listof symbol) — class type parameter names
+;;   kinds       : (HashEq symbol → kind) — each param's kind (default *)
+;;   supers      : (Listof pred) — superclass constraints, over the params
+;;   methods     : (HashEq method-name → scheme)
+;;                 — each method's qualified scheme as visible at the value
+;;                   level (the class constraint is already attached).
+;;   defaults    : (HashEq method-name → surface-expr) — class defaults
+;;   dispatchpos : (HashEq method-name → exact-nonnegative-integer)
+;;                 — index of the argument whose runtime tag selects the
+;;                   instance for each method call.  Computed at class
+;;                   definition by walking the method type and locating
+;;                   the first top-level arg whose type mentions a class
+;;                   parameter.
+(struct class-info (name params kinds supers methods defaults dispatchpos)
+  #:transparent)
 
 ;; An instance's information.
 ;;   head    : pred — the instance head, e.g. (Eq Integer) or (Eq (Maybe a))

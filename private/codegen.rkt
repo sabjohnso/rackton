@@ -101,33 +101,36 @@
             #'(define-data-ctor nm arr)))])
        (syntax/loc stx (begin ctor-form ...)))]
     [(top:class supers head methods stx)
-     (compile-class head methods stx)]
+     (compile-class head methods stx env)]
     [(top:instance ctx head methods stx)
-     (compile-instance head methods stx env)]))
+     (compile-instance head methods stx env)]
+    [(top:require specs stx)
+     (with-syntax ([(s ...) specs])
+       (syntax/loc stx (require s ...)))]))
 
 ;; ----- class & instance codegen ------------------------------------
 
 ;; A class compiles to one dispatch table per *method* — different
 ;; methods of the same class must dispatch into their own tables, or
-;; later registrations would overwrite earlier ones.
-;;
-;;   (define $dispatch:m1 (make-hasheq))
-;;   (define-class-method m1 $dispatch:m1)
-;;   (define $dispatch:m2 (make-hasheq))
-;;   (define-class-method m2 $dispatch:m2)
-;;   …
-(define (compile-class head methods stx)
+;; later registrations would overwrite earlier ones.  Each method's
+;; dispatch-position is read out of the class-info so that runtime
+;; dispatch happens on the right argument.
+(define (compile-class head methods stx env)
+  (define class-name (constraint-class head))
+  (define cinfo (env-ref-class env class-name))
   (define method-names
     (for/list ([m (in-list methods)] #:when (method-sig? m))
       (method-sig-name m)))
   (define defs
     (for/list ([n (in-list method-names)])
+      (define pos (hash-ref (class-info-dispatchpos cinfo) n 0))
       (with-syntax ([meth   (datum->syntax stx n stx)]
                     [table  (datum->syntax stx
-                                           (method-dispatch-symbol n) stx)])
+                                           (method-dispatch-symbol n) stx)]
+                    [pos-stx (datum->syntax stx pos stx)])
         #'(begin
             (define table (make-hasheq))
-            (define-class-method meth table)))))
+            (define-class-method meth table pos-stx)))))
   (with-syntax ([(def ...) defs])
     (syntax/loc stx (begin def ...))))
 

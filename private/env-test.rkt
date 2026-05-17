@@ -63,12 +63,13 @@
   ;; ----- class env extensions ---------------------------------------
 
   (define eq-info
-    (class-info 'Eq '(a) '()
+    (class-info 'Eq '(a) (hasheq 'a (kind-star)) '()
                 (hasheq '== (scheme '(a)
                                     (mqual (list (pred 'Eq (list (tvar 'a))))
                                            (make-arrow (tvar 'a)
                                                        (make-arrow (tvar 'a) t-bool)))))
-                (hasheq)))
+                (hasheq)
+                (hasheq '== 0)))
   (define eq-env (env-extend-class empty-env 'Eq eq-info))
 
   (check-equal? (env-ref-class eq-env 'Eq) eq-info)

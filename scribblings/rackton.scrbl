@@ -14,13 +14,14 @@ algebraic data types, and pattern matching — inside Racket, either as an
 @racket[(rackton ...)] form inside an ordinary module or as a whole-file
 @hash-lang[] @racketmodfont{rackton} program.
 
-This documentation describes the @bold{Phase 1 + 2 + 3} subset.  Phase 3
-added a host-language escape, a built-in prelude (@racket[Eq],
-@racket[Ord], @racket[Num], @racket[Show]; @racket[Maybe], @racket[List],
-@racket[Result], @racket[Pair], @racket[Unit]; @racket[id], @racket[const]),
-fatal exhaustiveness checking, and pretty-printed type names in error
-messages.  Multi-parameter classes, functional dependencies, deriving,
-and polymorphic recursion remain on the roadmap.
+This documentation describes the @bold{Phase 1 + 2 + 3 + 4} subset.
+Phase 4 added explicit kind annotations on class parameters, higher-
+kinded type variables, @racket[Functor] and @racket[Monad] classes,
+instances for @racket[Maybe], @racket[List], and @racket[Result e],
+and cross-file imports of Rackton bindings (with their type schemes
+travelling via a sidecar submodule).  Multi-parameter classes,
+functional dependencies, deriving, and polymorphic recursion remain
+on the roadmap.
 
 @section{Two surfaces, one elaborator}
 
@@ -234,9 +235,69 @@ constructor of an ADT scrutinee, omits @racket[#t] or @racket[#f] on a
 @racket[Boolean] scrutinee, or lacks a catchall on an unconstrained
 scrutinee.  Add a wildcard (@racket[_]) or variable pattern to opt out.
 
+@section{Higher-kinded type classes (Phase 4)}
+
+A class parameter can be declared with an explicit kind to permit
+type-constructor abstraction:
+
+@codeblock|{
+(define-class (Functor (f :: (-> * *)))
+  (: fmap (-> (-> a b) (-> (f a) (f b)))))
+
+(define-class ((Functor m) => (Monad (m :: (-> * *))))
+  (: >>= (-> (m a) (-> (-> a (m b)) (m b)))))
+}|
+
+Kinds are written as @racket[*] for ordinary types or @racket[(-> k1 k2)]
+for type-constructor kinds.  Class parameters without a @racket[::]
+annotation default to @racket[*].
+
+Dispatch for higher-kinded class methods uses the position of the first
+argument whose type mentions a class parameter.  For @racket[fmap], that
+is the second argument (the container); for @racket[>>=], the first.
+This is computed automatically at class definition.
+
+@subsection{Built-in higher-kinded instances}
+
+@itemlist[
+ @item{@racket[Functor]: @racket[Maybe], @racket[List], @racket[Result e].}
+ @item{@racket[Monad]:   @racket[Maybe], @racket[Result e].}]
+
+@section{Multi-file (Phase 4)}
+
+A @hash-lang[] @racketmodfont{rackton} module emits a sidecar
+@racketmodfont{rackton-schemes} submodule containing the type schemes
+of all its bindings, data constructors, and type constructors as data.
+A @racket[(require "file.rkt")] form inside a @racket[(rackton …)] block
+loads that submodule at compile time and extends the typing environment
+with the imported schemes, so the importing module can type-check uses
+of the imported bindings without redeclaring their types.
+
+@codeblock|{
+;; lib.rkt
+#lang rackton
+(define-data (Tree a) Leaf (Node (Tree a) a (Tree a)))
+(: tree-sum (-> (Tree Integer) Integer))
+(define (tree-sum t)
+  (match t [(Leaf) 0]
+           [(Node l x r) (+ x (+ (tree-sum l) (tree-sum r)))]))
+
+;; main.rkt
+#lang rackton
+(require "lib.rkt")
+(: result Integer)
+(define result (tree-sum (Node Leaf 1 (Node Leaf 2 Leaf))))
+}|
+
+Classes and instances do not yet travel across module boundaries; users
+must redeclare those if needed.  Plain Racket modules (no
+@racketmodfont{rackton-schemes} submodule) can still be required, but
+their bindings will be invisible to the type checker.
+
 @section{Not yet supported}
 
 Multi-parameter classes, functional dependencies, overlapping instances,
-polymorphic recursion, kind polymorphism, and a richer standard library
+polymorphic recursion, kind polymorphism (kind variables), cross-file
+class and instance transmission, deriving, and a richer standard library
 (string ops, list helpers, IO monad).  These are tracked under later
 phases.

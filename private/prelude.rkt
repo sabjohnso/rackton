@@ -93,7 +93,48 @@
     (define (id x) x)
 
     (: const (-> a (-> b a)))
-    (define (const x) (lambda (_y) x))))
+    (define (const x) (lambda (_y) x))
+
+    ;; --- Functor / Monad (higher-kinded) ----------------------
+
+    (define-class (Functor (f :: (-> * *)))
+      (: fmap (-> (-> a b) (-> (f a) (f b)))))
+
+    (define-class ((Functor m) => (Monad (m :: (-> * *))))
+      (: >>= (-> (m a) (-> (-> a (m b)) (m b)))))
+
+    ;; Maybe
+    (define-instance (Functor Maybe)
+      (define (fmap f m)
+        (match m
+          [(None)   None]
+          [(Some x) (Some (f x))])))
+
+    (define-instance (Monad Maybe)
+      (define (>>= m f)
+        (match m
+          [(None)   None]
+          [(Some x) (f x)])))
+
+    ;; List
+    (define-instance (Functor List)
+      (define (fmap f xs)
+        (match xs
+          [(Nil)        Nil]
+          [(Cons h t)   (Cons (f h) (fmap f t))])))
+
+    ;; Result e (the error type is fixed; we map over the success type)
+    (define-instance (Functor (Result e))
+      (define (fmap f r)
+        (match r
+          [(Err x) (Err x)]
+          [(Ok  v) (Ok (f v))])))
+
+    (define-instance (Monad (Result e))
+      (define (>>= r f)
+        (match r
+          [(Err x) (Err x)]
+          [(Ok  v) (f v)])))))
 
 (define prelude-env
   (let ([forms (for/list ([f (in-list prelude-source-forms)])

@@ -35,9 +35,9 @@
        (gen:choice
         (gen:let ([n gen:tvar-name]) (tvar n))
         (gen:let ([n gen:tcon-name]) (tcon n))
-        (gen:let ([h (gen:type (sub1 depth))]
+        (gen:let ([n gen:tcon-name]
                   [args (gen:list (gen:type (sub1 depth)) #:max-length 2)])
-          (if (null? args) h (tapp h args))))]))
+          (make-tapp (tcon n) args)))]))
 
   ;; ----- examples ----------------------------------------------------
 

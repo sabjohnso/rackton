@@ -16,6 +16,7 @@
                     [<  rkt:<]  [>  rkt:>]  [=  rkt:=]
                     [<= rkt:<=] [>= rkt:>=])
          racket/format
+         racket/match
          "adt.rkt"
          "dict.rkt")
 
@@ -28,6 +29,8 @@
  ==  /=
  <  >  <=  >=
  show
+ fmap
+ >>=
 
  ;; Combinators
  id compose flip const)
@@ -59,6 +62,10 @@
 (define $dispatch:<= (make-hasheq))  (define-class-method <= $dispatch:<=)
 (define $dispatch:>= (make-hasheq))  (define-class-method >= $dispatch:>=)
 (define $dispatch:show (make-hasheq))(define-class-method show $dispatch:show)
+;; Functor's fmap dispatches on the SECOND argument (the container).
+(define $dispatch:fmap (make-hasheq))(define-class-method fmap $dispatch:fmap 1)
+;; Monad's bind dispatches on the FIRST argument (the wrapped value).
+(define $dispatch:>>=  (make-hasheq))(define-class-method >>=  $dispatch:>>=  0)
 
 ;; ----- Num Integer ------------------------------------------------
 
@@ -98,3 +105,48 @@
 (define (compose f g) (lambda (x) (f (g x))))
 (define (flip f) (lambda (x y) (f y x)))
 (define (const x) (lambda (_y) x))
+
+;; ----- Functor / Monad instance impls ------------------------
+
+;; Maybe — both `None` and `Some` tags share the same impl, which
+;; pattern-matches at runtime.
+(define maybe-fmap
+  (lambda (f m)
+    (match m
+      [(None)   None]
+      [(Some x) (Some (f x))])))
+(register-instance-method! $dispatch:fmap '$ctor:None  maybe-fmap)
+(register-instance-method! $dispatch:fmap '$ctor:Some  maybe-fmap)
+
+(define maybe->>=
+  (lambda (m f)
+    (match m
+      [(None)   None]
+      [(Some x) (f x)])))
+(register-instance-method! $dispatch:>>=  '$ctor:None  maybe->>=)
+(register-instance-method! $dispatch:>>=  '$ctor:Some  maybe->>=)
+
+;; List
+(define (list-fmap f xs)
+  (match xs
+    [(Nil)        Nil]
+    [(Cons h t)   (Cons (f h) (list-fmap f t))]))
+(register-instance-method! $dispatch:fmap '$ctor:Nil   list-fmap)
+(register-instance-method! $dispatch:fmap '$ctor:Cons  list-fmap)
+
+;; Result e
+(define result-fmap
+  (lambda (f r)
+    (match r
+      [(Err x) (Err x)]
+      [(Ok  v) (Ok (f v))])))
+(register-instance-method! $dispatch:fmap '$ctor:Err   result-fmap)
+(register-instance-method! $dispatch:fmap '$ctor:Ok    result-fmap)
+
+(define result->>=
+  (lambda (r f)
+    (match r
+      [(Err x) (Err x)]
+      [(Ok  v) (f v)])))
+(register-instance-method! $dispatch:>>=  '$ctor:Err   result->>=)
+(register-instance-method! $dispatch:>>=  '$ctor:Ok    result->>=)

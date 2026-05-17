@@ -30,7 +30,8 @@
          "env.rkt"
          "unify.rkt"
          "surface.rkt"
-         "entail.rkt")
+         "entail.rkt"
+         "scheme-codec.rkt")
 
 ;; ----- fresh type variables -----------------------------------------
 
@@ -583,6 +584,9 @@
     [(top:instance ctx head methods stx)
      (handle-instance-form ctx head methods stx env declared)]
 
+    [(top:require specs stx)
+     (handle-require-form specs stx env declared)]
+
     [(top:data tname tparams ctors stx)
      (define result-type
        (make-tapp (tcon tname)
@@ -609,14 +613,29 @@
 
 (define (handle-class-form supers head methods stx env declared)
   (define class-name (constraint-class head))
+  ;; The head's args may be plain ty:var nodes or kind-annotated
+  ;; ty:vars (parser stashes the kind on the stx as 'rackton:kind).
   (define class-args
     (for/list ([a (in-list (constraint-args head))]) (resolve-type a)))
   (define class-params
-    (sort
-     (set->list
-      (for/fold ([s (seteq)]) ([a (in-list class-args)])
-        (set-union s (type-vars a))))
-     symbol<?))
+    (for/list ([a (in-list class-args)])
+      (match a
+        [(tvar n) n]
+        [_ (raise-syntax-error 'infer
+              "class head arguments must be (kind-annotated) type variables"
+              stx)])))
+  (define class-kinds
+    (for/fold ([acc (hasheq)])
+              ([raw (in-list (constraint-args head))]
+               [name (in-list class-params)])
+      (match raw
+        [(ty:var _ var-stx)
+         (define surface-kind
+           (and (syntax? var-stx)
+                (syntax-property var-stx 'rackton:kind)))
+         (hash-set acc name (surface-kind->core
+                             (or surface-kind (k:star))))]
+        [_ (hash-set acc name (kind-star))])))
   (define super-preds
     (for/list ([s (in-list supers)]) (resolve-constraint s)))
   (define head-pred (pred class-name class-args))
@@ -635,9 +654,97 @@
         [(method-default? m)
          (hash-set acc (method-default-name m) (method-default-expr m))]
         [else acc])))
-  (define info (class-info class-name class-params super-preds
-                           method-schemes defaults))
+  ;; For each method, find which argument's runtime tag determines the
+  ;; instance: the first top-level arg whose type mentions a class
+  ;; parameter.
+  (define dispatchpos
+    (for/fold ([acc (hasheq)])
+              ([(method-name sch) (in-hash method-schemes)])
+      (define body-type (qual-body-type (scheme-body sch)))
+      (define pos (find-dispatch-pos body-type class-params))
+      (cond
+        [pos (hash-set acc method-name pos)]
+        [else
+         (raise-syntax-error 'infer
+           (format "class method ~s does not have any argument whose type mentions a class parameter — single dispatch cannot resolve it"
+                   method-name)
+           stx)])))
+  (define info (class-info class-name class-params class-kinds
+                           super-preds method-schemes defaults
+                           dispatchpos))
   (values (env-extend-class env class-name info) declared))
+
+;; Process a (require "file.rkt" …) form inside a rackton block.
+;; For each spec, attempt to load the corresponding (submod spec
+;; rackton-schemes) module and read the exported `rackton-bindings`
+;; association list, decoding it back into schemes and extending env.
+;; Specs that don't carry a rackton-schemes submodule (e.g. requires
+;; of plain racket libraries) are silently skipped — the user can
+;; still bring those in for runtime use, but they won't be type-checked.
+(define (handle-require-form specs stx env declared)
+  (define new-env
+    (for/fold ([e env]) ([spec-stx (in-list specs)])
+      (define submod-spec (require-spec->submod-spec spec-stx))
+      (cond
+        [(not submod-spec) e]
+        [else
+         (with-handlers ([exn:fail? (lambda (_) e)])
+           (define bindings
+             (dynamic-require submod-spec 'rackton-bindings))
+           (define data-ctors
+             (with-handlers ([exn:fail? (lambda (_) '())])
+               (dynamic-require submod-spec 'rackton-data-ctors)))
+           (define tcons
+             (with-handlers ([exn:fail? (lambda (_) '())])
+               (dynamic-require submod-spec 'rackton-tcons)))
+           (define e1
+             (for/fold ([acc e]) ([entry (in-list bindings)])
+               (env-extend-var acc (car entry)
+                               (sexp->scheme (cdr entry)))))
+           (define e2
+             (for/fold ([acc e1]) ([entry (in-list data-ctors)])
+               (env-extend-data acc (car entry)
+                                (decode-data-info (cdr entry)))))
+           (for/fold ([acc e2]) ([entry (in-list tcons)])
+             (env-extend-tcon acc (car entry)
+                              (decode-tcon-info (cdr entry)))))])))
+  (values new-env declared))
+
+;; Resolve a require spec syntax to a usable `(submod ... rackton-schemes)`
+;; module path.  Relative-path strings are interpreted relative to the
+;; source file of the spec itself.
+(define (require-spec->submod-spec spec-stx)
+  (define spec-datum (syntax->datum spec-stx))
+  (define src (syntax-source spec-stx))
+  (cond
+    [(and (string? spec-datum) (path-string? spec-datum) src)
+     (define caller-dir
+       (let-values ([(base _name _dir?) (split-path src)])
+         base))
+     (define full (path->complete-path spec-datum caller-dir))
+     `(submod (file ,(path->string full)) rackton-schemes)]
+    [(symbol? spec-datum)
+     `(submod ,spec-datum rackton-schemes)]
+    [else #f]))
+
+(define (surface-kind->core k)
+  (match k
+    [(k:star)      (kind-star)]
+    [(k:arr d c)   (kind-arr (surface-kind->core d) (surface-kind->core c))]
+    [_             (kind-star)]))
+
+;; Walk the arrow chain of a method type and return the position of the
+;; first argument whose type mentions any of `class-params`, or #f.
+(define (find-dispatch-pos t class-params)
+  (let loop ([t t] [pos 0])
+    (cond
+      [(arrow? t)
+       (define dom (arrow-dom t))
+       (cond
+         [(ormap (lambda (p) (set-member? (type-vars dom) p)) class-params)
+          pos]
+         [else (loop (arrow-cod t) (add1 pos))])]
+      [else #f])))
 
 (define (handle-instance-form ctx head methods stx env declared)
   (define head-pred (resolve-constraint head))

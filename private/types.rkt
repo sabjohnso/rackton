@@ -22,6 +22,12 @@
          (struct-out scheme)
          (struct-out qual)
          (struct-out pred)
+         (struct-out kind-star)
+         (struct-out kind-arr)
+         kstar
+         k->
+         kind->datum
+
          type?
          type-vars
          scheme-free-vars
@@ -70,6 +76,22 @@
 ;; A class predicate, e.g. (Eq a) or (Ord Integer).
 (struct pred   (class args) #:transparent)
 
+;; ----- Kinds ---------------------------------------------------------
+;; `*` is the kind of ordinary types.  `(kind-arr a b)` is the kind of a
+;; type constructor that takes a type of kind `a` and returns a type of
+;; kind `b`.  Kinds are explicit; no kind inference is performed.
+
+(struct kind-star ()        #:transparent)
+(struct kind-arr  (dom cod) #:transparent)
+
+(define kstar (kind-star))
+(define (k-> a b) (kind-arr a b))
+
+(define (kind->datum k)
+  (match k
+    [(kind-star)      '*]
+    [(kind-arr a b)   `(-> ,(kind->datum a) ,(kind->datum b))]))
+
 ;; A qualified type: `(qual (pred ...) body)` reads "ρ ::= π ... => τ".
 ;; Smart constructor `mqual` collapses an empty context to the bare body.
 (struct qual   (constraints body) #:transparent)
@@ -110,9 +132,17 @@
   (match t [(tapp (tcon '->) (list _ c)) c]))
 
 ;; (make-tapp head args) collapses (tapp head '()) into head so that
-;; nullary applications stay normalized.
+;; nullary applications stay normalized, and flattens nested tapps so
+;; partial applications combine.  This matters for higher-kinded type
+;; variables: after substituting `f ↦ (Result e)` into `(f a)`, we get
+;; a single `(tapp (tcon Result) (list e a))` rather than a nested form.
 (define (make-tapp head args)
-  (if (null? args) head (tapp head args)))
+  (cond
+    [(null? args) head]
+    [(tapp? head)
+     (tapp (tapp-head head)
+           (append (tapp-args head) args))]
+    [else (tapp head args)]))
 
 ;; ----- Free type variables -------------------------------------------
 
@@ -165,9 +195,9 @@
      (match t
        [(tvar a)      (hash-ref s a t)]
        [(tcon _)      t]
-       [(tapp h args) (tapp (apply-subst s h)
-                            (for/list ([a (in-list args)])
-                              (apply-subst s a)))]
+       [(tapp h args) (make-tapp (apply-subst s h)
+                                 (for/list ([a (in-list args)])
+                                   (apply-subst s a)))]
        [(pred c args) (pred c (for/list ([a (in-list args)])
                                 (apply-subst s a)))]
        [(qual cs body)

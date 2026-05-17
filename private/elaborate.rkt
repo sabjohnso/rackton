@@ -19,7 +19,9 @@
                      "surface.rkt"
                      "infer.rkt"
                      "codegen.rkt"
-                     "prelude.rkt"))
+                     "prelude.rkt"
+                     "scheme-codec.rkt"
+                     "env.rkt"))
 
 (define-syntax (rackton stx)
   (syntax-parse stx
@@ -34,5 +36,40 @@
        (filter values
                (for/list ([f (in-list parsed)])
                  (compile-top f env))))
-     (with-syntax ([(out ...) compiled])
-       (syntax/loc stx (begin out ...)))]))
+     ;; Emit a sidecar `rackton-schemes` submodule with the schemes
+     ;; of every binding this rackton block contributed, so importing
+     ;; modules can recover the types via dynamic-require.  This only
+     ;; works when the macro is expanded inside a module — at the
+     ;; top-level / inside eval we skip it.
+     (define at-module-level?
+       (memq (syntax-local-context) '(module module-begin)))
+     (define export-bindings
+       (for/list ([(name sch) (in-hash (env-vars env))]
+                  #:unless (env-ref-var prelude-env name #f))
+         (cons name (scheme->sexp sch))))
+     (define export-data-ctors
+       (for/list ([(name di) (in-hash (env-data-ctors env))]
+                  #:unless (env-ref-data prelude-env name #f))
+         (cons name (encode-data-info di))))
+     (define export-tcons
+       (for/list ([(name ti) (in-hash (env-tcons env))]
+                  #:unless (env-ref-tcon prelude-env name #f))
+         (cons name (encode-tcon-info ti))))
+     (with-syntax ([(out ...)        compiled]
+                   [bindings         (datum->syntax stx export-bindings)]
+                   [data-ctors       (datum->syntax stx export-data-ctors)]
+                   [tcons            (datum->syntax stx export-tcons)])
+       (cond
+         [at-module-level?
+          (syntax/loc stx
+            (begin
+              out ...
+              (module+ rackton-schemes
+                (provide rackton-bindings
+                         rackton-data-ctors
+                         rackton-tcons)
+                (define rackton-bindings   'bindings)
+                (define rackton-data-ctors 'data-ctors)
+                (define rackton-tcons      'tcons))))]
+         [else
+          (syntax/loc stx (begin out ...))]))]))
