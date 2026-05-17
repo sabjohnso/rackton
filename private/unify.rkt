@@ -19,6 +19,7 @@
 
 (require racket/match
          racket/set
+         racket/list
          "types.rkt")
 
 (struct exn:fail:unify exn:fail (reason left right) #:transparent)
@@ -47,17 +48,28 @@
     [(_ (tvar α))            (bind-var α σ σ τ)]
     [((tcon c) (tcon c))     empty-subst]
     [((tapp h1 args1) (tapp h2 args2))
-     (cond
-       [(not (= (length args1) (length args2)))
-        (raise-unify! 'arity σ τ)]
-       [else
-        (define θ-head (unify h1 h2))
-        (define θ-args
-          (unify-many (map (lambda (t) (apply-subst θ-head t)) args1)
-                      (map (lambda (t) (apply-subst θ-head t)) args2)
-                      σ τ))
-        (subst-compose θ-args θ-head)])]
+     (unify-tapp h1 args1 h2 args2 σ τ)]
     [(_ _) (raise-unify! 'mismatch σ τ)]))
+
+;; Unify two flat type applications, allowing for arity mismatches by
+;; peeling off arguments from the right.  This is what lets `(c a)`
+;; unify with `(Result String Integer)` by binding c to the partial
+;; application `(Result String)` and a to Integer — the kind of
+;; partial-application that higher-kinded polymorphism demands.
+(define (unify-tapp h1 args1 h2 args2 outer-l outer-r)
+  (cond
+    [(and (null? args1) (null? args2))
+     (unify h1 h2)]
+    [(null? args1)
+     (unify h1 (make-tapp h2 args2))]
+    [(null? args2)
+     (unify (make-tapp h1 args1) h2)]
+    [else
+     (define θ-last (unify (last args1) (last args2)))
+     (define rest1 (apply-subst θ-last (make-tapp h1 (drop-right args1 1))))
+     (define rest2 (apply-subst θ-last (make-tapp h2 (drop-right args2 1))))
+     (define θ-rest (unify rest1 rest2))
+     (subst-compose θ-rest θ-last)]))
 
 ;; Unify two parallel lists of types, folding the running substitution.
 ;; original-left/right are passed through only so that error messages

@@ -1,0 +1,31 @@
+#lang racket/base
+
+;; Sanity check on the Phase-5 small stdlib: not, and, or, length,
+;; foldr, filter.
+
+(require rackunit
+         "../main.rkt")
+
+(rackton
+  (define b (not (not #t)))
+  (define a-and (and #t (not #f)))
+  (define a-or  (or  #f #t))
+
+  (define xs (Cons 1 (Cons 2 (Cons 3 (Cons 4 Nil)))))
+
+  (define n  (length xs))
+  (define sm (foldr (lambda (a b) (+ a b)) 0 xs))
+  ;; filter to elements strictly greater than 2
+  (define big (filter (lambda (i) (< 2 i)) xs))
+  (define len-of-big (length big)))
+
+(test-case "Boolean ops"
+  (check-true  b)
+  (check-true  a-and)
+  (check-true  a-or))
+
+(test-case "List helpers"
+  (check-equal? n 4)
+  (check-equal? sm 10)
+  (check-equal? len-of-big 2)
+  (check-equal? big (Cons 3 (Cons 4 Nil))))

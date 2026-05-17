@@ -55,10 +55,25 @@
        (for/list ([(name ti) (in-hash (env-tcons env))]
                   #:unless (env-ref-tcon prelude-env name #f))
          (cons name (encode-tcon-info ti))))
+     (define export-classes
+       (for/list ([(name ci) (in-hash (env-classes env))]
+                  #:unless (env-ref-class prelude-env name #f))
+         (cons name (encode-class-info ci))))
+     (define export-instances
+       (apply append
+              (for/list ([(class-name insts)
+                          (in-hash (env-instance-table env))])
+                (define prelude-insts
+                  (env-instances prelude-env class-name))
+                (for/list ([inst (in-list insts)]
+                           #:unless (member inst prelude-insts))
+                  (encode-instance-info class-name inst)))))
      (with-syntax ([(out ...)        compiled]
                    [bindings         (datum->syntax stx export-bindings)]
                    [data-ctors       (datum->syntax stx export-data-ctors)]
-                   [tcons            (datum->syntax stx export-tcons)])
+                   [tcons            (datum->syntax stx export-tcons)]
+                   [classes          (datum->syntax stx export-classes)]
+                   [instances        (datum->syntax stx export-instances)])
        (cond
          [at-module-level?
           (syntax/loc stx
@@ -67,9 +82,13 @@
               (module+ rackton-schemes
                 (provide rackton-bindings
                          rackton-data-ctors
-                         rackton-tcons)
+                         rackton-tcons
+                         rackton-classes
+                         rackton-instances)
                 (define rackton-bindings   'bindings)
                 (define rackton-data-ctors 'data-ctors)
-                (define rackton-tcons      'tcons))))]
+                (define rackton-tcons      'tcons)
+                (define rackton-classes    'classes)
+                (define rackton-instances  'instances))))]
          [else
           (syntax/loc stx (begin out ...))]))]))

@@ -134,7 +134,38 @@
       (define (>>= r f)
         (match r
           [(Err x) (Err x)]
-          [(Ok  v) (f v)])))))
+          [(Ok  v) (f v)])))
+
+    ;; --- Small stdlib ------------------------------------------
+
+    (: not (-> Boolean Boolean))
+    (define (not b) (if b #f #t))
+
+    (: and (-> Boolean (-> Boolean Boolean)))
+    (define (and a b) (if a b #f))
+
+    (: or (-> Boolean (-> Boolean Boolean)))
+    (define (or a b) (if a #t b))
+
+    (: length (-> (List a) Integer))
+    (define (length xs)
+      (match xs
+        [(Nil)         0]
+        [(Cons _ rest) (+ 1 (length rest))]))
+
+    (: foldr (-> (-> a (-> b b)) (-> b (-> (List a) b))))
+    (define (foldr f z xs)
+      (match xs
+        [(Nil)        z]
+        [(Cons h t)   (f h (foldr f z t))]))
+
+    (: filter (-> (-> a Boolean) (-> (List a) (List a))))
+    (define (filter p xs)
+      (match xs
+        [(Nil)        Nil]
+        [(Cons h t)   (if (p h)
+                          (Cons h (filter p t))
+                          (filter p t))]))))
 
 (define prelude-env
   (let ([forms (for/list ([f (in-list prelude-source-forms)])

@@ -1,7 +1,8 @@
 #lang scribble/manual
 @require[@for-label[rackton
                     (except-in racket/base
-                               compose + - * < > <= >=)]]
+                               compose + - * < > <= >=
+                               not and or length foldr filter)]]
 
 @title{Rackton}
 @author{sbj}
@@ -14,13 +15,13 @@ algebraic data types, and pattern matching — inside Racket, either as an
 @racket[(rackton ...)] form inside an ordinary module or as a whole-file
 @hash-lang[] @racketmodfont{rackton} program.
 
-This documentation describes the @bold{Phase 1 + 2 + 3 + 4} subset.
-Phase 4 added explicit kind annotations on class parameters, higher-
-kinded type variables, @racket[Functor] and @racket[Monad] classes,
-instances for @racket[Maybe], @racket[List], and @racket[Result e],
-and cross-file imports of Rackton bindings (with their type schemes
-travelling via a sidecar submodule).  Multi-parameter classes,
-functional dependencies, deriving, and polymorphic recursion remain
+This documentation describes the @bold{Phase 1 + 2 + 3 + 4 + 5} subset.
+Phase 5 added do-notation for any @racket[Monad], cross-file
+transmission of classes and instances (in addition to bindings and
+data types), @racket[#:deriving Eq Show] on @racket[define-data], and
+a small stdlib (@racket[not], @racket[and], @racket[or], @racket[length],
+@racket[foldr], @racket[filter]).  Multi-parameter classes, functional
+dependencies, polymorphic recursion, and deriving @racket[Ord] remain
 on the roadmap.
 
 @section{Two surfaces, one elaborator}
@@ -294,10 +295,83 @@ must redeclare those if needed.  Plain Racket modules (no
 @racketmodfont{rackton-schemes} submodule) can still be required, but
 their bindings will be invisible to the type checker.
 
+@section{do-notation (Phase 5)}
+
+Any class that provides @racket[>>=] (i.e. any @racket[Monad]) can be
+sequenced with @racket[do]:
+
+@codeblock|{
+(do [x <- (Some 3)]
+    [y <- (Some 4)]
+  (Some (+ x y)))
+;; ⇒ (Some 7)
+}|
+
+Each @racket[[var <- expr]] clause desugars to a nested @racket[>>=]
+call.  The trailing @racket[body] is the final computation; its type
+must be a monad of the same shape.  Short-circuiting (e.g.
+@racket[None] in a Maybe chain) propagates per the underlying
+@racket[>>=] instance.
+
+@section{deriving (Phase 5)}
+
+@racket[#:deriving Eq Show] at the end of a @racket[define-data] form
+synthesises the matching instances:
+
+@codeblock|{
+(define-data (Tree a)
+  Leaf
+  (Node (Tree a) a (Tree a))
+  #:deriving Eq Show)
+}|
+
+Derived @racket[Eq] compares constructor identity then recursively
+checks corresponding fields; derived @racket[Show] prints
+@racket[Ctor] for nullary constructors and @racket[(Ctor arg1 arg2)]
+for n-ary ones, recursing on fields via @racket[show].  For
+parameterised types, the derived instance adds a corresponding
+context (so deriving @racket[Eq] on @racket[(Tree a)] gives
+@racket[(Eq a) => (Eq (Tree a))]).
+
+@section{Cross-file classes and instances (Phase 5)}
+
+A @hash-lang[] @racketmodfont{rackton} module now also exports the
+class and instance information it introduces.  An importing module
+sees both the class declarations and the registered instances, so the
+type checker can discharge constraints against imported instances
+without any local redeclaration.
+
+@codeblock|{
+;; lib.rkt
+#lang rackton
+(define-class (Container (f :: (-> * *)))
+  (: empty? (-> (f a) Boolean)))
+(define-data (Stack a) Empty (Push a (Stack a)))
+(define-instance (Container Stack)
+  (define (empty? s) (match s [(Empty) #t] [(Push _ _) #f])))
+
+;; main.rkt
+#lang rackton
+(require "lib.rkt")
+(define result (empty? (Push 1 Empty)))
+}|
+
+Class default-method bodies still bind in the @italic{defining}
+module's lexical scope; when an importing module uses a default, the
+identifiers in the default body are re-anchored to the instance site
+so they resolve via that module's imports.
+
+@section{Small stdlib (Phase 5)}
+
+@itemlist[
+ @item{Boolean: @racket[not], @racket[and], @racket[or].}
+ @item{List: @racket[length], @racket[foldr], @racket[filter] (operating
+       on the prelude @racket[List] ADT).}]
+
 @section{Not yet supported}
 
 Multi-parameter classes, functional dependencies, overlapping instances,
-polymorphic recursion, kind polymorphism (kind variables), cross-file
-class and instance transmission, deriving, and a richer standard library
-(string ops, list helpers, IO monad).  These are tracked under later
+polymorphic recursion, kind polymorphism (kind variables), deriving
+@racket[Ord]/@racket[Functor], string-manipulation helpers, an IO
+monad, and a fuller numeric tower.  These are tracked under later
 phases.

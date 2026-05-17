@@ -697,6 +697,12 @@
            (define tcons
              (with-handlers ([exn:fail? (lambda (_) '())])
                (dynamic-require submod-spec 'rackton-tcons)))
+           (define classes
+             (with-handlers ([exn:fail? (lambda (_) '())])
+               (dynamic-require submod-spec 'rackton-classes)))
+           (define instances
+             (with-handlers ([exn:fail? (lambda (_) '())])
+               (dynamic-require submod-spec 'rackton-instances)))
            (define e1
              (for/fold ([acc e]) ([entry (in-list bindings)])
                (env-extend-var acc (car entry)
@@ -705,9 +711,17 @@
              (for/fold ([acc e1]) ([entry (in-list data-ctors)])
                (env-extend-data acc (car entry)
                                 (decode-data-info (cdr entry)))))
-           (for/fold ([acc e2]) ([entry (in-list tcons)])
-             (env-extend-tcon acc (car entry)
-                              (decode-tcon-info (cdr entry)))))])))
+           (define e3
+             (for/fold ([acc e2]) ([entry (in-list tcons)])
+               (env-extend-tcon acc (car entry)
+                                (decode-tcon-info (cdr entry)))))
+           (define e4
+             (for/fold ([acc e3]) ([entry (in-list classes)])
+               (env-extend-class acc (car entry)
+                                 (decode-class-info (cdr entry)))))
+           (for/fold ([acc e4]) ([entry (in-list instances)])
+             (define decoded (decode-instance-info entry))
+             (env-extend-instance acc (car decoded) (cdr decoded))))])))
   (values new-env declared))
 
 ;; Resolve a require spec syntax to a usable `(submod ... rackton-schemes)`

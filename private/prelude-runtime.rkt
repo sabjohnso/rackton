@@ -14,7 +14,11 @@
 (require (rename-in racket/base
                     [+  rkt:+]  [-  rkt:-]  [*  rkt:*]
                     [<  rkt:<]  [>  rkt:>]  [=  rkt:=]
-                    [<= rkt:<=] [>= rkt:>=])
+                    [<= rkt:<=] [>= rkt:>=]
+                    [not rkt:not]
+                    [and rkt:and]
+                    [or  rkt:or]
+                    [length rkt:length])
          racket/format
          racket/match
          "adt.rkt"
@@ -32,8 +36,20 @@
  fmap
  >>=
 
+ ;; Dispatch tables — exposed so user modules that declare new
+ ;; instances (including derived ones) can register against them.
+ $dispatch:+  $dispatch:-  $dispatch:*
+ $dispatch:== $dispatch:/=
+ $dispatch:<  $dispatch:>  $dispatch:<= $dispatch:>=
+ $dispatch:show
+ $dispatch:fmap
+ $dispatch:>>=
+
  ;; Combinators
- id compose flip const)
+ id compose flip const
+
+ ;; Stdlib
+ not and or length foldr filter)
 
 ;; ----- ADTs -------------------------------------------------------
 
@@ -105,6 +121,27 @@
 (define (compose f g) (lambda (x) (f (g x))))
 (define (flip f) (lambda (x y) (f y x)))
 (define (const x) (lambda (_y) x))
+
+;; ----- Stdlib ----------------------------------------------------
+
+(define (not b) (if b #f #t))
+(define (and a b) (if a b #f))
+(define (or  a b) (if a #t b))
+
+(define (length xs)
+  (match xs
+    [(Nil)        0]
+    [(Cons _ t)   (rkt:+ 1 (length t))]))
+
+(define (foldr f z xs)
+  (match xs
+    [(Nil)        z]
+    [(Cons h t)   (f h (foldr f z t))]))
+
+(define (filter p xs)
+  (match xs
+    [(Nil)        Nil]
+    [(Cons h t)   (if (p h) (Cons h (filter p t)) (filter p t))]))
 
 ;; ----- Functor / Monad instance impls ------------------------
 

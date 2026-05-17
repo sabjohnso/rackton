@@ -17,10 +17,17 @@
          sexp->scheme
          sexp->type
          sexp->pred
+         pred->sexp
          encode-data-info
          decode-data-info
          encode-tcon-info
-         decode-tcon-info)
+         decode-tcon-info
+         encode-kind
+         decode-kind
+         encode-class-info
+         decode-class-info
+         encode-instance-info
+         decode-instance-info)
 
 (define (scheme->sexp s) (scheme->datum s))
 
@@ -77,3 +84,61 @@
 (define (decode-tcon-info datum)
   (match datum
     [(list name arity ctors) (tcon-info name arity ctors)]))
+
+;; ----- kinds, classes, instances ------------------------------
+
+(define (encode-kind k)
+  (match k
+    [(kind-star)     '*]
+    [(kind-arr a b)  `(-> ,(encode-kind a) ,(encode-kind b))]))
+
+(define (decode-kind datum)
+  (cond
+    [(eq? datum '*) (kind-star)]
+    [(and (list? datum) (eq? (car datum) '->))
+     (kind-arr (decode-kind (cadr datum)) (decode-kind (caddr datum)))]
+    [else (error 'decode-kind "bad kind: ~v" datum)]))
+
+(define (pred->sexp p) (pred->datum p))
+
+(define (encode-class-info ci)
+  (list (class-info-name ci)
+        (class-info-params ci)
+        (for/list ([(k v) (in-hash (class-info-kinds ci))])
+          (list k (encode-kind v)))
+        (map pred->sexp (class-info-supers ci))
+        (for/list ([(m s) (in-hash (class-info-methods ci))])
+          (list m (scheme->sexp s)))
+        (for/list ([(m p) (in-hash (class-info-dispatchpos ci))])
+          (list m p))))
+
+(define (decode-class-info datum)
+  (match datum
+    [(list name params kinds-list supers-list methods-list dispatchpos-list)
+     (class-info name
+                 params
+                 (for/hasheq ([entry (in-list kinds-list)])
+                   (values (car entry) (decode-kind (cadr entry))))
+                 (map sexp->pred supers-list)
+                 (for/hasheq ([entry (in-list methods-list)])
+                   (values (car entry) (sexp->scheme (cadr entry))))
+                 (hasheq)   ; defaults not transmitted
+                 (for/hasheq ([entry (in-list dispatchpos-list)])
+                   (values (car entry) (cadr entry))))]))
+
+;; Instance info is encoded with its owning class name as the first
+;; element so we know where to install it on decode.  Method bodies
+;; are not transmitted — the runtime side reaches the importer via
+;; standard Racket module loading.
+(define (encode-instance-info class-name ii)
+  (list class-name
+        (pred->sexp (instance-info-head ii))
+        (map pred->sexp (instance-info-context ii))))
+
+(define (decode-instance-info datum)
+  (match datum
+    [(list class-name head-sexp ctx-list)
+     (cons class-name
+           (instance-info (sexp->pred head-sexp)
+                          (map sexp->pred ctx-list)
+                          (hasheq)))]))

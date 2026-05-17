@@ -24,10 +24,13 @@
          compile-top)
 
 (require racket/match
-         (for-template racket/base
-                       racket/match
+         (for-template (except-in racket/base
+                                  + - * < > <= >= = compose
+                                  not and or length foldr filter)
+                       (except-in racket/match ==)
                        "adt.rkt"
-                       "dict.rkt")
+                       "dict.rkt"
+                       "prelude-runtime.rkt")
          "types.rkt"
          "env.rkt"
          "surface.rkt"
@@ -160,7 +163,13 @@
          (define body
            (cond
              [(assq m user-impls) => cdr]
-             [(hash-ref (class-info-defaults cinfo) m #f)]
+             [(hash-ref (class-info-defaults cinfo) m #f)
+              => (lambda (default)
+                   ;; A class default was originally parsed in the
+                   ;; defining module's lexical context.  Relocate its
+                   ;; syntax handles to the *instance* site so identifier
+                   ;; references resolve via the user module's imports.
+                   (relocate-ast default stx))]
              [else
               (error 'compile-instance
                      "no impl or default for ~s in instance ~s"
@@ -181,6 +190,43 @@
 
 (define (method-dispatch-symbol method-name)
   (string->symbol (format "$dispatch:~a" method-name)))
+
+;; Walk a surface AST, replacing every stx slot with `new-stx`.  Used
+;; when applying a class's default method body inside an instance
+;; defined in a different module: the body's identifiers must resolve
+;; in the instance site's lexical scope, not the class's defining one.
+(define (relocate-ast node new-stx)
+  (define (R x) (relocate-ast x new-stx))
+  (match node
+    [(e:literal v _)     (e:literal v new-stx)]
+    [(e:var n _)         (e:var n new-stx)]
+    [(e:lam p body _)    (e:lam p (R body) new-stx)]
+    [(e:app h args _)    (e:app (R h) (map R args) new-stx)]
+    [(e:let bs body _)
+     (e:let (for/list ([b (in-list bs)]) (cons (car b) (R (cdr b))))
+            (R body) new-stx)]
+    [(e:if a b c _)      (e:if (R a) (R b) (R c) new-stx)]
+    [(e:ann e t _)       (e:ann (R e) (R t) new-stx)]
+    [(e:escape t vs body _)
+     ;; Escapes splice raw Racket syntax — relocating it would mean
+     ;; rewriting that user-written code, which we don't want to do.
+     (e:escape (R t) vs body new-stx)]
+    [(e:match s cs _)
+     (e:match (R s)
+              (for/list ([c (in-list cs)])
+                (clause (R (clause-pattern c)) (R (clause-body c)) new-stx))
+              new-stx)]
+    [(p:wild _)          (p:wild new-stx)]
+    [(p:var n _)         (p:var n new-stx)]
+    [(p:lit v _)         (p:lit v new-stx)]
+    [(p:ctor n args _)   (p:ctor n (map R args) new-stx)]
+    [(ty:var n _)        (ty:var n new-stx)]
+    [(ty:con n _)        (ty:con n new-stx)]
+    [(ty:app h args _)   (ty:app (R h) (map R args) new-stx)]
+    [(ty:forall vs b _)  (ty:forall vs (R b) new-stx)]
+    [(ty:qual cs b _)
+     (ty:qual (for/list ([c (in-list cs)]) (R c)) (R b) new-stx)]
+    [(constraint c args _) (constraint c (map R args) new-stx)]))
 
 ;; Convert a parsed type-AST to a core type, ignoring `All` and `qual`
 ;; wrappers.  Used here so we can inspect what the instance head names.

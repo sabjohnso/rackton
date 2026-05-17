@@ -3,7 +3,7 @@
 (define (id x) x)
 
 (define (fact n)
-  (if (= n 0) 1 (* n (fact (- n 1)))))
+  (if (== n 0) 1 (* n (fact (- n 1)))))
 
 (define-data (Maybe a) None (Some a))
 

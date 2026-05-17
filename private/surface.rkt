@@ -114,6 +114,108 @@
 (struct k:star ()        #:transparent)
 (struct k:arr  (dom cod) #:transparent)
 
+;; ----- deriving: instance synthesis --------------------------------
+
+;; Build a head type expression `(tname a b …)` (or just `tname` if
+;; un-parameterised) for use inside a synthesised instance head.
+(define (data-head-type-ast tname tparams stx)
+  (cond
+    [(null? tparams) (ty:con tname stx)]
+    [else (ty:app (ty:con tname stx)
+                  (for/list ([p (in-list tparams)]) (ty:var p stx))
+                  stx)]))
+
+(define (a-name i) (string->symbol (format "a~a" i)))
+(define (b-name i) (string->symbol (format "b~a" i)))
+
+(define (ctor-x-pattern name arity stx)
+  (p:ctor name
+          (for/list ([i (in-range arity)]) (p:var (a-name i) stx))
+          stx))
+
+(define (ctor-y-pattern name arity stx)
+  (p:ctor name
+          (for/list ([i (in-range arity)]) (p:var (b-name i) stx))
+          stx))
+
+;; `(== a0 b0)` then `(== a1 b1)` … chained as nested ifs.
+(define (chained-eq arity stx)
+  (cond
+    [(zero? arity) (e:literal #t stx)]
+    [else
+     (foldr
+      (lambda (i acc)
+        (e:if (e:app (e:var '== stx)
+                     (list (e:var (a-name i) stx) (e:var (b-name i) stx))
+                     stx)
+              acc
+              (e:literal #f stx)
+              stx))
+      (e:literal #t stx)
+      (build-list arity values))]))
+
+(define (synthesize-eq-instance tname tparams ctors stx)
+  (define head-ty (data-head-type-ast tname tparams stx))
+  (define ctx (for/list ([p (in-list tparams)])
+                (constraint 'Eq (list (ty:var p stx)) stx)))
+  (define head (constraint 'Eq (list head-ty) stx))
+  ;; Outer match on x; for each ctor, inner match on y.
+  (define eq-body
+    (e:match
+     (e:var 'x stx)
+     (for/list ([c (in-list ctors)])
+       (define name (data-ctor-name c))
+       (define arity (length (data-ctor-field-types c)))
+       (clause (ctor-x-pattern name arity stx)
+               (e:match (e:var 'y stx)
+                        (list (clause (ctor-y-pattern name arity stx)
+                                      (chained-eq arity stx)
+                                      stx)
+                              (clause (p:wild stx)
+                                      (e:literal #f stx)
+                                      stx))
+                        stx)
+               stx))
+     stx))
+  (top:instance ctx head
+                (list (top:def '== (e:lam '(x y) eq-body stx) stx))
+                stx))
+
+(define (synthesize-show-instance tname tparams ctors stx)
+  (define head-ty (data-head-type-ast tname tparams stx))
+  (define ctx (for/list ([p (in-list tparams)])
+                (constraint 'Show (list (ty:var p stx)) stx)))
+  (define head (constraint 'Show (list head-ty) stx))
+  (define show-body
+    (e:match
+     (e:var 'x stx)
+     (for/list ([c (in-list ctors)])
+       (define name (data-ctor-name c))
+       (define arity (length (data-ctor-field-types c)))
+       (clause (ctor-x-pattern name arity stx)
+               (cond
+                 [(zero? arity)
+                  (e:literal (symbol->string name) stx)]
+                 [else
+                  ;; Splice raw Racket: (string-append "(<Ctor>" " " (show a0) … ")")
+                  (define arg-shows
+                    (apply append
+                           (for/list ([i (in-range arity)])
+                             (list " " `(show ,(a-name i))))))
+                  (define body-datum
+                    `(string-append ,(format "(~a" name)
+                                    ,@arg-shows
+                                    ")"))
+                  (e:escape (ty:con 'String stx)
+                            (for/list ([i (in-range arity)]) (a-name i))
+                            (datum->syntax stx body-datum stx)
+                            stx)])
+               stx))
+     stx))
+  (top:instance ctx head
+                (list (top:def 'show (e:lam '(x) show-body stx) stx))
+                stx))
+
 ;; ----- lexical classification ---------------------------------------
 
 (define (lowercase-id? sym)
@@ -130,7 +232,7 @@
 
 (define (parse-expr stx)
   (syntax-parse stx
-    #:datum-literals (lambda λ let if ann match racket)
+    #:datum-literals (lambda λ let if ann match racket do <-)
     [n:number  (e:literal (syntax->datum #'n) stx)]
     [b:boolean (e:literal (syntax->datum #'b) stx)]
     [s:string  (e:literal (syntax->datum #'s) stx)]
@@ -173,6 +275,13 @@
                #'body
                stx)]
 
+    ;; (do [x <- m1] [y <- m2] ... body)  desugars to nested >>= calls.
+    ;; A statement is `[var <- expr]`; each binds the un-wrapped value
+    ;; for the rest of the chain.  The trailing `body` is the final
+    ;; computation.
+    [(do stmt ...+ body)
+     (parse-do (syntax->list #'(stmt ...)) #'body stx)]
+
     [x:id  (e:var (syntax->datum #'x) stx)]
 
     [(head arg ...+)
@@ -180,6 +289,25 @@
             (for/list ([a (in-list (syntax->list #'(arg ...)))])
               (parse-expr a))
             stx)]))
+
+(define (parse-do stmts body-stx stx)
+  (cond
+    [(null? stmts) (parse-expr body-stx)]
+    [else
+     (define s (car stmts))
+     (syntax-parse s
+       #:datum-literals (<-)
+       [[v:id <- expr]
+        (e:app (e:var '>>= stx)
+               (list (parse-expr #'expr)
+                     (e:lam (list (syntax->datum #'v))
+                            (parse-do (cdr stmts) body-stx stx)
+                            stx))
+               stx)]
+       [_
+        (raise-syntax-error 'parse-do
+          "expected a binding `[var <- expr]` inside (do …)"
+          s)])]))
 
 ;; ----- patterns -----------------------------------------------------
 
@@ -285,21 +413,22 @@
     [(define x:id e)
      (top:def (syntax->datum #'x) (parse-expr #'e) stx)]
 
-    [(define-data (tname:id tparam:id ...) ctor ...)
+    [(define-data (tname:id tparam:id ...) item ...)
      #:fail-unless (not (lowercase-id? (syntax->datum #'tname)))
      "data type name must be a non-lowercase identifier"
-     (top:data (syntax->datum #'tname)
-               (map syntax->datum (syntax->list #'(tparam ...)))
-               (for/list ([c (in-list (syntax->list #'(ctor ...)))])
-                 (parse-data-ctor c))
-               stx)]
-    [(define-data tname:id ctor ...)
+     (parse-data-form (syntax->datum #'tname)
+                      (map syntax->datum (syntax->list #'(tparam ...)))
+                      (syntax->list #'(item ...))
+                      stx
+                      #'tname)]
+    [(define-data tname:id item ...)
      #:fail-unless (not (lowercase-id? (syntax->datum #'tname)))
      "data type name must be a non-lowercase identifier"
-     (top:data (syntax->datum #'tname) '()
-               (for/list ([c (in-list (syntax->list #'(ctor ...)))])
-                 (parse-data-ctor c))
-               stx)]
+     (parse-data-form (syntax->datum #'tname)
+                      '()
+                      (syntax->list #'(item ...))
+                      stx
+                      #'tname)]
 
     ;; A class with a superclass list: ((C1 a) ... => (D a))
     [(define-class (sup ...+ => head) body ...)
@@ -360,6 +489,53 @@
     [(define x:id e)
      (top:def (syntax->datum #'x) (parse-expr #'e) stx)]))
 
+;; Split a define-data body into constructor specs and an optional
+;; `#:deriving Cls ...` tail.  Returns a list of top-level forms:
+;; the top:data and any synthesized top:instance entries.
+;;
+;; For the synthesized instances we use the syntax handle of the *first
+;; constructor spec* as the lexical-context anchor — that handle is an
+;; actual identifier from the user's source and so carries the same
+;; scope set as anything else the user wrote.  Using the whole-form's
+;; syntax instead leaves the synthesised identifiers missing scopes
+;; that show up only on individual identifier-leaf syntax objects.
+(define (parse-data-form tname tparams items stx [tname-stx #f])
+  (define-values (ctor-stxs deriving-classes)
+    (let loop ([rem items] [acc '()])
+      (cond
+        [(null? rem) (values (reverse acc) '())]
+        [(eq? (syntax->datum (car rem)) '#:deriving)
+         (values (reverse acc)
+                 (for/list ([c (in-list (cdr rem))])
+                   (syntax->datum c)))]
+        [else (loop (cdr rem) (cons (car rem) acc))])))
+  (define ctors
+    (for/list ([c (in-list ctor-stxs)]) (parse-data-ctor c)))
+  (define data-form (top:data tname tparams ctors stx))
+  (cond
+    [(null? deriving-classes) data-form]
+    [else
+     (define ctx-stx
+       ;; Anchor synthesised identifiers to a *leaf* identifier from the
+       ;; user's source — the type name carries the user's full scope
+       ;; set including module-level imports, which the whole-form syntax
+       ;; sometimes does not.
+       (cond
+         [tname-stx tname-stx]
+         [(pair? ctor-stxs) (car ctor-stxs)]
+         [else stx]))
+     (define derived
+       (apply append
+              (for/list ([cls (in-list deriving-classes)])
+                (case cls
+                  [(Eq)   (list (synthesize-eq-instance   tname tparams ctors ctx-stx))]
+                  [(Show) (list (synthesize-show-instance tname tparams ctors ctx-stx))]
+                  [else
+                   (raise-syntax-error 'define-data
+                     (format "cannot derive ~s — supported: Eq, Show" cls)
+                     stx)]))))
+     (cons data-form derived)]))
+
 (define (parse-data-ctor stx)
   (syntax-parse stx
     [name:id
@@ -381,4 +557,10 @@
       [(list? stx-or-list)   stx-or-list]
       [else (raise-argument-error 'parse-toplevel-list
                                   "syntax or list" stx-or-list)]))
-  (for/list ([f (in-list forms)]) (parse-top f)))
+  ;; A single surface form may parse to multiple AST entries (e.g.
+  ;; `(define-data … #:deriving Eq Show)` desugars to the data plus
+  ;; the two synthesized instances).  Flatten if so.
+  (apply append
+         (for/list ([f (in-list forms)])
+           (define result (parse-top f))
+           (if (list? result) result (list result)))))
