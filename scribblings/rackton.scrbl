@@ -15,13 +15,11 @@ algebraic data types, and pattern matching — inside Racket, either as an
 @racket[(rackton ...)] form inside an ordinary module or as a whole-file
 @hash-lang[] @racketmodfont{rackton} program.
 
-This documentation describes the @bold{Phase 1 + 2 + 3 + 4 + 5} subset.
-Phase 5 added do-notation for any @racket[Monad], cross-file
-transmission of classes and instances (in addition to bindings and
-data types), @racket[#:deriving Eq Show] on @racket[define-data], and
-a small stdlib (@racket[not], @racket[and], @racket[or], @racket[length],
-@racket[foldr], @racket[filter]).  Multi-parameter classes, functional
-dependencies, polymorphic recursion, and deriving @racket[Ord] remain
+This documentation describes the @bold{Phase 1 + 2 + 3 + 4 + 5 + 6}
+subset.  Phase 6 added record types via @racket[define-struct],
+multi-parameter type classes (with first-argument runtime dispatch),
+and @racket[#:deriving Ord].  Functional dependencies, polymorphic
+recursion, deriving @racket[Functor], and a richer numeric tower remain
 on the roadmap.
 
 @section{Two surfaces, one elaborator}
@@ -368,10 +366,65 @@ so they resolve via that module's imports.
  @item{List: @racket[length], @racket[foldr], @racket[filter] (operating
        on the prelude @racket[List] ADT).}]
 
+@section{Records (Phase 6)}
+
+@racket[define-struct] introduces a single-constructor data type with
+typed named fields and auto-generated accessors:
+
+@codeblock|{
+(define-struct Point
+  [x : Integer]
+  [y : Integer])
+
+(define p (Point 3 4))
+(define px (Point-x p))   ;; 3
+(define py (Point-y p))   ;; 4
+}|
+
+The parameterised form @racket[(define-struct (Box a) [v : a] [tag : String])]
+generates the same accessors with the appropriate polymorphic schemes.
+
+@section{Multi-parameter classes (Phase 6)}
+
+A class declaration may carry more than one type parameter:
+
+@codeblock|{
+(define-class (Convertible a b)
+  (: convert (-> a b)))
+
+(define-instance (Convertible Integer String)
+  (define (convert n) (show n)))
+
+(define-instance (Convertible Boolean String)
+  (define (convert b) (if b "yes" "no")))
+}|
+
+Runtime dispatch still uses the first argument whose type mentions a
+class parameter — for @racket[convert] this is its single argument.
+The non-dispatching parameters are resolved at compile time only; an
+ambiguous call site may need a @racket[(ann e τ)] ascription to fix
+the result type.  This is enough for the common "input determines
+output" pattern but does not implement functional dependencies in
+general.
+
+@section{Deriving Ord (Phase 6)}
+
+@racket[#:deriving Ord] synthesises a strictly-less-than (@racket[<])
+method that:
+
+@itemlist[
+ @item{Compares the constructor-declaration-order index first — values
+       built with an earlier constructor are less than values built
+       with a later one.}
+ @item{Falls back to lexicographic comparison on fields when both
+       sides share a constructor.}]
+
+Since Ord superclasses Eq, the synthesiser auto-derives Eq as well, so
+@racket[#:deriving Ord] is enough to use both.
+
 @section{Not yet supported}
 
-Multi-parameter classes, functional dependencies, overlapping instances,
-polymorphic recursion, kind polymorphism (kind variables), deriving
-@racket[Ord]/@racket[Functor], string-manipulation helpers, an IO
-monad, and a fuller numeric tower.  These are tracked under later
-phases.
+Functional dependencies, overlapping instances, polymorphic
+recursion, kind polymorphism (kind variables), deriving
+@racket[Functor], string-manipulation helpers, an IO monad, and a
+fuller numeric tower.  These are tracked under later phases.

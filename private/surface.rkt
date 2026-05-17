@@ -181,6 +181,70 @@
                 (list (top:def '== (e:lam '(x y) eq-body stx) stx))
                 stx))
 
+;; Derived Ord: an instance whose `<` does ctor-index comparison and
+;; lexicographic field comparison.  Carries a (Ord a) context for each
+;; type-parameter.  Other Ord methods (>, <=, >=) come from defaults.
+(define (synthesize-ord-instance tname tparams ctors stx)
+  (define head-ty (data-head-type-ast tname tparams stx))
+  (define ctx (for/list ([p (in-list tparams)])
+                (constraint 'Ord (list (ty:var p stx)) stx)))
+  (define head (constraint 'Ord (list head-ty) stx))
+  (define lt-body
+    (e:match
+     (e:var 'x stx)
+     (for/list ([c (in-list ctors)] [i (in-naturals)])
+       (clause (ctor-x-pattern (data-ctor-name c)
+                               (length (data-ctor-field-types c))
+                               stx)
+               (synthesize-ord-inner-match ctors c i stx)
+               stx))
+     stx))
+  (top:instance ctx head
+                (list (top:def '< (e:lam '(x y) lt-body stx) stx))
+                stx))
+
+(define (synthesize-ord-inner-match ctors current-ctor current-idx stx)
+  (define current-name (data-ctor-name current-ctor))
+  (define current-arity (length (data-ctor-field-types current-ctor)))
+  (define clauses
+    (append
+     ;; Earlier ctors come *before* the current one — y < x, so x < y is #f.
+     (for/list ([c (in-list ctors)] [j (in-naturals)] #:when (< j current-idx))
+       (define ar (length (data-ctor-field-types c)))
+       (clause (p:ctor (data-ctor-name c)
+                       (for/list ([_ (in-range ar)]) (p:wild stx))
+                       stx)
+               (e:literal #f stx)
+               stx))
+     ;; Same ctor — recurse lexicographically on fields.
+     (list (clause (ctor-y-pattern current-name current-arity stx)
+                   (chained-lex-less current-arity stx)
+                   stx))
+     ;; Later ctors caught by wildcard — x < y is #t.
+     (list (clause (p:wild stx) (e:literal #t stx) stx))))
+  (e:match (e:var 'y stx) clauses stx))
+
+(define (chained-lex-less arity stx)
+  (cond
+    [(zero? arity) (e:literal #f stx)]
+    [else
+     (foldr
+      (lambda (i acc)
+        ;; (if (< ai bi) #t (if (== ai bi) <recurse> #f))
+        (e:if (e:app (e:var '< stx)
+                     (list (e:var (a-name i) stx) (e:var (b-name i) stx))
+                     stx)
+              (e:literal #t stx)
+              (e:if (e:app (e:var '== stx)
+                           (list (e:var (a-name i) stx) (e:var (b-name i) stx))
+                           stx)
+                    acc
+                    (e:literal #f stx)
+                    stx)
+              stx))
+      (e:literal #f stx)
+      (build-list arity values))]))
+
 (define (synthesize-show-instance tname tparams ctors stx)
   (define head-ty (data-head-type-ast tname tparams stx))
   (define ctx (for/list ([p (in-list tparams)])
@@ -398,7 +462,7 @@
 
 (define (parse-top stx)
   (syntax-parse stx
-    #:datum-literals (define define-data define-class define-instance require : =>)
+    #:datum-literals (define define-data define-struct define-class define-instance require : =>)
     [(require spec ...)
      (top:require (syntax->list #'(spec ...)) stx)]
     [(: name:id ty)
@@ -429,6 +493,26 @@
                       (syntax->list #'(item ...))
                       stx
                       #'tname)]
+
+    ;; (define-struct (Name a b ...) [field : type] ...) and the bare
+    ;; non-parameterised variant.  Desugars to a single-constructor
+    ;; define-data plus one accessor function per field.
+    [(define-struct (sname:id sparam:id ...) field ...)
+     #:fail-unless (not (lowercase-id? (syntax->datum #'sname)))
+     "struct name must be a non-lowercase identifier"
+     (parse-struct-form (syntax->datum #'sname)
+                        (map syntax->datum (syntax->list #'(sparam ...)))
+                        (syntax->list #'(field ...))
+                        stx
+                        #'sname)]
+    [(define-struct sname:id field ...)
+     #:fail-unless (not (lowercase-id? (syntax->datum #'sname)))
+     "struct name must be a non-lowercase identifier"
+     (parse-struct-form (syntax->datum #'sname)
+                        '()
+                        (syntax->list #'(field ...))
+                        stx
+                        #'sname)]
 
     ;; A class with a superclass list: ((C1 a) ... => (D a))
     [(define-class (sup ...+ => head) body ...)
@@ -524,17 +608,64 @@
          [tname-stx tname-stx]
          [(pair? ctor-stxs) (car ctor-stxs)]
          [else stx]))
+     ;; Deriving Ord implies deriving Eq (since Ord has Eq as a
+     ;; superclass, and our derived `<` calls `==`).  Auto-include Eq
+     ;; when Ord is asked for, deduping if the user listed both.
+     (define classes-needing-eq
+       (cond
+         [(and (member 'Ord deriving-classes)
+               (not (member 'Eq deriving-classes)))
+          (cons 'Eq deriving-classes)]
+         [else deriving-classes]))
      (define derived
        (apply append
-              (for/list ([cls (in-list deriving-classes)])
+              (for/list ([cls (in-list classes-needing-eq)])
                 (case cls
                   [(Eq)   (list (synthesize-eq-instance   tname tparams ctors ctx-stx))]
                   [(Show) (list (synthesize-show-instance tname tparams ctors ctx-stx))]
+                  [(Ord)  (list (synthesize-ord-instance  tname tparams ctors ctx-stx))]
                   [else
                    (raise-syntax-error 'define-data
-                     (format "cannot derive ~s — supported: Eq, Show" cls)
+                     (format "cannot derive ~s — supported: Eq, Ord, Show" cls)
                      stx)]))))
      (cons data-form derived)]))
+
+;; ----- records: define-struct ---------------------------------------
+
+(define (parse-struct-form name tparams field-stxs stx tname-stx)
+  (define field-pairs
+    (for/list ([fs (in-list field-stxs)]) (parse-field-spec fs)))
+  (define field-names (map car field-pairs))
+  (define field-types (map cdr field-pairs))
+  (define ctor (data-ctor name field-types stx))
+  (define data-form (top:data name tparams (list ctor) stx))
+  (define accessor-defs
+    (for/list ([fname (in-list field-names)]
+               [i (in-naturals)])
+      (synthesize-accessor name (length field-names) fname i tname-stx)))
+  (cons data-form accessor-defs))
+
+(define (parse-field-spec stx)
+  (syntax-parse stx
+    #:datum-literals (:)
+    [(fname:id : t)
+     #:fail-unless (lowercase-id? (syntax->datum #'fname))
+     "struct field name must be a lowercase identifier"
+     (cons (syntax->datum #'fname) (parse-type #'t))]))
+
+;; Build `(define (Name-fname r) (match r [(Name _ … v … _) v]))`.
+(define (synthesize-accessor struct-name arity field-name idx ctx-stx)
+  (define accessor-name
+    (string->symbol (format "~a-~a" struct-name field-name)))
+  (define pat-vars
+    (for/list ([j (in-range arity)])
+      (if (= j idx) (p:var 'v ctx-stx) (p:wild ctx-stx))))
+  (define pat (p:ctor struct-name pat-vars ctx-stx))
+  (define body
+    (e:match (e:var 'r ctx-stx)
+             (list (clause pat (e:var 'v ctx-stx) ctx-stx))
+             ctx-stx))
+  (top:def accessor-name (e:lam '(r) body ctx-stx) ctx-stx))
 
 (define (parse-data-ctor stx)
   (syntax-parse stx
