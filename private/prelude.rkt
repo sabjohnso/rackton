@@ -165,7 +165,66 @@
         [(Nil)        Nil]
         [(Cons h t)   (if (p h)
                           (Cons h (filter p t))
-                          (filter p t))]))))
+                          (filter p t))]))
+
+    ;; --- Strings ----------------------------------------------
+
+    (: string-length (-> String Integer))
+    (define (string-length s) (racket Integer (s) 0))
+
+    (: string-append (-> String (-> String String)))
+    (define (string-append a b) (racket String (a b) ""))
+
+    (: substring (-> String (-> Integer (-> Integer String))))
+    (define (substring s start end) (racket String (s start end) ""))
+
+    ;; --- Numeric helpers --------------------------------------
+
+    (: mod (-> Integer (-> Integer Integer)))
+    (define (mod a b) (racket Integer (a b) 0))
+
+    (: div (-> Integer (-> Integer Integer)))
+    (define (div a b) (racket Integer (a b) 0))
+
+    (: abs (-> Integer Integer))
+    (define (abs n) (racket Integer (n) 0))
+
+    (: min (-> Integer (-> Integer Integer)))
+    (define (min a b) (racket Integer (a b) 0))
+
+    (: max (-> Integer (-> Integer Integer)))
+    (define (max a b) (racket Integer (a b) 0))
+
+    (: integer->string (-> Integer String))
+    (define (integer->string n) (racket String (n) ""))
+
+    (: string->integer (-> String (Maybe Integer)))
+    (define (string->integer s) (racket (Maybe Integer) (s) None))
+
+    ;; --- IO ---------------------------------------------------
+
+    (define-data (IO a))
+
+    (define-instance (Functor IO)
+      (define (fmap f io) (racket (IO b) (f io) #f)))
+
+    (define-instance (Monad IO)
+      (define (>>= io f) (racket (IO b) (io f) #f)))
+
+    (: print     (-> String (IO Unit)))
+    (define (print s) (racket (IO Unit) (s) #f))
+
+    (: println   (-> String (IO Unit)))
+    (define (println s) (racket (IO Unit) (s) #f))
+
+    (: read-line (IO String))
+    (define read-line (racket (IO String) () #f))
+
+    (: pure-io   (-> a (IO a)))
+    (define (pure-io x) (racket (IO a) (x) #f))
+
+    (: run-io    (-> (IO a) a))
+    (define (run-io io) (racket a (io) #f))))
 
 (define prelude-env
   (let ([forms (for/list ([f (in-list prelude-source-forms)])

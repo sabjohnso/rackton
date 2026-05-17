@@ -2,7 +2,9 @@
 @require[@for-label[rackton
                     (except-in racket/base
                                compose + - * < > <= >=
-                               not and or length foldr filter)]]
+                               not and or length foldr filter
+                               substring string-length string-append
+                               abs min max read-line println print)]]
 
 @title{Rackton}
 @author{sbj}
@@ -15,12 +17,13 @@ algebraic data types, and pattern matching — inside Racket, either as an
 @racket[(rackton ...)] form inside an ordinary module or as a whole-file
 @hash-lang[] @racketmodfont{rackton} program.
 
-This documentation describes the @bold{Phase 1 + 2 + 3 + 4 + 5 + 6}
-subset.  Phase 6 added record types via @racket[define-struct],
-multi-parameter type classes (with first-argument runtime dispatch),
-and @racket[#:deriving Ord].  Functional dependencies, polymorphic
-recursion, deriving @racket[Functor], and a richer numeric tower remain
-on the roadmap.
+This documentation describes the @bold{Phase 1 + 2 + 3 + 4 + 5 + 6 + 7}
+subset.  Phase 7 added a string and numeric prelude and an opaque
+@racket[IO] monad with @racket[Functor]/@racket[Monad] instances, so
+Rackton programs can do I/O without dropping into a @racket[racket]
+escape at every step.  Functional dependencies, polymorphic recursion,
+deriving @racket[Functor], and a richer numeric tower remain on the
+roadmap.
 
 @section{Two surfaces, one elaborator}
 
@@ -422,9 +425,62 @@ method that:
 Since Ord superclasses Eq, the synthesiser auto-derives Eq as well, so
 @racket[#:deriving Ord] is enough to use both.
 
+@section{String and numeric stdlib (Phase 7)}
+
+The prelude now ships:
+
+@itemlist[
+ @item{@bold{Strings}: @racket[string-length], @racket[string-append]
+       (binary), @racket[substring] (start, end exclusive).}
+ @item{@bold{Numerics}: @racket[mod], @racket[div] (integer division),
+       @racket[abs], @racket[min], @racket[max],
+       @racket[integer->string], @racket[string->integer] (returns a
+       @racket[(Maybe Integer)]).}]
+
+All are typed in the prelude's own elaboration step and implemented as
+thin wrappers over the corresponding Racket primitives via the
+host-language escape.
+
+@section{IO monad (Phase 7)}
+
+@codeblock|{
+(: greet (-> String (IO Unit)))
+(define (greet name)
+  (println (string-append "hello, " name)))
+
+(: greet-both (-> String (-> String (IO Unit))))
+(define (greet-both a b)
+  (do [_ <- (greet a)]
+      [_ <- (greet b)]
+    (pure-io MkUnit)))
+}|
+
+@racket[IO] is declared with no public constructors, so values can
+only be built by primitives.  Sequencing uses @racket[do] /
+@racket[>>=] just like any other @racket[Monad].
+
+Primitives shipped:
+
+@itemlist[
+ @item{@racket[print]      — @racket[(-> String (IO Unit))]}
+ @item{@racket[println]    — @racket[(-> String (IO Unit))]}
+ @item{@racket[read-line]  — @racket[(IO String)]}
+ @item{@racket[pure-io]    — @racket[(-> a (IO a))]}
+ @item{@racket[run-io]     — @racket[(-> (IO a) a)] — executes the action.}]
+
+A typical @hash-lang[] @racketmodfont{rackton} program binds its
+top-level @racket[main] to an @racket[IO] action and executes it
+explicitly:
+
+@codeblock|{
+#lang rackton
+(define main (println "Hello, world!"))
+(define _    (run-io main))
+}|
+
 @section{Not yet supported}
 
 Functional dependencies, overlapping instances, polymorphic
 recursion, kind polymorphism (kind variables), deriving
-@racket[Functor], string-manipulation helpers, an IO monad, and a
-fuller numeric tower.  These are tracked under later phases.
+@racket[Functor], floating-point arithmetic, exceptions, and mutable
+state.  These are tracked under later phases.

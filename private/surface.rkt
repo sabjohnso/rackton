@@ -261,15 +261,17 @@
                  [(zero? arity)
                   (e:literal (symbol->string name) stx)]
                  [else
-                  ;; Splice raw Racket: (string-append "(<Ctor>" " " (show a0) … ")")
+                  ;; Splice raw Racket calling the variadic $show-concat
+                  ;; provided by prelude-runtime; the Rackton-typed
+                  ;; string-append is binary and would arity-mismatch.
                   (define arg-shows
                     (apply append
                            (for/list ([i (in-range arity)])
                              (list " " `(show ,(a-name i))))))
                   (define body-datum
-                    `(string-append ,(format "(~a" name)
-                                    ,@arg-shows
-                                    ")"))
+                    `($show-concat ,(format "(~a" name)
+                                   ,@arg-shows
+                                   ")"))
                   (e:escape (ty:con 'String stx)
                             (for/list ([i (in-range arity)]) (a-name i))
                             (datum->syntax stx body-datum stx)

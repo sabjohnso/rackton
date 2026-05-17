@@ -26,7 +26,11 @@
 (require racket/match
          (for-template (except-in racket/base
                                   + - * < > <= >= = compose
-                                  not and or length foldr filter)
+                                  not and or length foldr filter
+                                  substring string-length string-append
+                                  modulo quotient abs min max
+                                  number->string string->number
+                                  read-line print println)
                        (except-in racket/match ==)
                        "adt.rkt"
                        "dict.rkt"

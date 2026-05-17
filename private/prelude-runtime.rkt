@@ -18,7 +18,18 @@
                     [not rkt:not]
                     [and rkt:and]
                     [or  rkt:or]
-                    [length rkt:length])
+                    [length    rkt:length]
+                    [substring rkt:substring]
+                    [string-length rkt:string-length]
+                    [string-append rkt:string-append]
+                    [modulo  rkt:modulo]
+                    [quotient rkt:quotient]
+                    [abs rkt:abs]
+                    [min rkt:min]
+                    [max rkt:max]
+                    [number->string rkt:number->string]
+                    [string->number rkt:string->number]
+                    [read-line  rkt:read-line])
          racket/format
          racket/match
          "adt.rkt"
@@ -49,7 +60,18 @@
  id compose flip const
 
  ;; Stdlib
- not and or length foldr filter)
+ not and or length foldr filter
+
+ ;; Strings
+ string-length string-append substring
+ ;; codegen-only helper for derived Show
+ $show-concat
+
+ ;; Numeric helpers
+ mod div abs min max integer->string string->integer
+
+ ;; IO
+ print println read-line pure-io run-io)
 
 ;; ----- ADTs -------------------------------------------------------
 
@@ -142,6 +164,53 @@
   (match xs
     [(Nil)        Nil]
     [(Cons h t)   (if (p h) (Cons h (filter p t)) (filter p t))]))
+
+;; ----- Strings -------------------------------------------------
+
+(define (string-length s) (rkt:string-length s))
+(define (string-append a b) (rkt:string-append a b))
+(define (substring s start end) (rkt:substring s start end))
+
+;; A variadic concatenation used by derived Show instances.  The
+;; Rackton-typed `string-append` is binary; this helper sidesteps the
+;; binary signature for codegen-emitted strings.
+(define $show-concat
+  (lambda strs (apply rkt:string-append strs)))
+
+;; ----- Numeric helpers -----------------------------------------
+
+(define (mod a b) (rkt:modulo a b))
+(define (div a b) (rkt:quotient a b))
+(define (abs n) (rkt:abs n))
+(define (min a b) (rkt:min a b))
+(define (max a b) (rkt:max a b))
+(define (integer->string n) (rkt:number->string n))
+(define (string->integer s)
+  (define n (rkt:string->number s))
+  (if (rkt:and n (exact-integer? n)) (Some n) None))
+
+;; ----- IO monad ------------------------------------------------
+
+(struct $io (thunk) #:transparent)
+
+(define (run-io io) (($io-thunk io)))
+
+(define (print s)   ($io (lambda () (display   s) MkUnit)))
+(define (println s) ($io (lambda () (displayln s) MkUnit)))
+(define read-line
+  ($io (lambda ()
+         (define line (rkt:read-line))
+         (if (eof-object? line) "" line))))
+(define (pure-io x) ($io (lambda () x)))
+
+(define (io-fmap f io)
+  ($io (lambda () (f (run-io io)))))
+
+(define (io-bind io f)
+  ($io (lambda () (run-io (f (run-io io))))))
+
+(register-instance-method! $dispatch:fmap '$io io-fmap)
+(register-instance-method! $dispatch:>>=  '$io io-bind)
 
 ;; ----- Functor / Monad instance impls ------------------------
 
