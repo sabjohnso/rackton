@@ -19,13 +19,11 @@ algebraic data types, and pattern matching — inside Racket, either as an
 @hash-lang[] @racketmodfont{rackton} program.
 
 This documentation describes the @bold{Phase 1 + 2 + 3 + 4 + 5 + 6 + 7
-+ 8 + 9} subset.  Phase 9 added @racket[letrec] at expression scope,
-type aliases via @racket[define-alias], polymorphic recursion (a
-declared scheme is now used at every self-reference), a @racket[panic]
-primitive typed at bottom, multi-@racket[(rackton ...)]-block support
-in a single Racket module, and "did you mean?" suggestions on
-unbound-identifier errors.  Functional dependencies, kind polymorphism,
-floating-point arithmetic, and exceptions remain on the roadmap.
++ 8 + 9 + 10} subset.  Phase 10 added immutable @racket[(Map k v)] and
+@racket[(Set a)] container types with the standard operation surface
+plus @racket[concat-map] and @racket[group-by] on @racket[List].
+Functional dependencies, kind polymorphism, floating-point arithmetic,
+and exceptions remain on the roadmap.
 
 @section{Two surfaces, one elaborator}
 
@@ -602,6 +600,67 @@ for a near-match (Levenshtein distance ≤ 2) and suggests it:
 @codeblock|{
 > (rackton (define n (legnth (Cons 1 Nil))))
 ;; infer: unbound identifier: legnth (did you mean `length`?)
+}|
+
+@section{Immutable Map and Set (Phase 10)}
+
+@racket[(Map k v)] is an opaque immutable mapping; every operation
+returns a new map without modifying its input.
+
+@codeblock|{
+(define m0 empty-map)
+(define m1 (map-insert "alpha" 1 m0))
+(define m2 (map-insert "beta"  2 m1))
+
+(map-lookup "alpha" m2)   ;; (Some 1)
+(map-lookup "zeta"  m2)   ;; None
+(map-size m2)             ;; 2
+(map-size m1)             ;; 1  — persistence
+}|
+
+API summary:
+
+@itemlist[
+ @item{@racket[empty-map]   — @racket[(Map k v)]}
+ @item{@racket[map-insert]  — @racket[((Eq k) => (-> k (-> v (-> (Map k v) (Map k v)))))]}
+ @item{@racket[map-lookup]  — @racket[((Eq k) => (-> k (-> (Map k v) (Maybe v))))]}
+ @item{@racket[map-delete]  — @racket[((Eq k) => (-> k (-> (Map k v) (Map k v))))]}
+ @item{@racket[map-keys]    — @racket[(-> (Map k v) (List k))]}
+ @item{@racket[map-values]  — @racket[(-> (Map k v) (List v))]}
+ @item{@racket[map-size]    — @racket[(-> (Map k v) Integer)]}
+ @item{@racket[map-fold]    — @racket[(-> (-> k (-> v (-> b b))) (-> b (-> (Map k v) b)))]}]
+
+@racket[(Set a)] is the analogous immutable set:
+
+@itemlist[
+ @item{@racket[empty-set]    — @racket[(Set a)]}
+ @item{@racket[set-insert]   — @racket[((Eq a) => (-> a (-> (Set a) (Set a))))]}
+ @item{@racket[set-member?]  — @racket[((Eq a) => (-> a (-> (Set a) Boolean)))]}
+ @item{@racket[set-delete]   — @racket[((Eq a) => (-> a (-> (Set a) (Set a))))]}
+ @item{@racket[set-size]     — @racket[(-> (Set a) Integer)]}
+ @item{@racket[set-to-list]  — @racket[(-> (Set a) (List a))]}]
+
+Both are backed by Racket's immutable @racket[hash] (with
+@racket[equal?] keys).  Order of @racket[map-keys] and
+@racket[set-to-list] is unspecified.
+
+@section{List helpers, ctd. (Phase 10)}
+
+@racket[concat-map] flattens by composition:
+
+@codeblock|{
+(concat-map (lambda (n) (Cons n (Cons (* 2 n) Nil)))
+            (Cons 1 (Cons 2 Nil)))
+;; ⇒ (Cons 1 (Cons 2 (Cons 2 (Cons 4 Nil))))
+}|
+
+@racket[group-by] uses @racket[Map] to bucket a list by a key
+function:
+
+@codeblock|{
+(group-by (lambda (n) (mod n 2))
+          (Cons 1 (Cons 2 (Cons 3 (Cons 4 (Cons 5 Nil))))))
+;; ⇒ A (Map Integer (List Integer)) with 0 → [2,4] and 1 → [1,3,5]
 }|
 
 @section{Not yet supported}

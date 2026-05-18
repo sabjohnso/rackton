@@ -86,7 +86,14 @@
  fst snd swap
 
  ;; Panic
- panic)
+ panic
+
+ ;; Immutable Map / Set
+ empty-map map-insert map-lookup map-delete map-keys map-values map-size map-fold
+ empty-set set-insert set-member? set-delete set-size set-to-list
+
+ ;; List helpers
+ concat-map group-by)
 
 ;; ----- ADTs -------------------------------------------------------
 
@@ -311,6 +318,56 @@
 ;; ----- panic ---------------------------------------------------
 
 (define (panic msg) (error 'rackton-panic msg))
+
+;; ----- Immutable Map (backed by Racket's immutable hash) ------
+
+(struct $map (h) #:transparent)
+(struct $set (h) #:transparent)
+
+(define empty-map ($map (hash)))
+(define empty-set ($set (hash)))
+
+(define (map-insert k v m) ($map (hash-set ($map-h m) k v)))
+(define (map-lookup k m)
+  (cond [(hash-has-key? ($map-h m) k) (Some (hash-ref ($map-h m) k))]
+        [else None]))
+(define (map-delete k m) ($map (hash-remove ($map-h m) k)))
+
+;; Build a rackton List from a Racket sequence.
+(define (rkt-seq->list xs)
+  (let loop ([xs (reverse xs)] [acc Nil])
+    (cond [(null? xs) acc]
+          [else (loop (cdr xs) (Cons (car xs) acc))])))
+
+(define (map-keys   m) (rkt-seq->list (hash-keys   ($map-h m))))
+(define (map-values m) (rkt-seq->list (hash-values ($map-h m))))
+(define (map-size   m) (hash-count ($map-h m)))
+
+(define (map-fold f z m)
+  (for/fold ([acc z]) ([(k v) (in-hash ($map-h m))])
+    (((f k) v) acc)))
+
+;; ----- Immutable Set ------------------------------------------
+
+(define (set-insert x s) ($set (hash-set ($set-h s) x #t)))
+(define (set-member? x s) (hash-has-key? ($set-h s) x))
+(define (set-delete x s) ($set (hash-remove ($set-h s) x)))
+(define (set-size s) (hash-count ($set-h s)))
+(define (set-to-list s) (rkt-seq->list (hash-keys ($set-h s))))
+
+;; ----- List helpers -------------------------------------------
+
+(define (concat-map f xs)
+  (foldr (lambda (x acc) (append (f x) acc)) Nil xs))
+
+(define (group-by key xs)
+  (foldr (lambda (x m)
+           (define k (key x))
+           (match (map-lookup k m)
+             [(None)     (map-insert k (Cons x Nil) m)]
+             [(Some lst) (map-insert k (Cons x lst) m)]))
+         empty-map
+         xs))
 
 ;; ----- Functor / Monad instance impls ------------------------
 

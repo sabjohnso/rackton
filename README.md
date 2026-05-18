@@ -7,9 +7,10 @@ Racket.
 
 ## Status
 
-**Phase 1 + 2 + 3 + 4 + 5 + 6 + 7 + 8 + 9** — typed lambda calculus,
-ADTs, records (`define-struct`), pattern matching, `letrec`, type
-aliases (`define-alias`), two surfaces
+**Phase 1 + 2 + 3 + 4 + 5 + 6 + 7 + 8 + 9 + 10** — typed lambda
+calculus, ADTs, records (`define-struct`), pattern matching, `letrec`,
+type aliases (`define-alias`), immutable `(Map k v)` and `(Set a)`
+containers, two surfaces
 (`(rackton ...)` macro and `#lang rackton`), single- and multi-parameter
 type classes (superclass constraints, qualifying contexts, default
 methods, explicit-kind higher-kinded classes, first-arg runtime
@@ -17,8 +18,9 @@ dispatch), host-language `racket` escape, a built-in prelude
 (`Eq`/`Ord`/`Num`/`Show`/`Functor`/`Monad` + `Maybe`/`List`/`Result`/
 `Pair`/`Unit`/`IO`/`Ref` + `id`/`const`/`compose`/`flip` +
 `not`/`and`/`or` + `length`/`foldr`/`filter`/`reverse`/`append`/
-`zip`/`take`/`drop`/`find`/`sort` + `fst`/`snd`/`swap` + string ops +
-numeric helpers + IO/file/ref primitives + `panic`), fatal
+`zip`/`take`/`drop`/`find`/`sort`/`concat-map`/`group-by` +
+`fst`/`snd`/`swap` + string ops + numeric helpers +
+IO/file/ref/Map/Set primitives + `panic`), fatal
 exhaustiveness checking, pretty-printed error messages with
 "did-you-mean?" suggestions for unbound identifiers, polymorphic
 recursion via declared schemes, `#:deriving Eq Ord Show Functor` on
