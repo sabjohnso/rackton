@@ -20,14 +20,14 @@ algebraic data types, and pattern matching — inside Racket, either as an
 @hash-lang[] @racketmodfont{rackton} program.
 
 This documentation describes the @bold{Phase 1 + 2 + 3 + 4 + 5 + 6 + 7
-+ 8 + 9 + 10 + 11} subset.  Phase 11 added a primitive @racket[Float]
-type with @racket[Num]/@racket[Eq]/@racket[Ord]/@racket[Show] instances,
-a @racket[Fractional] class for real division, conversions
-@racket[integer->float] and @racket[float->integer], a @racket[sqrt]
-primitive, and structured error recovery via @racket[try] / @racket[raise-io]
-in the @racket[IO] monad.  Functional dependencies, kind polymorphism,
-overlapping instances, and a fuller numeric tower remain on the
-roadmap.
++ 8 + 9 + 10 + 11 + 12} subset.  Phase 12 was a capstone — building a
+real Rackton program (a small expression-language interpreter in
+@filepath{examples/calc.rkt}) that exercises the whole language end to
+end.  Along the way Phase 12 added: multi-form @racket[(racket τ
+(vars) body ...)] escape bodies, top-level forward-referencing of
+type declarations (so mutually recursive functions can be declared
+ahead of their definitions), and a runtime that exposes
+non-conflicting parts of @racket[racket/base] to escape bodies.
 
 @section{Two surfaces, one elaborator}
 
@@ -712,6 +712,43 @@ delivers the result as a @racket[(Result String a)]:
 @racket[raise-io : (-> String (IO a))] is the typed counterpart that
 fails an @racket[IO] action with a message; it pairs naturally with
 @racket[try].
+
+@section{Example program (Phase 12)}
+
+@filepath{examples/calc.rkt} is a small expression-language interpreter
+written entirely in Rackton.  It exercises ADTs (@racket[Sexpr],
+@racket[Expr]), pattern matching with nested constructors,
+@racket[(Map String Integer)] as a typing environment, @racket[Result]
+for parse errors, @racket[IO] with @racket[read-line] / @racket[println]
+for a REPL loop, mutual recursion between
+@racket[parse-expr]/@racket[parse-list]/@racket[parse-form]
+(declared via @racket[:] signatures before any of the defines), and the
+host-language escape to call into Racket's @racket[read] for tokenizing.
+
+Run it with @exec{racket examples/calc.rkt} and type expressions:
+
+@codeblock|{
+calc> (+ 1 2)
+3
+calc> (let x 5 (* x x))
+25
+calc> (let x 3 (let y 4 (+ x (* y y))))
+19
+}|
+
+@section{Top-level forward references (Phase 12)}
+
+A @racket[(: name type)] declaration now also pre-registers the name
+in the typing environment, so later top-level forms can call mutually
+recursive functions whose definitions appear after.  Declare all the
+signatures first, then the bodies.
+
+@section{Multi-form escapes (Phase 12)}
+
+@racket[(racket τ (vars) body ...)] now accepts any number of body
+forms; they're wrapped in a @racket[begin] automatically.  This lets
+the escape host inner @racket[(define ...)] and @racket[(let …)]
+forms naturally.
 
 @section{Not yet supported}
 

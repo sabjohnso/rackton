@@ -409,11 +409,18 @@
                         p-stx))
               stx)]
 
-    ;; (racket τ (var ...) body) — host-language escape
-    [(racket τ (v:id ...) body)
+    ;; (racket τ (var ...) body ...+) — host-language escape.
+    ;; Multiple body forms are wrapped in `begin` so users can write
+    ;; sequences and inner `define`s naturally.
+    [(racket τ (v:id ...) body ...+)
+     (define body-list (syntax->list #'(body ...)))
+     (define body-stx
+       (cond
+         [(= (length body-list) 1) (car body-list)]
+         [else (datum->syntax stx (cons 'begin body-list) stx)]))
      (e:escape (parse-type #'τ)
                (map syntax->datum (syntax->list #'(v ...)))
-               #'body
+               body-stx
                stx)]
 
     ;; (do [x <- m1] [y <- m2] ... body)  desugars to nested >>= calls.

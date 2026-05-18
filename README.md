@@ -7,7 +7,7 @@ Racket.
 
 ## Status
 
-**Phase 1 + 2 + 3 + 4 + 5 + 6 + 7 + 8 + 9 + 10 + 11** — typed lambda
+**Phase 1 + 2 + 3 + 4 + 5 + 6 + 7 + 8 + 9 + 10 + 11 + 12** — typed lambda
 calculus, ADTs, records (`define-struct`), pattern matching, `letrec`,
 type aliases (`define-alias`), immutable `(Map k v)` and `(Set a)`
 containers, `Float` with real arithmetic and `Fractional` class,
@@ -73,7 +73,16 @@ private/      type AST, unifier, env, surface parser,
               codegen, elaborator
 lang/         #lang rackton reader & lang module
 tests/        end-to-end / typecheck-error / #lang rackton sample
+examples/     calc.rkt — a small expression interpreter
+              demonstrating ADTs, Map, Result, IO, mutual
+              recursion
 scribblings/  reference docs
+```
+
+Run the demo:
+
+```bash
+racket examples/calc.rkt
 ```
 
 ## License

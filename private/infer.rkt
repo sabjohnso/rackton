@@ -669,7 +669,12 @@
      (values (env-extend-alias env name params target-ast) declared)]
 
     [(top:dec name ty-ast _)
-     (values env (hash-set declared name (resolve-scheme ty-ast)))]
+     (define sch (resolve-scheme ty-ast))
+     ;; Pre-register the name in env with its declared scheme so that
+     ;; subsequent top-level forms can forward-reference it.  When the
+     ;; matching define is processed later, the binding is replaced.
+     (values (env-extend-var env name sch)
+             (hash-set declared name sch))]
 
     [(top:def name expr stx)
      (cond
