@@ -69,7 +69,8 @@
                                            (make-arrow (tvar 'a)
                                                        (make-arrow (tvar 'a) t-bool)))))
                 (hasheq)
-                (hasheq '== 0)))
+                (hasheq '== 0)
+                '()))
   (define eq-env (env-extend-class empty-env 'Eq eq-info))
 
   (check-equal? (env-ref-class eq-env 'Eq) eq-info)

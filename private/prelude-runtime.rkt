@@ -322,16 +322,35 @@
     [(Nil) None]
     [(Cons h t) (if (p h) (Some h) (find p t))]))
 
-;; Insertion-sort over Rackton's < (Ord).  O(n²) but simple and stable.
-(define (sort-insert x xs)
+;; Merge sort over Rackton's < (Ord).  O(n log n) stable.
+(define (split-at-runtime n xs)
+  (cond
+    [(rkt:= n 0) (MkPair Nil xs)]
+    [else
+     (match xs
+       [(Nil) (MkPair Nil Nil)]
+       [(Cons h t)
+        (define rest (split-at-runtime (rkt:- n 1) t))
+        (MkPair (Cons h (fst rest)) (snd rest))])]))
+
+(define (merge-lists xs ys)
   (match xs
-    [(Nil)      (Cons x Nil)]
-    [(Cons h t) (if (< x h) (Cons x xs) (Cons h (sort-insert x t)))]))
+    [(Nil) ys]
+    [(Cons hx tx)
+     (match ys
+       [(Nil) xs]
+       [(Cons hy ty)
+        (if (< hx hy)
+            (Cons hx (merge-lists tx ys))
+            (Cons hy (merge-lists xs ty)))])]))
 
 (define (sort xs)
-  (match xs
-    [(Nil) Nil]
-    [(Cons h t) (sort-insert h (sort t))]))
+  (define n (length xs))
+  (cond
+    [(rkt:< n 2) xs]
+    [else
+     (define halves (split-at-runtime (rkt:quotient n 2) xs))
+     (merge-lists (sort (fst halves)) (sort (snd halves)))]))
 
 ;; ----- Pair helpers -------------------------------------------
 

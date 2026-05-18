@@ -20,14 +20,10 @@ algebraic data types, and pattern matching — inside Racket, either as an
 @hash-lang[] @racketmodfont{rackton} program.
 
 This documentation describes the @bold{Phase 1 + 2 + 3 + 4 + 5 + 6 + 7
-+ 8 + 9 + 10 + 11 + 12} subset.  Phase 12 was a capstone — building a
-real Rackton program (a small expression-language interpreter in
-@filepath{examples/calc.rkt}) that exercises the whole language end to
-end.  Along the way Phase 12 added: multi-form @racket[(racket τ
-(vars) body ...)] escape bodies, top-level forward-referencing of
-type declarations (so mutually recursive functions can be declared
-ahead of their definitions), and a runtime that exposes
-non-conflicting parts of @racket[racket/base] to escape bodies.
++ 8 + 9 + 10 + 11 + 12 + 13} subset.  Phase 13 added functional
+dependencies for multi-parameter classes (@racket[#:fundep] inside
+@racket[define-class] bodies) and replaced the prelude's insertion
+sort with an @italic{O(n log n)} merge sort.
 
 @section{Two surfaces, one elaborator}
 
@@ -750,8 +746,41 @@ forms; they're wrapped in a @racket[begin] automatically.  This lets
 the escape host inner @racket[(define ...)] and @racket[(let …)]
 forms naturally.
 
+@section{Functional dependencies (Phase 13)}
+
+A multi-parameter class may declare a functional dependency stating
+that one (or more) parameters are uniquely determined by others:
+
+@codeblock|{
+(define-class (Convert a b)
+  (#:fundep a -> b)
+  (: convert (-> a b)))
+
+(define-instance (Convert Integer String)
+  (define (convert n) (show n)))
+
+(define-instance (Convert Boolean Integer)
+  (define (convert b) (if b 1 0)))
+}|
+
+Inside any program that uses @racket[convert], the type checker
+consults registered instances: if a pred @racket[(Convert Integer ?)]
+appears and there is an instance @racket[(Convert Integer String)],
+the FD pins the result type to @racket[String].  This lets call
+sites omit ascriptions that would otherwise be required.
+
+The dependency is written as @racket[(#:fundep lhs ... -> rhs ...)] —
+multiple parameters may appear on each side and a class may carry
+multiple @racket[#:fundep] clauses.
+
+@section{Merge sort (Phase 13)}
+
+The prelude's @racket[sort] is now an @italic{O(n log n)} stable
+merge sort instead of the previous insertion sort.  Same surface:
+@racket[((Ord a) => (-> (List a) (List a)))].
+
 @section{Not yet supported}
 
-Functional dependencies, overlapping instances, kind polymorphism,
-and a fuller numeric tower (rationals, complex, exact decimals).
-These are tracked under later phases.
+Overlapping instances, kind polymorphism (kind variables), and a
+fuller numeric tower (rationals, complex, exact decimals).  These
+are tracked under later phases.

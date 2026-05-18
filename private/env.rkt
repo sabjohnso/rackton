@@ -66,7 +66,12 @@
 ;;                   definition by walking the method type and locating
 ;;                   the first top-level arg whose type mentions a class
 ;;                   parameter.
-(struct class-info (name params kinds supers methods defaults dispatchpos)
+;;   fundeps     : (Listof (Pair (Listof symbol) (Listof symbol)))
+;;                 — functional dependencies; each pair maps the
+;;                   determining-param names to the determined-param
+;;                   names.  Empty list when no FDs are declared.
+(struct class-info (name params kinds supers methods defaults dispatchpos
+                    fundeps)
   #:transparent)
 
 ;; An instance's information.

@@ -50,6 +50,7 @@
          (struct-out top:instance)
          (struct-out method-sig)
          (struct-out method-default)
+         (struct-out class-fundep)
          (struct-out top:require)
          (struct-out top:alias)
          (struct-out k:star)
@@ -112,6 +113,11 @@
 ;; Items inside a `define-class` body:
 (struct method-sig     (name type stx) #:transparent)
 (struct method-default (name expr stx) #:transparent)
+;; A functional dependency declaration: `(#:fundep lhs … -> rhs …)`
+;; appearing in a class body says that, in every instance, the
+;; rhs-positioned types are uniquely determined by the lhs-positioned
+;; ones.  `lhs` and `rhs` are lists of parameter-name symbols.
+(struct class-fundep   (lhs rhs stx) #:transparent)
 ;; A multi-file import: `(require "file.rkt" ...)` inside a rackton form.
 ;; Specs are the raw require specs (passed verbatim to Racket's require).
 (struct top:require    (specs stx) #:transparent)
@@ -641,11 +647,12 @@
                      (parse-instance-method m))
                    stx)]))
 
-;; A method form inside `define-class`: either a `(: name type)` signature
-;; or a `(define ...)` providing a default implementation.
+;; A method form inside `define-class`: either a `(: name type)` signature,
+;; a `(define ...)` providing a default implementation, or a functional
+;; dependency `(#:fundep lhs … -> rhs …)`.
 (define (parse-class-method stx)
   (syntax-parse stx
-    #:datum-literals (: define)
+    #:datum-literals (: define ->)
     [(: name:id ty)
      (method-sig (syntax->datum #'name) (parse-type #'ty) stx)]
     [(define (f:id arg:id ...) body)
@@ -655,7 +662,11 @@
                             stx)
                      stx)]
     [(define x:id e)
-     (method-default (syntax->datum #'x) (parse-expr #'e) stx)]))
+     (method-default (syntax->datum #'x) (parse-expr #'e) stx)]
+    [(#:fundep lhs:id ...+ -> rhs:id ...+)
+     (class-fundep (map syntax->datum (syntax->list #'(lhs ...)))
+                   (map syntax->datum (syntax->list #'(rhs ...)))
+                   stx)]))
 
 ;; An instance method must be a `define`.
 (define (parse-instance-method stx)

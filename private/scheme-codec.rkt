@@ -110,11 +110,14 @@
         (for/list ([(m s) (in-hash (class-info-methods ci))])
           (list m (scheme->sexp s)))
         (for/list ([(m p) (in-hash (class-info-dispatchpos ci))])
-          (list m p))))
+          (list m p))
+        (for/list ([fd (in-list (class-info-fundeps ci))])
+          (list (car fd) (cdr fd)))))
 
 (define (decode-class-info datum)
   (match datum
-    [(list name params kinds-list supers-list methods-list dispatchpos-list)
+    [(list name params kinds-list supers-list methods-list dispatchpos-list
+           fundeps-list)
      (class-info name
                  params
                  (for/hasheq ([entry (in-list kinds-list)])
@@ -124,7 +127,22 @@
                    (values (car entry) (sexp->scheme (cadr entry))))
                  (hasheq)   ; defaults not transmitted
                  (for/hasheq ([entry (in-list dispatchpos-list)])
-                   (values (car entry) (cadr entry))))]))
+                   (values (car entry) (cadr entry)))
+                 (for/list ([entry (in-list fundeps-list)])
+                   (cons (car entry) (cadr entry))))]
+    ;; Backward compat: older sidecar submodules omit the fundeps list.
+    [(list name params kinds-list supers-list methods-list dispatchpos-list)
+     (class-info name
+                 params
+                 (for/hasheq ([entry (in-list kinds-list)])
+                   (values (car entry) (decode-kind (cadr entry))))
+                 (map sexp->pred supers-list)
+                 (for/hasheq ([entry (in-list methods-list)])
+                   (values (car entry) (sexp->scheme (cadr entry))))
+                 (hasheq)
+                 (for/hasheq ([entry (in-list dispatchpos-list)])
+                   (values (car entry) (cadr entry)))
+                 '())]))
 
 ;; Instance info is encoded with its owning class name as the first
 ;; element so we know where to install it on decode.  Method bodies

@@ -294,18 +294,6 @@
         [(Nil)        None]
         [(Cons h t)   (if (p h) (Some h) (find p t))]))
 
-    (: sort-insert ((Ord a) => (-> a (-> (List a) (List a)))))
-    (define (sort-insert x xs)
-      (match xs
-        [(Nil)        (Cons x Nil)]
-        [(Cons h t)   (if (< x h)
-                          (Cons x xs)
-                          (Cons h (sort-insert x t)))]))
-
-    (: sort ((Ord a) => (-> (List a) (List a))))
-    (define (sort xs)
-      (foldr sort-insert Nil xs))
-
     (: fst (-> (Pair a b) a))
     (define (fst p) (match p [(MkPair a _) a]))
 
@@ -314,6 +302,39 @@
 
     (: swap (-> (Pair a b) (Pair b a)))
     (define (swap p) (match p [(MkPair a b) (MkPair b a)]))
+
+    ;; Merge sort over (Ord a).  O(n log n) stable.
+
+    (: split-at (-> Integer (-> (List a) (Pair (List a) (List a)))))
+    (define (split-at n xs)
+      (if (== n 0)
+          (MkPair Nil xs)
+          (match xs
+            [(Nil) (MkPair Nil Nil)]
+            [(Cons h t)
+             (let ([rest (split-at (- n 1) t)])
+               (MkPair (Cons h (fst rest)) (snd rest)))])))
+
+    (: merge-lists ((Ord a) => (-> (List a) (-> (List a) (List a)))))
+    (define (merge-lists xs ys)
+      (match xs
+        [(Nil) ys]
+        [(Cons hx tx)
+         (match ys
+           [(Nil) xs]
+           [(Cons hy ty)
+            (if (< hx hy)
+                (Cons hx (merge-lists tx ys))
+                (Cons hy (merge-lists xs ty)))])]))
+
+    (: sort ((Ord a) => (-> (List a) (List a))))
+    (define (sort xs)
+      (let ([n (length xs)])
+        (if (< n 2)
+            xs
+            (let ([halves (split-at (div n 2) xs)])
+              (merge-lists (sort (fst halves))
+                           (sort (snd halves)))))))
 
     ;; Unrecoverable failure with a message.  Typed at bottom so it can
     ;; appear anywhere; raises at runtime.

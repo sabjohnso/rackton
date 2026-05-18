@@ -122,13 +122,108 @@
        [(qual? skol) (values (qual-body skol) (qual-constraints skol))]
        [else         (values skol '())])]))
 
+;; ---------- FD improvement -----------------------------------------
+;;
+;; Functional dependencies let an instance's "determined" args be
+;; resolved from its "determining" args.  Given a pred `(C ts…)` with
+;; some tvars unknown, we find each instance of C whose determining
+;; args match `ts` (under a one-way substitution σ) and unify the
+;; pred's determined positions with σ-applied instance determined
+;; args.  This may close out unknowns that ordinary unification can't
+;; reach on its own.
+;;
+;; Runs once before reducing the context.  Returns the composed
+;; substitution it produced (callers compose it into their running
+;; subst); the pending-preds box is updated in place.
+
+(define (improve-by-fds env)
+  (let loop ([s empty-subst])
+    (define preds (snapshot-preds))
+    (define s′ s)
+    (for ([p (in-list preds)])
+      (define cinfo (env-ref-class env (pred-class p)))
+      (when (and cinfo (not (null? (class-info-fundeps cinfo))))
+        (define class-params (class-info-params cinfo))
+        (define param-index
+          (for/hasheq ([param (in-list class-params)] [i (in-naturals)])
+            (values param i)))
+        (for ([fd (in-list (class-info-fundeps cinfo))])
+          (define lhs-pos
+            (for/list ([d (in-list (car fd))]) (hash-ref param-index d)))
+          (define rhs-pos
+            (for/list ([d (in-list (cdr fd))]) (hash-ref param-index d)))
+          (define pred-args-now
+            (for/list ([a (in-list (pred-args p))]) (apply-subst s′ a)))
+          (define pred-lhs (for/list ([i (in-list lhs-pos)])
+                             (list-ref pred-args-now i)))
+          (for ([inst (in-list (env-instances env (pred-class p)))])
+            (define inst-args (pred-args (instance-info-head inst)))
+            (define inst-lhs (for/list ([i (in-list lhs-pos)])
+                               (list-ref inst-args i)))
+            (define match-σ (match-many inst-lhs pred-lhs))
+            (when match-σ
+              (for ([ri (in-list rhs-pos)])
+                (define pr (apply-subst s′ (list-ref pred-args-now ri)))
+                (define ir (apply-subst match-σ (list-ref inst-args ri)))
+                (with-handlers ([exn:fail:unify? (lambda (_) (void))])
+                  (define u (unify pr ir))
+                  (set! s′ (subst-compose u s′)))))))))
+    (cond
+      [(equal? s′ s) s]                  ; fixpoint
+      [else
+       (apply-subst-to-preds! s′)
+       (loop s′)])))
+
+(define (match-many srcs dsts)
+  ;; Borrowed from entail.rkt: one-way match returning a substitution.
+  (cond
+    [(and (null? srcs) (null? dsts)) empty-subst]
+    [(or (null? srcs) (null? dsts)) #f]
+    [else
+     (define σ1 (match-one (car srcs) (car dsts)))
+     (cond
+       [(not σ1) #f]
+       [else
+        (define σ2 (match-many (cdr srcs) (cdr dsts)))
+        (and σ2 (merge-substs σ1 σ2))])]))
+
+(define (match-one src dst)
+  (match* (src dst)
+    [((tvar α) t)          (subst-singleton α t)]
+    [((tcon c) (tcon c2))  (if (eq? c c2) empty-subst #f)]
+    [((tapp h1 args1) (tapp h2 args2))
+     (cond
+       [(= (length args1) (length args2))
+        (define σh (match-one h1 h2))
+        (cond
+          [(not σh) #f]
+          [else
+           (define σa (match-many args1 args2))
+           (and σa (merge-substs σh σa))])]
+       [else #f])]
+    [(_ _) #f]))
+
+(define (merge-substs σ1 σ2)
+  (let/ec return
+    (for/fold ([acc σ2]) ([(k v) (in-hash σ1)])
+      (cond
+        [(hash-has-key? acc k)
+         (cond
+           [(equal? v (hash-ref acc k)) acc]
+           [else (return #f)])]
+        [else (hash-set acc k v)]))))
+
 ;; Generalize: take the type's quantifiable tvars, pull the constraints
 ;; that mention them out of the pred-box, reduce them against the env,
 ;; and wrap into a `(scheme vs (qual cs ty))`.  Bound tvars are renamed
-;; to nice sequential names (a, b, c, …) for readability.
+;; to nice sequential names (a, b, c, …) for readability.  Runs FD
+;; improvement first, so an instance whose determining args match the
+;; pred's can pin the determined args before generalisation.
 (define (generalize env ty [hypotheses '()])
+  (define fd-sub (improve-by-fds env))
+  (define ty* (apply-subst fd-sub ty))
   (define env-fv (env-vars-free-vars env))
-  (define ty-fv  (type-vars ty))
+  (define ty-fv  (type-vars ty*))
   (define q-set  (set-subtract ty-fv env-fv))
   (define preds  (take-relevant-preds! q-set))
   (define reduced (reduce-context env hypotheses preds))
@@ -143,7 +238,7 @@
                                  [new (in-list nice)])
       (subst-extend s old (tvar new))))
   (scheme nice (mqual (for/list ([p (in-list reduced)]) (apply-subst σ p))
-                      (apply-subst σ ty))))
+                      (apply-subst σ ty*))))
 
 ;; For user-facing diagnostic output: rename a type's free tvars to
 ;; nice sequential names (a, b, c, …) before converting to a datum.
@@ -828,9 +923,12 @@
            (format "class method ~s does not have any argument whose type mentions a class parameter — single dispatch cannot resolve it"
                    method-name)
            stx)])))
+  (define fundeps
+    (for/list ([m (in-list methods)] #:when (class-fundep? m))
+      (cons (class-fundep-lhs m) (class-fundep-rhs m))))
   (define info (class-info class-name class-params class-kinds
                            super-preds method-schemes defaults
-                           dispatchpos))
+                           dispatchpos fundeps))
   (values (env-extend-class env class-name info) declared))
 
 ;; Process a (require "file.rkt" …) form inside a rackton block.
