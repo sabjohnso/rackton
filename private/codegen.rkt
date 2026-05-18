@@ -32,7 +32,8 @@
                                   number->string string->number
                                   read-line print println
                                   reverse append sort
-                                  file-exists?)
+                                  file-exists?
+                                  sqrt)
                        (except-in racket/match ==)
                        "adt.rkt"
                        "dict.rkt"
@@ -275,6 +276,7 @@
     [(eq? head-tcon 'Integer) '(Integer)]
     [(eq? head-tcon 'Boolean) '(Boolean)]
     [(eq? head-tcon 'String)  '(String)]
+    [(eq? head-tcon 'Float)   '(Float)]
     [else
      (define ti (env-ref-tcon env head-tcon))
      (unless ti

@@ -381,7 +381,46 @@
                    [(None)     (map-insert k (Cons x Nil) m)]
                    [(Some lst) (map-insert k (Cons x lst) m)])))
              empty-map
-             xs))))
+             xs))
+
+    ;; --- Float type + instances ----------------------------
+
+    (define-instance (Num Float)
+      (define (+ x y) (racket Float (x y) 0.0))
+      (define (- x y) (racket Float (x y) 0.0))
+      (define (* x y) (racket Float (x y) 0.0)))
+
+    (define-instance (Eq Float)
+      (define (== x y) (racket Boolean (x y) #f)))
+
+    (define-instance (Ord Float)
+      (define (< x y) (racket Boolean (x y) #f)))
+
+    (define-instance (Show Float)
+      (define (show x) (racket String (x) "")))
+
+    (define-class ((Num a) => (Fractional a))
+      (: float-div (-> a (-> a a))))
+
+    (define-instance (Fractional Float)
+      (define (float-div x y) (racket Float (x y) 0.0)))
+
+    (: sqrt (-> Float Float))
+    (define (sqrt x) (racket Float (x) 0.0))
+
+    (: integer->float (-> Integer Float))
+    (define (integer->float n) (racket Float (n) 0.0))
+
+    (: float->integer (-> Float Integer))
+    (define (float->integer x) (racket Integer (x) 0))
+
+    ;; --- try / raise-io ------------------------------------
+
+    (: try (-> (IO a) (IO (Result String a))))
+    (define (try io) (racket (IO (Result String a)) (io) #f))
+
+    (: raise-io (-> String (IO a)))
+    (define (raise-io msg) (racket (IO a) (msg) #f))))
 
 (define prelude-env
   (let ([forms (for/list ([f (in-list prelude-source-forms)])

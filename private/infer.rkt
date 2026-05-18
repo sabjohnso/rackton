@@ -322,6 +322,7 @@
 (define (literal-type v)
   (cond
     [(exact-integer? v) t-int]
+    [(inexact-real? v)  t-float]
     [(boolean? v)       t-bool]
     [(string? v)        t-string]
     [else (error 'literal-type "unsupported literal: ~e" v)]))

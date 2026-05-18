@@ -12,7 +12,7 @@
 ;; don't clash with the Rackton method names we want to expose.
 
 (require (rename-in racket/base
-                    [+  rkt:+]  [-  rkt:-]  [*  rkt:*]
+                    [+  rkt:+]  [-  rkt:-]  [*  rkt:*]  [/  rkt:/]
                     [<  rkt:<]  [>  rkt:>]  [=  rkt:=]
                     [<= rkt:<=] [>= rkt:>=]
                     [not rkt:not]
@@ -32,7 +32,11 @@
                     [read-line  rkt:read-line]
                     [reverse    rkt:reverse]
                     [append     rkt:append]
-                    [sort       rkt:sort])
+                    [sort       rkt:sort]
+                    [sqrt       rkt:sqrt]
+                    [exact->inexact rkt:exact->inexact]
+                    [inexact->exact rkt:inexact->exact]
+                    [truncate   rkt:truncate])
          racket/format
          racket/match
          racket/file
@@ -59,6 +63,7 @@
  $dispatch:show
  $dispatch:fmap
  $dispatch:>>=
+ $dispatch:float-div
 
  ;; Combinators
  id compose flip const
@@ -93,7 +98,13 @@
  empty-set set-insert set-member? set-delete set-size set-to-list
 
  ;; List helpers
- concat-map group-by)
+ concat-map group-by
+
+ ;; Float
+ float-div sqrt integer->float float->integer
+
+ ;; Error handling
+ try raise-io)
 
 ;; ----- ADTs -------------------------------------------------------
 
@@ -132,6 +143,19 @@
 (register-instance-method! $dispatch:+  'Integer (lambda (x y) (rkt:+  x y)))
 (register-instance-method! $dispatch:-  'Integer (lambda (x y) (rkt:-  x y)))
 (register-instance-method! $dispatch:*  'Integer (lambda (x y) (rkt:*  x y)))
+
+;; ----- Num / Eq / Ord / Show Float --------------------------------
+
+(register-instance-method! $dispatch:+  'Float (lambda (x y) (rkt:+ x y)))
+(register-instance-method! $dispatch:-  'Float (lambda (x y) (rkt:- x y)))
+(register-instance-method! $dispatch:*  'Float (lambda (x y) (rkt:* x y)))
+(register-instance-method! $dispatch:== 'Float (lambda (x y) (rkt:= x y)))
+(register-instance-method! $dispatch:/= 'Float (lambda (x y) (rkt:not (rkt:= x y))))
+(register-instance-method! $dispatch:<  'Float (lambda (x y) (rkt:<  x y)))
+(register-instance-method! $dispatch:>  'Float (lambda (x y) (rkt:>  x y)))
+(register-instance-method! $dispatch:<= 'Float (lambda (x y) (rkt:<= x y)))
+(register-instance-method! $dispatch:>= 'Float (lambda (x y) (rkt:>= x y)))
+(register-instance-method! $dispatch:show 'Float (lambda (x) (rkt:number->string x)))
 
 ;; ----- Eq instances ----------------------------------------------
 
@@ -368,6 +392,29 @@
              [(Some lst) (map-insert k (Cons x lst) m)]))
          empty-map
          xs))
+
+;; ----- Float ops ---------------------------------------------
+
+;; Fractional method dispatcher
+(define $dispatch:float-div (make-hasheq))
+(define-class-method float-div $dispatch:float-div 0)
+(register-instance-method! $dispatch:float-div 'Float
+                           (lambda (x y) (rkt:/ x y)))
+
+(define (sqrt x) (rkt:sqrt x))
+(define (integer->float n) (rkt:exact->inexact n))
+(define (float->integer x) (rkt:inexact->exact (rkt:truncate x)))
+
+;; ----- try / raise-io ---------------------------------------
+
+(define (try io)
+  ($io (lambda ()
+         (with-handlers ([exn:fail?
+                          (lambda (e) (Err (exn-message e)))])
+           (Ok (run-io io))))))
+
+(define (raise-io msg)
+  ($io (lambda () (error 'rackton-raise-io msg))))
 
 ;; ----- Functor / Monad instance impls ------------------------
 

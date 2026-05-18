@@ -7,10 +7,11 @@ Racket.
 
 ## Status
 
-**Phase 1 + 2 + 3 + 4 + 5 + 6 + 7 + 8 + 9 + 10** — typed lambda
+**Phase 1 + 2 + 3 + 4 + 5 + 6 + 7 + 8 + 9 + 10 + 11** — typed lambda
 calculus, ADTs, records (`define-struct`), pattern matching, `letrec`,
 type aliases (`define-alias`), immutable `(Map k v)` and `(Set a)`
-containers, two surfaces
+containers, `Float` with real arithmetic and `Fractional` class,
+structured error recovery (`try` / `raise-io`), two surfaces
 (`(rackton ...)` macro and `#lang rackton`), single- and multi-parameter
 type classes (superclass constraints, qualifying contexts, default
 methods, explicit-kind higher-kinded classes, first-arg runtime

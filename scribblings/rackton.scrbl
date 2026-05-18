@@ -5,7 +5,8 @@
                                not and or length foldr filter
                                substring string-length string-append
                                abs min max read-line println print
-                               reverse append sort file-exists?)]]
+                               reverse append sort file-exists?
+                               sqrt)]]
 
 @title{Rackton}
 @author{sbj}
@@ -19,11 +20,14 @@ algebraic data types, and pattern matching — inside Racket, either as an
 @hash-lang[] @racketmodfont{rackton} program.
 
 This documentation describes the @bold{Phase 1 + 2 + 3 + 4 + 5 + 6 + 7
-+ 8 + 9 + 10} subset.  Phase 10 added immutable @racket[(Map k v)] and
-@racket[(Set a)] container types with the standard operation surface
-plus @racket[concat-map] and @racket[group-by] on @racket[List].
-Functional dependencies, kind polymorphism, floating-point arithmetic,
-and exceptions remain on the roadmap.
++ 8 + 9 + 10 + 11} subset.  Phase 11 added a primitive @racket[Float]
+type with @racket[Num]/@racket[Eq]/@racket[Ord]/@racket[Show] instances,
+a @racket[Fractional] class for real division, conversions
+@racket[integer->float] and @racket[float->integer], a @racket[sqrt]
+primitive, and structured error recovery via @racket[try] / @racket[raise-io]
+in the @racket[IO] monad.  Functional dependencies, kind polymorphism,
+overlapping instances, and a fuller numeric tower remain on the
+roadmap.
 
 @section{Two surfaces, one elaborator}
 
@@ -663,8 +667,54 @@ function:
 ;; ⇒ A (Map Integer (List Integer)) with 0 → [2,4] and 1 → [1,3,5]
 }|
 
+@section{Float arithmetic (Phase 11)}
+
+@racket[Float] is a primitive type representing inexact reals.  A
+numeric literal with a fractional part or exponent (e.g.
+@racket[3.14], @racket[1e10]) is parsed as @racket[Float]; bare
+integer literals stay @racket[Integer].
+
+Standard instances are registered: @racket[Num Float] (binding
+@racket[+] @racket[-] @racket[*]), @racket[Eq Float], @racket[Ord
+Float], and @racket[Show Float].
+
+Real division lives in its own @racket[Fractional] class:
+
+@codeblock|{
+(float-div 7.0 2.0)   ;; ⇒ 3.5
+}|
+
+@racket[Fractional] superclasses @racket[Num], so any
+@racket[Fractional a] is also a @racket[Num a].
+
+Bridges to integers: @racket[(integer->float : (-> Integer Float))]
+and @racket[(float->integer : (-> Float Integer))] — the latter
+truncates toward zero.
+
+@racket[(sqrt : (-> Float Float))] wraps Racket's @racket[sqrt].
+
+@section{Structured error recovery (Phase 11)}
+
+@racket[panic] (Phase 9) raises an unrecoverable error.
+@racket[try : (-> (IO a) (IO (Result String a)))] catches it and
+delivers the result as a @racket[(Result String a)]:
+
+@codeblock|{
+(: safe-read (-> String (IO (Result String String))))
+(define (safe-read path)
+  (try (read-file path)))
+
+(match (run-io (safe-read "missing.txt"))
+  [(Ok body) (println body)]
+  [(Err msg) (println (string-append "failed: " msg))])
+}|
+
+@racket[raise-io : (-> String (IO a))] is the typed counterpart that
+fails an @racket[IO] action with a message; it pairs naturally with
+@racket[try].
+
 @section{Not yet supported}
 
 Functional dependencies, overlapping instances, kind polymorphism,
-floating-point arithmetic, and exceptions / catch.  These are tracked
-under later phases.
+and a fuller numeric tower (rationals, complex, exact decimals).
+These are tracked under later phases.

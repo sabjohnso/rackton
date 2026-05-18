@@ -29,6 +29,7 @@
 (define (dispatch-tag v)
   (cond
     [(exact-integer? v) 'Integer]
+    [(inexact-real? v)  'Float]
     [(boolean? v)       'Boolean]
     [(string? v)        'String]
     [(struct? v)
