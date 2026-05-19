@@ -245,6 +245,42 @@
     (: sum ((Foldable t) => (-> (t Integer) Integer)))
     (define (sum xs) (foldr (lambda (a b) (+ a b)) 0 xs))
 
+    ;; --- Semigroup / Monoid ----------------------------------
+    ;;
+    ;; `Semigroup` carries an associative `<>` (`sappend`).  `Monoid`
+    ;; refines it with a left+right identity `mempty`.  `mempty` is a
+    ;; return-typed class member — the elaborator picks the
+    ;; instance from the expected type at each call site (see
+    ;; @secref{Return-typed_dispatch} for the mechanism).
+
+    (define-class (Semigroup a)
+      (: <> (-> a (-> a a))))
+
+    (define-class ((Semigroup a) => (Monoid a))
+      (: mempty a))
+
+    (define-instance (Semigroup String)
+      ;; `string-append` is defined later in the prelude; use a host
+      ;; escape so the load order doesn't bite us.
+      (define (<> a b) (racket String (a b) #f)))
+
+    (define-instance (Monoid String)
+      (define mempty ""))
+
+    (define-instance (Semigroup (List a))
+      ;; cartesian concat; `append` is defined later in this prelude,
+      ;; so inline a local cat helper as the Applicative List instance
+      ;; does.
+      (define (<> xs ys)
+        (letrec ([cat (lambda (as bs)
+                        (match as
+                          [(Nil)      bs]
+                          [(Cons h t) (Cons h (cat t bs))]))])
+          (cat xs ys))))
+
+    (define-instance (Monoid (List a))
+      (define mempty Nil))
+
     (: filter (-> (-> a Boolean) (-> (List a) (List a))))
     (define (filter p xs)
       (match xs

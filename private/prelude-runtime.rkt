@@ -65,10 +65,12 @@
  >>=
  bimap first second
  foldr length to-list sum
+ <>
 
  ;; Return-typed class methods (resolved at compile time per call site;
  ;; the `$pure:TCon` names are what the codegen emits after resolution).
  |$pure:Maybe| |$pure:List| |$pure:Result| |$pure:IO|
+ |$mempty:String| |$mempty:List|
 
  ;; Dispatch tables — exposed so user modules that declare new
  ;; instances (including derived ones) can register against them.
@@ -86,6 +88,7 @@
  $dispatch:foldr
  $dispatch:length
  $dispatch:to-list
+ $dispatch:<>
  $dispatch:float-div
 
  ;; Combinators
@@ -181,6 +184,9 @@
 (define $dispatch:foldr   (make-hasheq))(define-class-method foldr   $dispatch:foldr   2 3)
 (define $dispatch:length  (make-hasheq))(define-class-method length  $dispatch:length  0 1)
 (define $dispatch:to-list (make-hasheq))(define-class-method to-list $dispatch:to-list 0 1)
+;; Semigroup's <> dispatches on the first arg (the value carrying the
+;; Semigroup-constrained type).
+(define $dispatch:<> (make-hasheq))(define-class-method <> $dispatch:<> 0 2)
 
 ;; ----- Num Integer ------------------------------------------------
 
@@ -292,6 +298,20 @@
 (define (|$pure:List|   x) (Cons x Nil))
 (define (|$pure:Result| x) (Ok x))
 (define (|$pure:IO|     x) ($io (lambda () x)))
+
+;; ----- Monoid mempty (return-typed) -------------------------------
+(define |$mempty:String| "")
+(define |$mempty:List|   Nil)
+
+;; ----- Semigroup <> -----------------------------------------------
+(define (semigroup-list-<> xs ys)
+  (match xs
+    [(Nil)      ys]
+    [(Cons h t) (Cons h (semigroup-list-<> t ys))]))
+(register-instance-method! $dispatch:<> 'String
+                           (lambda (a b) (rkt:string-append a b)))
+(register-instance-method! $dispatch:<> '$ctor:Nil  semigroup-list-<>)
+(register-instance-method! $dispatch:<> '$ctor:Cons semigroup-list-<>)
 
 (define (io-fmap f io)
   ($io (lambda () (f (run-io io)))))

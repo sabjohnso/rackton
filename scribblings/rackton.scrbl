@@ -25,9 +25,13 @@ algebraic data types, and pattern matching — inside Racket, either as an
 @hash-lang[] @racketmodfont{rackton} program.
 
 This documentation describes the @bold{Phase 1 + 2 + 3 + 4 + 5 + 6 + 7
-+ 8 + 9 + 10 + 11 + 12 + 13 + 14 + 15 + 16 + 17 + 18} subset.  Phase
-18 added return-typed class-method dispatch, so @racket[pure] is now
-a real class method on @racket[Applicative].  Phase 17 turned
++ 8 + 9 + 10 + 11 + 12 + 13 + 14 + 15 + 16 + 17 + 18 + 19} subset.
+Phase 19 added @racket[Semigroup] (@racket[<>]) and @racket[Monoid]
+(@racket[mempty]) — the latter is the second customer for Phase 18's
+return-typed dispatch and confirms the mechanism handles 0-arity
+class members as well as functions.  Phase 18 added return-typed
+class-method dispatch, so @racket[pure] is now a real class method
+on @racket[Applicative].  Phase 17 turned
 multi-argument functions into auto-currying ones, so partial
 application Just Works.  Phase 16 inserted @racket[Applicative]
 between @racket[Functor] and @racket[Monad] and added
@@ -953,6 +957,38 @@ The plumbing lives in @racket[private/infer.rkt]
 (the @racket[e:var] consultation of @racket[current-method-resolutions]).
 Both phases share their hashtables via a single
 @racket[parameterize] in @racket[private/elaborate.rkt].
+
+@section{Semigroup + Monoid (Phase 19)}
+
+@racket[Semigroup] carries the associative @racket[<>] (sappend);
+@racket[Monoid] refines it with a left-and-right identity
+@racket[mempty].  Instances ship for @racket[String] and
+@racket[(List a)].  @racket[mempty] is a return-typed class member
+(it has no arrow positions at all), so the elaborator decides which
+instance impl to call from the expected type at the use site.
+
+@codeblock|{
+(: greeting String)
+(define greeting (<> "hello, " "world"))            ;; "hello, world"
+
+(: empty-strs String)
+(define empty-strs (ann mempty String))             ;; ""
+
+(: numbers (List Integer))
+(define numbers (<> (Cons 1 Nil) (Cons 2 Nil)))     ;; (Cons 1 (Cons 2 Nil))
+
+;; Identity laws hold both sides:
+(: round-trip String)
+(define round-trip
+  (<> (<> (ann mempty String) "x")
+      (ann mempty String)))                          ;; "x"
+}|
+
+A @racket[mempty] expression with no type context (no @racket[ann],
+no declared signature, no flow-based inference) is rejected at
+compile time with @tt{ambiguous use of mempty: cannot determine
+target type at this call site} — the elaborator surfaces a clear
+error rather than letting an unsolved constraint propagate.
 
 @section{Not yet supported}
 
