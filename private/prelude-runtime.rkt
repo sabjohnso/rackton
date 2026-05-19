@@ -61,6 +61,8 @@
 (provide
  ;; ADTs (constructors usable as expressions and as match patterns)
  None Some Nil Cons MkPair Ok Err MkUnit
+ MkSum MkProduct
+ get-sum get-product
 
  ;; Class methods
  +  -  *
@@ -78,7 +80,7 @@
  ;; Return-typed class methods (resolved at compile time per call site;
  ;; the `$pure:TCon` names are what the codegen emits after resolution).
  |$pure:Maybe| |$pure:List| |$pure:Result| |$pure:IO|
- |$mempty:String| |$mempty:List|
+ |$mempty:String| |$mempty:List| |$mempty:Sum| |$mempty:Product|
 
  ;; Dispatch tables — exposed so user modules that declare new
  ;; instances (including derived ones) can register against them.
@@ -160,6 +162,9 @@
 (define-data-ctor Err 1)
 
 (define-data-ctor MkUnit 0)
+
+(define-data-ctor MkSum     1)
+(define-data-ctor MkProduct 1)
 
 ;; ----- Class dispatch tables -------------------------------------
 
@@ -334,8 +339,13 @@
 (define (|$pure:IO|     x) ($io (lambda () x)))
 
 ;; ----- Monoid mempty (return-typed) -------------------------------
-(define |$mempty:String| "")
-(define |$mempty:List|   Nil)
+(define |$mempty:String|  "")
+(define |$mempty:List|    Nil)
+(define |$mempty:Sum|     (MkSum     0))
+(define |$mempty:Product| (MkProduct 1))
+
+(define (get-sum     s) (match s [(MkSum n) n]))
+(define (get-product p) (match p [(MkProduct n) n]))
 
 ;; ----- Semigroup <> -----------------------------------------------
 (define (semigroup-list-<> xs ys)
@@ -346,6 +356,14 @@
                            (lambda (a b) (rkt:string-append a b)))
 (register-instance-method! $dispatch:<> '$ctor:Nil  semigroup-list-<>)
 (register-instance-method! $dispatch:<> '$ctor:Cons semigroup-list-<>)
+(register-instance-method! $dispatch:<> '$ctor:MkSum
+                           (lambda (a b)
+                             (match a [(MkSum x)
+                                       (match b [(MkSum y) (MkSum (rkt:+ x y))])])))
+(register-instance-method! $dispatch:<> '$ctor:MkProduct
+                           (lambda (a b)
+                             (match a [(MkProduct x)
+                                       (match b [(MkProduct y) (MkProduct (rkt:* x y))])])))
 
 ;; ----- Traversable traverse ---------------------------------------
 ;; Each impl receives the resolved `pure-impl` as its leading argument

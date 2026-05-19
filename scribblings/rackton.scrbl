@@ -25,8 +25,10 @@ algebraic data types, and pattern matching — inside Racket, either as an
 @hash-lang[] @racketmodfont{rackton} program.
 
 This documentation describes the @bold{Phase 1 + 2 + 3 + 4 + 5 + 6 + 7
-+ 8 + 9 + 10 + 11 + 12 + 13 + 14 + 15 + 16 + 17 + 18 + 19 + 20 + 21 + 22}
-subset.  Phase 22 introduced a real CLI example (a small todo
++ 8 + 9 + 10 + 11 + 12 + 13 + 14 + 15 + 16 + 17 + 18 + 19 + 20 + 21 + 22 + 23}
+subset.  Phase 23 added @racket[define-newtype] and the canonical
+@racket[Sum] / @racket[Product] newtype-Monoids over @racket[Integer].
+Phase 22 introduced a real CLI example (a small todo
 manager under @racket[examples/todo.rkt]) and filled the prelude
 gaps it surfaced: @racket[cond], @racket[string-prefix?],
 @racket[string-split], @racket[string-join].  Phase 21 added three
@@ -1129,6 +1131,53 @@ Building this example surfaced four prelude gaps which Phase 22 also
 filled: a @racket[cond] surface form (desugars to nested @racket[if]),
 and three string helpers — @racket[string-prefix?], @racket[string-split],
 and @racket[string-join].
+
+@section{Newtypes (Phase 23)}
+
+@racket[define-newtype] is sugar over @racket[define-data] for the
+common shape "one constructor, one field" — a nominal wrapper around
+an existing type that gives the wrapped form its own type identity
+without changing what it stores.
+
+@codeblock|{
+(define-newtype Sum     (MkSum     Integer))
+(define-newtype Product (MkProduct Integer))
+}|
+
+The point is that one underlying type can now carry multiple
+distinct typeclass instances.  @racket[Integer] doesn't have a
+single canonical @racket[Monoid] (is it addition or multiplication?),
+but @racket[Sum] and @racket[Product] each do, and they're both in
+the prelude:
+
+@codeblock|{
+(<> (MkSum 3) (MkSum 5))           ;; ⇒ (MkSum 8)     — additive
+(<> (MkProduct 3) (MkProduct 5))   ;; ⇒ (MkProduct 15) — multiplicative
+(ann mempty Sum)                   ;; ⇒ (MkSum 0)
+(ann mempty Product)               ;; ⇒ (MkProduct 1)
+}|
+
+Folding a list of @racket[Integer] into either one then becomes
+a straight @racket[foldr] with an ascribed @racket[mempty]:
+
+@codeblock|{
+(foldr (lambda (n acc) (<> (MkSum n) acc))
+       (ann mempty Sum)
+       (Cons 1 (Cons 2 (Cons 3 (Cons 4 Nil)))))
+;; ⇒ (MkSum 10)
+}|
+
+@racket[mconcat :: (Monoid m) => List m -> m] is @bold{not} yet
+provided — its body needs @racket[mempty] while @racket[m] is
+polymorphic, and the elaborator's compile-time resolution today only
+covers class methods.  Lifting that to free functions is future work;
+in the meantime the @racket[(foldr <> mempty xs)] pattern with an
+ascribed @racket[mempty] does the same job at sites where @racket[m]
+is known.
+
+At runtime a newtype is identical to a single-constructor
+@racket[define-data] — the "zero-cost" of a true newtype (eliding the
+struct wrap) is documentary, not yet a perf optimization.
 
 @section{Not yet supported}
 

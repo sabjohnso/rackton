@@ -629,7 +629,7 @@
 
 (define (parse-top stx)
   (syntax-parse stx
-    #:datum-literals (define define-data define-struct define-class define-instance define-alias require : =>)
+    #:datum-literals (define define-data define-newtype define-struct define-class define-instance define-alias require : =>)
     [(require spec ...)
      (top:require (syntax->list #'(spec ...)) stx)]
 
@@ -672,6 +672,38 @@
                       (syntax->list #'(item ...))
                       stx
                       #'tname)]
+
+    ;; (define-newtype Name (Wrap T))
+    ;; (define-newtype (Name a ...) (Wrap T))
+    ;; Sugar over define-data for the common "one ctor, one field"
+    ;; case.  A nominal wrapper around an existing type.  At runtime
+    ;; the wrapper is a plain ADT — the "zero-cost" of a newtype is
+    ;; documentary, not a perf optimization.
+    [(define-newtype (tname:id tparam:id ...) (ctor:id ftype))
+     #:fail-unless (not (lowercase-id? (syntax->datum #'tname)))
+     "newtype name must be a non-lowercase identifier"
+     #:fail-unless (not (lowercase-id? (syntax->datum #'ctor)))
+     "newtype constructor name must be a non-lowercase identifier"
+     (parse-data-form (syntax->datum #'tname)
+                      (map syntax->datum (syntax->list #'(tparam ...)))
+                      (list #'(ctor ftype))
+                      stx
+                      #'tname)]
+    [(define-newtype tname:id (ctor:id ftype))
+     #:fail-unless (not (lowercase-id? (syntax->datum #'tname)))
+     "newtype name must be a non-lowercase identifier"
+     #:fail-unless (not (lowercase-id? (syntax->datum #'ctor)))
+     "newtype constructor name must be a non-lowercase identifier"
+     (parse-data-form (syntax->datum #'tname)
+                      '()
+                      (list #'(ctor ftype))
+                      stx
+                      #'tname)]
+    [(define-newtype _ _ ...)
+     (raise-syntax-error
+      'define-newtype
+      "newtype must declare exactly one constructor with one field — for multiple ctors or multiple fields use define-data"
+      stx)]
 
     ;; (define-struct (Name a b ...) [field : type] ...) and the bare
     ;; non-parameterised variant.  Desugars to a single-constructor
