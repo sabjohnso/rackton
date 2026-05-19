@@ -20,10 +20,12 @@ algebraic data types, and pattern matching — inside Racket, either as an
 @hash-lang[] @racketmodfont{rackton} program.
 
 This documentation describes the @bold{Phase 1 + 2 + 3 + 4 + 5 + 6 + 7
-+ 8 + 9 + 10 + 11 + 12 + 13} subset.  Phase 13 added functional
-dependencies for multi-parameter classes (@racket[#:fundep] inside
-@racket[define-class] bodies) and replaced the prelude's insertion
-sort with an @italic{O(n log n)} merge sort.
++ 8 + 9 + 10 + 11 + 12 + 13 + 14} subset.  Phase 14 was a
+diagnostics-quality phase: type-mismatch errors are now rendered as a
+structured @racket[expected:] / @racket[got:] pair pointed at the
+specific offending token, applications blame the bad argument rather
+than the whole call form, and "did you mean?" suggestions now extend
+to class and data-constructor names.
 
 @section{Two surfaces, one elaborator}
 
@@ -778,6 +780,37 @@ multiple @racket[#:fundep] clauses.
 The prelude's @racket[sort] is now an @italic{O(n log n)} stable
 merge sort instead of the previous insertion sort.  Same surface:
 @racket[((Ord a) => (-> (List a) (List a)))].
+
+@section{Diagnostics (Phase 14)}
+
+Every type-mismatch error now reports a two-row breakdown:
+
+@codeblock|{
+> (rackton (define x (if 1 1 2)))
+;; tests/foo.rkt:1:21: infer: type mismatch
+;;   expected: Boolean
+;;   got:      Integer
+;;   in: 1
+}|
+
+The blame token (after @racket[in:]) is the most specific syntax
+object responsible for the mismatch.  For applications, the bad
+argument is highlighted rather than the whole call form:
+
+@codeblock|{
+> (rackton (define x (+ 1 "two")))
+;; infer: type mismatch
+;;   expected: Integer
+;;   got:      String
+;;   in: "two"
+}|
+
+Unbound-identifier diagnostics (Phase 9) extend in Phase 14 to:
+
+@itemlist[
+ @item{class-name look-ups (@racket[Eqq] → suggests @racket[Eq])}
+ @item{constructor look-ups in patterns (@racket[Nul] → suggests
+       @racket[Nil])}]
 
 @section{Not yet supported}
 

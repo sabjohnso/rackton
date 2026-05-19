@@ -261,6 +261,40 @@
       (subst-extend s old (tvar new))))
   (pred->datum (apply-subst σ p)))
 
+;; -------- type-mismatch error helper -------------------------------
+
+;; Build and raise a structured type-mismatch error.  Output looks like:
+;;
+;;   infer: type mismatch
+;;     expected: Integer
+;;     got:      String
+;;
+;; `blame-stx` should be the most specific syntax object whose source
+;; location is the cause — e.g. the offending argument's stx, not the
+;; whole application form.
+(define (raise-type-mismatch! blame-stx expected got)
+  (raise-syntax-error 'infer
+    (format "type mismatch\n  expected: ~a\n  got:      ~a"
+            (pretty-type expected)
+            (pretty-type got))
+    blame-stx))
+
+;; The trailing slot of every e:* / p:* / ty:* AST struct is the
+;; originating syntax object.  This helper pulls it back out for use
+;; as the blame target on a type-mismatch report.
+(define (expr-stx node)
+  (match node
+    [(e:literal _ s)    s]
+    [(e:var _ s)        s]
+    [(e:lam _ _ s)      s]
+    [(e:app _ _ s)      s]
+    [(e:let _ _ s)      s]
+    [(e:letrec _ _ s)   s]
+    [(e:if _ _ _ s)     s]
+    [(e:ann _ _ s)      s]
+    [(e:match _ _ s)    s]
+    [(e:escape _ _ _ s) s]))
+
 ;; -------- "did you mean?" suggestions ------------------------------
 
 ;; Standard iterative Levenshtein distance.
@@ -287,11 +321,18 @@
 
 ;; Search env for an identifier whose name is within edit distance ≤ 2
 ;; of `wanted`.  Return a parenthesised suggestion string ("" if none).
-(define (suggest-similar wanted env)
+;; `flavour` selects which namespaces to scan: by default we look at
+;; value and data-ctor names; `'class` consults env-classes; `'type`
+;; consults tcons.
+(define (suggest-similar wanted env [flavour 'value])
   (define wanted-str (symbol->string wanted))
   (define candidates
-    (append (hash-keys (env-vars env))
-            (hash-keys (env-data-ctors env))))
+    (case flavour
+      [(value) (append (hash-keys (env-vars env))
+                       (hash-keys (env-data-ctors env)))]
+      [(class) (hash-keys (env-classes env))]
+      [(type)  (hash-keys (env-tcons env))]
+      [else    '()]))
   (define best
     (for/fold ([acc #f]) ([cand (in-list candidates)])
       (define d (edit-distance wanted-str (symbol->string cand)))
@@ -459,36 +500,49 @@
 
     [(e:app head args stx)
      (define-values (s-head t-head) (infer-expr head env))
-     (define-values (s-args ts-args)
-       (let loop ([args args] [s empty-subst] [env (apply-subst/env s-head env)]
-                  [acc '()])
+     ;; Sequentially walk args.  At each step, after inferring the
+     ;; arg's type, unify the current head-type's domain with the
+     ;; arg's type.  On failure, blame the SPECIFIC arg so the error
+     ;; points at the bad token, not the whole call form.
+     (define-values (s-final result-type)
+       (let loop ([args args]
+                  [s s-head]
+                  [head-ty t-head]
+                  [env (apply-subst/env s-head env)])
          (cond
-           [(null? args) (values s (reverse acc))]
+           [(null? args) (values s head-ty)]
            [else
-            (define-values (s′ t) (infer-expr (car args) env))
+            (define this-arg (car args))
+            (define-values (s-arg t-arg) (infer-expr this-arg env))
+            (define s-now (subst-compose s-arg s))
+            (define head-ty-now (apply-subst s-now head-ty))
+            (define β (fresh-tvar))
+            (define expected-arrow (make-arrow t-arg β))
+            (define s-u
+              (with-handlers
+               ([exn:fail:unify?
+                 (lambda (_)
+                   (cond
+                     ;; The head's type is concretely an arrow but the
+                     ;; argument type doesn't match — blame the arg.
+                     [(arrow? head-ty-now)
+                      (raise-type-mismatch!
+                        (expr-stx this-arg)
+                        (apply-subst s-now (arrow-dom head-ty-now))
+                        (apply-subst s-now t-arg))]
+                     ;; Otherwise the head itself isn't applicable —
+                     ;; blame the head.
+                     [else
+                      (raise-type-mismatch!
+                        (expr-stx head)
+                        expected-arrow
+                        head-ty-now)]))])
+               (unify head-ty-now expected-arrow)))
             (loop (cdr args)
-                  (subst-compose s′ s)
-                  (apply-subst/env s′ env)
-                  (cons t acc))])))
-     (define s-pre (subst-compose s-args s-head))
-     (define α (fresh-tvar))
-     (define expected
-       (foldr make-arrow α
-              (for/list ([t (in-list ts-args)])
-                (apply-subst s-args t))))
-     (define actual (apply-subst s-args t-head))
-     (define s-u
-       (with-handlers
-        ([exn:fail:unify?
-          (lambda (e)
-            (raise-syntax-error 'infer
-              (format "type mismatch in application: cannot apply ~a to ~a"
-                      (pretty-type actual)
-                      (for/list ([t ts-args]) (pretty-type (apply-subst s-args t))))
-              stx))])
-        (unify actual expected)))
-     (values (subst-compose s-u s-pre)
-             (apply-subst s-u α))]
+                  (subst-compose s-u s-now)
+                  (apply-subst s-u β)
+                  (apply-subst/env s-arg env))])))
+     (values s-final result-type)]
 
     [(e:let bindings body _)
      ;; Parallel let: each rhs is typed in the env at let-entry (with
@@ -547,10 +601,10 @@
        (with-handlers
         ([exn:fail:unify?
           (lambda (_)
-            (raise-syntax-error 'infer
-              (format "if-condition must be Boolean, got ~a"
-                      (pretty-type (apply-subst s-c t-c)))
-              stx))])
+            (raise-type-mismatch!
+              (expr-stx c)
+              t-bool
+              (apply-subst s-c t-c)))])
         (unify (apply-subst s-c t-c) t-bool)))
      (define s1 (subst-compose s-cb s-c))
      (define-values (s-then t-then)
@@ -563,11 +617,10 @@
        (with-handlers
         ([exn:fail:unify?
           (lambda (_)
-            (raise-syntax-error 'infer
-              (format "if branches disagree: then ~a vs else ~a"
-                      (pretty-type (apply-subst s3 t-then))
-                      (pretty-type (apply-subst s3 t-else)))
-              stx))])
+            (raise-type-mismatch!
+              (expr-stx e)
+              (apply-subst s3 t-then)
+              (apply-subst s3 t-else)))])
         (unify (apply-subst s3 t-then) (apply-subst s3 t-else))))
      (define s-final (subst-compose s-branches s3))
      (values s-final (apply-subst s-final t-then))]
@@ -579,11 +632,10 @@
        (with-handlers
         ([exn:fail:unify?
           (lambda (_)
-            (raise-syntax-error 'infer
-              (format "expression has type ~a but ascription says ~a"
-                      (pretty-type (apply-subst s-e t-e))
-                      (pretty-type declared))
-              stx))])
+            (raise-type-mismatch!
+              (expr-stx expr)
+              declared
+              (apply-subst s-e t-e)))])
         (unify (apply-subst s-e t-e) declared)))
      (values (subst-compose s-u s-e) (apply-subst s-u declared))]
 
@@ -659,7 +711,9 @@
      (cond
        [(not info)
         (raise-syntax-error 'infer
-          (format "unknown data constructor: ~s" name) stx)]
+          (format "unknown data constructor: ~s~a"
+                  name (suggest-similar name env))
+          stx)]
        [(not (= (length args) (data-info-arity info)))
         (raise-syntax-error 'infer
           (format "constructor ~s expects ~a arg(s), pattern has ~a"
@@ -1023,7 +1077,9 @@
   (define cinfo (env-ref-class env class-name))
   (unless cinfo
     (raise-syntax-error 'infer
-      (format "unknown class: ~s" class-name) stx))
+      (format "unknown class: ~s~a"
+              class-name (suggest-similar class-name env 'class))
+      stx))
   (define inst-args (pred-args head-pred))
   (define ctx-preds (for/list ([c (in-list ctx)]) (resolve-constraint c)))
   (define user-impls
