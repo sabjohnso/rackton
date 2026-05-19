@@ -146,34 +146,37 @@
 
 ;; ----- Class dispatch tables -------------------------------------
 
-(define $dispatch:+  (make-hasheq))  (define-class-method +  $dispatch:+)
-(define $dispatch:-  (make-hasheq))  (define-class-method -  $dispatch:-)
-(define $dispatch:*  (make-hasheq))  (define-class-method *  $dispatch:*)
-(define $dispatch:== (make-hasheq))  (define-class-method == $dispatch:==)
-(define $dispatch:/= (make-hasheq))  (define-class-method /= $dispatch:/=)
-(define $dispatch:<  (make-hasheq))  (define-class-method <  $dispatch:<)
-(define $dispatch:>  (make-hasheq))  (define-class-method >  $dispatch:>)
-(define $dispatch:<= (make-hasheq))  (define-class-method <= $dispatch:<=)
-(define $dispatch:>= (make-hasheq))  (define-class-method >= $dispatch:>=)
-(define $dispatch:show (make-hasheq))(define-class-method show $dispatch:show)
+;; Each dispatch table comes with (pos arity) so the wrapper can decide
+;; when enough arguments have been collected.  See define-class-method
+;; in private/dict.rkt — it accepts both as exact-nonnegative-integers.
+(define $dispatch:+  (make-hasheq))  (define-class-method +  $dispatch:+  0 2)
+(define $dispatch:-  (make-hasheq))  (define-class-method -  $dispatch:-  0 2)
+(define $dispatch:*  (make-hasheq))  (define-class-method *  $dispatch:*  0 2)
+(define $dispatch:== (make-hasheq))  (define-class-method == $dispatch:== 0 2)
+(define $dispatch:/= (make-hasheq))  (define-class-method /= $dispatch:/= 0 2)
+(define $dispatch:<  (make-hasheq))  (define-class-method <  $dispatch:<  0 2)
+(define $dispatch:>  (make-hasheq))  (define-class-method >  $dispatch:>  0 2)
+(define $dispatch:<= (make-hasheq))  (define-class-method <= $dispatch:<= 0 2)
+(define $dispatch:>= (make-hasheq))  (define-class-method >= $dispatch:>= 0 2)
+(define $dispatch:show (make-hasheq))(define-class-method show $dispatch:show 0 1)
 ;; Functor's fmap dispatches on the SECOND argument (the container).
-(define $dispatch:fmap (make-hasheq))(define-class-method fmap $dispatch:fmap 1)
+(define $dispatch:fmap (make-hasheq))(define-class-method fmap $dispatch:fmap 1 2)
 ;; Applicative's <*> dispatches on the FIRST argument (the f (a->b)).
 ;; liftA2 is provided via the class's default method body.
-(define $dispatch:<*>    (make-hasheq))(define-class-method <*>    $dispatch:<*>    0)
-(define $dispatch:liftA2 (make-hasheq))(define-class-method liftA2 $dispatch:liftA2 1)
+(define $dispatch:<*>    (make-hasheq))(define-class-method <*>    $dispatch:<*>    0 2)
+(define $dispatch:liftA2 (make-hasheq))(define-class-method liftA2 $dispatch:liftA2 1 3)
 ;; Monad's bind dispatches on the FIRST argument (the wrapped value).
-(define $dispatch:>>=  (make-hasheq))(define-class-method >>=  $dispatch:>>=  0)
+(define $dispatch:>>=  (make-hasheq))(define-class-method >>=  $dispatch:>>=  0 2)
 ;; Bifunctor's bimap/first/second dispatch on the value (the `p a b`).
 ;; bimap takes 3 args, value is arg 2.  first/second take 2 args, value is arg 1.
-(define $dispatch:bimap  (make-hasheq))(define-class-method bimap  $dispatch:bimap  2)
-(define $dispatch:first  (make-hasheq))(define-class-method first  $dispatch:first  1)
-(define $dispatch:second (make-hasheq))(define-class-method second $dispatch:second 1)
+(define $dispatch:bimap  (make-hasheq))(define-class-method bimap  $dispatch:bimap  2 3)
+(define $dispatch:first  (make-hasheq))(define-class-method first  $dispatch:first  1 2)
+(define $dispatch:second (make-hasheq))(define-class-method second $dispatch:second 1 2)
 ;; Foldable's foldr dispatches on the container (arg 2). length/to-list
 ;; dispatch on the container as arg 0.
-(define $dispatch:foldr   (make-hasheq))(define-class-method foldr   $dispatch:foldr   2)
-(define $dispatch:length  (make-hasheq))(define-class-method length  $dispatch:length  0)
-(define $dispatch:to-list (make-hasheq))(define-class-method to-list $dispatch:to-list 0)
+(define $dispatch:foldr   (make-hasheq))(define-class-method foldr   $dispatch:foldr   2 3)
+(define $dispatch:length  (make-hasheq))(define-class-method length  $dispatch:length  0 1)
+(define $dispatch:to-list (make-hasheq))(define-class-method to-list $dispatch:to-list 0 1)
 
 ;; ----- Num Integer ------------------------------------------------
 
@@ -223,15 +226,15 @@
 ;; ----- Combinators ----------------------------------------------
 
 (define (id x) x)
-(define (compose f g) (lambda (x) (f (g x))))
+(define/curried (compose f g) (lambda (x) (f (g x))))
 (define (flip f) (lambda (x y) (f y x)))
 (define (const x) (lambda (_y) x))
 
 ;; ----- Stdlib ----------------------------------------------------
 
 (define (not b) (if b #f #t))
-(define (and a b) (if a b #f))
-(define (or  a b) (if a #t b))
+(define/curried (and a b) (if a b #f))
+(define/curried (or  a b) (if a #t b))
 
 (define (filter p xs)
   (match xs
@@ -241,8 +244,8 @@
 ;; ----- Strings -------------------------------------------------
 
 (define (string-length s) (rkt:string-length s))
-(define (string-append a b) (rkt:string-append a b))
-(define (substring s start end) (rkt:substring s start end))
+(define/curried (string-append a b) (rkt:string-append a b))
+(define/curried (substring s start end) (rkt:substring s start end))
 
 ;; A variadic concatenation used by derived Show instances.  The
 ;; Rackton-typed `string-append` is binary; this helper sidesteps the
@@ -252,11 +255,11 @@
 
 ;; ----- Numeric helpers -----------------------------------------
 
-(define (mod a b) (rkt:modulo a b))
-(define (div a b) (rkt:quotient a b))
+(define/curried (mod a b) (rkt:modulo a b))
+(define/curried (div a b) (rkt:quotient a b))
 (define (abs n) (rkt:abs n))
-(define (min a b) (rkt:min a b))
-(define (max a b) (rkt:max a b))
+(define/curried (min a b) (rkt:min a b))
+(define/curried (max a b) (rkt:max a b))
 (define (integer->string n) (rkt:number->string n))
 (define (string->integer s)
   (define n (rkt:string->number s))
@@ -303,13 +306,13 @@
 
 (define (make-ref v) ($io (lambda () (box v))))
 (define (read-ref r) ($io (lambda () (unbox r))))
-(define (write-ref r v) ($io (lambda () (set-box! r v) MkUnit)))
+(define/curried (write-ref r v) ($io (lambda () (set-box! r v) MkUnit)))
 
 ;; ----- File I/O ------------------------------------------------
 
 (define (read-file path)
   ($io (lambda () (file->string path))))
-(define (write-file path contents)
+(define/curried (write-file path contents)
   ($io (lambda ()
          (with-output-to-file path #:exists 'replace
            (lambda () (display contents)))
@@ -329,12 +332,12 @@
       [(Nil) acc]
       [(Cons h t) (loop t (Cons h acc))])))
 
-(define (append xs ys)
+(define/curried (append xs ys)
   (match xs
     [(Nil) ys]
     [(Cons h t) (Cons h (append t ys))]))
 
-(define (zip as bs)
+(define/curried (zip as bs)
   (match as
     [(Nil) Nil]
     [(Cons a at)
@@ -342,7 +345,7 @@
        [(Nil) Nil]
        [(Cons b bt) (Cons (MkPair a b) (zip at bt))])]))
 
-(define (take n xs)
+(define/curried (take n xs)
   (cond
     [(rkt:<= n 0) Nil]
     [else
@@ -350,7 +353,7 @@
        [(Nil) Nil]
        [(Cons h t) (Cons h (take (rkt:- n 1) t))])]))
 
-(define (drop n xs)
+(define/curried (drop n xs)
   (cond
     [(rkt:<= n 0) xs]
     [else
@@ -358,7 +361,7 @@
        [(Nil) Nil]
        [(Cons _ t) (drop (rkt:- n 1) t)])]))
 
-(define (find p xs)
+(define/curried (find p xs)
   (match xs
     [(Nil) None]
     [(Cons h t) (if (p h) (Some h) (find p t))]))
@@ -411,11 +414,11 @@
 (define empty-map ($map (hash)))
 (define empty-set ($set (hash)))
 
-(define (map-insert k v m) ($map (hash-set ($map-h m) k v)))
-(define (map-lookup k m)
+(define/curried (map-insert k v m) ($map (hash-set ($map-h m) k v)))
+(define/curried (map-lookup k m)
   (cond [(hash-has-key? ($map-h m) k) (Some (hash-ref ($map-h m) k))]
         [else None]))
-(define (map-delete k m) ($map (hash-remove ($map-h m) k)))
+(define/curried (map-delete k m) ($map (hash-remove ($map-h m) k)))
 
 ;; Build a rackton List from a Racket sequence.
 (define (rkt-seq->list xs)
@@ -427,24 +430,24 @@
 (define (map-values m) (rkt-seq->list (hash-values ($map-h m))))
 (define (map-size   m) (hash-count ($map-h m)))
 
-(define (map-fold f z m)
+(define/curried (map-fold f z m)
   (for/fold ([acc z]) ([(k v) (in-hash ($map-h m))])
     (((f k) v) acc)))
 
 ;; ----- Immutable Set ------------------------------------------
 
-(define (set-insert x s) ($set (hash-set ($set-h s) x #t)))
-(define (set-member? x s) (hash-has-key? ($set-h s) x))
-(define (set-delete x s) ($set (hash-remove ($set-h s) x)))
+(define/curried (set-insert x s) ($set (hash-set ($set-h s) x #t)))
+(define/curried (set-member? x s) (hash-has-key? ($set-h s) x))
+(define/curried (set-delete x s) ($set (hash-remove ($set-h s) x)))
 (define (set-size s) (hash-count ($set-h s)))
 (define (set-to-list s) (rkt-seq->list (hash-keys ($set-h s))))
 
 ;; ----- List helpers -------------------------------------------
 
-(define (concat-map f xs)
+(define/curried (concat-map f xs)
   (foldr (lambda (x acc) (append (f x) acc)) Nil xs))
 
-(define (group-by key xs)
+(define/curried (group-by key xs)
   (foldr (lambda (x m)
            (define k (key x))
            (match (map-lookup k m)
@@ -457,7 +460,7 @@
 
 ;; Fractional method dispatcher
 (define $dispatch:float-div (make-hasheq))
-(define-class-method float-div $dispatch:float-div 0)
+(define-class-method float-div $dispatch:float-div 0 2)
 (register-instance-method! $dispatch:float-div 'Float
                            (lambda (x y) (rkt:/ x y)))
 
@@ -478,7 +481,7 @@
 
 ;; ----- System surface ----------------------------------------
 
-(define (random-integer lo hi)
+(define/curried (random-integer lo hi)
   ($io (lambda () (rkt:random lo hi))))
 
 (define random-float

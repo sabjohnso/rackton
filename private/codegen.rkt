@@ -45,18 +45,61 @@
          "surface.rkt"
          "match.rkt")
 
+;; Build a (possibly curried) lambda over `param-stxs` whose body is the
+;; already-compiled `body-stx`.  For arity ≤ 1 we just emit
+;; `(lambda (p ...) body)`.  For higher arity we emit a `case-lambda`
+;; with N clauses: the full-arity clause runs the body directly, and
+;; each shorter prefix returns a recursively-curried lambda over the
+;; remaining parameters.  All clauses lexically capture the same body
+;; syntax — runtime cost is one closure allocation per partial step.
+(define (build-curried-lambda param-stxs body-stx ctx-stx)
+  (cond
+    [(<= (length param-stxs) 1)
+     (with-syntax ([(p ...) param-stxs]
+                   [bdy body-stx])
+       (syntax/loc ctx-stx (lambda (p ...) bdy)))]
+    [else
+     (define n (length param-stxs))
+     (define clauses
+       (for/list ([k (in-range 1 (add1 n))])
+         (define prefix (take-prefix param-stxs k))
+         (define rest   (drop-prefix param-stxs k))
+         (with-syntax ([(p ...) prefix])
+           (cond
+             [(null? rest)
+              (with-syntax ([bdy body-stx])
+                #'[(p ...) bdy])]
+             [else
+              (with-syntax ([inner (build-curried-lambda rest body-stx ctx-stx)])
+                #'[(p ...) inner])]))))
+     (with-syntax ([(clause ...) clauses])
+       (syntax/loc ctx-stx (case-lambda clause ...)))]))
+
+(define (take-prefix xs n)
+  (cond [(or (zero? n) (null? xs)) '()]
+        [else (cons (car xs) (take-prefix (cdr xs) (sub1 n)))]))
+
+(define (drop-prefix xs n)
+  (cond [(or (zero? n) (null? xs)) xs]
+        [else (drop-prefix (cdr xs) (sub1 n))]))
+
 (define (compile-expr e)
   (match e
     [(e:literal v stx)   (datum->syntax stx v stx)]
     [(e:var name stx)    (datum->syntax stx name stx)]
 
     [(e:lam params body stx)
+     ;; A multi-parameter lambda compiles to a `case-lambda` whose
+     ;; clauses cover every prefix arity from 1 to N.  This lets
+     ;; consumers partially apply the function without making the
+     ;; common full-arity call any slower (the first clause matches
+     ;; and applies directly).  Zero- and single-parameter lambdas
+     ;; pass through as plain `(lambda ...)`.
      (define param-stxs
        (for/list ([n (in-list params)])
          (datum->syntax stx n stx)))
-     (with-syntax ([(p ...) param-stxs]
-                   [bdy (compile-expr body)])
-       (syntax/loc stx (lambda (p ...) bdy)))]
+     (define bdy-stx (compile-expr body))
+     (build-curried-lambda param-stxs bdy-stx stx)]
 
     [(e:app head args stx)
      (with-syntax ([h (compile-expr head)]
@@ -147,15 +190,28 @@
   (define defs
     (for/list ([n (in-list method-names)])
       (define pos (hash-ref (class-info-dispatchpos cinfo) n 0))
-      (with-syntax ([meth   (datum->syntax stx n stx)]
-                    [table  (datum->syntax stx
-                                           (method-dispatch-symbol n) stx)]
-                    [pos-stx (datum->syntax stx pos stx)])
+      (define ar  (method-arity cinfo n))
+      (with-syntax ([meth     (datum->syntax stx n stx)]
+                    [table    (datum->syntax stx
+                                             (method-dispatch-symbol n) stx)]
+                    [pos-stx  (datum->syntax stx pos stx)]
+                    [ar-stx   (datum->syntax stx ar  stx)])
         #'(begin
             (define table (make-hasheq))
-            (define-class-method meth table pos-stx)))))
+            (define-class-method meth table pos-stx ar-stx)))))
   (with-syntax ([(def ...) defs])
     (syntax/loc stx (begin def ...))))
+
+;; Count the number of arrows in the method's body type — i.e. its
+;; full arity — so the curry-dispatch wrapper knows when to stop
+;; collecting and fire.
+(define (method-arity cinfo method-name)
+  (define sch (hash-ref (class-info-methods cinfo) method-name))
+  (define body (qual-body-type (scheme-body sch)))
+  (let loop ([t body] [n 0])
+    (cond
+      [(arrow? t) (loop (arrow-cod t) (add1 n))]
+      [else n])))
 
 ;; An instance compiles to a sequence of `register-instance-method!`
 ;; calls — one per (method × tag) pair.

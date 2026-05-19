@@ -112,13 +112,7 @@
     (define-class ((Functor f) => (Applicative (f :: (-> * *))))
       (: <*>   (-> (f (-> a b)) (-> (f a) (f b))))
       (: liftA2 (-> (-> a (-> b c)) (-> (f a) (-> (f b) (f c)))))
-      ;; The default uses an explicit one-argument-at-a-time wrapper
-      ;; for `g` because Rackton's multi-argument lambdas compile to
-      ;; multi-argument Racket functions, not curried ones — partial
-      ;; application of `g` at the host level would error.  The inner
-      ;; eta wraps `g` so each application step stays single-argument.
-      (define (liftA2 g x y)
-        (<*> (fmap (lambda (xa) (lambda (yb) (g xa yb))) x) y)))
+      (define (liftA2 g x y) (<*> (fmap g x) y)))
 
     (define-class ((Applicative m) => (Monad (m :: (-> * *))))
       (: >>= (-> (m a) (-> (-> a (m b)) (m b)))))

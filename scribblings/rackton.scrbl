@@ -25,9 +25,11 @@ algebraic data types, and pattern matching — inside Racket, either as an
 @hash-lang[] @racketmodfont{rackton} program.
 
 This documentation describes the @bold{Phase 1 + 2 + 3 + 4 + 5 + 6 + 7
-+ 8 + 9 + 10 + 11 + 12 + 13 + 14 + 15 + 16} subset.  Phase 16 inserted
-@racket[Applicative] between @racket[Functor] and @racket[Monad] and
-added @racket[Bifunctor] and @racket[Foldable].  Phase 15 added a
++ 8 + 9 + 10 + 11 + 12 + 13 + 14 + 15 + 16 + 17} subset.  Phase 17
+turned multi-argument functions into auto-currying ones, so partial
+application Just Works.  Phase 16 inserted @racket[Applicative]
+between @racket[Functor] and @racket[Monad] and added
+@racket[Bifunctor] and @racket[Foldable].  Phase 15 added a
 system surface: @racket[random-integer], @racket[random-float],
 @racket[current-time-seconds], @racket[getenv], @racket[argv],
 @racket[list-directory], @racket[make-directory], and
@@ -888,6 +890,36 @@ Pending a type-directed monomorphization pass at call sites, callers
 use the per-type names (@racket[pure-io] and friends).
 @racket[Traversable] is deferred for the same reason — its instance
 bodies need a polymorphic @racket[pure].
+
+@section{Partial application (Phase 17)}
+
+Functions of more than one parameter compile to a
+@racket[case-lambda] that accepts either the full arity at once
+(fast path, no closure created) or any shorter prefix — in which
+case it returns a new function that collects the remaining
+arguments.  This works uniformly for user-defined functions,
+class methods, and the built-in prelude.
+
+@codeblock|{
+(: inc (-> Integer Integer))
+(define inc (+ 1))               ;; partial application of (+)
+
+(: greet (-> String String))
+(define greet (string-append "hello, "))
+
+(: lifted-inc (-> (Maybe Integer) (Maybe Integer)))
+(define lifted-inc (fmap (+ 1))) ;; partial application of a class
+                                 ;; method routes through dispatch
+                                 ;; on the eventual container arg
+}|
+
+The implementation lives in @racket[build-curried-lambda] in
+@racket[private/codegen.rkt] (for surface @racket[e:lam] forms) and
+@racket[define/curried] in @racket[private/dict.rkt] (for the
+hand-written prelude functions in @racket[private/prelude-runtime.rkt]).
+@racket[define-class-method] now takes both a dispatch position and
+the method's total arity so the wrapper knows when to stop collecting
+arguments and fire the dispatch.
 
 @section{Not yet supported}
 
