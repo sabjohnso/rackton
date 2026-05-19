@@ -33,7 +33,10 @@
                     modulo quotient abs min max
                     number->string string->number
                     read-line print println
-                    file-exists? sqrt compose))
+                    file-exists? sqrt compose
+                    random getenv path->string
+                    delete-file make-directory directory-list
+                    current-seconds))
 
 (provide
  ;; the macro that does the real work

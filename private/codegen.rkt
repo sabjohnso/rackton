@@ -33,7 +33,9 @@
                                   read-line print println
                                   reverse append sort
                                   file-exists?
-                                  sqrt)
+                                  sqrt
+                                  random getenv path->string
+                                  delete-file make-directory)
                        (except-in racket/match ==)
                        "adt.rkt"
                        "dict.rkt"

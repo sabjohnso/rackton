@@ -36,7 +36,15 @@
                     [sqrt       rkt:sqrt]
                     [exact->inexact rkt:exact->inexact]
                     [inexact->exact rkt:inexact->exact]
-                    [truncate   rkt:truncate])
+                    [truncate   rkt:truncate]
+                    [random     rkt:random]
+                    [current-seconds rkt:current-seconds]
+                    [getenv     rkt:getenv]
+                    [current-command-line-arguments rkt:argv]
+                    [path->string rkt:path->string]
+                    [delete-file rkt:delete-file]
+                    [make-directory rkt:make-directory]
+                    [directory-list rkt:directory-list])
          racket/format
          racket/match
          racket/file
@@ -104,7 +112,11 @@
  float-div sqrt integer->float float->integer
 
  ;; Error handling
- try raise-io)
+ try raise-io
+
+ ;; System surface
+ random-integer random-float current-time-seconds
+ list-directory getenv argv delete-file make-directory)
 
 ;; ----- ADTs -------------------------------------------------------
 
@@ -434,6 +446,43 @@
 
 (define (raise-io msg)
   ($io (lambda () (error 'rackton-raise-io msg))))
+
+;; ----- System surface ----------------------------------------
+
+(define (random-integer lo hi)
+  ($io (lambda () (rkt:random lo hi))))
+
+(define random-float
+  ($io (lambda () (rkt:exact->inexact (rkt:random)))))
+
+(define current-time-seconds
+  ($io (lambda () (rkt:current-seconds))))
+
+(define (rkt-list->rackton lst)
+  (let loop ([lst (rkt:reverse lst)] [acc Nil])
+    (cond
+      [(null? lst) acc]
+      [else (loop (cdr lst) (Cons (car lst) acc))])))
+
+(define (list-directory path)
+  ($io (lambda ()
+         (rkt-list->rackton
+          (map rkt:path->string (rkt:directory-list path))))))
+
+(define (getenv name)
+  ($io (lambda ()
+         (define v (rkt:getenv name))
+         (if v (Some v) None))))
+
+(define argv
+  ($io (lambda ()
+         (rkt-list->rackton (vector->list (rkt:argv))))))
+
+(define (delete-file path)
+  ($io (lambda () (rkt:delete-file path) MkUnit)))
+
+(define (make-directory path)
+  ($io (lambda () (rkt:make-directory path) MkUnit)))
 
 ;; ----- Functor / Monad instance impls ------------------------
 

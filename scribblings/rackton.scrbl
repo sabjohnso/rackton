@@ -6,7 +6,12 @@
                                substring string-length string-append
                                abs min max read-line println print
                                reverse append sort file-exists?
-                               sqrt)]]
+                               sqrt
+                               random getenv path->string
+                               delete-file make-directory directory-list
+                               current-seconds
+                               modulo quotient
+                               number->string string->number)]]
 
 @title{Rackton}
 @author{sbj}
@@ -20,12 +25,12 @@ algebraic data types, and pattern matching — inside Racket, either as an
 @hash-lang[] @racketmodfont{rackton} program.
 
 This documentation describes the @bold{Phase 1 + 2 + 3 + 4 + 5 + 6 + 7
-+ 8 + 9 + 10 + 11 + 12 + 13 + 14} subset.  Phase 14 was a
-diagnostics-quality phase: type-mismatch errors are now rendered as a
-structured @racket[expected:] / @racket[got:] pair pointed at the
-specific offending token, applications blame the bad argument rather
-than the whole call form, and "did you mean?" suggestions now extend
-to class and data-constructor names.
++ 8 + 9 + 10 + 11 + 12 + 13 + 14 + 15} subset.  Phase 15 added a
+system surface: @racket[random-integer], @racket[random-float],
+@racket[current-time-seconds], @racket[getenv], @racket[argv],
+@racket[list-directory], @racket[make-directory], and
+@racket[delete-file] — all in @racket[IO].  Rackton can now write
+CLI tools that interact with their environment.
 
 @section{Two surfaces, one elaborator}
 
@@ -812,8 +817,31 @@ Unbound-identifier diagnostics (Phase 9) extend in Phase 14 to:
  @item{constructor look-ups in patterns (@racket[Nul] → suggests
        @racket[Nil])}]
 
+@section{System surface (Phase 15)}
+
+Everything is IO-typed so randomness, the wall clock, and the
+filesystem don't leak into pure code:
+
+@itemlist[
+ @item{@racket[random-integer] — @racket[(-> Integer (-> Integer (IO Integer)))] — uniform on [lo, hi).}
+ @item{@racket[random-float]   — @racket[(IO Float)] — uniform on [0, 1).}
+ @item{@racket[current-time-seconds] — @racket[(IO Integer)] — Unix epoch seconds.}
+ @item{@racket[getenv] — @racket[(-> String (IO (Maybe String)))].}
+ @item{@racket[argv]   — @racket[(IO (List String))] — command-line args (program name not included).}
+ @item{@racket[list-directory] — @racket[(-> String (IO (List String)))].}
+ @item{@racket[make-directory] — @racket[(-> String (IO Unit))].}
+ @item{@racket[delete-file]    — @racket[(-> String (IO Unit))].}]
+
+@codeblock|{
+(define greeting
+  (do [name <- (env-or-default "USER" "world")]
+    (println (string-append "hello, " name))))
+
+(define _main (run-io greeting))
+}|
+
 @section{Not yet supported}
 
-Overlapping instances, kind polymorphism (kind variables), and a
-fuller numeric tower (rationals, complex, exact decimals).  These
-are tracked under later phases.
+Overlapping instances, kind polymorphism (kind variables), threads /
+channels, subprocesses, and a fuller numeric tower (rationals,
+complex, exact decimals).  These are tracked under later phases.

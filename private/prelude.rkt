@@ -441,7 +441,33 @@
     (define (try io) (racket (IO (Result String a)) (io) #f))
 
     (: raise-io (-> String (IO a)))
-    (define (raise-io msg) (racket (IO a) (msg) #f))))
+    (define (raise-io msg) (racket (IO a) (msg) #f))
+
+    ;; --- System surface ------------------------------------
+
+    (: random-integer (-> Integer (-> Integer (IO Integer))))
+    (define (random-integer lo hi) (racket (IO Integer) (lo hi) #f))
+
+    (: random-float (IO Float))
+    (define random-float (racket (IO Float) () #f))
+
+    (: current-time-seconds (IO Integer))
+    (define current-time-seconds (racket (IO Integer) () #f))
+
+    (: list-directory (-> String (IO (List String))))
+    (define (list-directory path) (racket (IO (List String)) (path) #f))
+
+    (: getenv (-> String (IO (Maybe String))))
+    (define (getenv name) (racket (IO (Maybe String)) (name) #f))
+
+    (: argv (IO (List String)))
+    (define argv (racket (IO (List String)) () #f))
+
+    (: delete-file (-> String (IO Unit)))
+    (define (delete-file path) (racket (IO Unit) (path) #f))
+
+    (: make-directory (-> String (IO Unit)))
+    (define (make-directory path) (racket (IO Unit) (path) #f))))
 
 (define prelude-env
   (let ([forms (for/list ([f (in-list prelude-source-forms)])
