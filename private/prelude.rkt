@@ -95,12 +95,32 @@
     (: const (-> a (-> b a)))
     (define (const x) (lambda (_y) x))
 
-    ;; --- Functor / Monad (higher-kinded) ----------------------
+    ;; --- Functor / Applicative / Monad (higher-kinded) --------
+    ;;
+    ;; The hierarchy is Functor → Applicative → Monad.  `pure` would
+    ;; normally live on Applicative, but the current single-dispatch
+    ;; runtime can only resolve a class method when its type has a
+    ;; positional argument mentioning a class parameter (see
+    ;; find-dispatch-pos in private/infer.rkt).  `pure :: a -> f a`
+    ;; carries `f` only in its result, so it is provided as separate
+    ;; per-monad names (`pure-io`, etc.) until a future phase adds
+    ;; type-directed monomorphization at call sites.
 
     (define-class (Functor (f :: (-> * *)))
       (: fmap (-> (-> a b) (-> (f a) (f b)))))
 
-    (define-class ((Functor m) => (Monad (m :: (-> * *))))
+    (define-class ((Functor f) => (Applicative (f :: (-> * *))))
+      (: <*>   (-> (f (-> a b)) (-> (f a) (f b))))
+      (: liftA2 (-> (-> a (-> b c)) (-> (f a) (-> (f b) (f c)))))
+      ;; The default uses an explicit one-argument-at-a-time wrapper
+      ;; for `g` because Rackton's multi-argument lambdas compile to
+      ;; multi-argument Racket functions, not curried ones — partial
+      ;; application of `g` at the host level would error.  The inner
+      ;; eta wraps `g` so each application step stays single-argument.
+      (define (liftA2 g x y)
+        (<*> (fmap (lambda (xa) (lambda (yb) (g xa yb))) x) y)))
+
+    (define-class ((Applicative m) => (Monad (m :: (-> * *))))
       (: >>= (-> (m a) (-> (-> a (m b)) (m b)))))
 
     ;; Maybe
@@ -109,6 +129,12 @@
         (match m
           [(None)   None]
           [(Some x) (Some (f x))])))
+
+    (define-instance (Applicative Maybe)
+      (define (<*> mf mx)
+        (match mf
+          [(None)   None]
+          [(Some f) (fmap f mx)])))
 
     (define-instance (Monad Maybe)
       (define (>>= m f)
@@ -123,6 +149,20 @@
           [(Nil)        Nil]
           [(Cons h t)   (Cons (f h) (fmap f t))])))
 
+    (define-instance (Applicative List)
+      ;; cartesian-product semantics — for each function in `fs` apply
+      ;; it to every `x` in `xs`, concatenating.  We can't yet call
+      ;; the top-level `append` (it's defined later in the prelude), so
+      ;; we inline a local concat helper.
+      (define (<*> fs xs)
+        (letrec ([cat (lambda (a b)
+                        (match a
+                          [(Nil)      b]
+                          [(Cons h t) (Cons h (cat t b))]))])
+          (match fs
+            [(Nil)         Nil]
+            [(Cons f rest) (cat (fmap f xs) (<*> rest xs))]))))
+
     ;; Result e (the error type is fixed; we map over the success type)
     (define-instance (Functor (Result e))
       (define (fmap f r)
@@ -130,11 +170,43 @@
           [(Err x) (Err x)]
           [(Ok  v) (Ok (f v))])))
 
+    (define-instance (Applicative (Result e))
+      (define (<*> rf rx)
+        (match rf
+          [(Err e) (Err e)]
+          [(Ok  f) (fmap f rx)])))
+
     (define-instance (Monad (Result e))
       (define (>>= r f)
         (match r
           [(Err x) (Err x)]
           [(Ok  v) (f v)])))
+
+    ;; --- Bifunctor ---------------------------------------------
+    ;;
+    ;; Two-parameter higher-kinded class for shapes with TWO "slots"
+    ;; that can be mapped over independently — `Pair a b` and
+    ;; `Result e a` are the canonical instances.  `bimap` dispatches
+    ;; on the third positional argument (the `p a b` value); `first`
+    ;; and `second` are derived defaults that fix one side via `id`.
+
+    (define-class (Bifunctor (p :: (-> * (-> * *))))
+      (: bimap  (-> (-> a c) (-> (-> b d) (-> (p a b) (p c d)))))
+      (: first  (-> (-> a c) (-> (p a b) (p c b))))
+      (: second (-> (-> b d) (-> (p a b) (p a d))))
+      (define (first  f x) (bimap f  id x))
+      (define (second g x) (bimap id g  x)))
+
+    (define-instance (Bifunctor Pair)
+      (define (bimap f g p)
+        (match p
+          [(MkPair x y) (MkPair (f x) (g y))])))
+
+    (define-instance (Bifunctor Result)
+      (define (bimap f g r)
+        (match r
+          [(Err e) (Err (f e))]
+          [(Ok  v) (Ok  (g v))])))
 
     ;; --- Small stdlib ------------------------------------------
 
@@ -147,17 +219,34 @@
     (: or (-> Boolean (-> Boolean Boolean)))
     (define (or a b) (if a #t b))
 
-    (: length (-> (List a) Integer))
-    (define (length xs)
-      (match xs
-        [(Nil)         0]
-        [(Cons _ rest) (+ 1 (length rest))]))
+    ;; --- Foldable ---------------------------------------------
+    ;;
+    ;; Generalizes the right-fold over any container type with one
+    ;; type parameter.  Replaces the previous List-only `foldr` and
+    ;; `length` with class methods; runtime single-dispatch on the
+    ;; container value routes to the right instance.
 
-    (: foldr (-> (-> a (-> b b)) (-> b (-> (List a) b))))
-    (define (foldr f z xs)
-      (match xs
-        [(Nil)        z]
-        [(Cons h t)   (f h (foldr f z t))]))
+    (define-class (Foldable (t :: (-> * *)))
+      (: foldr   (-> (-> a (-> b b)) (-> b (-> (t a) b))))
+      (: length  (-> (t a) Integer))
+      (: to-list (-> (t a) (List a)))
+      (define (length  xs) (foldr (lambda (_x n)   (+ n 1))      0   xs))
+      (define (to-list xs) (foldr (lambda (x acc)  (Cons x acc))  Nil xs)))
+
+    (define-instance (Foldable List)
+      (define (foldr f z xs)
+        (match xs
+          [(Nil)         z]
+          [(Cons h rest) (f h (foldr f z rest))])))
+
+    (define-instance (Foldable Maybe)
+      (define (foldr f z m)
+        (match m
+          [(None)   z]
+          [(Some x) (f x z)])))
+
+    (: sum ((Foldable t) => (-> (t Integer) Integer)))
+    (define (sum xs) (foldr (lambda (a b) (+ a b)) 0 xs))
 
     (: filter (-> (-> a Boolean) (-> (List a) (List a))))
     (define (filter p xs)
@@ -207,6 +296,9 @@
 
     (define-instance (Functor IO)
       (define (fmap f io) (racket (IO b) (f io) #f)))
+
+    (define-instance (Applicative IO)
+      (define (<*> iof iox) (racket (IO b) (iof iox) #f)))
 
     (define-instance (Monad IO)
       (define (>>= io f) (racket (IO b) (io f) #f)))

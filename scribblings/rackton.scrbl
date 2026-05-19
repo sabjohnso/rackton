@@ -25,7 +25,9 @@ algebraic data types, and pattern matching — inside Racket, either as an
 @hash-lang[] @racketmodfont{rackton} program.
 
 This documentation describes the @bold{Phase 1 + 2 + 3 + 4 + 5 + 6 + 7
-+ 8 + 9 + 10 + 11 + 12 + 13 + 14 + 15} subset.  Phase 15 added a
++ 8 + 9 + 10 + 11 + 12 + 13 + 14 + 15 + 16} subset.  Phase 16 inserted
+@racket[Applicative] between @racket[Functor] and @racket[Monad] and
+added @racket[Bifunctor] and @racket[Foldable].  Phase 15 added a
 system surface: @racket[random-integer], @racket[random-float],
 @racket[current-time-seconds], @racket[getenv], @racket[argv],
 @racket[list-directory], @racket[make-directory], and
@@ -840,8 +842,56 @@ filesystem don't leak into pure code:
 (define _main (run-io greeting))
 }|
 
+@section{Applicative, Bifunctor, Foldable (Phase 16)}
+
+The higher-kinded class hierarchy gains @racket[Applicative] between
+@racket[Functor] and @racket[Monad].  @racket[Applicative] provides
+@racket[<*>] and a default @racket[liftA2]; instances ship for
+@racket[Maybe], @racket[(Result e)], @racket[IO], and @racket[List]
+(cartesian product).
+
+@codeblock|{
+(define maybe-sum (liftA2 (lambda (x y) (+ x y)) (Some 3) (Some 4)))
+;; maybe-sum : (Maybe Integer) — evaluates to (Some 7)
+}|
+
+@racket[Bifunctor] generalises mapping over a type with two slots —
+instances for @racket[Pair] and @racket[Result] make it natural to
+transform both sides of a tuple or both arms of a fallible
+computation.  @racket[bimap] is the workhorse; @racket[first] and
+@racket[second] are derived defaults.
+
+@codeblock|{
+(define labelled (bimap (lambda (e) (string-length e))
+                        (lambda (v) (* v 10))
+                        (Err "boom")))
+;; labelled : (Result Integer Integer) — evaluates to (Err 4)
+}|
+
+@racket[Foldable] generalises the right-fold over any container with
+one type parameter.  The class supplies @racket[foldr] (the primitive)
+plus @racket[length] and @racket[to-list] as derived defaults.
+Instances ship for @racket[List] and @racket[Maybe]; @racket[sum] is a
+top-level convenience for @racket[(Foldable t) => (-> (t Integer) Integer)].
+
+@codeblock|{
+(define total (sum (Cons 1 (Cons 2 (Cons 3 Nil)))))
+;; total : Integer — evaluates to 6
+}|
+
+The @racket[pure] of @racket[Applicative] is intentionally @bold{not}
+a class method: under the current single-dispatch runtime, the
+elaborator can only resolve a class method when its type has a
+positional argument mentioning a class parameter, and
+@racket[pure :: a -> f a] carries @racket[f] only in its result.
+Pending a type-directed monomorphization pass at call sites, callers
+use the per-type names (@racket[pure-io] and friends).
+@racket[Traversable] is deferred for the same reason — its instance
+bodies need a polymorphic @racket[pure].
+
 @section{Not yet supported}
 
 Overlapping instances, kind polymorphism (kind variables), threads /
-channels, subprocesses, and a fuller numeric tower (rationals,
-complex, exact decimals).  These are tracked under later phases.
+channels, subprocesses, a fuller numeric tower (rationals, complex,
+exact decimals), and @racket[Traversable]/return-typed dispatch.
+These are tracked under later phases.

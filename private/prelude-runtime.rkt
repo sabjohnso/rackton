@@ -61,7 +61,10 @@
  <  >  <=  >=
  show
  fmap
+ <*> liftA2
  >>=
+ bimap first second
+ foldr length to-list sum
 
  ;; Dispatch tables — exposed so user modules that declare new
  ;; instances (including derived ones) can register against them.
@@ -70,14 +73,22 @@
  $dispatch:<  $dispatch:>  $dispatch:<= $dispatch:>=
  $dispatch:show
  $dispatch:fmap
+ $dispatch:<*>
+ $dispatch:liftA2
  $dispatch:>>=
+ $dispatch:bimap
+ $dispatch:first
+ $dispatch:second
+ $dispatch:foldr
+ $dispatch:length
+ $dispatch:to-list
  $dispatch:float-div
 
  ;; Combinators
  id compose flip const
 
  ;; Stdlib
- not and or length foldr filter
+ not and or filter
 
  ;; Strings
  string-length string-append substring
@@ -147,8 +158,22 @@
 (define $dispatch:show (make-hasheq))(define-class-method show $dispatch:show)
 ;; Functor's fmap dispatches on the SECOND argument (the container).
 (define $dispatch:fmap (make-hasheq))(define-class-method fmap $dispatch:fmap 1)
+;; Applicative's <*> dispatches on the FIRST argument (the f (a->b)).
+;; liftA2 is provided via the class's default method body.
+(define $dispatch:<*>    (make-hasheq))(define-class-method <*>    $dispatch:<*>    0)
+(define $dispatch:liftA2 (make-hasheq))(define-class-method liftA2 $dispatch:liftA2 1)
 ;; Monad's bind dispatches on the FIRST argument (the wrapped value).
 (define $dispatch:>>=  (make-hasheq))(define-class-method >>=  $dispatch:>>=  0)
+;; Bifunctor's bimap/first/second dispatch on the value (the `p a b`).
+;; bimap takes 3 args, value is arg 2.  first/second take 2 args, value is arg 1.
+(define $dispatch:bimap  (make-hasheq))(define-class-method bimap  $dispatch:bimap  2)
+(define $dispatch:first  (make-hasheq))(define-class-method first  $dispatch:first  1)
+(define $dispatch:second (make-hasheq))(define-class-method second $dispatch:second 1)
+;; Foldable's foldr dispatches on the container (arg 2). length/to-list
+;; dispatch on the container as arg 0.
+(define $dispatch:foldr   (make-hasheq))(define-class-method foldr   $dispatch:foldr   2)
+(define $dispatch:length  (make-hasheq))(define-class-method length  $dispatch:length  0)
+(define $dispatch:to-list (make-hasheq))(define-class-method to-list $dispatch:to-list 0)
 
 ;; ----- Num Integer ------------------------------------------------
 
@@ -208,16 +233,6 @@
 (define (and a b) (if a b #f))
 (define (or  a b) (if a #t b))
 
-(define (length xs)
-  (match xs
-    [(Nil)        0]
-    [(Cons _ t)   (rkt:+ 1 (length t))]))
-
-(define (foldr f z xs)
-  (match xs
-    [(Nil)        z]
-    [(Cons h t)   (f h (foldr f z t))]))
-
 (define (filter p xs)
   (match xs
     [(Nil)        Nil]
@@ -264,11 +279,25 @@
 (define (io-fmap f io)
   ($io (lambda () (f (run-io io)))))
 
+(define (io-ap iof iox)
+  ($io (lambda ()
+         (define f (run-io iof))
+         (define a (run-io iox))
+         (f a))))
+
+(define (io-liftA2 g x y)
+  ($io (lambda ()
+         (define a (run-io x))
+         (define b (run-io y))
+         (g a b))))
+
 (define (io-bind io f)
   ($io (lambda () (run-io (f (run-io io))))))
 
-(register-instance-method! $dispatch:fmap '$io io-fmap)
-(register-instance-method! $dispatch:>>=  '$io io-bind)
+(register-instance-method! $dispatch:fmap   '$io io-fmap)
+(register-instance-method! $dispatch:<*>    '$io io-ap)
+(register-instance-method! $dispatch:liftA2 '$io io-liftA2)
+(register-instance-method! $dispatch:>>=    '$io io-bind)
 
 ;; ----- Mutable refs (in IO) -----------------------------------
 
@@ -528,3 +557,128 @@
       [(Ok  v) (f v)])))
 (register-instance-method! $dispatch:>>=  '$ctor:Err   result->>=)
 (register-instance-method! $dispatch:>>=  '$ctor:Ok    result->>=)
+
+;; ----- Applicative instances ------------------------------------
+
+;; Maybe
+(define maybe-ap
+  (lambda (mf mx)
+    (match mf
+      [(None)   None]
+      [(Some f) (fmap f mx)])))
+(register-instance-method! $dispatch:<*> '$ctor:None maybe-ap)
+(register-instance-method! $dispatch:<*> '$ctor:Some maybe-ap)
+
+;; Per-instance liftA2 impls (not derived from <*>/fmap so that
+;; user-supplied multi-arg lambdas can be applied with both args at
+;; once — see the note in prelude.rkt's Applicative class.)
+(define (maybe-liftA2 g mx my)
+  (match mx
+    [(None)   None]
+    [(Some x)
+     (match my
+       [(None)   None]
+       [(Some y) (Some (g x y))])]))
+(register-instance-method! $dispatch:liftA2 '$ctor:None maybe-liftA2)
+(register-instance-method! $dispatch:liftA2 '$ctor:Some maybe-liftA2)
+
+;; List — cartesian product semantics
+(define (list-ap fs xs)
+  (let cat ([fs fs])
+    (match fs
+      [(Nil)         Nil]
+      [(Cons f rest)
+       (let prepend ([mapped (list-fmap f xs)])
+         (match mapped
+           [(Nil)      (cat rest)]
+           [(Cons h t) (Cons h (prepend t))]))])))
+(register-instance-method! $dispatch:<*> '$ctor:Nil  list-ap)
+(register-instance-method! $dispatch:<*> '$ctor:Cons list-ap)
+
+(define (list-liftA2 g xs ys)
+  ;; cartesian: for each x in xs, for each y in ys, (g x y).
+  (let outer ([xs xs])
+    (match xs
+      [(Nil)        Nil]
+      [(Cons x xr)
+       (let inner ([ys ys])
+         (match ys
+           [(Nil)         (outer xr)]
+           [(Cons y yr)   (Cons (g x y) (inner yr))]))])))
+(register-instance-method! $dispatch:liftA2 '$ctor:Nil  list-liftA2)
+(register-instance-method! $dispatch:liftA2 '$ctor:Cons list-liftA2)
+
+;; Result e
+(define result-ap
+  (lambda (rf rx)
+    (match rf
+      [(Err e) (Err e)]
+      [(Ok  f) (fmap f rx)])))
+(register-instance-method! $dispatch:<*> '$ctor:Err result-ap)
+(register-instance-method! $dispatch:<*> '$ctor:Ok  result-ap)
+
+(define (result-liftA2 g rx ry)
+  (match rx
+    [(Err e) (Err e)]
+    [(Ok x)
+     (match ry
+       [(Err e) (Err e)]
+       [(Ok y)  (Ok (g x y))])]))
+(register-instance-method! $dispatch:liftA2 '$ctor:Err result-liftA2)
+(register-instance-method! $dispatch:liftA2 '$ctor:Ok  result-liftA2)
+
+;; ----- Bifunctor instances --------------------------------------
+
+(define pair-bimap
+  (lambda (f g p)
+    (match p
+      [(MkPair x y) (MkPair (f x) (g y))])))
+(register-instance-method! $dispatch:bimap '$ctor:MkPair pair-bimap)
+(define pair-first  (lambda (f p) (pair-bimap f id      p)))
+(define pair-second (lambda (g p) (pair-bimap id     g  p)))
+(register-instance-method! $dispatch:first  '$ctor:MkPair pair-first)
+(register-instance-method! $dispatch:second '$ctor:MkPair pair-second)
+
+(define result-bimap
+  (lambda (f g r)
+    (match r
+      [(Err e) (Err (f e))]
+      [(Ok  v) (Ok  (g v))])))
+(register-instance-method! $dispatch:bimap '$ctor:Err result-bimap)
+(register-instance-method! $dispatch:bimap '$ctor:Ok  result-bimap)
+(define result-first  (lambda (f r) (result-bimap f id    r)))
+(define result-second (lambda (g r) (result-bimap id    g r)))
+(register-instance-method! $dispatch:first  '$ctor:Err result-first)
+(register-instance-method! $dispatch:first  '$ctor:Ok  result-first)
+(register-instance-method! $dispatch:second '$ctor:Err result-second)
+(register-instance-method! $dispatch:second '$ctor:Ok  result-second)
+
+;; ----- Foldable instances ---------------------------------------
+
+;; List
+(define (list-foldr f z xs)
+  (match xs
+    [(Nil)         z]
+    [(Cons h rest) (f h (list-foldr f z rest))]))
+(register-instance-method! $dispatch:foldr '$ctor:Nil  list-foldr)
+(register-instance-method! $dispatch:foldr '$ctor:Cons list-foldr)
+
+;; Maybe
+(define (maybe-foldr f z m)
+  (match m
+    [(None)   z]
+    [(Some x) (f x z)]))
+(register-instance-method! $dispatch:foldr '$ctor:None maybe-foldr)
+(register-instance-method! $dispatch:foldr '$ctor:Some maybe-foldr)
+
+;; Defaults expressed via dispatched foldr — registered once per ctor.
+(define (default-length xs)
+  (foldr (lambda (_x n) (rkt:+ n 1)) 0 xs))
+(define (default-to-list xs)
+  (foldr (lambda (x acc) (Cons x acc)) Nil xs))
+(define (sum xs)
+  (foldr (lambda (a b) (rkt:+ a b)) 0 xs))
+
+(for ([tag (in-list '($ctor:Nil $ctor:Cons $ctor:None $ctor:Some))])
+  (register-instance-method! $dispatch:length  tag default-length)
+  (register-instance-method! $dispatch:to-list tag default-to-list))
