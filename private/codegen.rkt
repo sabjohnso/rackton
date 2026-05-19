@@ -327,6 +327,7 @@
 (define (dict-class-return-method-names class-name)
   (case class-name
     [(Applicative) '(pure)]
+    [(Monoid)      '(mempty)]
     [else '()]))
 
 (define (head-tcon-name t)

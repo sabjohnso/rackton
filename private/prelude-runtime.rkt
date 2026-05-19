@@ -76,6 +76,7 @@
  foldr length to-list sum
  <>
  traverse
+ mconcat
 
  ;; Return-typed class methods (resolved at compile time per call site;
  ;; the `$pure:TCon` names are what the codegen emits after resolution).
@@ -787,6 +788,15 @@
   (foldr (lambda (x acc) (Cons x acc)) Nil xs))
 (define (sum xs)
   (foldr (lambda (a b) (rkt:+ a b)) 0 xs))
+
+;; ----- mconcat (free function with needs-dict signature) ----------
+;; Receives the resolved `mempty` for `a` as a leading argument (the
+;; elaborator inserts it at every call site based on Phase 24's
+;; free-function detection in var-dict-requirements).  Inner `<>`
+;; calls dispatch on the running accumulator's tag and remain
+;; generic.
+(define (mconcat mempty-impl xs)
+  (foldr (lambda (x acc) (<> x acc)) mempty-impl xs))
 
 (for ([tag (in-list '($ctor:Nil $ctor:Cons $ctor:None $ctor:Some))])
   (register-instance-method! $dispatch:length  tag default-length)

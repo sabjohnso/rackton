@@ -333,6 +333,16 @@
     (define-instance (Monoid Product)
       (define mempty (MkProduct 1)))
 
+    ;; --- mconcat ------------------------------------------------
+    ;;
+    ;; `mconcat : (Monoid a) => (List a) -> a` carries a Monoid-
+    ;; constrained `a` whose `mempty` is resolved per call site.  The
+    ;; elaborator prepends the resolved `$mempty:T` impl as a leading
+    ;; argument; the runtime implementation lives in prelude-runtime.
+    ;; A polymorphic body is not provided here because Rackton can't
+    ;; yet rewrite user-written needs-dict bodies — see Phase 24 docs.
+    (: mconcat ((Monoid a) => (-> (List a) a)))
+
     (: filter (-> (-> a Boolean) (-> (List a) (List a))))
     (define (filter p xs)
       (match xs

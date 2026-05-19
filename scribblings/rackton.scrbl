@@ -25,8 +25,11 @@ algebraic data types, and pattern matching — inside Racket, either as an
 @hash-lang[] @racketmodfont{rackton} program.
 
 This documentation describes the @bold{Phase 1 + 2 + 3 + 4 + 5 + 6 + 7
-+ 8 + 9 + 10 + 11 + 12 + 13 + 14 + 15 + 16 + 17 + 18 + 19 + 20 + 21 + 22 + 23}
-subset.  Phase 23 added @racket[define-newtype] and the canonical
++ 8 + 9 + 10 + 11 + 12 + 13 + 14 + 15 + 16 + 17 + 18 + 19 + 20 + 21 + 22 + 23 + 24}
+subset.  Phase 24 extended Phase 20's dict-passing to free functions
+(not just class methods) so @racket[mconcat] can ship — at every
+call site the elaborator inserts the resolved @racket[mempty] impl.
+Phase 23 added @racket[define-newtype] and the canonical
 @racket[Sum] / @racket[Product] newtype-Monoids over @racket[Integer].
 Phase 22 introduced a real CLI example (a small todo
 manager under @racket[examples/todo.rkt]) and filled the prelude
@@ -1167,17 +1170,61 @@ a straight @racket[foldr] with an ascribed @racket[mempty]:
 ;; ⇒ (MkSum 10)
 }|
 
-@racket[mconcat :: (Monoid m) => List m -> m] is @bold{not} yet
-provided — its body needs @racket[mempty] while @racket[m] is
-polymorphic, and the elaborator's compile-time resolution today only
-covers class methods.  Lifting that to free functions is future work;
-in the meantime the @racket[(foldr <> mempty xs)] pattern with an
-ascribed @racket[mempty] does the same job at sites where @racket[m]
-is known.
+@racket[mconcat] is now a real prelude function (see
+@secref{Free-function_dict-passing_(Phase_24)} just below).
 
 At runtime a newtype is identical to a single-constructor
 @racket[define-data] — the "zero-cost" of a true newtype (eliding the
 struct wrap) is documentary, not yet a perf optimization.
+
+@section{Free-function dict-passing (Phase 24)}
+
+Phase 20 introduced dict-passing for class methods like
+@racket[traverse], where the elaborator resolves an outer class
+constraint at the call site and prepends the resolved impl name to
+the arguments.  Phase 24 extends the same machinery to @emph{free
+functions} whose own qualifying context constrains a class with
+return-typed methods.  The canonical use is @racket[mconcat]:
+
+@codeblock|{
+(: mconcat ((Monoid a) => (-> (List a) a)))
+}|
+
+At every call site the elaborator looks up the function's
+qualifying context, resolves each constraint over a return-typed
+class (today: @racket[Monoid]'s @racket[mempty]) against the
+inferred type, and inserts the impl name (e.g. @racket[$mempty:Sum])
+as a prepended argument.  Runtime side is a single hand-written
+function in @racket[private/prelude-runtime.rkt] that accepts the
+@racket[mempty]-impl as its leading argument:
+
+@codeblock|{
+(define (mconcat mempty-impl xs)
+  (foldr (lambda (x acc) (<> x acc)) mempty-impl xs))
+}|
+
+The user-facing code reads naturally:
+
+@codeblock|{
+(mconcat (Cons "a" (Cons "b" (Cons "c" Nil))))   ;; ⇒ "abc"
+
+(mconcat (Cons (MkSum 3) (Cons (MkSum 5) Nil))) ;; ⇒ (MkSum 8)
+
+(mconcat (ann Nil (List Sum)))                  ;; ⇒ (MkSum 0)
+}|
+
+@bold{Honest limitation.}  Phase 24 makes call sites work, but it
+does @emph{not} let users write their own needs-dict function bodies.
+A user-supplied @racket[(define (mc xs) (foldr <> mempty xs))] still
+raises @tt{ambiguous use of mempty} because the body's polymorphic
+@racket[mempty] has no concrete @racket[a] to resolve against.  The
+prelude's @racket[mconcat] is declared @racket[(:)] without a Rackton
+body; the runtime impl is hand-written.  A later phase can add the
+body-rewriting story (skolems-from-qual-context → local dict-arg
+references) to lift this limitation.  In the meantime, two
+workarounds: define a thin wrapper as a class method (Phase 20's
+mechanism handles those), or write the call inline using
+@racket[(foldr <> (ann mempty T) xs)] with an explicit ascription.
 
 @section{Not yet supported}
 

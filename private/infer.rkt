@@ -535,7 +535,19 @@
              (record-dict-use! x stx reqs sub))
            (values empty-subst t)]
           [else
-           (values empty-subst (instantiate sch))])]
+           ;; A free function may itself be needs-dict: if its scheme's
+           ;; qual context includes a constraint over a class with
+           ;; return-typed methods (e.g. `mconcat :: (Monoid a) => …`),
+           ;; the elaborator inserts the resolved impls at the call
+           ;; site, mirroring Phase 20's path for class methods.
+           (define free-reqs (var-dict-requirements env sch))
+           (cond
+             [(null? free-reqs)
+              (values empty-subst (instantiate sch))]
+             [else
+              (define-values (t sub) (instantiate/subst sch))
+              (record-dict-use! x stx free-reqs sub)
+              (values empty-subst t)])])]
        [else
         (raise-syntax-error 'infer
                             (format "unbound identifier: ~s~a"
@@ -1193,6 +1205,24 @@
 ;; carry the dict resolution.  Example: `traverse : (Applicative f) =>
 ;; (-> ...)` returns `((Applicative f))` — the dict requirement is
 ;; `Applicative` with parameter `f`.
+;; Free-function counterpart to `method-dict-requirements`.  Walks the
+;; scheme's qualifying context and reports any constraint whose class
+;; declares return-typed methods — the function's call sites will need
+;; resolved impls (e.g. `$mempty:Sum`) prepended.  Returns the same
+;; `(Listof (cons class-name param-name-list))` shape as the method
+;; variant so `record-dict-use!` can consume either.
+(define (var-dict-requirements env sch)
+  (define constraints (qual-constraints-of (scheme-body sch)))
+  (for/list ([c (in-list constraints)]
+             #:when (class-has-return-typed-methods? env (pred-class c)))
+    (cons (pred-class c) (constraint-tvar-names c))))
+
+(define (class-has-return-typed-methods? env class-name)
+  (define cinfo (env-ref-class env class-name))
+  (and cinfo
+       (for/or ([dp (in-hash-values (class-info-dispatchpos cinfo))])
+         (eq? dp 'return))))
+
 (define (method-dict-requirements sch class-params)
   (define body (scheme-body sch))
   (define constraints (qual-constraints-of body))
@@ -1317,6 +1347,7 @@
 (define (dict-class-return-methods class-name)
   (case class-name
     [(Applicative) '(pure)]
+    [(Monoid)      '(mempty)]
     [else '()]))
 
 ;; Extract the head type-constructor name from a (possibly applied)
