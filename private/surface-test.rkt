@@ -31,8 +31,11 @@
       [(e:match?   v) (e:match (strip (e:match-scrutinee v))
                                (for/list ([c (in-list (e:match-clauses v))])
                                  (clause (strip (clause-pattern c))
+                                         (and (clause-guard c)
+                                              (strip (clause-guard c)))
                                          (strip (clause-body c))
                                          #f))
+                               (e:match-irrefutable? v)
                                #f)]
       [(ty:var?    v) (ty:var (ty:var-name v) #f)]
       [(ty:con?    v) (ty:con (ty:con-name v) #f)]
@@ -159,11 +162,11 @@
                 (e:match
                   (e:var 'm #f)
                   (list
-                   (clause (p:ctor 'None '() #f) (e:literal 0 #f) #f)
-                   (clause (p:ctor 'Some (list (p:var 'x #f)) #f)
+                   (clause (p:ctor 'None '() #f) #f (e:literal 0 #f) #f)
+                   (clause (p:ctor 'Some (list (p:var 'x #f)) #f) #f
                            (e:var 'x #f)
                            #f))
-                  #f))
+                  #f #f))
 
   ;; ----- top-level decls -----------------------------------------
 

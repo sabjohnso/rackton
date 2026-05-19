@@ -77,7 +77,11 @@
 (struct e:let     (bindings body stx) #:transparent)
 (struct e:if      (test then else stx) #:transparent)
 (struct e:ann     (expr type stx) #:transparent)
-(struct e:match   (scrutinee clauses stx) #:transparent)
+;; `irrefutable?` flag: when #t the match was synthesized by a
+;; destructuring form like `match-let` and is allowed to be
+;; non-exhaustive — the user is asserting the pattern fits.  When #f
+;; (the default for user-written `match`), exhaustiveness is checked.
+(struct e:match   (scrutinee clauses irrefutable? stx) #:transparent)
 ;; A host-language escape: (racket τ (var ...) body) drops into raw
 ;; Racket, returning a value typed as τ.  `vars` lists the Rackton
 ;; bindings that must be in scope.  `body` is a single Racket syntax
@@ -86,7 +90,9 @@
 ;; A `(letrec ([name expr] ...) body)` form.  Each binding's rhs may
 ;; reference every binding's name (mutual recursion).
 (struct e:letrec  (bindings body stx) #:transparent)
-(struct clause    (pattern body stx) #:transparent)
+;; A `match` clause.  `guard` is either #f (no guard) or a surface
+;; expression that must evaluate to #t for the clause to fire.
+(struct clause    (pattern guard body stx) #:transparent)
 
 (struct ty:var    (name stx) #:transparent)
 (struct ty:con    (name stx) #:transparent)
@@ -181,17 +187,17 @@
      (for/list ([c (in-list ctors)])
        (define name (data-ctor-name c))
        (define arity (length (data-ctor-field-types c)))
-       (clause (ctor-x-pattern name arity stx)
+       (clause (ctor-x-pattern name arity stx) #f
                (e:match (e:var 'y stx)
-                        (list (clause (ctor-y-pattern name arity stx)
+                        (list (clause (ctor-y-pattern name arity stx) #f
                                       (chained-eq arity stx)
                                       stx)
-                              (clause (p:wild stx)
+                              (clause (p:wild stx) #f
                                       (e:literal #f stx)
                                       stx))
-                        stx)
+                        #f stx)
                stx))
-     stx))
+     #f stx))
   (top:instance ctx head
                 (list (top:def '== (e:lam '(x y) eq-body stx) stx))
                 stx))
@@ -210,10 +216,10 @@
      (for/list ([c (in-list ctors)] [i (in-naturals)])
        (clause (ctor-x-pattern (data-ctor-name c)
                                (length (data-ctor-field-types c))
-                               stx)
+                               stx) #f
                (synthesize-ord-inner-match ctors c i stx)
                stx))
-     stx))
+     #f stx))
   (top:instance ctx head
                 (list (top:def '< (e:lam '(x y) lt-body stx) stx))
                 stx))
@@ -228,16 +234,16 @@
        (define ar (length (data-ctor-field-types c)))
        (clause (p:ctor (data-ctor-name c)
                        (for/list ([_ (in-range ar)]) (p:wild stx))
-                       stx)
+                       stx) #f
                (e:literal #f stx)
                stx))
      ;; Same ctor — recurse lexicographically on fields.
-     (list (clause (ctor-y-pattern current-name current-arity stx)
+     (list (clause (ctor-y-pattern current-name current-arity stx) #f
                    (chained-lex-less current-arity stx)
                    stx))
      ;; Later ctors caught by wildcard — x < y is #t.
-     (list (clause (p:wild stx) (e:literal #t stx) stx))))
-  (e:match (e:var 'y stx) clauses stx))
+     (list (clause (p:wild stx) #f (e:literal #t stx) stx))))
+  (e:match (e:var 'y stx) clauses #f stx))
 
 (define (chained-lex-less arity stx)
   (cond
@@ -284,10 +290,10 @@
        (define name (data-ctor-name c))
        (define field-types (data-ctor-field-types c))
        (define arity (length field-types))
-       (clause (ctor-x-pattern name arity stx)
+       (clause (ctor-x-pattern name arity stx) #f
                (synthesize-functor-rebuild name field-types fparam tname stx)
                stx))
-     stx))
+     #f stx))
   (top:instance '() head
                 (list (top:def 'fmap
                                (e:lam '(f x) fmap-body stx)
@@ -330,7 +336,7 @@
      (for/list ([c (in-list ctors)])
        (define name (data-ctor-name c))
        (define arity (length (data-ctor-field-types c)))
-       (clause (ctor-x-pattern name arity stx)
+       (clause (ctor-x-pattern name arity stx) #f
                (cond
                  [(zero? arity)
                   (e:literal (symbol->string name) stx)]
@@ -351,7 +357,7 @@
                             (datum->syntax stx body-datum stx)
                             stx)])
                stx))
-     stx))
+     #f stx))
   (top:instance ctx head
                 (list (top:def 'show (e:lam '(x) show-body stx) stx))
                 stx))
@@ -372,7 +378,7 @@
 
 (define (parse-expr stx)
   (syntax-parse stx
-    #:datum-literals (lambda λ let letrec if ann match racket do <-)
+    #:datum-literals (lambda λ let letrec match-let where if ann match racket do <-)
     [n:number  (e:literal (syntax->datum #'n) stx)]
     [b:boolean (e:literal (syntax->datum #'b) stx)]
     [s:string  (e:literal (syntax->datum #'s) stx)]
@@ -400,20 +406,49 @@
                (parse-expr #'body)
                stx)]
 
+    ;; (match-let ([pat expr] ...+) body) — desugars to nested
+    ;; singleton matches.  Each binding pattern destructures its rhs
+    ;; for the remainder of the chain.
+    [(match-let ([pat rhs] ...+) body)
+     (define pat-list (syntax->list #'(pat ...)))
+     (define rhs-list (syntax->list #'(rhs ...)))
+     (let loop ([pats pat-list] [rhss rhs-list])
+       (cond
+         [(null? pats) (parse-expr #'body)]
+         [else
+          (e:match (parse-expr (car rhss))
+                   (list (clause (parse-pattern (car pats))
+                                 #f
+                                 (loop (cdr pats) (cdr rhss))
+                                 (car pats)))
+                   #t stx)]))]
+
+    ;; (where ([n expr] ...) body) — sequential local bindings.
+    ;; Each binding sees the ones before it.  Equivalent to a
+    ;; nested chain of singleton lets.
+    [(where ([x:id rhs] ...+) body)
+     (define ids (syntax->list #'(x ...)))
+     (define rhss (syntax->list #'(rhs ...)))
+     (let loop ([ids ids] [rhss rhss])
+       (cond
+         [(null? ids) (parse-expr #'body)]
+         [else
+          (e:let (list (cons (syntax->datum (car ids))
+                             (parse-expr (car rhss))))
+                 (loop (cdr ids) (cdr rhss))
+                 stx)]))]
+
     [(if c t e)
      (e:if (parse-expr #'c) (parse-expr #'t) (parse-expr #'e) stx)]
 
     [(ann e t)
      (e:ann (parse-expr #'e) (parse-type #'t) stx)]
 
-    [(match scrut [pat body] ...+)
+    [(match scrut cl ...+)
      (e:match (parse-expr #'scrut)
-              (for/list ([p-stx (in-list (syntax->list #'(pat ...)))]
-                         [b-stx (in-list (syntax->list #'(body ...)))])
-                (clause (parse-pattern p-stx)
-                        (parse-expr b-stx)
-                        p-stx))
-              stx)]
+              (for/list ([c-stx (in-list (syntax->list #'(cl ...)))])
+                (parse-match-clause c-stx))
+              #f stx)]
 
     ;; (racket τ (var ...) body ...+) — host-language escape.
     ;; Multiple body forms are wrapped in `begin` so users can write
@@ -443,6 +478,25 @@
             (for/list ([a (in-list (syntax->list #'(arg ...)))])
               (parse-expr a))
             stx)]))
+
+;; Parse one `match` clause.  Two shapes are accepted:
+;;   [pat body]
+;;   [pat #:when guard body]
+;; The guard, when present, is a Boolean-typed expression evaluated
+;; after the pattern's variable bindings are in scope.  If the guard
+;; fails, the next clause is tried.
+(define (parse-match-clause stx)
+  (syntax-parse stx
+    [[pat #:when guard body]
+     (clause (parse-pattern #'pat)
+             (parse-expr #'guard)
+             (parse-expr #'body)
+             stx)]
+    [[pat body]
+     (clause (parse-pattern #'pat)
+             #f
+             (parse-expr #'body)
+             stx)]))
 
 (define (parse-do stmts body-stx stx)
   (cond
@@ -778,8 +832,8 @@
   (define pat (p:ctor struct-name pat-vars ctx-stx))
   (define body
     (e:match (e:var 'r ctx-stx)
-             (list (clause pat (e:var 'v ctx-stx) ctx-stx))
-             ctx-stx))
+             (list (clause pat #f (e:var 'v ctx-stx) ctx-stx))
+             #f ctx-stx))
   (top:def accessor-name (e:lam '(r) body ctx-stx) ctx-stx))
 
 (define (parse-data-ctor stx)

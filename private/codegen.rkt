@@ -161,14 +161,18 @@
      ;; context; splice verbatim.
      body]
 
-    [(e:match scrut clauses stx)
+    [(e:match scrut clauses _irrefutable? stx)
      (with-syntax
       ([sc (compile-expr scrut)]
        [(cl ...)
         (for/list ([c (in-list clauses)])
           (with-syntax ([pat (compile-pattern (clause-pattern c))]
                         [bd  (compile-expr (clause-body c))])
-            #'[pat bd]))])
+            (cond
+              [(clause-guard c)
+               (with-syntax ([gd (compile-expr (clause-guard c))])
+                 #'[pat #:when gd bd])]
+              [else #'[pat bd]])))])
        (syntax/loc stx (match sc cl ...)))]))
 
 (define (compile-top form env)
@@ -373,11 +377,13 @@
      ;; Escapes splice raw Racket syntax — relocating it would mean
      ;; rewriting that user-written code, which we don't want to do.
      (e:escape (R t) vs body new-stx)]
-    [(e:match s cs _)
+    [(e:match s cs irr? _)
      (e:match (R s)
               (for/list ([c (in-list cs)])
-                (clause (R (clause-pattern c)) (R (clause-body c)) new-stx))
-              new-stx)]
+                (clause (R (clause-pattern c))
+                        (and (clause-guard c) (R (clause-guard c)))
+                        (R (clause-body c)) new-stx))
+              irr? new-stx)]
     [(p:wild _)          (p:wild new-stx)]
     [(p:var n _)         (p:var n new-stx)]
     [(p:lit v _)         (p:lit v new-stx)]

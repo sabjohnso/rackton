@@ -332,7 +332,7 @@
     [(e:letrec _ _ s)   s]
     [(e:if _ _ _ s)     s]
     [(e:ann _ _ s)      s]
-    [(e:match _ _ s)    s]
+    [(e:match _ _ _ s)  s]
     [(e:escape _ _ _ s) s]))
 
 ;; -------- "did you mean?" suggestions ------------------------------
@@ -704,7 +704,7 @@
            stx)))
      (values empty-subst expected)]
 
-    [(e:match scrut clauses stx)
+    [(e:match scrut clauses irrefutable? stx)
      (define-values (s-scrut t-scrut) (infer-expr scrut env))
      (define result-tv (fresh-tvar))
      (define-values (s-final _)
@@ -716,7 +716,10 @@
                          (apply-subst s result-tv)
                          (apply-subst/env s env)))
          (values (subst-compose s-cl s) _t)))
-     (check-exhaustive! (apply-subst s-final t-scrut) clauses stx env)
+     ;; A match-let-style irrefutable destructure skips the
+     ;; exhaustiveness check — the user has asserted the pattern fits.
+     (unless irrefutable?
+       (check-exhaustive! (apply-subst s-final t-scrut) clauses stx env))
      (values s-final (apply-subst s-final result-tv))]))
 
 ;; Type a single match clause.  Pattern bindings extend the env for the
@@ -738,8 +741,29 @@
               ([b (in-list bindings)])
       (env-extend-var e (car b)
                       (scheme '() (apply-subst s-pat (cdr b))))))
-  (define-values (s-body t-body) (infer-expr (clause-body cl) env*))
-  (define s-acc (subst-compose s-body s-pat))
+  ;; A pattern guard, when present, is typechecked under the pattern
+  ;; bindings and must produce a Boolean.  Thread its substitution
+  ;; into the running chain so any tvars it pins (e.g. via uses of
+  ;; class methods) are visible to the body and the surrounding
+  ;; constraint-reduction pass.
+  (define-values (s-pre-body env-pre-body)
+    (cond
+      [(clause-guard cl)
+       (define-values (s-g t-g) (infer-expr (clause-guard cl) env*))
+       (define s-u
+         (with-handlers
+          ([exn:fail:unify?
+            (lambda (_)
+              (raise-syntax-error 'infer
+                (format "pattern guard must be Boolean, got ~a"
+                        (pretty-type (apply-subst s-g t-g)))
+                (clause-stx cl)))])
+          (unify (apply-subst s-g t-g) t-bool)))
+       (define s* (subst-compose s-u (subst-compose s-g s-pat)))
+       (values s* (apply-subst/env s* env*))]
+      [else (values s-pat env*)]))
+  (define-values (s-body t-body) (infer-expr (clause-body cl) env-pre-body))
+  (define s-acc (subst-compose s-body s-pre-body))
   (define s-u
     (with-handlers
      ([exn:fail:unify?
@@ -806,14 +830,18 @@
         [(tapp (tcon n) _) n]
         [_              #f])))
   (define (catchall? c)
-    (or (p:wild? (clause-pattern c))
-        (p:var?  (clause-pattern c))))
+    ;; A guarded clause cannot satisfy exhaustiveness because the
+    ;; guard may fail — even a wildcard pattern under #:when is not a
+    ;; catch-all.
+    (and (not (clause-guard c))
+         (or (p:wild? (clause-pattern c))
+             (p:var?  (clause-pattern c)))))
   (define has-catchall? (for/or ([c (in-list clauses)]) (catchall? c)))
   (cond
     [has-catchall? (void)]
     [(eq? head 'Boolean)
      (define hits
-       (for/fold ([acc '()]) ([c (in-list clauses)])
+       (for/fold ([acc '()]) ([c (in-list clauses)] #:unless (clause-guard c))
          (match (clause-pattern c)
            [(p:lit v _) (cons v acc)]
            [_ acc])))
@@ -831,7 +859,7 @@
        [else
         (define needed (tcon-info-ctors ti))
         (define hit
-          (for/fold ([acc '()]) ([c (in-list clauses)])
+          (for/fold ([acc '()]) ([c (in-list clauses)] #:unless (clause-guard c))
             (match (clause-pattern c)
               [(p:ctor name _ _) (cons name acc)]
               [_ acc])))

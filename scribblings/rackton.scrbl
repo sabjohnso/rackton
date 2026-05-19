@@ -25,8 +25,11 @@ algebraic data types, and pattern matching — inside Racket, either as an
 @hash-lang[] @racketmodfont{rackton} program.
 
 This documentation describes the @bold{Phase 1 + 2 + 3 + 4 + 5 + 6 + 7
-+ 8 + 9 + 10 + 11 + 12 + 13 + 14 + 15 + 16 + 17 + 18 + 19 + 20}
-subset.  Phase 20 added @racket[Traversable] (with @racket[traverse]
++ 8 + 9 + 10 + 11 + 12 + 13 + 14 + 15 + 16 + 17 + 18 + 19 + 20 + 21}
+subset.  Phase 21 added three surface-ergonomic affordances: pattern
+guards in @racket[match] clauses, @racket[match-let] for inline
+destructuring, and @racket[where] for sequential local bindings.
+Phase 20 added @racket[Traversable] (with @racket[traverse]
 for @racket[Maybe] and @racket[List]) using dict-passing for the
 inner @racket[pure] call — the elaborator inserts the resolved
 @racket[pure]-impl as a leading argument at each call site.  Phase
@@ -1040,6 +1043,53 @@ A bare @racket[e:var] reference to a needs-dict method (e.g.
 @racket[(map traverse xs)]) is @bold{not} supported — there is no
 @racket[e:app] for the elaborator to attach the dict insertion to.
 Use the method at a call position.
+
+@section{Pattern guards, @racket[match-let], @racket[where] (Phase 21)}
+
+@bold{Pattern guards.}  A @racket[match] clause may carry a
+@racket[#:when guard] between its pattern and body; the clause fires
+only when the pattern matches @emph{and} the guard expression
+evaluates to @racket[#t].  Guarded clauses do not contribute to
+exhaustiveness — a guarded wildcard is not a catch-all, since the
+guard may fail.
+
+@codeblock|{
+(: classify (-> (Maybe Integer) String))
+(define (classify m)
+  (match m
+    [(Some x) #:when (> x 0) "positive"]
+    [(Some x) #:when (< x 0) "negative"]
+    [(Some _)                "zero"]
+    [(None)                  "missing"]))
+}|
+
+@bold{@racket[match-let].}  @racket[(match-let ([pat e] ...+) body)]
+destructures each rhs against its pattern in turn, binding the
+pattern variables for the remainder of the chain.  Patterns are
+@emph{irrefutable}: the user is asserting the rhs fits the pattern,
+and the synthesized @racket[match] is exempt from exhaustiveness
+checks.
+
+@codeblock|{
+(: pair-sum Integer)
+(define pair-sum
+  (match-let ([(MkPair a b) (MkPair 7 35)]
+              [(Cons h _)   (Cons 100 Nil)])
+    (+ a (+ b h))))   ;; ⇒ 142
+}|
+
+@bold{@racket[where].}  @racket[(where ([n e] ...+) body)] introduces
+sequential local bindings; each binding sees the ones above it.  This
+is the equivalent of @racket[let*] in other Lisps and reads as the
+natural Rackton spelling of Haskell's @racket[where] clauses.
+
+@codeblock|{
+(: scaled-sum (-> Integer (-> Integer Integer)))
+(define (scaled-sum x y)
+  (where ([sum     (+ x y)]
+          [doubled (* 2 sum)])
+    (+ sum doubled)))
+}|
 
 @section{Not yet supported}
 
