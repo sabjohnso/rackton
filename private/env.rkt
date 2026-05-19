@@ -70,8 +70,15 @@
 ;;                 — functional dependencies; each pair maps the
 ;;                   determining-param names to the determined-param
 ;;                   names.  Empty list when no FDs are declared.
+;;   dictreqs    : (HashEq method-name → (Listof symbol))
+;;                 — for each method whose qualifying context demands
+;;                   an additional class constraint over a param that
+;;                   appears in the method type (e.g. `traverse`'s
+;;                   `Applicative f`), the list of constraint class
+;;                   names whose return-typed methods need to be
+;;                   passed as extra leading args at call sites.
 (struct class-info (name params kinds supers methods defaults dispatchpos
-                    fundeps)
+                    fundeps dictreqs)
   #:transparent)
 
 ;; An instance's information.

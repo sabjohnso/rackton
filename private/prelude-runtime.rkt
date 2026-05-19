@@ -66,6 +66,7 @@
  bimap first second
  foldr length to-list sum
  <>
+ traverse
 
  ;; Return-typed class methods (resolved at compile time per call site;
  ;; the `$pure:TCon` names are what the codegen emits after resolution).
@@ -89,6 +90,7 @@
  $dispatch:length
  $dispatch:to-list
  $dispatch:<>
+ $dispatch:traverse
  $dispatch:float-div
 
  ;; Combinators
@@ -187,6 +189,12 @@
 ;; Semigroup's <> dispatches on the first arg (the value carrying the
 ;; Semigroup-constrained type).
 (define $dispatch:<> (make-hasheq))(define-class-method <> $dispatch:<> 0 2)
+;; Traversable's traverse: user sees (a -> f b) -> t a -> f (t b), so
+;; the t-container is at user-position 1.  The elaborator prepends one
+;; dict argument (the resolved pure-impl), shifting dispatch position
+;; to 2 and total arity to 3.
+(define $dispatch:traverse (make-hasheq))
+(define-class-method traverse $dispatch:traverse 2 3)
 
 ;; ----- Num Integer ------------------------------------------------
 
@@ -312,6 +320,26 @@
                            (lambda (a b) (rkt:string-append a b)))
 (register-instance-method! $dispatch:<> '$ctor:Nil  semigroup-list-<>)
 (register-instance-method! $dispatch:<> '$ctor:Cons semigroup-list-<>)
+
+;; ----- Traversable traverse ---------------------------------------
+;; Each impl receives the resolved `pure-impl` as its leading argument
+;; (the elaborator inserts it based on the inferred `f`).  Inner
+;; effectful combinators like `fmap`/`liftA2` dispatch on their value
+;; arg at runtime and so work generically for any `f`.
+
+(define (traverse-Maybe-impl pure-impl f m)
+  (match m
+    [(None)   (pure-impl None)]
+    [(Some x) (fmap Some (f x))]))
+(register-instance-method! $dispatch:traverse '$ctor:None traverse-Maybe-impl)
+(register-instance-method! $dispatch:traverse '$ctor:Some traverse-Maybe-impl)
+
+(define (traverse-List-impl pure-impl f xs)
+  (match xs
+    [(Nil)         (pure-impl Nil)]
+    [(Cons h rest) (liftA2 Cons (f h) (traverse-List-impl pure-impl f rest))]))
+(register-instance-method! $dispatch:traverse '$ctor:Nil  traverse-List-impl)
+(register-instance-method! $dispatch:traverse '$ctor:Cons traverse-List-impl)
 
 (define (io-fmap f io)
   ($io (lambda () (f (run-io io)))))

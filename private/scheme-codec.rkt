@@ -112,10 +112,28 @@
         (for/list ([(m p) (in-hash (class-info-dispatchpos ci))])
           (list m p))
         (for/list ([fd (in-list (class-info-fundeps ci))])
-          (list (car fd) (cdr fd)))))
+          (list (car fd) (cdr fd)))
+        (for/list ([(m cs) (in-hash (class-info-dictreqs ci))])
+          (list m cs))))
 
 (define (decode-class-info datum)
   (match datum
+    [(list name params kinds-list supers-list methods-list dispatchpos-list
+           fundeps-list dictreqs-list)
+     (class-info name
+                 params
+                 (for/hasheq ([entry (in-list kinds-list)])
+                   (values (car entry) (decode-kind (cadr entry))))
+                 (map sexp->pred supers-list)
+                 (for/hasheq ([entry (in-list methods-list)])
+                   (values (car entry) (sexp->scheme (cadr entry))))
+                 (hasheq)   ; defaults not transmitted
+                 (for/hasheq ([entry (in-list dispatchpos-list)])
+                   (values (car entry) (cadr entry)))
+                 (for/list ([entry (in-list fundeps-list)])
+                   (cons (car entry) (cadr entry)))
+                 (for/hasheq ([entry (in-list dictreqs-list)])
+                   (values (car entry) (cadr entry))))]
     [(list name params kinds-list supers-list methods-list dispatchpos-list
            fundeps-list)
      (class-info name
@@ -129,7 +147,8 @@
                  (for/hasheq ([entry (in-list dispatchpos-list)])
                    (values (car entry) (cadr entry)))
                  (for/list ([entry (in-list fundeps-list)])
-                   (cons (car entry) (cadr entry))))]
+                   (cons (car entry) (cadr entry)))
+                 (hasheq))]
     ;; Backward compat: older sidecar submodules omit the fundeps list.
     [(list name params kinds-list supers-list methods-list dispatchpos-list)
      (class-info name
@@ -142,7 +161,8 @@
                  (hasheq)
                  (for/hasheq ([entry (in-list dispatchpos-list)])
                    (values (car entry) (cadr entry)))
-                 '())]))
+                 '()
+                 (hasheq))]))
 
 ;; Instance info is encoded with its owning class name as the first
 ;; element so we know where to install it on decode.  Method bodies

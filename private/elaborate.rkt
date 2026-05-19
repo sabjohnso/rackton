@@ -34,8 +34,9 @@
   ;; settles it into `current-method-resolutions` after each top-def's
   ;; constraints reduce; codegen consults the resolutions when
   ;; emitting `e:var` references.
-  (parameterize ([current-method-uses        (make-hasheq)]
-                 [current-method-resolutions (make-hasheq)])
+  (parameterize ([current-method-uses             (make-hasheq)]
+                 [current-method-resolutions      (make-hasheq)]
+                 [current-method-dict-resolutions (make-hasheq)])
     (define env (infer-program parsed prelude-env))
     (define compiled
       (filter values

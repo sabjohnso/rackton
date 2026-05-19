@@ -109,8 +109,22 @@
      (build-curried-lambda param-stxs bdy-stx stx)]
 
     [(e:app head args stx)
+     ;; If the head is a needs-dict class-method reference, prepend
+     ;; the resolved impl names as extra leading args (Phase 20).
+     (define head-stx (and (e:var? head) (e:var-stx head)))
+     (define dict-impls
+       (and head-stx
+            (current-method-dict-resolutions)
+            (hash-ref (current-method-dict-resolutions) head-stx #f)))
+     (define all-args
+       (cond
+         [dict-impls
+          (append (for/list ([sym (in-list dict-impls)])
+                    (e:var sym head-stx))
+                  args)]
+         [else args]))
      (with-syntax ([h (compile-expr head)]
-                   [(a ...) (for/list ([x (in-list args)]) (compile-expr x))])
+                   [(a ...) (for/list ([x (in-list all-args)]) (compile-expr x))])
        (syntax/loc stx (h a ...)))]
 
     [(e:let bindings body stx)
@@ -198,8 +212,19 @@
     (for/list ([n (in-list method-names)]
                #:unless (eq? (hash-ref (class-info-dispatchpos cinfo) n #f)
                              'return))
-      (define pos (hash-ref (class-info-dispatchpos cinfo) n 0))
-      (define ar  (method-arity cinfo n))
+      (define base-pos   (hash-ref (class-info-dispatchpos cinfo) n 0))
+      (define base-arity (method-arity cinfo n))
+      ;; A needs-dict method gets extra leading arguments inserted at
+      ;; the call site (one per return-typed method of each required
+      ;; class).  Shift the runtime dispatch position and arity to
+      ;; match what the wrapper will actually see.
+      (define dict-arg-count
+        (apply +
+               (for/list ([req (in-list (hash-ref (class-info-dictreqs cinfo)
+                                                  n '()))])
+                 (length (dict-class-return-method-names (car req))))))
+      (define pos (+ base-pos   dict-arg-count))
+      (define ar  (+ base-arity dict-arg-count))
       (with-syntax ([meth     (datum->syntax stx n stx)]
                     [table    (datum->syntax stx
                                              (method-dispatch-symbol n) stx)]
@@ -291,6 +316,14 @@
               #'(register-instance-method! table 'tag-sym impl)))]))))
   (with-syntax ([(register ...) register-forms])
     (syntax/loc stx (begin register ...))))
+
+;; Mirror of the dict-class-return-methods registry in
+;; private/infer.rkt — kept terse and local so both phases can compute
+;; the same dict-arg-count without sharing state.
+(define (dict-class-return-method-names class-name)
+  (case class-name
+    [(Applicative) '(pure)]
+    [else '()]))
 
 (define (head-tcon-name t)
   (match t

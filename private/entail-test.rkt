@@ -25,7 +25,8 @@
                 (for/hasheq ([m methods]) (values (car m) (cdr m)))
                 (hasheq)
                 (for/hasheq ([m methods]) (values (car m) 0))
-                '()))
+                '()
+                (hasheq)))
 
   ;; A class env with:
   ;;   class Eq a

@@ -245,6 +245,31 @@
     (: sum ((Foldable t) => (-> (t Integer) Integer)))
     (define (sum xs) (foldr (lambda (a b) (+ a b)) 0 xs))
 
+    ;; --- Traversable -------------------------------------------
+    ;;
+    ;; `traverse` walks a container `t` calling an `Applicative`-
+    ;; effectful function on each element and rebuilds the container
+    ;; inside that applicative.  At each concrete call site the
+    ;; elaborator resolves the `Applicative f` constraint and inserts
+    ;; the corresponding `pure-impl` as the leading argument (the
+    ;; dict-passing path described in Phase 20).
+
+    (define-class (Traversable (t :: (-> * *)))
+      (: traverse ((Applicative f) =>
+                   (-> (-> a (f b)) (-> (t a) (f (t b)))))))
+
+    (define-instance (Traversable Maybe)
+      (define (traverse f m)
+        (match m
+          [(None)   (pure None)]
+          [(Some x) (fmap Some (f x))])))
+
+    (define-instance (Traversable List)
+      (define (traverse f xs)
+        (match xs
+          [(Nil)         (pure Nil)]
+          [(Cons h rest) (liftA2 Cons (f h) (traverse f rest))])))
+
     ;; --- Semigroup / Monoid ----------------------------------
     ;;
     ;; `Semigroup` carries an associative `<>` (`sappend`).  `Monoid`

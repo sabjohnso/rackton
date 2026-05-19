@@ -24,6 +24,7 @@
          instantiate
          current-method-uses
          current-method-resolutions
+         current-method-dict-resolutions
          resolve-method-uses!)
 
 (require racket/match
@@ -57,6 +58,10 @@
 ;; Resolved return-typed-method calls.  A hashtable from stx → impl
 ;; name symbol (e.g. '$pure:Maybe).  Consumed by codegen.
 (define current-method-resolutions (make-parameter #f))
+;; Resolved dict-method calls.  A hashtable from stx → (Listof
+;; impl-name-symbol) — the codegen prepends these to the e:app args
+;; when compiling the call site (Phase 20).
+(define current-method-dict-resolutions (make-parameter #f))
 
 (define (fresh-tvar [prefix 'a])
   (define box (current-fresh-state))
@@ -116,25 +121,26 @@
      (qual-body raw)]
     [else raw]))
 
-;; Like `instantiate` but also returns the fresh type variables that
-;; replaced the first `num-class-params` bound vars in the scheme —
-;; the tvars that carry the class parameters at the call site.  Used
-;; to record return-typed-method use sites for later resolution.
-(define (instantiate/class-params sch num-class-params)
+;; Like `instantiate` but also returns the substitution it built so
+;; callers can recover the fresh tvar that replaced any specific
+;; scheme-bound variable.  Used to record both return-typed-method
+;; sites (Phase 18) and dict-requiring-method sites (Phase 20).  The
+;; scheme body may carry nested quals when a method declared its own
+;; qualifying context on top of the class head — both layers of
+;; constraints are pulled out into the pending-preds box.
+(define (instantiate/subst sch)
   (match sch
     [(scheme vs body)
      (define s
        (for/fold ([s empty-subst]) ([v (in-list vs)])
          (subst-extend s v (fresh-tvar v))))
      (define raw (apply-subst s body))
-     (define body*
-       (cond
-         [(qual? raw) (add-preds! (qual-constraints raw)) (qual-body raw)]
-         [else raw]))
-     (define class-param-tvars
-       (for/list ([i (in-range num-class-params)])
-         (hash-ref s (list-ref vs i))))
-     (values body* class-param-tvars)]))
+     (add-preds! (qual-constraints-of raw))
+     (values (qual-body-deep raw) s)]))
+
+(define (qual-body-deep t)
+  (cond [(qual? t) (qual-body-deep (qual-body t))]
+        [else t]))
 
 ;; Skolemize: replace each bound type variable with a fresh tcon, so the
 ;; declared signature acts rigidly — the body can't sneak a more specific
@@ -514,17 +520,22 @@
              (and info (data-info-scheme info)))))
      (cond
        [sch
-        (define-values (t class-params)
-          (cond
-            [(return-typed-method? x env)
-             (define cinfo
-               (env-ref-class env (env-ref-method-class env x)))
-             (instantiate/class-params sch
-                                       (length (class-info-params cinfo)))]
-            [else (values (instantiate sch) #f)]))
-        (when class-params
-          (record-method-use! x stx env class-params))
-        (values empty-subst t)]
+        (define owner-class (env-ref-method-class env x))
+        (define cinfo (and owner-class (env-ref-class env owner-class)))
+        (cond
+          [cinfo
+           (define-values (t sub) (instantiate/subst sch))
+           (when (eq? (hash-ref (class-info-dispatchpos cinfo) x #f) 'return)
+             (define class-param-tvars
+               (for/list ([p (in-list (class-info-params cinfo))])
+                 (hash-ref sub p)))
+             (record-method-use! x stx env class-param-tvars))
+           (define reqs (hash-ref (class-info-dictreqs cinfo) x '()))
+           (unless (null? reqs)
+             (record-dict-use! x stx reqs sub))
+           (values empty-subst t)]
+          [else
+           (values empty-subst (instantiate sch))])]
        [else
         (raise-syntax-error 'infer
                             (format "unbound identifier: ~s~a"
@@ -1034,9 +1045,20 @@
   (define fundeps
     (for/list ([m (in-list methods)] #:when (class-fundep? m))
       (cons (class-fundep-lhs m) (class-fundep-rhs m))))
+  ;; Compute per-method dict requirements — for each method, the list
+  ;; of (class-name . param-names) entries whose return-typed methods
+  ;; must be inserted as extra leading arguments at call sites.  See
+  ;; the docstring on class-info in env.rkt and Phase 20's plan.
+  (define dictreqs
+    (for/fold ([acc (hasheq)])
+              ([(method-name sch) (in-hash method-schemes)])
+      (define reqs (method-dict-requirements sch class-params))
+      (cond
+        [(null? reqs) acc]
+        [else (hash-set acc method-name reqs)])))
   (define info (class-info class-name class-params class-kinds
                            super-preds method-schemes defaults
-                           dispatchpos fundeps))
+                           dispatchpos fundeps dictreqs))
   (values (env-extend-class env class-name info) declared))
 
 ;; Process a (require "file.rkt" …) form inside a rackton block.
@@ -1134,6 +1156,47 @@
                       [else t])))
   (ormap (lambda (p) (set-member? (type-vars ret) p)) class-params))
 
+;; Walk a possibly-qualified method scheme and collect the class
+;; constraints whose arguments introduce additional type variables
+;; that appear in the method body (and aren't already class parameters
+;; of the declaring class).  Each entry is `(cons class-name
+;; param-name-list)`; the param names will be looked up at use sites
+;; against the freshened scheme substitution to recover the tvars that
+;; carry the dict resolution.  Example: `traverse : (Applicative f) =>
+;; (-> ...)` returns `((Applicative f))` — the dict requirement is
+;; `Applicative` with parameter `f`.
+(define (method-dict-requirements sch class-params)
+  (define body (scheme-body sch))
+  (define constraints (qual-constraints-of body))
+  (define declaring-set (list->seteq class-params))
+  (for/list ([c (in-list constraints)]
+             #:unless (subset? (constraint-param-set c) declaring-set))
+    (cons (pred-class c) (constraint-tvar-names c))))
+
+(define (constraint-param-set c)
+  (apply set-union/empty (map type-vars (pred-args c))))
+
+(define (constraint-tvar-names c)
+  (for/list ([a (in-list (pred-args c))]
+             #:when (tvar? a))
+    (tvar-name a)))
+
+(define (qual-constraints-of t)
+  ;; Unwrap any number of nested `qual` layers, accumulating
+  ;; constraints into a single list.  `mqual` doesn't flatten, so
+  ;; user-written method types with their own qualifiers produce a
+  ;; qual-of-qual that we need to walk.
+  (cond
+    [(qual? t)
+     (append (qual-constraints t)
+             (qual-constraints-of (qual-body t)))]
+    [else '()]))
+
+(define (set-union/empty . sets)
+  (cond
+    [(null? sets) (seteq)]
+    [else (apply set-union sets)]))
+
 ;; True when `name` is a class method whose dispatch position is
 ;; flagged as 'return — i.e. resolved at the call site from the
 ;; expected type rather than from a runtime value tag.
@@ -1145,54 +1208,88 @@
      (define cinfo (env-ref-class env owner))
      (eq? (hash-ref (class-info-dispatchpos cinfo) name #f) 'return)]))
 
-;; Stash an entry in `current-method-uses` describing a return-typed
-;; method reference at `stx`.  `class-param-tvars` is the list of
-;; fresh tvars that replaced the class params at instantiation; once
-;; inference settles the substitution, walking them produces the
-;; resolved instance.
+;; Stash a Phase-18 return-typed-method entry under `stx`.  The
+;; entry shape is `(list 'return method-name class-param-tvars)`.
 (define (record-method-use! method-name stx env class-param-tvars)
   (define table (current-method-uses))
   (when table
-    (hash-set! table stx (list (env-ref-method-class env method-name)
+    (hash-set! table stx (list 'return
                                method-name
                                class-param-tvars))))
 
+;; Stash a Phase-20 dict-requiring-method entry under `stx`.  The
+;; entry shape is `(list 'dict method-name dict-entries)` where each
+;; dict-entry is `(cons class-name tvars)` — the class to look up and
+;; the fresh tvars whose final resolution names the impl.
+(define (record-dict-use! method-name stx reqs sub)
+  (define table (current-method-uses))
+  (when table
+    (define dict-entries
+      (for/list ([req (in-list reqs)])
+        (define cls (car req))
+        (define param-names (cdr req))
+        (cons cls (for/list ([p (in-list param-names)])
+                    (hash-ref sub p)))))
+    (hash-set! table stx (list 'dict method-name dict-entries))))
+
 ;; After a top-level def's constraints have been reduced, walk every
-;; recorded method use, apply `final-subst` to each entry's class-param
-;; tvars, extract the resulting type constructor name(s), and graduate
-;; the entry into `current-method-resolutions` as the impl name
-;; `$method:Tcon` (single-param classes; multi-param classes get a
-;; joined name like `$method:Tcon1-Tcon2`).
+;; recorded method use, apply `final-subst` to each entry's tvars,
+;; extract resulting type-constructor names, and graduate the entry
+;; into the appropriate resolution table:
+;;   * `'return` entries land in `current-method-resolutions` as a
+;;     single impl-name symbol the codegen substitutes for the e:var.
+;;   * `'dict`   entries land in `current-method-dict-resolutions` as
+;;     a list of impl-name symbols the codegen prepends to e:app args.
 (define (resolve-method-uses! final-subst)
   (define uses (current-method-uses))
   (define resolutions (current-method-resolutions))
+  (define dict-resolutions (current-method-dict-resolutions))
   (when (and uses resolutions)
     (for ([(stx entry) (in-hash uses)])
-      (define method-name (cadr entry))
-      (define class-param-tvars (caddr entry))
-      (define resolved-types
-        (for/list ([tv (in-list class-param-tvars)])
-          (apply-subst final-subst tv)))
-      (define tcon-names
-        (for/list ([rt (in-list resolved-types)])
-          (type-head-tcon rt)))
-      (cond
-        [(andmap values tcon-names)
-         (define impl
-           (string->symbol
-            (format "$~a:~a"
-                    method-name
-                    (string-join (map symbol->string tcon-names) "-"))))
+      (match entry
+        [(list 'return method-name class-param-tvars)
+         (define impl (resolve-return-impl method-name class-param-tvars
+                                           final-subst stx))
          (hash-set! resolutions stx impl)]
-        [else
-         ;; If any class param remains a type variable at resolution
-         ;; time, the call site is ambiguous — surface a clearer error
-         ;; than the generic "unsolved constraint" later.
-         (raise-syntax-error 'infer
-           (format "ambiguous use of ~s: cannot determine target type at this call site"
-                   method-name)
-           stx)]))
+        [(list 'dict method-name dict-entries)
+         (define impls
+           (for/list ([entry (in-list dict-entries)])
+             (define cls (car entry))
+             (define tvars (cdr entry))
+             ;; For each return-typed method of the dict-class, look
+             ;; up the impl name under the resolved type.  Phase 20
+             ;; only ships dicts for Applicative (single return-typed
+             ;; method `pure`); to keep the wiring local this code
+             ;; consults a small dict-method registry.
+             (for/list ([dm (in-list (dict-class-return-methods cls))])
+               (resolve-return-impl dm tvars final-subst stx))))
+         (hash-set! dict-resolutions stx (apply append impls))]))
     (hash-clear! uses)))
+
+(define (resolve-return-impl method-name class-param-tvars final-subst stx)
+  (define tcon-names
+    (for/list ([tv (in-list class-param-tvars)])
+      (type-head-tcon (apply-subst final-subst tv))))
+  (cond
+    [(andmap values tcon-names)
+     (string->symbol
+      (format "$~a:~a"
+              method-name
+              (string-join (map symbol->string tcon-names) "-")))]
+    [else
+     (raise-syntax-error 'infer
+       (format "ambiguous use of ~s: cannot determine target type at this call site"
+               method-name)
+       stx)]))
+
+;; Hardcoded knowledge: which return-typed methods does each
+;; "dict-providing" class supply?  Today there is exactly one entry
+;; — `Applicative` provides `pure`.  Future classes that need to be
+;; dict-passable would register here.
+(define (dict-class-return-methods class-name)
+  (case class-name
+    [(Applicative) '(pure)]
+    [else '()]))
 
 ;; Extract the head type-constructor name from a (possibly applied)
 ;; concrete type.  Returns #f if the type is still polymorphic.
@@ -1237,7 +1334,18 @@
                    [a (in-list inst-args)])
           (subst-extend s p a)))
       (define inst-method-qual (apply-subst σ (scheme-body method-sch)))
-      (define expected-type (qual-body-type inst-method-qual))
+      ;; Strip ALL qual layers — a method type may carry its own
+      ;; qualifying context on top of the class head (e.g.
+      ;; `traverse :: (Applicative f) => ...`), which leaves nested
+      ;; quals after substitution.  We need the bare body for
+      ;; unification and the full constraint list as hypotheses.
+      (define expected-type (qual-body-deep inst-method-qual))
+      (define method-extra-preds
+        ;; Constraints from the method's own qualifying context only —
+        ;; drop the class's head pred since it appears separately as
+        ;; `head-pred` below.
+        (filter (lambda (p) (not (equal? p head-pred)))
+                (qual-constraints-of inst-method-qual)))
       (parameterize ([current-pending-preds (box '())])
         (define-values (s t) (infer-expr body env))
         (define s-u
@@ -1252,10 +1360,13 @@
                  stx))])
            (unify (apply-subst s t) expected-type)))
         (apply-subst-to-preds! (subst-compose s-u s))
-        ;; The instance head itself is a hypothesis during method checking
-        ;; (so a method body can recursively use its own class methods).
+        ;; The instance head itself is a hypothesis during method
+        ;; checking — plus any constraints from the method's own
+        ;; qualifying context (e.g. `Applicative f` for traverse).
         (define leftovers
-          (reduce-context env (cons head-pred ctx-preds)
+          (reduce-context env
+                          (append (cons head-pred ctx-preds)
+                                  method-extra-preds)
                           (snapshot-preds)))
         (unless (null? leftovers)
           (raise-syntax-error 'infer

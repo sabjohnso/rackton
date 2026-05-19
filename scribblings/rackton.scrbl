@@ -25,8 +25,12 @@ algebraic data types, and pattern matching — inside Racket, either as an
 @hash-lang[] @racketmodfont{rackton} program.
 
 This documentation describes the @bold{Phase 1 + 2 + 3 + 4 + 5 + 6 + 7
-+ 8 + 9 + 10 + 11 + 12 + 13 + 14 + 15 + 16 + 17 + 18 + 19} subset.
-Phase 19 added @racket[Semigroup] (@racket[<>]) and @racket[Monoid]
++ 8 + 9 + 10 + 11 + 12 + 13 + 14 + 15 + 16 + 17 + 18 + 19 + 20}
+subset.  Phase 20 added @racket[Traversable] (with @racket[traverse]
+for @racket[Maybe] and @racket[List]) using dict-passing for the
+inner @racket[pure] call — the elaborator inserts the resolved
+@racket[pure]-impl as a leading argument at each call site.  Phase
+19 added @racket[Semigroup] (@racket[<>]) and @racket[Monoid]
 (@racket[mempty]) — the latter is the second customer for Phase 18's
 return-typed dispatch and confirms the mechanism handles 0-arity
 class members as well as functions.  Phase 18 added return-typed
@@ -990,10 +994,56 @@ compile time with @tt{ambiguous use of mempty: cannot determine
 target type at this call site} — the elaborator surfaces a clear
 error rather than letting an unsolved constraint propagate.
 
+@section{Traversable (Phase 20)}
+
+@racket[traverse] walks a container of type @racket[(t a)] calling an
+@racket[Applicative]-effectful function on each element and rebuilds
+the container inside that applicative.  Phase 16 deferred this class
+because its instance bodies call @racket[pure] while @racket[f] is
+still polymorphic; Phase 18 unblocked it for concrete call sites by
+adding return-typed dispatch, and Phase 20 closes the loop with
+@emph{dict-passing}: at each concrete use of @racket[traverse], the
+elaborator resolves the @racket[Applicative f] constraint to a
+specific @racket[$pure:f] impl and inserts it as the leading
+argument to the dispatch wrapper.
+
+@codeblock|{
+(: parse-positive (-> Integer (Maybe Integer)))
+(define (parse-positive n) (if (> n 0) (Some n) None))
+
+(: all-positive (Maybe (List Integer)))
+(define all-positive
+  (traverse parse-positive (Cons 1 (Cons 2 (Cons 3 Nil)))))
+;; ⇒ (Some (Cons 1 (Cons 2 (Cons 3 Nil))))
+
+(: any-failure (Maybe (List Integer)))
+(define any-failure
+  (traverse parse-positive (Cons 1 (Cons -2 Nil))))
+;; ⇒ None   — short-circuits on the inner None
+}|
+
+Mechanically: methods whose qualifying context introduces type
+variables that appear in the method body (`traverse`'s @racket[f] is
+the canonical case) are flagged at class declaration as "needs-dict"
+via @racket[method-dict-requirements].  At each use site the
+elaborator records the fresh tvars carrying the dict constraint;
+after the enclosing definition's constraints are reduced, the entry
+is graduated into @racket[current-method-dict-resolutions] as a list
+of impl names (today: just @racket[$pure:f] for @racket[Applicative]
+dicts).  @racket[compile-expr] consults that table when emitting an
+@racket[e:app] whose head names a needs-dict method and prepends the
+resolved impl names to the call's arguments.  The runtime dispatch
+wrapper's position and arity are shifted at class-compile time to
+match what it actually receives.
+
+A bare @racket[e:var] reference to a needs-dict method (e.g.
+@racket[(map traverse xs)]) is @bold{not} supported — there is no
+@racket[e:app] for the elaborator to attach the dict insertion to.
+Use the method at a call position.
+
 @section{Not yet supported}
 
 Overlapping instances, kind polymorphism (kind variables), threads /
 channels, subprocesses, a fuller numeric tower (rationals, complex,
-exact decimals), and @racket[Traversable] (needs polymorphic-
-instance-body specialization beyond Phase 18's concrete-call-site
-resolution).  These are tracked under later phases.
+exact decimals), and bare-var references to dict-needing methods.
+These are tracked under later phases.
