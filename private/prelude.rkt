@@ -325,6 +325,15 @@
     (: substring (-> String (-> Integer (-> Integer String))))
     (define (substring s start end) (racket String (s start end) ""))
 
+    (: string-prefix? (-> String (-> String Boolean)))
+    (define (string-prefix? p s) (racket Boolean (p s) #f))
+
+    (: string-split (-> String (-> String (List String))))
+    (define (string-split sep s) (racket (List String) (sep s) Nil))
+
+    (: string-join (-> String (-> (List String) String)))
+    (define (string-join sep ss) (racket String (sep ss) ""))
+
     ;; --- Numeric helpers --------------------------------------
 
     (: mod (-> Integer (-> Integer Integer)))

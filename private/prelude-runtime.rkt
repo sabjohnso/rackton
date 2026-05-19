@@ -45,6 +45,13 @@
                     [delete-file rkt:delete-file]
                     [make-directory rkt:make-directory]
                     [directory-list rkt:directory-list])
+         (only-in racket/base
+                  [string=? rkt:string=?])
+         (only-in racket/string
+                  [string-join   rkt:string-join])
+         (only-in racket/base
+                  [regexp-split  rkt:regexp-split]
+                  [regexp-quote  rkt:regexp-quote])
          racket/format
          racket/match
          racket/file
@@ -101,6 +108,7 @@
 
  ;; Strings
  string-length string-append substring
+ string-prefix? string-split string-join
  ;; codegen-only helper for derived Show
  $show-concat
 
@@ -264,6 +272,24 @@
 (define (string-length s) (rkt:string-length s))
 (define/curried (string-append a b) (rkt:string-append a b))
 (define/curried (substring s start end) (rkt:substring s start end))
+
+(define/curried (string-prefix? p s)
+  (and (rkt:<= (rkt:string-length p) (rkt:string-length s))
+       (rkt:string=? p (rkt:substring s 0 (rkt:string-length p)))))
+
+(define/curried (string-split sep s)
+  ;; Split `s` on every occurrence of `sep`.  Behaves like Racket's
+  ;; `regexp-split` on a literal regex but takes a plain string.
+  (rkt-list->rackton
+   (rkt:regexp-split (rkt:regexp-quote sep) s)))
+
+(define/curried (string-join sep ss)
+  ;; Inverse of string-split.  Collect the Rackton list down to a
+  ;; Racket list, then use `string-join` from racket/string.
+  (let loop ([ss ss] [acc '()])
+    (match ss
+      [(Nil)        (rkt:string-join (rkt:reverse acc) sep)]
+      [(Cons h t)   (loop t (cons h acc))])))
 
 ;; A variadic concatenation used by derived Show instances.  The
 ;; Rackton-typed `string-append` is binary; this helper sidesteps the

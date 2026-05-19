@@ -8,7 +8,7 @@ Racket.
 ## Status
 
 **Phase 1 + 2 + 3 + 4 + 5 + 6 + 7 + 8 + 9 + 10 + 11 + 12 + 13 + 14 +
-15 + 16 + 17 + 18 + 19 + 20 + 21** — typed lambda
+15 + 16 + 17 + 18 + 19 + 20 + 21 + 22** — typed lambda
 calculus, ADTs, records (`define-struct`), pattern matching, `letrec`,
 type aliases (`define-alias`), immutable `(Map k v)` and `(Set a)`
 containers, `Float` with real arithmetic and `Fractional` class,
@@ -80,10 +80,17 @@ examples/     calc.rkt — a small expression interpreter
 scribblings/  reference docs
 ```
 
-Run the demo:
+Run the calc REPL:
 
 ```bash
 racket examples/calc.rkt
+```
+
+Or the todo CLI:
+
+```bash
+racket examples/todo.rkt add buy milk
+racket examples/todo.rkt list
 ```
 
 ## License

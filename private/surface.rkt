@@ -378,7 +378,7 @@
 
 (define (parse-expr stx)
   (syntax-parse stx
-    #:datum-literals (lambda λ let letrec match-let where if ann match racket do <-)
+    #:datum-literals (lambda λ let letrec match-let where if cond else ann match racket do <-)
     [n:number  (e:literal (syntax->datum #'n) stx)]
     [b:boolean (e:literal (syntax->datum #'b) stx)]
     [s:string  (e:literal (syntax->datum #'s) stx)]
@@ -441,6 +441,13 @@
     [(if c t e)
      (e:if (parse-expr #'c) (parse-expr #'t) (parse-expr #'e) stx)]
 
+    ;; (cond [c1 b1] [c2 b2] ... [else bN])
+    ;; Desugars to nested ifs.  The final clause MUST be `[else b]`
+    ;; — without it there's no value to fall through to and the
+    ;; resulting expression would be ill-typed.
+    [(cond clause ...+)
+     (parse-cond-clauses (syntax->list #'(clause ...)) stx)]
+
     [(ann e t)
      (e:ann (parse-expr #'e) (parse-type #'t) stx)]
 
@@ -478,6 +485,22 @@
             (for/list ([a (in-list (syntax->list #'(arg ...)))])
               (parse-expr a))
             stx)]))
+
+;; Parse a sequence of cond clauses, desugaring to nested if forms.
+;; The final clause is required to be `[else body]`.
+(define (parse-cond-clauses clauses stx)
+  (syntax-parse clauses
+    #:datum-literals (else)
+    [([else body]) (parse-expr #'body)]
+    [([test body] more ...)
+     (e:if (parse-expr #'test)
+           (parse-expr #'body)
+           (parse-cond-clauses (syntax->list #'(more ...)) stx)
+           stx)]
+    [()
+     (raise-syntax-error 'parse-cond
+       "cond must end with an [else …] clause"
+       stx)]))
 
 ;; Parse one `match` clause.  Two shapes are accepted:
 ;;   [pat body]

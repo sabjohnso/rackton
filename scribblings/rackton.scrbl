@@ -25,8 +25,12 @@ algebraic data types, and pattern matching — inside Racket, either as an
 @hash-lang[] @racketmodfont{rackton} program.
 
 This documentation describes the @bold{Phase 1 + 2 + 3 + 4 + 5 + 6 + 7
-+ 8 + 9 + 10 + 11 + 12 + 13 + 14 + 15 + 16 + 17 + 18 + 19 + 20 + 21}
-subset.  Phase 21 added three surface-ergonomic affordances: pattern
++ 8 + 9 + 10 + 11 + 12 + 13 + 14 + 15 + 16 + 17 + 18 + 19 + 20 + 21 + 22}
+subset.  Phase 22 introduced a real CLI example (a small todo
+manager under @racket[examples/todo.rkt]) and filled the prelude
+gaps it surfaced: @racket[cond], @racket[string-prefix?],
+@racket[string-split], @racket[string-join].  Phase 21 added three
+surface-ergonomic affordances: pattern
 guards in @racket[match] clauses, @racket[match-let] for inline
 destructuring, and @racket[where] for sequential local bindings.
 Phase 20 added @racket[Traversable] (with @racket[traverse]
@@ -1090,6 +1094,41 @@ natural Rackton spelling of Haskell's @racket[where] clauses.
           [doubled (* 2 sum)])
     (+ sum doubled)))
 }|
+
+@section{Example: a todo CLI (Phase 22)}
+
+@racket[examples/todo.rkt] is a small but complete command-line todo
+manager written in @hash-lang[] @racketmodfont{rackton}.  It exists
+as a pressure-test of the whole stack: argv parsing, environment
+variables, file I/O, do-notation, Semigroup / Monoid, pattern
+guards, currying, and the ADT match are all exercised on one program.
+
+@verbatim|{
+$ racket examples/todo.rkt add buy milk
+added: buy milk
+$ racket examples/todo.rkt add walk dog
+added: walk dog
+$ racket examples/todo.rkt list
+1. [ ] buy milk
+2. [ ] walk dog
+$ racket examples/todo.rkt done 1
+marked done: #1
+$ racket examples/todo.rkt clear
+cleared 1 items
+$ racket examples/todo.rkt list
+1. [ ] walk dog
+}|
+
+State lives at @code{$TODO_FILE} (defaults to @code{./todos.txt}),
+one item per line: @code{[ ] task} or @code{[x] task}.  The
+demo-driver test in @racket[tests/todo-demo-test.rkt] subprocesses
+the example for each scenario, exercising end-to-end behaviour
+against a fresh temp file.
+
+Building this example surfaced four prelude gaps which Phase 22 also
+filled: a @racket[cond] surface form (desugars to nested @racket[if]),
+and three string helpers — @racket[string-prefix?], @racket[string-split],
+and @racket[string-join].
 
 @section{Not yet supported}
 
