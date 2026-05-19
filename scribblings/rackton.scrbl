@@ -25,8 +25,15 @@ algebraic data types, and pattern matching — inside Racket, either as an
 @hash-lang[] @racketmodfont{rackton} program.
 
 This documentation describes the @bold{Phase 1 + 2 + 3 + 4 + 5 + 6 + 7
-+ 8 + 9 + 10 + 11 + 12 + 13 + 14 + 15 + 16 + 17 + 18 + 19 + 20 + 21 + 22 + 23 + 24}
-subset.  Phase 24 extended Phase 20's dict-passing to free functions
++ 8 + 9 + 10 + 11 + 12 + 13 + 14 + 15 + 16 + 17 + 18 + 19 + 20 + 21 + 22 + 23 + 24 + 25}
+subset.  Phase 25 added the @racket[State] and @racket[Env] monads
+plus their transformers @racket[StateT] and @racket[EnvT] over an
+inner monad @racket[m].  The transformer instances required extending
+the elaborator's dict-passing once more — at each return-typed-method
+resolution it now also walks the matching instance's qualifying
+context, so the inner monad's @racket[pure] flows in alongside the
+outer.
+Phase 24 extended Phase 20's dict-passing to free functions
 (not just class methods) so @racket[mconcat] can ship — at every
 call site the elaborator inserts the resolved @racket[mempty] impl.
 Phase 23 added @racket[define-newtype] and the canonical
@@ -1225,6 +1232,93 @@ references) to lift this limitation.  In the meantime, two
 workarounds: define a thin wrapper as a class method (Phase 20's
 mechanism handles those), or write the call inline using
 @racket[(foldr <> (ann mempty T) xs)] with an explicit ascription.
+
+@section{State, Env, and their transformers (Phase 25)}
+
+@bold{State.}  @racket[State s a] is the canonical state-passing
+monad — internally a function @racket[s -> (Pair s a)].
+
+@codeblock|{
+(: tick (State Integer Integer))
+(define tick
+  (do [n <- get-state]
+      [_ <- (put-state (+ n 1))]
+    (pure n)))
+
+((run-state (do [a <- tick]
+                [b <- tick]
+              (pure (Cons a (Cons b Nil)))))
+ 0)
+;; ⇒ (MkPair 2 (Cons 0 (Cons 1 Nil)))
+}|
+
+Helpers: @racket[run-state], @racket[eval-state], @racket[exec-state],
+@racket[get-state], @racket[put-state], @racket[modify-state].
+
+@bold{Env.}  Named to avoid colliding with Scheme's
+@racket[read]/@racket[readtable] vocabulary, @racket[Env r a] is the
+canonical Reader monad — a function @racket[r -> a] with
+@racket[ask] and @racket[local].
+
+@codeblock|{
+(: greet (Env String String))
+(define greet
+  (do [name <- ask]
+    (pure (<> "hello, " name))))
+
+((run-env greet) "world")              ;; ⇒ "hello, world"
+((run-env (local (lambda (s) (<> s "!!")) greet)) "world")
+                                       ;; ⇒ "hello, world!!"
+}|
+
+@bold{Transformers (@racket[StateT s m a] and @racket[EnvT r m a]).}
+Each wraps an inner monad @racket[m].  The Functor/Applicative/Monad
+instances are declared with @racket[(Monad m) =>] qualifiers; the
+methods whose body genuinely needs the inner @racket[pure] (only
+@racket[pure] itself and @racket[get-state-t]/@racket[put-state-t]/
+@racket[modify-state-t]/@racket[ask-t]) receive the resolved
+@racket[$pure:m] impl as a leading argument from the elaborator.
+@racket[lift-state-t], @racket[lift-env-t], @racket[local-t], and the
+@racket[Functor]/@racket[Monad] methods of either transformer get by
+with the inner @racket[fmap] and @racket[>>=], which dispatch on
+runtime value tags and need no compile-time dict at all.
+
+@codeblock|{
+(: safe-div (-> Integer (-> Integer (StateT Integer Maybe Integer))))
+(define (safe-div num den)
+  (if (== den 0)
+      (lift-state-t None)
+      (do [acc <- get-state-t]
+          [_   <- (put-state-t (+ acc 1))]
+        (pure (div num den)))))
+
+((run-state-t (do [a <- (safe-div 20 4)]
+                  [b <- (safe-div 10 a)]
+                (pure (+ a b))))
+ 0)
+;; ⇒ (Some (MkPair 2 7))   — state counts successful divisions
+
+((run-state-t (do [_ <- (safe-div 20 4)]
+                  [_ <- (safe-div 1 0)]
+                (pure 0)))
+ 0)
+;; ⇒ None                  — the inner Monad short-circuits
+}|
+
+@bold{Honest limitation.}  The elaborator supports @emph{one level}
+of instance-qual dict-passing: an instance such as
+@racket[(Monad m) => Monad (StateT s m)] resolves the inner
+@racket[$pure:m] correctly when @racket[m] is a concrete tcon.
+@emph{Nested} transformers (e.g. @racket[StateT s (StateT s' Maybe)])
+would need the dict args to themselves be partial-application forms,
+which the resolver doesn't yet emit.  Documented as future work.
+
+@bold{Naming note.}  Haskell calls the environment monad
+@racket[Reader].  Rackton names it @racket[Env] because @racket[Reader]
+would collide with the Scheme reader vocabulary
+(@racket[read]/@racket[readtable]/etc.) — confusing inside a
+Racket-hosted language.  @racket[ask] and @racket[local] are kept as
+the generic verbs.
 
 @section{Not yet supported}
 

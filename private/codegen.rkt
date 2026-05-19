@@ -93,7 +93,27 @@
      (define resolved
        (and (current-method-resolutions)
             (hash-ref (current-method-resolutions) stx #f)))
-     (datum->syntax stx (or resolved name) stx)]
+     (define final-name (datum->syntax stx (or resolved name) stx))
+     ;; If this var carries a dict-resolution, wrap it in a variadic
+     ;; closure that prepends the dict args at call time.  The closure
+     ;; defers — calling `(wrapped x y)` becomes `(name dict... x y)`.
+     ;; e:app heads see the same wrapper and call it normally; the
+     ;; resulting double-call costs one extra closure invocation in
+     ;; exchange for unified handling of bare-var and called positions.
+     (define dict-impls
+       (and (current-method-dict-resolutions)
+            (hash-ref (current-method-dict-resolutions) stx #f)))
+     (cond
+       [(and dict-impls (not (null? dict-impls)))
+        ;; Partial-apply the dict args.  For a 0-user-arg reference
+        ;; like `get-state-t` this gives the value directly; for an
+        ;; N-user-arg reference it gives a closure (Phase 17 currying
+        ;; on the hand-written runtime impl handles the rest).
+        (with-syntax ([head final-name]
+                      [(d ...) (for/list ([sym (in-list dict-impls)])
+                                 (datum->syntax stx sym stx))])
+          (syntax/loc stx (head d ...)))]
+       [else final-name])]
 
     [(e:lam params body stx)
      ;; A multi-parameter lambda compiles to a `case-lambda` whose
@@ -109,22 +129,12 @@
      (build-curried-lambda param-stxs bdy-stx stx)]
 
     [(e:app head args stx)
-     ;; If the head is a needs-dict class-method reference, prepend
-     ;; the resolved impl names as extra leading args (Phase 20).
-     (define head-stx (and (e:var? head) (e:var-stx head)))
-     (define dict-impls
-       (and head-stx
-            (current-method-dict-resolutions)
-            (hash-ref (current-method-dict-resolutions) head-stx #f)))
-     (define all-args
-       (cond
-         [dict-impls
-          (append (for/list ([sym (in-list dict-impls)])
-                    (e:var sym head-stx))
-                  args)]
-         [else args]))
+     ;; The dict-prepending for needs-dict references is handled by
+     ;; the e:var codegen above (it eta-wraps with the dict args), so
+     ;; e:app stays simple here.  Phase 17 auto-currying makes
+     ;; `((f dict) arg ...)` and `(f dict arg ...)` behave the same.
      (with-syntax ([h (compile-expr head)]
-                   [(a ...) (for/list ([x (in-list all-args)]) (compile-expr x))])
+                   [(a ...) (for/list ([x (in-list args)]) (compile-expr x))])
        (syntax/loc stx (h a ...)))]
 
     [(e:let bindings body stx)
@@ -327,6 +337,7 @@
 (define (dict-class-return-method-names class-name)
   (case class-name
     [(Applicative) '(pure)]
+    [(Monad)       '(pure)]
     [(Monoid)      '(mempty)]
     [else '()]))
 

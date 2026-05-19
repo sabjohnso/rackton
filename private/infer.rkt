@@ -957,7 +957,7 @@
                      (map pretty-pred remaining-preds))
              stx)]
           [else (restore-preds! '())])
-        (resolve-method-uses! final-subst)
+        (resolve-method-uses! final-subst env)
         (values (env-extend-var env name decl-scheme)
                 (hash-remove declared name))]
        [else
@@ -972,7 +972,7 @@
         (define final-ty (apply-subst s* t))
         (define final-env (apply-subst/env s* env))
         (define generalized (generalize final-env final-ty))
-        (resolve-method-uses! s*)
+        (resolve-method-uses! s* env)
         (values (env-extend-var final-env name generalized)
                 declared)])]
 
@@ -1218,10 +1218,10 @@
     (cons (pred-class c) (constraint-tvar-names c))))
 
 (define (class-has-return-typed-methods? env class-name)
-  (define cinfo (env-ref-class env class-name))
-  (and cinfo
-       (for/or ([dp (in-hash-values (class-info-dispatchpos cinfo))])
-         (eq? dp 'return))))
+  ;; A class is "dict-passable" if it owns a return-typed method
+  ;; OR if one of its superclasses transitively does.  Consult the
+  ;; (small, hard-coded) registry that already encodes that closure.
+  (not (null? (dict-class-return-methods class-name))))
 
 (define (method-dict-requirements sch class-params)
   (define body (scheme-body sch))
@@ -1298,7 +1298,7 @@
 ;;     single impl-name symbol the codegen substitutes for the e:var.
 ;;   * `'dict`   entries land in `current-method-dict-resolutions` as
 ;;     a list of impl-name symbols the codegen prepends to e:app args.
-(define (resolve-method-uses! final-subst)
+(define (resolve-method-uses! final-subst env)
   (define uses (current-method-uses))
   (define resolutions (current-method-resolutions))
   (define dict-resolutions (current-method-dict-resolutions))
@@ -1308,7 +1308,16 @@
         [(list 'return method-name class-param-tvars)
          (define impl (resolve-return-impl method-name class-param-tvars
                                            final-subst stx))
-         (hash-set! resolutions stx impl)]
+         (hash-set! resolutions stx impl)
+         ;; Phase 25.3: when the matching instance carries a qual
+         ;; context with return-typed-method-bearing constraints, the
+         ;; impl needs those impls as dict args.  Compute and store
+         ;; alongside (codegen prepends them at e:app).
+         (define inst-dict-impls
+           (instance-qual-return-impls env method-name
+                                       class-param-tvars final-subst stx))
+         (unless (null? inst-dict-impls)
+           (hash-set! dict-resolutions stx inst-dict-impls))]
         [(list 'dict method-name dict-entries)
          (define impls
            (for/list ([entry (in-list dict-entries)])
@@ -1323,6 +1332,47 @@
                (resolve-return-impl dm tvars final-subst stx))))
          (hash-set! dict-resolutions stx (apply append impls))]))
     (hash-clear! uses)))
+
+;; Walk the matching instance for a return-typed method's resolved
+;; class param types; emit impl names for return-typed-bearing
+;; constraints in the instance's qual context.  Returns a (possibly
+;; empty) list of impl-name symbols, suitable for prepending to the
+;; call site's argument list.
+(define (instance-qual-return-impls env method-name class-param-tvars
+                                    final-subst stx)
+  (define owner-class (env-ref-method-class env method-name))
+  (cond
+    [(not owner-class) '()]
+    [else
+     (define resolved-types
+       (for/list ([tv (in-list class-param-tvars)])
+         (apply-subst final-subst tv)))
+     (define target-pred (pred owner-class resolved-types))
+     (define matching
+       (for/or ([inst (in-list (env-instances env owner-class))])
+         (define σ (match-pred (instance-info-head inst) target-pred))
+         (and σ (cons inst σ))))
+     (cond
+       [(not matching) '()]
+       [else
+        (define inst (car matching))
+        (define σ   (cdr matching))
+        (apply append
+               (for/list ([c (in-list (instance-info-context inst))])
+                 (define inst-pred (apply-subst σ c))
+                 (define cls (pred-class inst-pred))
+                 (define ctx-tcons
+                   (for/list ([a (in-list (pred-args inst-pred))])
+                     (type-head-tcon a)))
+                 (cond
+                   [(andmap values ctx-tcons)
+                    (for/list ([dm (in-list (dict-class-return-methods cls))])
+                      (string->symbol
+                       (format "$~a:~a"
+                               dm
+                               (string-join (map symbol->string ctx-tcons)
+                                            "-"))))]
+                   [else '()])))])]))
 
 (define (resolve-return-impl method-name class-param-tvars final-subst stx)
   (define tcon-names
@@ -1344,9 +1394,13 @@
 ;; "dict-providing" class supply?  Today there is exactly one entry
 ;; — `Applicative` provides `pure`.  Future classes that need to be
 ;; dict-passable would register here.
+;; Includes return-typed methods from superclasses transitively — a
+;; constraint `(Monad m) =>` carries `pure` because Applicative is a
+;; superclass of Monad and Applicative declares pure as return-typed.
 (define (dict-class-return-methods class-name)
   (case class-name
     [(Applicative) '(pure)]
+    [(Monad)       '(pure)]
     [(Monoid)      '(mempty)]
     [else '()]))
 

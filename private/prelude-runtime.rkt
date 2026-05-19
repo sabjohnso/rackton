@@ -63,6 +63,12 @@
  None Some Nil Cons MkPair Ok Err MkUnit
  MkSum MkProduct
  get-sum get-product
+ MkState MkEnv MkStateT MkEnvT
+ run-state eval-state exec-state get-state put-state modify-state
+ run-env ask local
+ run-state-t eval-state-t exec-state-t
+ get-state-t put-state-t modify-state-t lift-state-t
+ run-env-t ask-t local-t lift-env-t
 
  ;; Class methods
  +  -  *
@@ -81,6 +87,8 @@
  ;; Return-typed class methods (resolved at compile time per call site;
  ;; the `$pure:TCon` names are what the codegen emits after resolution).
  |$pure:Maybe| |$pure:List| |$pure:Result| |$pure:IO|
+ |$pure:State| |$pure:Env|
+ |$pure:StateT| |$pure:EnvT|
  |$mempty:String| |$mempty:List| |$mempty:Sum| |$mempty:Product|
 
  ;; Dispatch tables — exposed so user modules that declare new
@@ -166,6 +174,12 @@
 
 (define-data-ctor MkSum     1)
 (define-data-ctor MkProduct 1)
+
+(define-data-ctor MkState 1)
+(define-data-ctor MkEnv   1)
+
+(define-data-ctor MkStateT 1)
+(define-data-ctor MkEnvT   1)
 
 ;; ----- Class dispatch tables -------------------------------------
 
@@ -668,6 +682,180 @@
 (register-instance-method! $dispatch:>>=  '$ctor:Err   result->>=)
 (register-instance-method! $dispatch:>>=  '$ctor:Ok    result->>=)
 
+;; ----- State monad runtime ---------------------------------------
+
+(define (run-state st)  (match st [(MkState f) f]))
+(define (eval-state st s)
+  (match ((run-state st) s) [(MkPair _ a) a]))
+(define (exec-state st s)
+  (match ((run-state st) s) [(MkPair s2 _) s2]))
+(define get-state    (MkState (lambda (s) (MkPair s s))))
+(define (put-state s) (MkState (lambda (_) (MkPair s MkUnit))))
+(define (modify-state f) (MkState (lambda (s) (MkPair (f s) MkUnit))))
+
+(define |$pure:State|
+  (lambda (a) (MkState (lambda (s) (MkPair s a)))))
+
+(define (state-fmap f st)
+  (MkState (lambda (s)
+             (match ((run-state st) s)
+               [(MkPair s2 a) (MkPair s2 (f a))]))))
+(register-instance-method! $dispatch:fmap '$ctor:MkState state-fmap)
+
+(define (state-ap sf sa)
+  (MkState (lambda (s)
+             (match ((run-state sf) s)
+               [(MkPair s2 f)
+                (match ((run-state sa) s2)
+                  [(MkPair s3 a) (MkPair s3 (f a))])]))))
+(register-instance-method! $dispatch:<*> '$ctor:MkState state-ap)
+
+(define (state-liftA2 g sa sb)
+  (MkState (lambda (s)
+             (match ((run-state sa) s)
+               [(MkPair s2 a)
+                (match ((run-state sb) s2)
+                  [(MkPair s3 b) (MkPair s3 (g a b))])]))))
+(register-instance-method! $dispatch:liftA2 '$ctor:MkState state-liftA2)
+
+(define (state->>= st f)
+  (MkState (lambda (s)
+             (match ((run-state st) s)
+               [(MkPair s2 a) ((run-state (f a)) s2)]))))
+(register-instance-method! $dispatch:>>= '$ctor:MkState state->>=)
+
+;; ----- Env monad runtime -----------------------------------------
+
+(define (run-env e) (match e [(MkEnv f) f]))
+(define ask (MkEnv (lambda (r) r)))
+(define (local f e) (MkEnv (lambda (r) ((run-env e) (f r)))))
+
+(define |$pure:Env|
+  (lambda (a) (MkEnv (lambda (_) a))))
+
+(define (env-fmap f e)
+  (MkEnv (lambda (r) (f ((run-env e) r)))))
+(register-instance-method! $dispatch:fmap '$ctor:MkEnv env-fmap)
+
+(define (env-ap ef ea)
+  (MkEnv (lambda (r) (((run-env ef) r) ((run-env ea) r)))))
+(register-instance-method! $dispatch:<*> '$ctor:MkEnv env-ap)
+
+(define (env-liftA2 g ea eb)
+  (MkEnv (lambda (r) (g ((run-env ea) r) ((run-env eb) r)))))
+(register-instance-method! $dispatch:liftA2 '$ctor:MkEnv env-liftA2)
+
+(define (env->>= e f)
+  (MkEnv (lambda (r) ((run-env (f ((run-env e) r))) r))))
+(register-instance-method! $dispatch:>>= '$ctor:MkEnv env->>=)
+
+;; ----- StateT s m runtime ----------------------------------------
+;; Each method whose semantics need the inner monad's `pure` takes
+;; the resolved inner pure-impl as a LEADING argument — the elaborator
+;; (Phase 25.3) inserts it from the matching instance's qual context.
+
+(define (run-state-t st)
+  (match st [(MkStateT f) f]))
+
+;; $pure:StateT takes (inner-pure a).  define/curried so the
+;; codegen's `(($pure:StateT $pure:m))` partial application gives a
+;; 1-arg closure awaiting `a`.
+(define/curried ($pure:StateT inner-pure a)
+  (MkStateT (lambda (s) (inner-pure (MkPair s a)))))
+
+;; eval/exec take (st s).  Curried so partial e:var refs work.
+(define/curried (eval-state-t st s)
+  (fmap (lambda (p) (match p [(MkPair _ a) a])) ((run-state-t st) s)))
+(define/curried (exec-state-t st s)
+  (fmap (lambda (p) (match p [(MkPair s2 _) s2])) ((run-state-t st) s)))
+
+;; get-state-t is user-facing 0-arg.  The dict arg fully applies the
+;; runtime fn and the result is the StateT value.
+(define (get-state-t inner-pure)
+  (MkStateT (lambda (s) (inner-pure (MkPair s s)))))
+(define/curried (put-state-t inner-pure s)
+  (MkStateT (lambda (_) (inner-pure (MkPair s MkUnit)))))
+(define/curried (modify-state-t inner-pure f)
+  (MkStateT (lambda (s) (inner-pure (MkPair (f s) MkUnit)))))
+
+;; lift carries no dict (Functor m only).  Plain define.
+(define (lift-state-t ma)
+  (MkStateT (lambda (s) (fmap (lambda (a) (MkPair s a)) ma))))
+
+(define (state-t-fmap f st)
+  (MkStateT (lambda (s)
+              (fmap (lambda (p) (match p [(MkPair s2 a) (MkPair s2 (f a))]))
+                    ((run-state-t st) s)))))
+(register-instance-method! $dispatch:fmap '$ctor:MkStateT state-t-fmap)
+
+;; <*> via >>= and fmap of inner monad — no inner pure.
+(define (state-t-ap sf sa)
+  (MkStateT (lambda (s)
+              (>>= ((run-state-t sf) s)
+                   (lambda (p1)
+                     (match p1
+                       [(MkPair s2 f)
+                        (fmap (lambda (p2)
+                                (match p2
+                                  [(MkPair s3 a) (MkPair s3 (f a))]))
+                              ((run-state-t sa) s2))]))))))
+(register-instance-method! $dispatch:<*> '$ctor:MkStateT state-t-ap)
+
+(define (state-t-liftA2 g sa sb)
+  (MkStateT (lambda (s)
+              (>>= ((run-state-t sa) s)
+                   (lambda (p1)
+                     (match p1
+                       [(MkPair s2 a)
+                        (fmap (lambda (p2)
+                                (match p2
+                                  [(MkPair s3 b) (MkPair s3 (g a b))]))
+                              ((run-state-t sb) s2))]))))))
+(register-instance-method! $dispatch:liftA2 '$ctor:MkStateT state-t-liftA2)
+
+(define (state-t->>= st f)
+  (MkStateT (lambda (s)
+              (>>= ((run-state-t st) s)
+                   (lambda (p)
+                     (match p
+                       [(MkPair s2 a) ((run-state-t (f a)) s2)]))))))
+(register-instance-method! $dispatch:>>= '$ctor:MkStateT state-t->>=)
+
+;; ----- EnvT r m runtime -----------------------------------------
+
+(define (run-env-t e) (match e [(MkEnvT f) f]))
+
+(define/curried ($pure:EnvT inner-pure a)
+  (MkEnvT (lambda (_) (inner-pure a))))
+
+;; ask-t is 0-user-arg (just takes the dict).
+(define (ask-t inner-pure) (MkEnvT (lambda (r) (inner-pure r))))
+(define/curried (local-t f e) (MkEnvT (lambda (r) ((run-env-t e) (f r)))))
+(define (lift-env-t ma) (MkEnvT (lambda (_) ma)))
+
+(define (env-t-fmap f e)
+  (MkEnvT (lambda (r) (fmap f ((run-env-t e) r)))))
+(register-instance-method! $dispatch:fmap '$ctor:MkEnvT env-t-fmap)
+
+(define (env-t-ap ef ea)
+  (MkEnvT (lambda (r)
+            (>>= ((run-env-t ef) r)
+                 (lambda (f) (fmap f ((run-env-t ea) r)))))))
+(register-instance-method! $dispatch:<*> '$ctor:MkEnvT env-t-ap)
+
+(define (env-t-liftA2 g ea eb)
+  (MkEnvT (lambda (r)
+            (>>= ((run-env-t ea) r)
+                 (lambda (a) (fmap (lambda (b) (g a b))
+                                   ((run-env-t eb) r)))))))
+(register-instance-method! $dispatch:liftA2 '$ctor:MkEnvT env-t-liftA2)
+
+(define (env-t->>= e f)
+  (MkEnvT (lambda (r)
+            (>>= ((run-env-t e) r)
+                 (lambda (a) ((run-env-t (f a)) r))))))
+(register-instance-method! $dispatch:>>= '$ctor:MkEnvT env-t->>=)
+
 ;; ----- Applicative instances ------------------------------------
 
 ;; Maybe
@@ -795,7 +983,7 @@
 ;; free-function detection in var-dict-requirements).  Inner `<>`
 ;; calls dispatch on the running accumulator's tag and remain
 ;; generic.
-(define (mconcat mempty-impl xs)
+(define/curried (mconcat mempty-impl xs)
   (foldr (lambda (x acc) (<> x acc)) mempty-impl xs))
 
 (for ([tag (in-list '($ctor:Nil $ctor:Cons $ctor:None $ctor:Some))])
