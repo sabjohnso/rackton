@@ -43,7 +43,8 @@
          "types.rkt"
          "env.rkt"
          "surface.rkt"
-         "match.rkt")
+         "match.rkt"
+         "infer.rkt")
 
 ;; Build a (possibly curried) lambda over `param-stxs` whose body is the
 ;; already-compiled `body-stx`.  For arity ≤ 1 we just emit
@@ -86,7 +87,13 @@
 (define (compile-expr e)
   (match e
     [(e:literal v stx)   (datum->syntax stx v stx)]
-    [(e:var name stx)    (datum->syntax stx name stx)]
+    [(e:var name stx)
+     ;; Return-typed class methods have been resolved by inference
+     ;; into per-instance impl names; consult the table.
+     (define resolved
+       (and (current-method-resolutions)
+            (hash-ref (current-method-resolutions) stx #f)))
+     (datum->syntax stx (or resolved name) stx)]
 
     [(e:lam params body stx)
      ;; A multi-parameter lambda compiles to a `case-lambda` whose
@@ -188,7 +195,9 @@
     (for/list ([m (in-list methods)] #:when (method-sig? m))
       (method-sig-name m)))
   (define defs
-    (for/list ([n (in-list method-names)])
+    (for/list ([n (in-list method-names)]
+               #:unless (eq? (hash-ref (class-info-dispatchpos cinfo) n #f)
+                             'return))
       (define pos (hash-ref (class-info-dispatchpos cinfo) n 0))
       (define ar  (method-arity cinfo n))
       (with-syntax ([meth     (datum->syntax stx n stx)]
@@ -252,17 +261,58 @@
                      m head-pred-class)]))
          (loop (cdr rest) (cons (cons m body) acc))])))
 
+  (define head-tcon-names
+    (for/list ([t (in-list head-arg-types)]) (head-tcon-name t)))
   (define register-forms
-    (for*/list ([mb (in-list all-method-bodies)]
-                [tag (in-list tags)])
-      (with-syntax ([table   (datum->syntax stx
-                                            (method-dispatch-symbol (car mb))
-                                            stx)]
-                    [impl    (compile-expr (cdr mb))]
-                    [tag-sym (datum->syntax stx tag stx)])
-        #'(register-instance-method! table 'tag-sym impl))))
+    (apply
+     append
+     (for/list ([mb (in-list all-method-bodies)])
+       (define name (car mb))
+       (define body (cdr mb))
+       (cond
+         [(eq? (hash-ref (class-info-dispatchpos cinfo) name #f) 'return)
+          ;; Return-typed methods don't dispatch on a runtime value;
+          ;; emit one top-level `(define $method:Tcon impl)` whose name
+          ;; matches what `infer.rkt` synthesizes in
+          ;; current-method-resolutions.
+          (with-syntax ([impl-name
+                         (datum->syntax stx
+                                        (return-impl-symbol name head-tcon-names)
+                                        stx)]
+                        [impl (compile-expr body)])
+            (list #'(define impl-name impl)))]
+         [else
+          (for/list ([tag (in-list tags)])
+            (with-syntax ([table   (datum->syntax stx
+                                                  (method-dispatch-symbol name)
+                                                  stx)]
+                          [impl    (compile-expr body)]
+                          [tag-sym (datum->syntax stx tag stx)])
+              #'(register-instance-method! table 'tag-sym impl)))]))))
   (with-syntax ([(register ...) register-forms])
     (syntax/loc stx (begin register ...))))
+
+(define (head-tcon-name t)
+  (match t
+    [(tcon n) n]
+    [(tapp h _) (head-tcon-name h)]
+    [_ (error 'compile-instance
+              "instance head arg must be a concrete type, got ~v" t)]))
+
+;; Build the impl name the codegen emits for a return-typed method on
+;; an instance whose head args are `tcon-names`.  Must agree byte-for-
+;; byte with the resolver in private/infer.rkt's `resolve-method-uses!`.
+(define (return-impl-symbol method-name tcon-names)
+  (string->symbol
+   (format "$~a:~a"
+           method-name
+           (apply string-append
+                  (let loop ([xs tcon-names])
+                    (cond
+                      [(null? xs) '()]
+                      [(null? (cdr xs)) (list (symbol->string (car xs)))]
+                      [else (cons (symbol->string (car xs))
+                                  (cons "-" (loop (cdr xs))))]))))))
 
 (define (method-dispatch-symbol method-name)
   (string->symbol (format "$dispatch:~a" method-name)))

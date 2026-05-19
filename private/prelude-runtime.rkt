@@ -66,6 +66,10 @@
  bimap first second
  foldr length to-list sum
 
+ ;; Return-typed class methods (resolved at compile time per call site;
+ ;; the `$pure:TCon` names are what the codegen emits after resolution).
+ |$pure:Maybe| |$pure:List| |$pure:Result| |$pure:IO|
+
  ;; Dispatch tables — exposed so user modules that declare new
  ;; instances (including derived ones) can register against them.
  $dispatch:+  $dispatch:-  $dispatch:*
@@ -278,6 +282,16 @@
          (define line (rkt:read-line))
          (if (eof-object? line) "" line))))
 (define (pure-io x) ($io (lambda () x)))
+
+;; ----- pure (return-typed Applicative method) ---------------------
+;; The Rackton-level `pure` is resolved at compile time by the
+;; elaborator (see resolve-method-uses! in private/infer.rkt) to one
+;; of these per-instance names based on the expected return type at
+;; each call site.
+(define (|$pure:Maybe|  x) (Some x))
+(define (|$pure:List|   x) (Cons x Nil))
+(define (|$pure:Result| x) (Ok x))
+(define (|$pure:IO|     x) ($io (lambda () x)))
 
 (define (io-fmap f io)
   ($io (lambda () (f (run-io io)))))

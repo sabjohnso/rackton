@@ -97,19 +97,19 @@
 
     ;; --- Functor / Applicative / Monad (higher-kinded) --------
     ;;
-    ;; The hierarchy is Functor → Applicative → Monad.  `pure` would
-    ;; normally live on Applicative, but the current single-dispatch
-    ;; runtime can only resolve a class method when its type has a
-    ;; positional argument mentioning a class parameter (see
-    ;; find-dispatch-pos in private/infer.rkt).  `pure :: a -> f a`
-    ;; carries `f` only in its result, so it is provided as separate
-    ;; per-monad names (`pure-io`, etc.) until a future phase adds
-    ;; type-directed monomorphization at call sites.
+    ;; The hierarchy is Functor → Applicative → Monad.  `pure` is a
+    ;; return-typed class method: its type `a -> f a` carries the
+    ;; class parameter only in the result, so the elaborator picks
+    ;; the per-instance impl at compile time from the expected return
+    ;; type at each call site.  See `return-typed-method?` in
+    ;; private/infer.rkt and the resolution table consumed by
+    ;; private/codegen.rkt.
 
     (define-class (Functor (f :: (-> * *)))
       (: fmap (-> (-> a b) (-> (f a) (f b)))))
 
     (define-class ((Functor f) => (Applicative (f :: (-> * *))))
+      (: pure  (-> a (f a)))
       (: <*>   (-> (f (-> a b)) (-> (f a) (f b))))
       (: liftA2 (-> (-> a (-> b c)) (-> (f a) (-> (f b) (f c)))))
       (define (liftA2 g x y) (<*> (fmap g x) y)))
@@ -125,6 +125,7 @@
           [(Some x) (Some (f x))])))
 
     (define-instance (Applicative Maybe)
+      (define (pure x) (Some x))
       (define (<*> mf mx)
         (match mf
           [(None)   None]
@@ -144,6 +145,7 @@
           [(Cons h t)   (Cons (f h) (fmap f t))])))
 
     (define-instance (Applicative List)
+      (define (pure x) (Cons x Nil))
       ;; cartesian-product semantics — for each function in `fs` apply
       ;; it to every `x` in `xs`, concatenating.  We can't yet call
       ;; the top-level `append` (it's defined later in the prelude), so
@@ -165,6 +167,7 @@
           [(Ok  v) (Ok (f v))])))
 
     (define-instance (Applicative (Result e))
+      (define (pure x) (Ok x))
       (define (<*> rf rx)
         (match rf
           [(Err e) (Err e)]
@@ -292,6 +295,7 @@
       (define (fmap f io) (racket (IO b) (f io) #f)))
 
     (define-instance (Applicative IO)
+      (define (pure x) (racket (IO a) (x) #f))
       (define (<*> iof iox) (racket (IO b) (iof iox) #f)))
 
     (define-instance (Monad IO)

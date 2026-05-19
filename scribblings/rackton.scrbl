@@ -25,8 +25,10 @@ algebraic data types, and pattern matching — inside Racket, either as an
 @hash-lang[] @racketmodfont{rackton} program.
 
 This documentation describes the @bold{Phase 1 + 2 + 3 + 4 + 5 + 6 + 7
-+ 8 + 9 + 10 + 11 + 12 + 13 + 14 + 15 + 16 + 17} subset.  Phase 17
-turned multi-argument functions into auto-currying ones, so partial
++ 8 + 9 + 10 + 11 + 12 + 13 + 14 + 15 + 16 + 17 + 18} subset.  Phase
+18 added return-typed class-method dispatch, so @racket[pure] is now
+a real class method on @racket[Applicative].  Phase 17 turned
+multi-argument functions into auto-currying ones, so partial
 application Just Works.  Phase 16 inserted @racket[Applicative]
 between @racket[Functor] and @racket[Monad] and added
 @racket[Bifunctor] and @racket[Foldable].  Phase 15 added a
@@ -881,15 +883,7 @@ top-level convenience for @racket[(Foldable t) => (-> (t Integer) Integer)].
 ;; total : Integer — evaluates to 6
 }|
 
-The @racket[pure] of @racket[Applicative] is intentionally @bold{not}
-a class method: under the current single-dispatch runtime, the
-elaborator can only resolve a class method when its type has a
-positional argument mentioning a class parameter, and
-@racket[pure :: a -> f a] carries @racket[f] only in its result.
-Pending a type-directed monomorphization pass at call sites, callers
-use the per-type names (@racket[pure-io] and friends).
-@racket[Traversable] is deferred for the same reason — its instance
-bodies need a polymorphic @racket[pure].
+@racket[pure] is on @racket[Applicative].  See @secref{Return-typed_dispatch_(Phase_18)} for how the elaborator resolves it at each call site.
 
 @section{Partial application (Phase 17)}
 
@@ -921,9 +915,49 @@ hand-written prelude functions in @racket[private/prelude-runtime.rkt]).
 the method's total arity so the wrapper knows when to stop collecting
 arguments and fire the dispatch.
 
+@section{Return-typed dispatch (Phase 18)}
+
+A class method whose type carries the class parameter only in the
+@emph{return} position — the canonical example is
+@racket[pure :: a -> f a] — has no value at the call site whose tag
+could select an instance.  Phase 18 resolves these at compile time
+instead.  At inference, each reference to such a method is recorded
+along with the fresh type variables that stand in for the class
+parameters; once the enclosing definition's constraints have been
+reduced, each recorded site is graduated to a per-instance impl name
+of the form @tt{$method:TCon}.  Codegen consults the resolution
+table when emitting the @racket[e:var] node and emits the impl name
+in place of the original method name.
+
+@codeblock|{
+(: maybe-id (Maybe Integer))
+(define maybe-id (pure 42))    ;; resolves to $pure:Maybe → (Some 42)
+
+(: io-id (IO Integer))
+(define io-id (pure 42))       ;; resolves to $pure:IO
+
+(: ambiguous Integer)
+(define ambiguous (pure 5))    ;; rejected — `f` cannot be determined
+}|
+
+The mechanism is purely monomorphic specialization at concrete call
+sites; it does @bold{not} handle polymorphic instance bodies (e.g. a
+@racket[Traversable] instance whose body calls @racket[pure] while
+@racket[f] is itself a class parameter).  That requires either
+runtime dictionary passing or a deeper specialization pass, which
+remains future work.
+
+The plumbing lives in @racket[private/infer.rkt]
+(@racket[return-typed-method?], @racket[current-method-uses],
+@racket[resolve-method-uses!]) and @racket[private/codegen.rkt]
+(the @racket[e:var] consultation of @racket[current-method-resolutions]).
+Both phases share their hashtables via a single
+@racket[parameterize] in @racket[private/elaborate.rkt].
+
 @section{Not yet supported}
 
 Overlapping instances, kind polymorphism (kind variables), threads /
 channels, subprocesses, a fuller numeric tower (rationals, complex,
-exact decimals), and @racket[Traversable]/return-typed dispatch.
-These are tracked under later phases.
+exact decimals), and @racket[Traversable] (needs polymorphic-
+instance-body specialization beyond Phase 18's concrete-call-site
+resolution).  These are tracked under later phases.

@@ -21,11 +21,15 @@
 (provide infer-expr/fresh
          infer-program
          generalize
-         instantiate)
+         instantiate
+         current-method-uses
+         current-method-resolutions
+         resolve-method-uses!)
 
 (require racket/match
          racket/set
          racket/list
+         racket/string
          "types.rkt"
          "env.rkt"
          "unify.rkt"
@@ -43,6 +47,16 @@
 ;; Set of alias names currently being expanded — used to detect
 ;; recursive aliases.
 (define current-expanding      (make-parameter (seteq)))
+;; Return-typed-method use sites accumulated during inference of one
+;; top-level definition.  A hashtable from the e:var's syntax object →
+;; (list class-name method-name body-type).  After constraint
+;; reduction completes, each entry's body-type is run through the
+;; final substitution to determine the concrete instance and the
+;; entry is graduated into `current-method-resolutions`.
+(define current-method-uses        (make-parameter #f))
+;; Resolved return-typed-method calls.  A hashtable from stx → impl
+;; name symbol (e.g. '$pure:Maybe).  Consumed by codegen.
+(define current-method-resolutions (make-parameter #f))
 
 (define (fresh-tvar [prefix 'a])
   (define box (current-fresh-state))
@@ -101,6 +115,26 @@
      (add-preds! (qual-constraints raw))
      (qual-body raw)]
     [else raw]))
+
+;; Like `instantiate` but also returns the fresh type variables that
+;; replaced the first `num-class-params` bound vars in the scheme —
+;; the tvars that carry the class parameters at the call site.  Used
+;; to record return-typed-method use sites for later resolution.
+(define (instantiate/class-params sch num-class-params)
+  (match sch
+    [(scheme vs body)
+     (define s
+       (for/fold ([s empty-subst]) ([v (in-list vs)])
+         (subst-extend s v (fresh-tvar v))))
+     (define raw (apply-subst s body))
+     (define body*
+       (cond
+         [(qual? raw) (add-preds! (qual-constraints raw)) (qual-body raw)]
+         [else raw]))
+     (define class-param-tvars
+       (for/list ([i (in-range num-class-params)])
+         (hash-ref s (list-ref vs i))))
+     (values body* class-param-tvars)]))
 
 ;; Skolemize: replace each bound type variable with a fresh tcon, so the
 ;; declared signature acts rigidly — the body can't sneak a more specific
@@ -479,7 +513,18 @@
            (let ([info (env-ref-data env x)])
              (and info (data-info-scheme info)))))
      (cond
-       [sch (values empty-subst (instantiate sch))]
+       [sch
+        (define-values (t class-params)
+          (cond
+            [(return-typed-method? x env)
+             (define cinfo
+               (env-ref-class env (env-ref-method-class env x)))
+             (instantiate/class-params sch
+                                       (length (class-info-params cinfo)))]
+            [else (values (instantiate sch) #f)]))
+        (when class-params
+          (record-method-use! x stx env class-params))
+        (values empty-subst t)]
        [else
         (raise-syntax-error 'infer
                             (format "unbound identifier: ~s~a"
@@ -849,7 +894,8 @@
            (unify (apply-subst s t) decl-ty)))
         ;; Discharge any constraints raised inside the body against the
         ;; declaration's preds (hypotheses).
-        (apply-subst-to-preds! (subst-compose s-u s))
+        (define final-subst (subst-compose s-u s))
+        (apply-subst-to-preds! final-subst)
         (define remaining-preds
           (reduce-context env decl-preds (snapshot-preds)))
         (cond
@@ -860,6 +906,7 @@
                      (map pretty-pred remaining-preds))
              stx)]
           [else (restore-preds! '())])
+        (resolve-method-uses! final-subst)
         (values (env-extend-var env name decl-scheme)
                 (hash-remove declared name))]
        [else
@@ -873,7 +920,9 @@
         (apply-subst-to-preds! s*)
         (define final-ty (apply-subst s* t))
         (define final-env (apply-subst/env s* env))
-        (values (env-extend-var final-env name (generalize final-env final-ty))
+        (define generalized (generalize final-env final-ty))
+        (resolve-method-uses! s*)
+        (values (env-extend-var final-env name generalized)
                 declared)])]
 
     [(top:class supers head methods stx)
@@ -964,7 +1013,10 @@
         [else acc])))
   ;; For each method, find which argument's runtime tag determines the
   ;; instance: the first top-level arg whose type mentions a class
-  ;; parameter.
+  ;; parameter.  If no argument mentions a class param but the *return*
+  ;; type does (e.g. `pure :: a -> f a`), mark the method as
+  ;; return-typed — at use sites it is resolved at compile time from the
+  ;; expected return type rather than from a runtime value tag.
   (define dispatchpos
     (for/fold ([acc (hasheq)])
               ([(method-name sch) (in-hash method-schemes)])
@@ -972,6 +1024,8 @@
       (define pos (find-dispatch-pos body-type class-params))
       (cond
         [pos (hash-set acc method-name pos)]
+        [(return-type-mentions-class-param? body-type class-params)
+         (hash-set acc method-name 'return)]
         [else
          (raise-syntax-error 'infer
            (format "class method ~s does not have any argument whose type mentions a class parameter — single dispatch cannot resolve it"
@@ -1070,6 +1124,83 @@
           pos]
          [else (loop (arrow-cod t) (add1 pos))])]
       [else #f])))
+
+;; True when the return position of a (possibly curried) method type
+;; mentions any of `class-params`.  Used to flag methods like
+;; `pure :: a -> f a` that need return-typed dispatch.
+(define (return-type-mentions-class-param? t class-params)
+  (define ret (let loop ([t t])
+                (cond [(arrow? t) (loop (arrow-cod t))]
+                      [else t])))
+  (ormap (lambda (p) (set-member? (type-vars ret) p)) class-params))
+
+;; True when `name` is a class method whose dispatch position is
+;; flagged as 'return — i.e. resolved at the call site from the
+;; expected type rather than from a runtime value tag.
+(define (return-typed-method? name env)
+  (define owner (env-ref-method-class env name))
+  (cond
+    [(not owner) #f]
+    [else
+     (define cinfo (env-ref-class env owner))
+     (eq? (hash-ref (class-info-dispatchpos cinfo) name #f) 'return)]))
+
+;; Stash an entry in `current-method-uses` describing a return-typed
+;; method reference at `stx`.  `class-param-tvars` is the list of
+;; fresh tvars that replaced the class params at instantiation; once
+;; inference settles the substitution, walking them produces the
+;; resolved instance.
+(define (record-method-use! method-name stx env class-param-tvars)
+  (define table (current-method-uses))
+  (when table
+    (hash-set! table stx (list (env-ref-method-class env method-name)
+                               method-name
+                               class-param-tvars))))
+
+;; After a top-level def's constraints have been reduced, walk every
+;; recorded method use, apply `final-subst` to each entry's class-param
+;; tvars, extract the resulting type constructor name(s), and graduate
+;; the entry into `current-method-resolutions` as the impl name
+;; `$method:Tcon` (single-param classes; multi-param classes get a
+;; joined name like `$method:Tcon1-Tcon2`).
+(define (resolve-method-uses! final-subst)
+  (define uses (current-method-uses))
+  (define resolutions (current-method-resolutions))
+  (when (and uses resolutions)
+    (for ([(stx entry) (in-hash uses)])
+      (define method-name (cadr entry))
+      (define class-param-tvars (caddr entry))
+      (define resolved-types
+        (for/list ([tv (in-list class-param-tvars)])
+          (apply-subst final-subst tv)))
+      (define tcon-names
+        (for/list ([rt (in-list resolved-types)])
+          (type-head-tcon rt)))
+      (cond
+        [(andmap values tcon-names)
+         (define impl
+           (string->symbol
+            (format "$~a:~a"
+                    method-name
+                    (string-join (map symbol->string tcon-names) "-"))))
+         (hash-set! resolutions stx impl)]
+        [else
+         ;; If any class param remains a type variable at resolution
+         ;; time, the call site is ambiguous — surface a clearer error
+         ;; than the generic "unsolved constraint" later.
+         (raise-syntax-error 'infer
+           (format "ambiguous use of ~s: cannot determine target type at this call site"
+                   method-name)
+           stx)]))
+    (hash-clear! uses)))
+
+;; Extract the head type-constructor name from a (possibly applied)
+;; concrete type.  Returns #f if the type is still polymorphic.
+(define (type-head-tcon t)
+  (match t
+    [(tcon n) n]
+    [(tapp h _) (type-head-tcon h)]
+    [_ #f]))
 
 (define (handle-instance-form ctx head methods stx env declared)
   (define head-pred (resolve-constraint head))

@@ -28,11 +28,22 @@
 (define-for-syntax (rackton-elaborate forms-stx)
   (define parsed
     (parse-toplevel-list (syntax->list forms-stx)))
-  (define env (infer-program parsed prelude-env))
-  (define compiled
-    (filter values
-            (for/list ([f (in-list parsed)])
-              (compile-top f env))))
+  ;; Return-typed class methods are resolved at compile time, with the
+  ;; resolution communicated from inference to codegen via these two
+  ;; hashtables.  Inference populates `current-method-uses` then
+  ;; settles it into `current-method-resolutions` after each top-def's
+  ;; constraints reduce; codegen consults the resolutions when
+  ;; emitting `e:var` references.
+  (parameterize ([current-method-uses        (make-hasheq)]
+                 [current-method-resolutions (make-hasheq)])
+    (define env (infer-program parsed prelude-env))
+    (define compiled
+      (filter values
+              (for/list ([f (in-list parsed)])
+                (compile-top f env))))
+    (elaborate-finish parsed env compiled)))
+
+(define-for-syntax (elaborate-finish parsed env compiled)
   (define export-bindings
     (for/list ([(name sch) (in-hash (env-vars env))]
                #:unless (env-ref-var prelude-env name #f))
