@@ -494,6 +494,28 @@
     (define-instance ((Monad m) (Semigroup w) => (Monad (WriterT w m)))
       (define (>>= wa f) (racket (WriterT w m b) (wa f) #f)))
 
+    ;; --- ExceptT e m: typed exceptions over an inner monad ------
+
+    (define-newtype (ExceptT e m a)
+      (MkExceptT (m (Result e a))))
+
+    (: run-except-t  (-> (ExceptT e m a) (m (Result e a))))
+    (: throw-error   ((Applicative m) => (-> e (ExceptT e m a))))
+    (: catch-error   ((Monad m) => (-> (ExceptT e m a)
+                                       (-> (-> e (ExceptT e m a))
+                                           (ExceptT e m a)))))
+    (: lift-except-t ((Functor m) => (-> (m a) (ExceptT e m a))))
+
+    (define-instance ((Functor m) => (Functor (ExceptT e m)))
+      (define (fmap f ea) (racket (ExceptT e m b) (f ea) #f)))
+
+    (define-instance ((Monad m) => (Applicative (ExceptT e m)))
+      (define (pure  a)     (racket (ExceptT e m a) (a) #f))
+      (define (<*>   ef ea) (racket (ExceptT e m b) (ef ea) #f)))
+
+    (define-instance ((Monad m) => (Monad (ExceptT e m)))
+      (define (>>= ea f) (racket (ExceptT e m b) (ea f) #f)))
+
     (: filter (-> (-> a Boolean) (-> (List a) (List a))))
     (define (filter p xs)
       (match xs

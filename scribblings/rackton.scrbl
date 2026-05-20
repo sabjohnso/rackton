@@ -25,12 +25,17 @@ algebraic data types, and pattern matching — inside Racket, either as an
 @hash-lang[] @racketmodfont{rackton} program.
 
 This documentation describes the @bold{Phase 1 + 2 + 3 + 4 + 5 + 6 + 7
-+ 8 + 9 + 10 + 11 + 12 + 13 + 14 + 15 + 16 + 17 + 18 + 19 + 20 + 21 + 22 + 23 + 24 + 25 + 26}
-subset.  Phase 26 added @racket[WriterT w m] — an accumulating
-@racket[Monoid] log over an inner monad — and surfaced an honest
-limit on the current class-method dispatch (@racket[ExceptT] was
-attempted, then deferred because its @racket[>>=] Err branch needs
-an inner @racket[pure] the dispatcher can't yet carry).
++ 8 + 9 + 10 + 11 + 12 + 13 + 14 + 15 + 16 + 17 + 18 + 19 + 20 + 21 + 22 + 23 + 24 + 25 + 26 + 27}
+subset.  Phase 27 extended the elaborator's dict-passing to
+positional class-method calls — when the dispatch arg's inferred type
+identifies a needs-dict instance, the elaborator routes the call to a
+per-instance impl named @tt{$method:TCon} with the resolved dict args
+prepended.  That unblocks @racket[ExceptT] (whose @racket[>>=] Err
+branch needs inner @racket[pure]) and any future class method on a
+needs-dict instance.  Phase 26 added @racket[WriterT w m] — an
+accumulating @racket[Monoid] log over an inner monad — and surfaced an
+honest limit on the then-current class-method dispatch (@racket[ExceptT]
+was deferred and lands now in Phase 27).
 Phase 25 added the @racket[State] and @racket[Env] monads
 plus their transformers @racket[StateT] and @racket[EnvT] over an
 inner monad @racket[m].  The transformer instances required extending
@@ -1359,17 +1364,71 @@ value's tag), so the impls receive no dict args.  This is what
 allows @racket[WriterT] to ship cleanly while @racket[ExceptT] is
 deferred — see below.
 
-@bold{ExceptT honestly deferred.}  An @racket[ExceptT e m a] wrapping
-@racket[m (Result e a)] would compose typed exceptions over an inner
-monad, but its @racket[>>=] Err branch must lift a bare @racket[Err e]
-into @racket[m] — that requires inner @racket[pure].  Phase 25's
-elaborator inserts dict args for return-typed methods only; class
-methods (positional dispatch) of needs-dict instances would need a
-parallel mechanism.  Rather than half-ship @racket[ExceptT] with a
-silently broken @racket[>>=] (the obvious workaround of re-running
-the original @racket[m]-action via @racket[fmap] double-executes
-@racket[IO] effects), Phase 26 leaves it on the queue for a phase
-that adds class-method dict-passing.
+@racket[ExceptT] ships in Phase 27 — see the next section.
+
+@section{ExceptT (Phase 27)}
+
+@racket[ExceptT e m a] layers typed exceptions over an inner monad
+@racket[m].  Internally it wraps @racket[(m (Result e a))]; the
+@racket[Err] branch short-circuits both @racket[>>=] and @racket[<*>],
+and @racket[catch-error] lets a handler recover.
+
+@codeblock|{
+(: divide-safely (-> Integer (-> Integer (ExceptT String IO Integer))))
+(define (divide-safely num den)
+  (if (== den 0)
+      (throw-error "division by zero")
+      (pure (div num den))))
+
+(run-io
+ (run-except-t
+  (do [a <- (divide-safely 100 5)]
+      [b <- (divide-safely a 0)]    ;; throws — rest skipped
+      [c <- (divide-safely a 2)]
+    (pure (+ b c)))))
+;; ⇒ (Err "division by zero")
+
+(run-io
+ (run-except-t
+  (catch-error (divide-safely 1 0)
+               (lambda (_) (pure 999)))))
+;; ⇒ (Ok 999)
+}|
+
+The runtime body of @racket[>>=] for @racket[ExceptT] genuinely
+needs the inner monad's @racket[pure] to lift @racket[(Err e)] back
+into @racket[m].  Phase 27 supports this by extending the elaborator's
+dict-passing one more notch: at every class-method call on a value of
+type @racket[(ExceptT e m a)], the elaborator (1) routes the call
+directly to a per-instance impl named @tt{$method:ExceptT} and
+(2) prepends the resolved @racket[$pure:m] as a leading dict arg.
+
+@bold{Mechanism, end-to-end.}  Three resolver paths now coexist:
+
+@itemlist[
+ @item{@emph{Return-typed dispatch} (Phase 18): a method like
+       @racket[pure] resolves to a per-instance impl name from the
+       expected return type alone.}
+ @item{@emph{Method-qual dict-passing} (Phase 20/24/25): when the
+       method's own qualifying context, or a free function's qualifying
+       context, names a return-typed-bearing class, dict args are
+       inserted at the call site (e.g.
+       @racket[traverse] for @racket[Traversable] instances,
+       @racket[mconcat] for @racket[Monoid] instances).}
+ @item{@emph{Instance-qual dispatch} (Phase 27): a positional
+       class-method call on a value whose inferred type identifies a
+       needs-dict instance.  The dispatch arg's type is enough to pick
+       the matching instance via @racket[match-pred]; the instance's
+       qual context yields the dict-args list.}]
+
+@bold{Skipped on polymorphic call sites.}  Phase 27 only fires when
+the dispatch arg's class-param tvars resolve to concrete type
+constructors.  When they're still polymorphic at resolve time the
+elaborator leaves the call alone and the runtime dispatcher handles
+it — fine for non-needs-dict instances, raises a clear arity error
+at runtime if a polymorphic call actually reaches a needs-dict
+instance.  A future phase can add a dispatcher shim that surfaces a
+friendlier error.
 
 @section{Not yet supported}
 

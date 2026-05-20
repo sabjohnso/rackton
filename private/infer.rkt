@@ -525,11 +525,24 @@
         (cond
           [cinfo
            (define-values (t sub) (instantiate/subst sch))
-           (when (eq? (hash-ref (class-info-dispatchpos cinfo) x #f) 'return)
-             (define class-param-tvars
-               (for/list ([p (in-list (class-info-params cinfo))])
-                 (hash-ref sub p)))
-             (record-method-use! x stx env class-param-tvars))
+           (define dispatchpos (hash-ref (class-info-dispatchpos cinfo) x #f))
+           (cond
+             [(eq? dispatchpos 'return)
+              (define class-param-tvars
+                (for/list ([p (in-list (class-info-params cinfo))])
+                  (hash-ref sub p)))
+              (record-method-use! x stx env class-param-tvars)]
+             [(and (integer? dispatchpos)
+                   (class-has-needs-dict-instances? env owner-class))
+              ;; Phase 27: positional class-method call on a class that
+              ;; has at least one needs-dict instance.  Record so the
+              ;; resolver can route to a per-instance impl after the
+              ;; dispatch arg's type is settled.
+              (define class-param-tvars
+                (for/list ([p (in-list (class-info-params cinfo))])
+                  (hash-ref sub p)))
+              (record-inst-dispatch-use! x stx class-param-tvars)]
+             [else (void)])
            (define reqs (hash-ref (class-info-dictreqs cinfo) x '()))
            (unless (null? reqs)
              (record-dict-use! x stx reqs sub))
@@ -1275,6 +1288,30 @@
                                method-name
                                class-param-tvars))))
 
+;; Phase 27: a positional class-method call on a class that has at
+;; least one needs-dict instance.  Entry shape:
+;;   (list 'inst-dispatch method-name class-param-tvars)
+;; After the enclosing def's constraints reduce, the resolver applies
+;; the final substitution, looks up the matching instance, and — if
+;; that instance has dict-bearing constraints in its qual — writes
+;; the per-instance impl name into current-method-resolutions and the
+;; dict impls into current-method-dict-resolutions.
+(define (record-inst-dispatch-use! method-name stx class-param-tvars)
+  (define table (current-method-uses))
+  (when table
+    (hash-set! table stx (list 'inst-dispatch method-name class-param-tvars))))
+
+;; Does this class have at least one instance whose qual context
+;; mentions a return-typed-bearing class?  Used to decide whether to
+;; record positional class-method call sites for Phase 27 dispatch.
+(define (class-has-needs-dict-instances? env class-name)
+  (for/or ([inst (in-list (env-instances env class-name))])
+    (instance-needs-dict? env inst)))
+
+(define (instance-needs-dict? env inst)
+  (for/or ([c (in-list (instance-info-context inst))])
+    (class-has-return-typed-methods? env (pred-class c))))
+
 ;; Stash a Phase-20 dict-requiring-method entry under `stx`.  The
 ;; entry shape is `(list 'dict method-name dict-entries)` where each
 ;; dict-entry is `(cons class-name tvars)` — the class to look up and
@@ -1330,7 +1367,36 @@
              ;; consults a small dict-method registry.
              (for/list ([dm (in-list (dict-class-return-methods cls))])
                (resolve-return-impl dm tvars final-subst stx))))
-         (hash-set! dict-resolutions stx (apply append impls))]))
+         (hash-set! dict-resolutions stx (apply append impls))]
+        [(list 'inst-dispatch method-name class-param-tvars)
+         ;; Phase 27: route a class-method call to a per-instance
+         ;; impl if the matching instance is needs-dict; otherwise
+         ;; fall through silently to the runtime dispatch wrapper.
+         (define resolved-types
+           (for/list ([tv (in-list class-param-tvars)])
+             (apply-subst final-subst tv)))
+         (define tcon-names
+           (for/list ([rt (in-list resolved-types)])
+             (type-head-tcon rt)))
+         (when (andmap values tcon-names)
+           (define class-name (env-ref-method-class env method-name))
+           (define target-pred (pred class-name resolved-types))
+           (define matching
+             (for/or ([inst (in-list (env-instances env class-name))])
+               (define σ (match-pred (instance-info-head inst) target-pred))
+               (and σ (cons inst σ))))
+           (when (and matching (instance-needs-dict? env (car matching)))
+             (define impl
+               (string->symbol
+                (format "$~a:~a"
+                        method-name
+                        (string-join (map symbol->string tcon-names) "-"))))
+             (hash-set! resolutions stx impl)
+             (define inst-dict-impls
+               (instance-qual-return-impls env method-name
+                                           class-param-tvars final-subst stx))
+             (unless (null? inst-dict-impls)
+               (hash-set! dict-resolutions stx inst-dict-impls))))]))
     (hash-clear! uses)))
 
 ;; Walk the matching instance for a return-typed method's resolved

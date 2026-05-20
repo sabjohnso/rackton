@@ -63,13 +63,14 @@
  None Some Nil Cons MkPair Ok Err MkUnit
  MkSum MkProduct
  get-sum get-product
- MkState MkEnv MkStateT MkEnvT MkWriterT
+ MkState MkEnv MkStateT MkEnvT MkWriterT MkExceptT
  run-state eval-state exec-state get-state put-state modify-state
  run-env ask local
  run-state-t eval-state-t exec-state-t
  get-state-t put-state-t modify-state-t lift-state-t
  run-env-t ask-t local-t lift-env-t
  run-writer-t eval-writer-t exec-writer-t tell lift-writer-t
+ run-except-t throw-error catch-error lift-except-t
 
  ;; Class methods
  +  -  *
@@ -90,7 +91,16 @@
  |$pure:Maybe| |$pure:List| |$pure:Result| |$pure:IO|
  |$pure:State| |$pure:Env|
  |$pure:StateT| |$pure:EnvT|
- |$pure:WriterT|
+ |$pure:WriterT| |$pure:ExceptT|
+ ;; Per-instance class-method impls for compile-time direct
+ ;; dispatch (Phase 27).  Receive instance-qual dict args as
+ ;; leading parameters; the elaborator inserts them at each call
+ ;; site where the dispatch arg's inferred type matches the
+ ;; instance.
+ |$>>=:ExceptT| |$<*>:ExceptT| |$liftA2:ExceptT|
+ |$>>=:WriterT| |$<*>:WriterT| |$liftA2:WriterT|
+ |$>>=:StateT|  |$<*>:StateT|  |$liftA2:StateT|
+ |$>>=:EnvT|    |$<*>:EnvT|    |$liftA2:EnvT|
  |$mempty:String| |$mempty:List| |$mempty:Sum| |$mempty:Product|
 
  ;; Dispatch tables — exposed so user modules that declare new
@@ -184,6 +194,7 @@
 (define-data-ctor MkEnvT   1)
 
 (define-data-ctor MkWriterT 1)
+(define-data-ctor MkExceptT 1)
 
 ;; ----- Class dispatch tables -------------------------------------
 
@@ -1069,4 +1080,103 @@
                        [(MkPair w2 b) (MkPair (<> w1 w2) b)]))
                    (run-writer-t (f a)))])))))
 (register-instance-method! $dispatch:>>= '$ctor:MkWriterT writer-t->>=)
+
+;; ----- Per-instance compile-time-direct impls (Phase 27) ---------
+;;
+;; The elaborator routes a class-method call at a concrete needs-
+;; dict instance directly to one of these by name, bypassing the
+;; runtime dispatch table.  Each impl receives the instance's dict
+;; args (resolved from the instance qual context, in declaration
+;; order) as leading parameters, followed by the user's args.
+;;
+;; The WriterT variants accept the dict args even though their
+;; bodies don't use them — uniformity with the elaborator's
+;; insertion rules outweighs the few ignored bindings.
+
+(define/curried (|$>>=:WriterT| inner-pure wa f)
+  (writer-t->>= wa f))
+(define/curried (|$<*>:WriterT| inner-pure inner-mempty wf wa)
+  (writer-t-ap wf wa))
+(define/curried (|$liftA2:WriterT| inner-pure inner-mempty g wa wb)
+  (writer-t-liftA2 g wa wb))
+
+;; StateT / EnvT class-method impls also become reachable through
+;; the Phase 27 path because their instances carry `(Monad m) =>`.
+;; The runtime bodies don't actually need the dict args (Phase 25
+;; built them using only inner fmap/>>=), but the named impls accept
+;; them to match the elaborator's uniform insertion rule.
+
+(define/curried (|$>>=:StateT|   inner-pure st f)     (state-t->>= st f))
+(define/curried (|$<*>:StateT|   inner-pure sf sa)    (state-t-ap sf sa))
+(define/curried (|$liftA2:StateT| inner-pure g sa sb) (state-t-liftA2 g sa sb))
+
+(define/curried (|$>>=:EnvT|   inner-pure e f)        (env-t->>= e f))
+(define/curried (|$<*>:EnvT|   inner-pure ef ea)      (env-t-ap ef ea))
+(define/curried (|$liftA2:EnvT| inner-pure g ea eb)   (env-t-liftA2 g ea eb))
+
+;; ----- ExceptT e m runtime ---------------------------------------
+
+(define (run-except-t e) (match e [(MkExceptT m) m]))
+
+(define/curried (|$pure:ExceptT| inner-pure a)
+  (MkExceptT (inner-pure (Ok a))))
+
+(define/curried (throw-error inner-pure e)
+  (MkExceptT (inner-pure (Err e))))
+
+(define/curried (catch-error inner-pure ea handler)
+  (MkExceptT
+   (>>= (run-except-t ea)
+        (lambda (r)
+          (match r
+            [(Err e) (run-except-t (handler e))]
+            [(Ok  v) (inner-pure (Ok v))])))))
+
+(define (lift-except-t ma)
+  (MkExceptT (fmap Ok ma)))
+
+;; Functor's fmap on ExceptT needs no dict.
+(define (except-t-fmap f e)
+  (MkExceptT
+   (fmap (lambda (r) (match r
+                       [(Err x) (Err x)]
+                       [(Ok  v) (Ok (f v))]))
+         (run-except-t e))))
+(register-instance-method! $dispatch:fmap '$ctor:MkExceptT except-t-fmap)
+
+;; Applicative <*> short-circuits on Err — needs inner pure to lift
+;; the Err back into m.
+(define/curried (|$<*>:ExceptT| inner-pure ef ea)
+  (MkExceptT
+   (>>= (run-except-t ef)
+        (lambda (rf)
+          (match rf
+            [(Err x) (inner-pure (Err x))]
+            [(Ok  f)
+             (fmap (lambda (ra)
+                     (match ra
+                       [(Err x) (Err x)]
+                       [(Ok  a) (Ok (f a))]))
+                   (run-except-t ea))])))))
+
+(define/curried (|$liftA2:ExceptT| inner-pure g ea eb)
+  (MkExceptT
+   (>>= (run-except-t ea)
+        (lambda (ra)
+          (match ra
+            [(Err x) (inner-pure (Err x))]
+            [(Ok  a)
+             (fmap (lambda (rb)
+                     (match rb
+                       [(Err x) (Err x)]
+                       [(Ok  b) (Ok (g a b))]))
+                   (run-except-t eb))])))))
+
+(define/curried (|$>>=:ExceptT| inner-pure ea f)
+  (MkExceptT
+   (>>= (run-except-t ea)
+        (lambda (r)
+          (match r
+            [(Err x) (inner-pure (Err x))]
+            [(Ok  a) (run-except-t (f a))])))))
 
