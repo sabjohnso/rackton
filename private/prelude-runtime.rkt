@@ -63,12 +63,13 @@
  None Some Nil Cons MkPair Ok Err MkUnit
  MkSum MkProduct
  get-sum get-product
- MkState MkEnv MkStateT MkEnvT
+ MkState MkEnv MkStateT MkEnvT MkWriterT
  run-state eval-state exec-state get-state put-state modify-state
  run-env ask local
  run-state-t eval-state-t exec-state-t
  get-state-t put-state-t modify-state-t lift-state-t
  run-env-t ask-t local-t lift-env-t
+ run-writer-t eval-writer-t exec-writer-t tell lift-writer-t
 
  ;; Class methods
  +  -  *
@@ -89,6 +90,7 @@
  |$pure:Maybe| |$pure:List| |$pure:Result| |$pure:IO|
  |$pure:State| |$pure:Env|
  |$pure:StateT| |$pure:EnvT|
+ |$pure:WriterT|
  |$mempty:String| |$mempty:List| |$mempty:Sum| |$mempty:Product|
 
  ;; Dispatch tables — exposed so user modules that declare new
@@ -180,6 +182,8 @@
 
 (define-data-ctor MkStateT 1)
 (define-data-ctor MkEnvT   1)
+
+(define-data-ctor MkWriterT 1)
 
 ;; ----- Class dispatch tables -------------------------------------
 
@@ -989,3 +993,80 @@
 (for ([tag (in-list '($ctor:Nil $ctor:Cons $ctor:None $ctor:Some))])
   (register-instance-method! $dispatch:length  tag default-length)
   (register-instance-method! $dispatch:to-list tag default-to-list))
+
+;; ----- WriterT w m runtime ---------------------------------------
+;; Dict-arg order (matches the order of constraints in each
+;; instance's qual context):
+;;   Applicative (WriterT w m) needs  (Monad m, Monoid w) =>
+;;     dict args:  inner-pure  inner-mempty
+;;   Monad      (WriterT w m) needs  (Monad m, Semigroup w) =>
+;;     dict args:  inner-pure
+;;   Functor    (WriterT w m) needs  (Functor m) => (no dict)
+
+(define (run-writer-t w) (match w [(MkWriterT m) m]))
+
+;; pure for WriterT receives inner-pure then inner-mempty then a.
+(define/curried (|$pure:WriterT| inner-pure inner-mempty a)
+  (MkWriterT (inner-pure (MkPair inner-mempty a))))
+
+;; tell w = MkWriterT (pure (MkPair w MkUnit)) — dict: inner-pure.
+(define/curried (tell inner-pure w)
+  (MkWriterT (inner-pure (MkPair w MkUnit))))
+
+;; lift-writer-t needs (Functor m, Monoid w) => — but `(Functor m)`
+;; has no return-typed methods, so only `inner-mempty` flows in as
+;; a dict arg.
+(define/curried (lift-writer-t inner-mempty ma)
+  (MkWriterT (fmap (lambda (a) (MkPair inner-mempty a)) ma)))
+
+(define/curried (eval-writer-t w)
+  (fmap (lambda (p) (match p [(MkPair _ a) a])) (run-writer-t w)))
+(define/curried (exec-writer-t w)
+  (fmap (lambda (p) (match p [(MkPair w _) w])) (run-writer-t w)))
+
+(define (writer-t-fmap f w)
+  (MkWriterT
+   (fmap (lambda (p) (match p [(MkPair w0 a) (MkPair w0 (f a))]))
+         (run-writer-t w))))
+(register-instance-method! $dispatch:fmap '$ctor:MkWriterT writer-t-fmap)
+
+;; <*>, liftA2, >>=, fmap: all dispatched at runtime on the WriterT
+;; struct.  Their bodies use inner `>>=` and inner `fmap` (also
+;; runtime-dispatched on the m-value), so they take NO dict args —
+;; only the user-facing arguments.
+(define (writer-t-ap wf wa)
+  (MkWriterT
+   (>>= (run-writer-t wf)
+        (lambda (p1)
+          (match p1
+            [(MkPair w1 f)
+             (fmap (lambda (p2)
+                     (match p2
+                       [(MkPair w2 a) (MkPair (<> w1 w2) (f a))]))
+                   (run-writer-t wa))])))))
+(register-instance-method! $dispatch:<*> '$ctor:MkWriterT writer-t-ap)
+
+(define (writer-t-liftA2 g wa wb)
+  (MkWriterT
+   (>>= (run-writer-t wa)
+        (lambda (p1)
+          (match p1
+            [(MkPair w1 a)
+             (fmap (lambda (p2)
+                     (match p2
+                       [(MkPair w2 b) (MkPair (<> w1 w2) (g a b))]))
+                   (run-writer-t wb))])))))
+(register-instance-method! $dispatch:liftA2 '$ctor:MkWriterT writer-t-liftA2)
+
+(define (writer-t->>= wa f)
+  (MkWriterT
+   (>>= (run-writer-t wa)
+        (lambda (p1)
+          (match p1
+            [(MkPair w1 a)
+             (fmap (lambda (p2)
+                     (match p2
+                       [(MkPair w2 b) (MkPair (<> w1 w2) b)]))
+                   (run-writer-t (f a)))])))))
+(register-instance-method! $dispatch:>>= '$ctor:MkWriterT writer-t->>=)
+

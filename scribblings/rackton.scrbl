@@ -25,8 +25,13 @@ algebraic data types, and pattern matching — inside Racket, either as an
 @hash-lang[] @racketmodfont{rackton} program.
 
 This documentation describes the @bold{Phase 1 + 2 + 3 + 4 + 5 + 6 + 7
-+ 8 + 9 + 10 + 11 + 12 + 13 + 14 + 15 + 16 + 17 + 18 + 19 + 20 + 21 + 22 + 23 + 24 + 25}
-subset.  Phase 25 added the @racket[State] and @racket[Env] monads
++ 8 + 9 + 10 + 11 + 12 + 13 + 14 + 15 + 16 + 17 + 18 + 19 + 20 + 21 + 22 + 23 + 24 + 25 + 26}
+subset.  Phase 26 added @racket[WriterT w m] — an accumulating
+@racket[Monoid] log over an inner monad — and surfaced an honest
+limit on the current class-method dispatch (@racket[ExceptT] was
+attempted, then deferred because its @racket[>>=] Err branch needs
+an inner @racket[pure] the dispatcher can't yet carry).
+Phase 25 added the @racket[State] and @racket[Env] monads
 plus their transformers @racket[StateT] and @racket[EnvT] over an
 inner monad @racket[m].  The transformer instances required extending
 the elaborator's dict-passing once more — at each return-typed-method
@@ -1319,6 +1324,52 @@ would collide with the Scheme reader vocabulary
 (@racket[read]/@racket[readtable]/etc.) — confusing inside a
 Racket-hosted language.  @racket[ask] and @racket[local] are kept as
 the generic verbs.
+
+@section{WriterT (Phase 26)}
+
+@racket[WriterT w m a] threads an accumulating @racket[Monoid w] log
+through an inner monad @racket[m].  Internally it wraps
+@racket[(m (Pair w a))]; @racket[tell] appends a single log entry and
+@racket[lift-writer-t] hoists an arbitrary @racket[m]-action into the
+transformer with an @racket[mempty] starting log.
+
+@codeblock|{
+(: logged-greeting (WriterT String IO Integer))
+(define logged-greeting
+  (do [_ <- (tell "hello, ")]
+      [_ <- (tell "world")]
+    (pure 42)))
+
+(run-io (run-writer-t logged-greeting))
+;; ⇒ (MkPair "hello, world" 42)
+}|
+
+The Applicative instance qual context lists @bold{two}
+return-typed-bearing constraints: @racket[(Monad m)] (for inner
+@racket[pure]) and @racket[(Monoid w)] (for @racket[mempty]).  This
+is the first instance in the prelude that exercises Phase 25's
+resolver with multiple dict args — the elaborator inserts both
+@racket[$pure:m] and @racket[$mempty:w] at every call site of
+@racket[pure] on a @racket[WriterT] value.
+
+Class methods @racket[fmap]/@racket[<*>]/@racket[liftA2]/@racket[>>=]
+on @racket[WriterT] are rewritten to use only inner
+@racket[fmap]/@racket[>>=] (both runtime-dispatched on the inner
+value's tag), so the impls receive no dict args.  This is what
+allows @racket[WriterT] to ship cleanly while @racket[ExceptT] is
+deferred — see below.
+
+@bold{ExceptT honestly deferred.}  An @racket[ExceptT e m a] wrapping
+@racket[m (Result e a)] would compose typed exceptions over an inner
+monad, but its @racket[>>=] Err branch must lift a bare @racket[Err e]
+into @racket[m] — that requires inner @racket[pure].  Phase 25's
+elaborator inserts dict args for return-typed methods only; class
+methods (positional dispatch) of needs-dict instances would need a
+parallel mechanism.  Rather than half-ship @racket[ExceptT] with a
+silently broken @racket[>>=] (the obvious workaround of re-running
+the original @racket[m]-action via @racket[fmap] double-executes
+@racket[IO] effects), Phase 26 leaves it on the queue for a phase
+that adds class-method dict-passing.
 
 @section{Not yet supported}
 

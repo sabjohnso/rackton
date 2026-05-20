@@ -469,6 +469,31 @@
     (define-instance ((Monad m) => (Monad (EnvT r m)))
       (define (>>= e f) (racket (EnvT r m b) (e f) #f)))
 
+    ;; --- WriterT w m: accumulating writer over an inner monad ---
+    ;;
+    ;; WriterT pairs an inner-monad action with a `Monoid w` log that
+    ;; gets accumulated via `<>`.  pure inserts mempty, tell writes
+    ;; one log entry, and lift hoists an arbitrary m-action.
+
+    (define-newtype (WriterT w m a)
+      (MkWriterT (m (Pair w a))))
+
+    (: run-writer-t  (-> (WriterT w m a) (m (Pair w a))))
+    (: eval-writer-t ((Functor m) => (-> (WriterT w m a) (m a))))
+    (: exec-writer-t ((Functor m) => (-> (WriterT w m a) (m w))))
+    (: tell          ((Applicative m) => (-> w (WriterT w m Unit))))
+    (: lift-writer-t ((Functor m) (Monoid w) => (-> (m a) (WriterT w m a))))
+
+    (define-instance ((Functor m) => (Functor (WriterT w m)))
+      (define (fmap f wa) (racket (WriterT w m b) (f wa) #f)))
+
+    (define-instance ((Monad m) (Monoid w) => (Applicative (WriterT w m)))
+      (define (pure  a)     (racket (WriterT w m a) (a) #f))
+      (define (<*>   wf wa) (racket (WriterT w m b) (wf wa) #f)))
+
+    (define-instance ((Monad m) (Semigroup w) => (Monad (WriterT w m)))
+      (define (>>= wa f) (racket (WriterT w m b) (wa f) #f)))
+
     (: filter (-> (-> a Boolean) (-> (List a) (List a))))
     (define (filter p xs)
       (match xs
