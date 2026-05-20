@@ -11,7 +11,15 @@
                                delete-file make-directory directory-list
                                current-seconds
                                modulo quotient
-                               number->string string->number)]]
+                               number->string string->number
+                               char-upcase char-downcase
+                               char-alphabetic? char-numeric? char-whitespace?
+                               char->integer integer->char
+                               string-ref string->list
+                               bytes-length bytes-ref bytes-append
+                               bytes->list list->bytes make-bytes
+                               bytes->string/utf-8 string->bytes/utf-8
+                               string)]]
 
 @title{Rackton}
 @author{sbj}
@@ -25,8 +33,12 @@ algebraic data types, and pattern matching — inside Racket, either as an
 @hash-lang[] @racketmodfont{rackton} program.
 
 This documentation describes the @bold{Phase 1 + 2 + 3 + 4 + 5 + 6 + 7
-+ 8 + 9 + 10 + 11 + 12 + 13 + 14 + 15 + 16 + 17 + 18 + 19 + 20 + 21 + 22 + 23 + 24 + 25 + 26 + 27}
-subset.  Phase 27 extended the elaborator's dict-passing to
++ 8 + 9 + 10 + 11 + 12 + 13 + 14 + 15 + 16 + 17 + 18 + 19 + 20 + 21 + 22 + 23 + 24 + 25 + 26 + 27 + 28}
+subset.  Phase 28 added the @racket[Char] and @racket[Bytes]
+primitives — single Unicode codepoints and binary blobs — with
+literal syntax (@code{#\A} / @code{#"hello"}), conversions in both
+directions to @racket[String], and basic per-element accessors.
+Phase 27 extended the elaborator's dict-passing to
 positional class-method calls — when the dispatch arg's inferred type
 identifies a needs-dict instance, the elaborator routes the call to a
 per-instance impl named @tt{$method:TCon} with the resolved dict args
@@ -1429,6 +1441,41 @@ it — fine for non-needs-dict instances, raises a clear arity error
 at runtime if a polymorphic call actually reaches a needs-dict
 instance.  A future phase can add a dispatcher shim that surfaces a
 friendlier error.
+
+@section{Char and Bytes (Phase 28)}
+
+Two new primitive types backed by Racket's native @racket[char?] and
+@racket[bytes?] values.  Literal syntax passes through the reader
+unchanged: @code{#\A} is a @racket[Char], @code{#"hello"} a
+@racket[Bytes].
+
+@codeblock|{
+(: codes (List Integer))
+(define codes
+  (fmap char->integer (string->chars "abc")))
+;; ⇒ (Cons 97 (Cons 98 (Cons 99 Nil)))
+
+(integer->char 65)              ;; ⇒ (Some #\A)
+(integer->char -1)              ;; ⇒ None
+
+(char-upcase #\a)               ;; ⇒ #\A
+(char-alphabetic? #\7)          ;; ⇒ #f
+
+(bytes-length #"hi")            ;; ⇒ 2
+(bytes-ref #"hi" 0)             ;; ⇒ (Some 104)
+(bytes-ref #"hi" 99)            ;; ⇒ None
+(bytes-append #"foo" #"-bar")   ;; ⇒ #"foo-bar"
+
+(string->bytes "Aé")            ;; ⇒ #"A\xc3\xa9"
+(bytes->string #"\xff\xfe\xfd") ;; ⇒ None  (invalid UTF-8)
+}|
+
+Instances: @racket[Eq] / @racket[Ord] / @racket[Show] for
+@racket[Char]; @racket[Eq] / @racket[Show] for @racket[Bytes].
+Partial operations like @racket[integer->char],
+@racket[string-ref], @racket[bytes-ref], and @racket[bytes->string]
+return @racket[(Maybe …)] so the caller decides what to do on
+failure.  @racket[string->bytes] uses UTF-8.
 
 @section{Not yet supported}
 

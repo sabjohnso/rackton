@@ -33,6 +33,8 @@
     [(inexact-real? v)  'Float]
     [(boolean? v)       'Boolean]
     [(string? v)        'String]
+    [(char? v)          'Char]
+    [(bytes? v)         'Bytes]
     [(struct? v)
      (define-values (st _skip) (struct-info v))
      (define-values (name _i _a _r _mu _im _pa _x) (struct-type-info st))

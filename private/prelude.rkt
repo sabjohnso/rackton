@@ -87,6 +87,73 @@
     (define-data (Result e a) (Err e) (Ok a))
     (define-data Unit MkUnit)
 
+    ;; --- Char and Bytes primitives (opaque ADTs; values come from
+    ;; Racket's reader as `#\A` and `#"…"`) -----------------------
+
+    (define-data Char)
+    (define-data Bytes)
+
+    (define-instance (Eq Char)   (define (== x y) (racket Boolean (x y) #f)))
+    (define-instance (Ord Char)  (define (< x y) (racket Boolean (x y) #f)))
+    (define-instance (Show Char) (define (show c) (racket String (c) "")))
+
+    (define-instance (Eq Bytes)  (define (== x y) (racket Boolean (x y) #f)))
+    (define-instance (Show Bytes)(define (show b) (racket String (b) "")))
+
+    (: char->integer (-> Char Integer))
+    (define (char->integer c) (racket Integer (c) 0))
+
+    (: integer->char (-> Integer (Maybe Char)))
+    (define (integer->char n) (racket (Maybe Char) (n) None))
+
+    (: char-upcase   (-> Char Char))
+    (define (char-upcase c) (racket Char (c) c))
+    (: char-downcase (-> Char Char))
+    (define (char-downcase c) (racket Char (c) c))
+
+    (: char-alphabetic? (-> Char Boolean))
+    (define (char-alphabetic? c) (racket Boolean (c) #f))
+    (: char-numeric?    (-> Char Boolean))
+    (define (char-numeric? c)    (racket Boolean (c) #f))
+    (: char-whitespace? (-> Char Boolean))
+    (define (char-whitespace? c) (racket Boolean (c) #f))
+
+    (: char->string  (-> Char String))
+    (define (char->string c) (racket String (c) ""))
+
+    (: string-ref     (-> String (-> Integer (Maybe Char))))
+    (define (string-ref s i) (racket (Maybe Char) (s i) None))
+
+    (: string->chars (-> String (List Char)))
+    (define (string->chars s) (racket (List Char) (s) Nil))
+
+    (: chars->string (-> (List Char) String))
+    (define (chars->string cs) (racket String (cs) ""))
+
+    (: bytes-length  (-> Bytes Integer))
+    (define (bytes-length b) (racket Integer (b) 0))
+
+    (: bytes-ref     (-> Bytes (-> Integer (Maybe Integer))))
+    (define (bytes-ref b i) (racket (Maybe Integer) (b i) None))
+
+    (: make-bytes    (-> Integer (-> Integer Bytes)))
+    (define (make-bytes n v) (racket Bytes (n v) #f))
+
+    (: bytes-append  (-> Bytes (-> Bytes Bytes)))
+    (define (bytes-append a b) (racket Bytes (a b) #f))
+
+    (: bytes->list   (-> Bytes (List Integer)))
+    (define (bytes->list b) (racket (List Integer) (b) Nil))
+
+    (: list->bytes   (-> (List Integer) Bytes))
+    (define (list->bytes xs) (racket Bytes (xs) #f))
+
+    (: string->bytes (-> String Bytes))
+    (define (string->bytes s) (racket Bytes (s) #f))
+
+    (: bytes->string (-> Bytes (Maybe String)))
+    (define (bytes->string b) (racket (Maybe String) (b) None))
+
     ;; --- Combinators --------------------------------------------
 
     (: id (-> a a))

@@ -36,7 +36,15 @@
                     file-exists? sqrt compose
                     random getenv path->string
                     delete-file make-directory directory-list
-                    current-seconds))
+                    current-seconds
+                    char-upcase char-downcase
+                    char-alphabetic? char-numeric? char-whitespace?
+                    char->integer integer->char
+                    string-ref string->list
+                    bytes-length bytes-ref bytes-append
+                    bytes->list list->bytes make-bytes
+                    bytes->string/utf-8 string->bytes/utf-8
+                    string))
 
 (provide
  ;; the macro that does the real work

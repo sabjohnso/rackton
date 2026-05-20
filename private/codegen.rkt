@@ -35,7 +35,15 @@
                                   file-exists?
                                   sqrt
                                   random getenv path->string
-                                  delete-file make-directory)
+                                  delete-file make-directory
+                                  char-upcase char-downcase
+                                  char-alphabetic? char-numeric? char-whitespace?
+                                  char->integer integer->char
+                                  string-ref string->list
+                                  bytes-length bytes-ref bytes-append
+                                  bytes->list list->bytes make-bytes
+                                  bytes->string/utf-8 string->bytes/utf-8
+                                  string)
                        (except-in racket/match ==)
                        "adt.rkt"
                        "dict.rkt"

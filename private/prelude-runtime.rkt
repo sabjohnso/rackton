@@ -44,7 +44,25 @@
                     [path->string rkt:path->string]
                     [delete-file rkt:delete-file]
                     [make-directory rkt:make-directory]
-                    [directory-list rkt:directory-list])
+                    [directory-list rkt:directory-list]
+                    [string-ref     rkt:string-ref]
+                    [string->list   rkt:string->list]
+                    [bytes-length   rkt:bytes-length]
+                    [bytes-ref      rkt:bytes-ref]
+                    [bytes-append   rkt:bytes-append]
+                    [bytes->list    rkt:bytes->list]
+                    [bytes->string/utf-8 rkt:bytes->string/utf-8]
+                    [string->bytes/utf-8 rkt:string->bytes/utf-8]
+                    [make-bytes     rkt:make-bytes]
+                    [bytes          rkt:bytes]
+                    [string         rkt:string]
+                    [char-upcase    rkt:char-upcase]
+                    [char-downcase  rkt:char-downcase]
+                    [char-alphabetic? rkt:char-alphabetic?]
+                    [char-numeric?    rkt:char-numeric?]
+                    [char-whitespace? rkt:char-whitespace?]
+                    [char->integer  rkt:char->integer]
+                    [integer->char  rkt:integer->char])
          (only-in racket/base
                   [string=? rkt:string=?])
          (only-in racket/string
@@ -134,6 +152,15 @@
  string-prefix? string-split string-join
  ;; codegen-only helper for derived Show
  $show-concat
+
+ ;; Char and Bytes (Phase 28)
+ char->integer integer->char
+ char-upcase char-downcase
+ char-alphabetic? char-numeric? char-whitespace?
+ char->string string-ref string->chars chars->string
+ bytes-length bytes-ref make-bytes bytes-append
+ bytes->list list->bytes
+ string->bytes bytes->string
 
  ;; Numeric helpers
  mod div abs min max integer->string string->integer
@@ -284,6 +311,20 @@
 (register-instance-method! $dispatch:show 'String
                            (lambda (x) (~a "\"" x "\"")))
 
+;; ----- Char / Bytes instances -----------------------------------
+
+(register-instance-method! $dispatch:==   'Char  (lambda (x y) (char=? x y)))
+(register-instance-method! $dispatch:/=   'Char  (lambda (x y) (not (char=? x y))))
+(register-instance-method! $dispatch:<    'Char  (lambda (x y) (char<? x y)))
+(register-instance-method! $dispatch:>    'Char  (lambda (x y) (char>? x y)))
+(register-instance-method! $dispatch:<=   'Char  (lambda (x y) (char<=? x y)))
+(register-instance-method! $dispatch:>=   'Char  (lambda (x y) (char>=? x y)))
+(register-instance-method! $dispatch:show 'Char  (lambda (c) (~v c)))
+
+(register-instance-method! $dispatch:==   'Bytes (lambda (x y) (bytes=? x y)))
+(register-instance-method! $dispatch:/=   'Bytes (lambda (x y) (not (bytes=? x y))))
+(register-instance-method! $dispatch:show 'Bytes (lambda (b) (~v b)))
+
 ;; ----- Combinators ----------------------------------------------
 
 (define (id x) x)
@@ -343,6 +384,62 @@
 (define (string->integer s)
   (define n (rkt:string->number s))
   (if (rkt:and n (exact-integer? n)) (Some n) None))
+
+;; ----- Char / Bytes ops ----------------------------------------
+
+(define (char->integer c) (rkt:char->integer c))
+(define (integer->char n)
+  (with-handlers ([exn:fail:contract? (lambda (_) None)])
+    (Some (rkt:integer->char n))))
+(define (char-upcase c)   (rkt:char-upcase c))
+(define (char-downcase c) (rkt:char-downcase c))
+(define (char-alphabetic? c) (rkt:char-alphabetic? c))
+(define (char-numeric?    c) (rkt:char-numeric?    c))
+(define (char-whitespace? c) (rkt:char-whitespace? c))
+(define (char->string c)  (rkt:string c))
+
+(define/curried (string-ref s i)
+  (cond
+    [(rkt:and (rkt:<= 0 i) (rkt:< i (rkt:string-length s)))
+     (Some (rkt:string-ref s i))]
+    [else None]))
+
+(define (string->chars s)
+  (rkt-seq->list (rkt:string->list s)))
+
+(define (chars->string cs)
+  (apply rkt:string
+         (let loop ([cs cs] [acc '()])
+           (match cs
+             [(Nil) (rkt:reverse acc)]
+             [(Cons h t) (loop t (cons h acc))]))))
+
+(define (bytes-length b) (rkt:bytes-length b))
+
+(define/curried (bytes-ref b i)
+  (cond
+    [(rkt:and (rkt:<= 0 i) (rkt:< i (rkt:bytes-length b)))
+     (Some (rkt:bytes-ref b i))]
+    [else None]))
+
+(define/curried (make-bytes n v) (rkt:make-bytes n v))
+
+(define/curried (bytes-append a b) (rkt:bytes-append a b))
+
+(define (bytes->list b)
+  (rkt-seq->list (rkt:bytes->list b)))
+
+(define (list->bytes xs)
+  (apply rkt:bytes
+         (let loop ([xs xs] [acc '()])
+           (match xs
+             [(Nil) (rkt:reverse acc)]
+             [(Cons h t) (loop t (cons h acc))]))))
+
+(define (string->bytes s) (rkt:string->bytes/utf-8 s))
+(define (bytes->string b)
+  (with-handlers ([exn:fail:contract? (lambda (_) None)])
+    (Some (rkt:bytes->string/utf-8 b))))
 
 ;; ----- IO monad ------------------------------------------------
 
@@ -558,7 +655,7 @@
 
 ;; Build a rackton List from a Racket sequence.
 (define (rkt-seq->list xs)
-  (let loop ([xs (reverse xs)] [acc Nil])
+  (let loop ([xs (rkt:reverse xs)] [acc Nil])
     (cond [(null? xs) acc]
           [else (loop (cdr xs) (Cons (car xs) acc))])))
 

@@ -501,6 +501,8 @@
     [(inexact-real? v)  t-float]
     [(boolean? v)       t-bool]
     [(string? v)        t-string]
+    [(char? v)          t-char]
+    [(bytes? v)         t-bytes]
     [else (error 'literal-type "unsupported literal: ~e" v)]))
 
 ;; ----- core inference ----------------------------------------------

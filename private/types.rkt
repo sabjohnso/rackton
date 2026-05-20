@@ -53,7 +53,7 @@
          pred->datum
 
          ;; pre-built primitive types
-         t-int t-bool t-string t-symbol t-unit t-float
+         t-int t-bool t-string t-symbol t-unit t-float t-char t-bytes
          t-arrow t-list
 
          ;; arrows and other shape predicates
@@ -115,6 +115,8 @@
 (define t-symbol (tcon 'Symbol))
 (define t-unit   (tcon 'Unit))
 (define t-float  (tcon 'Float))
+(define t-char   (tcon 'Char))
+(define t-bytes  (tcon 'Bytes))
 (define t-arrow  (tcon '->))
 (define t-list   (tcon 'List))
 

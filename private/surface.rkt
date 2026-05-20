@@ -382,6 +382,8 @@
     [n:number  (e:literal (syntax->datum #'n) stx)]
     [b:boolean (e:literal (syntax->datum #'b) stx)]
     [s:string  (e:literal (syntax->datum #'s) stx)]
+    [c:char    (e:literal (syntax->datum #'c) stx)]
+    [by:bytes  (e:literal (syntax->datum #'by) stx)]
 
     [(lambda (p:id ...) body)
      (e:lam (map syntax->datum (syntax->list #'(p ...)))
