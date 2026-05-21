@@ -158,21 +158,26 @@
 ;; `skolemize/tracked`, produce (values skolem-map arg-names) where
 ;;   skolem-map : hasheq from skolem-tcon-name → arg-name
 ;;   arg-names  : (Listof symbol) in declaration order
-(define (build-dict-skolems reqs subst)
+(define (build-dict-skolems reqs subst [env #f])
+  ;; Returns:
+  ;;   sk-map    : equal?-hash from (cons skolem-name method-name) →
+  ;;               local dict-arg name
+  ;;   arg-names : (Listof symbol) in declaration order — what the
+  ;;               compiled lambda will accept as leading params.
   (define-values (sk-map arg-names-rev)
-    (for/fold ([sk (hasheq)] [args '()])
+    (for/fold ([sk (hash)] [args '()])
               ([req (in-list reqs)])
       (define cls (car req))
       (define param-names (cdr req))
       (for/fold ([sk sk] [args args])
-                ([dm (in-list (dict-class-return-methods cls))]
+                ([dm (in-list (dict-class-return-methods cls env))]
                  #:when #t
                  [p (in-list param-names)])
         (define skolem (hash-ref subst p))
         (define skolem-name (tcon-name skolem))
         (define arg-name
           (string->symbol (format "$dict-~a-~a" dm skolem-name)))
-        (values (hash-set sk skolem-name arg-name)
+        (values (hash-set sk (cons skolem-name dm) arg-name)
                 (cons arg-name args)))))
   (values sk-map (reverse arg-names-rev)))
 
@@ -1307,10 +1312,15 @@
     (cons (pred-class c) (constraint-tvar-names c))))
 
 (define (class-has-return-typed-methods? env class-name)
-  ;; A class is "dict-passable" if it owns a return-typed method
-  ;; OR if one of its superclasses transitively does.  Consult the
-  ;; (small, hard-coded) registry that already encodes that closure.
-  (not (null? (dict-class-return-methods class-name))))
+  ;; A class is "dict-passable" if it directly owns a return-typed
+  ;; method (per its class-info-dispatchpos) OR if its name shows up
+  ;; in the hard-coded registry that encodes superclass closures
+  ;; for the built-in prelude classes (Applicative/Monad/Monoid).
+  (or (not (null? (dict-class-return-methods class-name)))
+      (let ([cinfo (env-ref-class env class-name)])
+        (and cinfo
+             (for/or ([dp (in-hash-values (class-info-dispatchpos cinfo))])
+               (eq? dp 'return))))))
 
 (define (method-dict-requirements sch class-params)
   (define body (scheme-body sch))
@@ -1441,7 +1451,7 @@
              ;; only ships dicts for Applicative (single return-typed
              ;; method `pure`); to keep the wiring local this code
              ;; consults a small dict-method registry.
-             (for/list ([dm (in-list (dict-class-return-methods cls))])
+             (for/list ([dm (in-list (dict-class-return-methods cls env))])
                (resolve-return-impl dm tvars final-subst stx))))
          (hash-set! dict-resolutions stx (apply append impls))]
         [(list 'inst-dispatch method-name class-param-tvars)
@@ -1508,7 +1518,7 @@
                      (type-head-tcon a)))
                  (cond
                    [(andmap values ctx-tcons)
-                    (for/list ([dm (in-list (dict-class-return-methods cls))])
+                    (for/list ([dm (in-list (dict-class-return-methods cls env))])
                       (string->symbol
                        (format "$~a:~a"
                                dm
@@ -1529,7 +1539,7 @@
      (define skolem-local
        (and skol-map
             (= (length tcon-names) 1)
-            (hash-ref skol-map (car tcon-names) #f)))
+            (hash-ref skol-map (cons (car tcon-names) method-name) #f)))
      (cond
        [skolem-local skolem-local]
        [else
@@ -1550,11 +1560,27 @@
 ;; Includes return-typed methods from superclasses transitively — a
 ;; constraint `(Monad m) =>` carries `pure` because Applicative is a
 ;; superclass of Monad and Applicative declares pure as return-typed.
-(define (dict-class-return-methods class-name)
-  (case class-name
-    [(Applicative) '(pure)]
-    [(Monad)       '(pure)]
-    [(Monoid)      '(mempty)]
+(define (dict-class-return-methods class-name [env #f])
+  ;; The hardcoded registry encodes the prelude's superclass closures
+  ;; (Monad → pure via Applicative; Monoid → mempty).  For any other
+  ;; class we consult its class-info to discover its own return-typed
+  ;; methods.
+  (define from-registry
+    (case class-name
+      [(Applicative) '(pure)]
+      [(Monad)       '(pure)]
+      [(Monoid)      '(mempty)]
+      [else '()]))
+  (cond
+    [(not (null? from-registry)) from-registry]
+    [env
+     (define cinfo (env-ref-class env class-name))
+     (cond
+       [(not cinfo) '()]
+       [else
+        (for/list ([(m dp) (in-hash (class-info-dispatchpos cinfo))]
+                   #:when (eq? dp 'return))
+          m)])]
     [else '()]))
 
 ;; Extract the head type-constructor name from a (possibly applied)
@@ -1566,16 +1592,55 @@
     [_ #f]))
 
 (define (handle-instance-form ctx head methods stx env declared)
-  (define head-pred (resolve-constraint head))
-  (define class-name (pred-class head-pred))
+  (define head-pred-raw (resolve-constraint head))
+  (define class-name (pred-class head-pred-raw))
   (define cinfo (env-ref-class env class-name))
   (unless cinfo
     (raise-syntax-error 'infer
       (format "unknown class: ~s~a"
               class-name (suggest-similar class-name env 'class))
       stx))
-  (define inst-args (pred-args head-pred))
-  (define ctx-preds (for/list ([c (in-list ctx)]) (resolve-constraint c)))
+  (define inst-args-raw (pred-args head-pred-raw))
+  (define ctx-preds-raw (for/list ([c (in-list ctx)]) (resolve-constraint c)))
+  ;; Phase 30: if the qual context introduces tvars that pin a
+  ;; return-typed-bearing class (e.g. `(HasUnit m) =>` on a lifted
+  ;; instance), skolemize those tvars and build a map from each
+  ;; skolem to a local dict-arg name.  The instance body's polymorphic
+  ;; class-method references will resolve against this map.
+  (define inst-needs-dict-reqs
+    (for/list ([c (in-list ctx-preds-raw)]
+               #:when (class-has-return-typed-methods? env (pred-class c)))
+      (cons (pred-class c) (constraint-tvar-names c))))
+  (define-values (sk-subst dict-skolems dict-arg-names)
+    (cond
+      [(null? inst-needs-dict-reqs) (values empty-subst (hasheq) '())]
+      [else
+       (define inner-vars
+         (for/fold ([acc '()]) ([c (in-list ctx-preds-raw)])
+           (for/fold ([acc acc]) ([a (in-list (pred-args c))])
+             (set->list (set-union (list->seteq acc) (type-vars a))))))
+       (define s
+         (for/fold ([s empty-subst]) ([v (in-list inner-vars)])
+           (subst-extend s v (tcon (gensym (format "$inst-skolem.~a." v))))))
+       (define-values (sk-map args) (build-dict-skolems inst-needs-dict-reqs s env))
+       (values s sk-map args)]))
+  ;; Apply the instance-qual skolem substitution into the parts that
+  ;; flow into body inference.
+  ;; The skolemized versions are used only for body-checking
+  ;; hypotheses; the env entry uses the original (un-skolemized) head
+  ;; and ctx so other constraints can match against this instance.
+  (define inst-args-sk (map (lambda (a) (apply-subst sk-subst a)) inst-args-raw))
+  (define head-pred-sk (apply-subst sk-subst head-pred-raw))
+  (define ctx-preds-sk (map (lambda (p) (apply-subst sk-subst p)) ctx-preds-raw))
+  ;; Stash the dict-arg names so compile-instance can find them when
+  ;; emitting the per-instance impl defs.  Key by (class-name, head
+  ;; tcon, method-name) — see compile-instance for the lookup.
+  (when (and (current-needs-dict-defs) (not (null? dict-arg-names)))
+    (define head-tcon (type-head-tcon (car inst-args-raw)))
+    (for ([m (in-hash-keys (class-info-methods cinfo))])
+      (hash-set! (current-needs-dict-defs)
+                 (list class-name head-tcon m)
+                 dict-arg-names)))
   (define user-impls
     (for/fold ([acc (hasheq)]) ([m (in-list methods)])
       (match m
@@ -1591,13 +1656,16 @@
           [else
            (raise-syntax-error 'infer
              (format "instance ~s missing method ~s with no default"
-                     (pred->datum head-pred) method-name)
+                     (pred->datum head-pred-raw) method-name)
              stx)]))
-      ;; Substitute class params → instance args in the method's body.
+      ;; Substitute class params → instance args (skolemized version)
+      ;; in the method's body type.  Using the skolemized inst args is
+      ;; what allows the body's polymorphic class-method references to
+      ;; resolve to local dict-arg names via current-dict-skolems.
       (define σ
         (for/fold ([s empty-subst])
                   ([p (in-list (class-info-params cinfo))]
-                   [a (in-list inst-args)])
+                   [a (in-list inst-args-sk)])
           (subst-extend s p a)))
       (define inst-method-qual (apply-subst σ (scheme-body method-sch)))
       ;; Strip ALL qual layers — a method type may carry its own
@@ -1610,9 +1678,15 @@
         ;; Constraints from the method's own qualifying context only —
         ;; drop the class's head pred since it appears separately as
         ;; `head-pred` below.
-        (filter (lambda (p) (not (equal? p head-pred)))
+        (filter (lambda (p) (not (equal? p head-pred-sk)))
                 (qual-constraints-of inst-method-qual)))
       (parameterize ([current-pending-preds (box '())])
+        ;; Make the instance-qual skolem map visible while inferring
+        ;; the body AND while resolve-method-uses! runs afterward —
+        ;; mirroring Phase 29's mutate-then-restore pattern for
+        ;; top-defs.
+        (define saved-skolems (current-dict-skolems))
+        (current-dict-skolems dict-skolems)
         (define-values (s t) (infer-expr body env))
         (define s-u
           (with-handlers
@@ -1625,21 +1699,24 @@
                          (type->datum expected-type))
                  stx))])
            (unify (apply-subst s t) expected-type)))
-        (apply-subst-to-preds! (subst-compose s-u s))
+        (define final-subst (subst-compose s-u s))
+        (apply-subst-to-preds! final-subst)
         ;; The instance head itself is a hypothesis during method
         ;; checking — plus any constraints from the method's own
         ;; qualifying context (e.g. `Applicative f` for traverse).
         (define leftovers
           (reduce-context env
-                          (append (cons head-pred ctx-preds)
+                          (append (cons head-pred-sk ctx-preds-sk)
                                   method-extra-preds)
                           (snapshot-preds)))
         (unless (null? leftovers)
           (raise-syntax-error 'infer
             (format "instance ~s method ~s leaves unsolved constraints: ~s"
-                    (pretty-pred head-pred) method-name
+                    (pretty-pred head-pred-raw) method-name
                     (map pretty-pred leftovers))
-            stx)))
+            stx))
+        (resolve-method-uses! final-subst env)
+        (current-dict-skolems saved-skolems))
       (hash-set acc method-name body)))
-  (define info (instance-info head-pred ctx-preds checked-bodies))
+  (define info (instance-info head-pred-raw ctx-preds-raw checked-bodies))
   (values (env-extend-instance env class-name info) declared))

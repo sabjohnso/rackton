@@ -33,8 +33,13 @@ algebraic data types, and pattern matching — inside Racket, either as an
 @hash-lang[] @racketmodfont{rackton} program.
 
 This documentation describes the @bold{Phase 1 + 2 + 3 + 4 + 5 + 6 + 7
-+ 8 + 9 + 10 + 11 + 12 + 13 + 14 + 15 + 16 + 17 + 18 + 19 + 20 + 21 + 22 + 23 + 24 + 25 + 26 + 27 + 28 + 29}
-subset.  Phase 29 closes the long-standing Phase 24 limitation —
++ 8 + 9 + 10 + 11 + 12 + 13 + 14 + 15 + 16 + 17 + 18 + 19 + 20 + 21 + 22 + 23 + 24 + 25 + 26 + 27 + 28 + 29 + 30}
+subset.  Phase 30 extends Phase 29's body-rewriting from top-level
+free functions to instance method bodies, so user code can define
+@emph{lifted instances}: an instance whose body uses a polymorphic
+class method bound by the instance's qualifying context.  This is
+the prerequisite for Phase 31's mtl-style classes.
+Phase 29 closes the long-standing Phase 24 limitation —
 user code can now write its own needs-dict function bodies (e.g.
 @racket[(define (my-concat xs) (foldr <> mempty xs))]); the
 elaborator tracks the skolems introduced by the declared qualifying
@@ -1528,6 +1533,50 @@ multi-parameter dict class (none in the prelude yet) would need
 parallel local args.  Mutually recursive needs-dict definitions are
 not handled — each def is independently tracked but cross-references
 would need a forward-declaration pass to align the dict-arg names.
+
+@section{Lifted instance bodies (Phase 30)}
+
+Phase 29 made user-defined needs-dict @emph{free functions} work.
+Phase 30 does the same for instance method bodies — required for
+the canonical pattern where a transformer's class instance is
+@emph{lifted} from an inner monad's instance:
+
+@codeblock|{
+(define-class (HasUnit (m :: (-> * *)))
+  (: unit-val (m Integer)))
+
+(define-instance (HasUnit Maybe)
+  (define unit-val (Some 1)))
+
+;; Lifted instance — the body's `unit-val` is polymorphic in `m`,
+;; bound by the instance's qual context.
+(define-instance ((HasUnit m) => (HasUnit (EnvT String m)))
+  (define unit-val (lift-env-t unit-val)))
+
+((run-env-t (ann unit-val (EnvT String Maybe Integer))) "ignored")
+;; ⇒ (Some 1)
+}|
+
+The elaborator skolemizes the qualifying-context tvars at
+@racket[handle-instance-form] time and builds a map from each skolem
+to a freshly-allocated local dict-arg name — keyed by
+@code{(skolem-name . method-name)} so a class with multiple methods
+ends up with one dict arg per method.  While inferring the body, the
+skolem map is active in @racket[current-dict-skolems]; polymorphic
+class-method references whose class param resolves to a tracked
+skolem rewrite to the local dict-arg name.  At codegen,
+@racket[compile-instance] consults @racket[current-needs-dict-defs]
+to prepend those names as leading parameters to the generated
+@code{$method:TCon} impl.
+
+The instance is still stored in the env under its @emph{original}
+(un-skolemized) head and qual so other code that asks "is there an
+@racket[(HasUnit (EnvT String Maybe))] instance?" finds it normally.
+
+Phase 31 builds on this to ship the mtl-style classes
+(@racket[MonadState], @racket[MonadEnv], @racket[MonadWriter],
+@racket[MonadError]) with full instance matrices including the
+lifted cases.
 
 @section{Not yet supported}
 

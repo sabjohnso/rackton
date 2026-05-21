@@ -37,7 +37,10 @@
   (parameterize ([current-method-uses             (make-hasheq)]
                  [current-method-resolutions      (make-hasheq)]
                  [current-method-dict-resolutions (make-hasheq)]
-                 [current-needs-dict-defs         (make-hasheq)])
+                 ;; equal?-keyed so we can use composite list keys
+                 ;; for instance method lookups (Phase 30).  Symbol-
+                 ;; keyed top-def names compare equal? fine too.
+                 [current-needs-dict-defs         (make-hash)])
     (define env (infer-program parsed prelude-env))
     (define compiled
       (filter values

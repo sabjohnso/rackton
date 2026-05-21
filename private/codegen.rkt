@@ -343,23 +343,61 @@
        (cond
          [(eq? (hash-ref (class-info-dispatchpos cinfo) name #f) 'return)
           ;; Return-typed methods don't dispatch on a runtime value;
-          ;; emit one top-level `(define $method:Tcon impl)` whose name
-          ;; matches what `infer.rkt` synthesizes in
-          ;; current-method-resolutions.
+          ;; emit one top-level `(define $method:Tcon impl)` whose
+          ;; name matches what `infer.rkt` synthesizes in
+          ;; current-method-resolutions.  Phase 30: if the instance
+          ;; is needs-dict, prepend dict-arg parameters so the impl
+          ;; can accept them (and use them in the body via the
+          ;; current-dict-skolems-driven local references).
+          (define dict-args
+            (and (current-needs-dict-defs)
+                 (hash-ref (current-needs-dict-defs)
+                           (list head-pred-class
+                                 (car head-tcon-names)
+                                 name)
+                           #f)))
+          (define body*
+            (cond
+              [(and dict-args (not (null? dict-args)))
+               (prepend-lambda-params body dict-args stx)]
+              [else body]))
           (with-syntax ([impl-name
                          (datum->syntax stx
                                         (return-impl-symbol name head-tcon-names)
                                         stx)]
-                        [impl (compile-expr body)])
+                        [impl (compile-expr body*)])
             (list #'(define impl-name impl)))]
          [else
-          (for/list ([tag (in-list tags)])
-            (with-syntax ([table   (datum->syntax stx
-                                                  (method-dispatch-symbol name)
-                                                  stx)]
-                          [impl    (compile-expr body)]
-                          [tag-sym (datum->syntax stx tag stx)])
-              #'(register-instance-method! table 'tag-sym impl)))]))))
+          ;; Phase 30: a needs-dict instance method gets a named
+          ;; `(define $method:Tcon (lambda (dict-args... user-args...) body))`
+          ;; so Phase 27's call-site dispatch can route to it with the
+          ;; resolved dict args.  Skip the per-tag dispatch-table
+          ;; registration — the runtime dispatcher can't carry dict
+          ;; args, so falling through to it wouldn't help anyway.
+          (define dict-args
+            (and (current-needs-dict-defs)
+                 (hash-ref (current-needs-dict-defs)
+                           (list head-pred-class
+                                 (car head-tcon-names)
+                                 name)
+                           #f)))
+          (cond
+            [(and dict-args (not (null? dict-args)))
+             (define expr* (prepend-lambda-params body dict-args stx))
+             (with-syntax ([impl-name (datum->syntax
+                                       stx
+                                       (return-impl-symbol name head-tcon-names)
+                                       stx)]
+                           [impl (compile-expr expr*)])
+               (list #'(define impl-name impl)))]
+            [else
+             (for/list ([tag (in-list tags)])
+               (with-syntax ([table   (datum->syntax stx
+                                                     (method-dispatch-symbol name)
+                                                     stx)]
+                             [impl    (compile-expr body)]
+                             [tag-sym (datum->syntax stx tag stx)])
+                 #'(register-instance-method! table 'tag-sym impl)))])]))))
   (with-syntax ([(register ...) register-forms])
     (syntax/loc stx (begin register ...))))
 
