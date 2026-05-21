@@ -583,6 +583,123 @@
     (define-instance ((Monad m) => (Monad (ExceptT e m)))
       (define (>>= ea f) (racket (ExceptT e m b) (ea f) #f)))
 
+    ;; --- mtl-style classes (Phase 31) ---------------------------
+    ;;
+    ;; Polymorphic effect interfaces.  Code can ask for "any monad
+    ;; with state / env / log / errors" via these classes; the
+    ;; concrete transformer the caller picks chooses the instance.
+    ;; Each class has a fundep `m -> X` so the inferer can recover
+    ;; the effect's payload type from the monad.  See @secref{mtl-
+    ;; style_classes_(Phase_31)} in the docs.
+
+    ;; ----- MonadState -------------------------------------------
+
+    (define-class ((Monad m) => (MonadState s (m :: (-> * *))))
+      (#:fundep m -> s)
+      (: get-st    (m s))
+      (: put-st    (-> s (m Unit)))
+      (: modify-st (-> (-> s s) (m Unit))))
+
+    (define-instance (MonadState s (State s))
+      (define get-st        get-state)
+      (define (put-st x)    (put-state x))
+      (define (modify-st f) (modify-state f)))
+
+    (define-instance ((Monad m) => (MonadState s (StateT s m)))
+      (define get-st        get-state-t)
+      (define (put-st x)    (put-state-t x))
+      (define (modify-st f) (modify-state-t f)))
+
+    (define-instance ((MonadState s m) => (MonadState s (EnvT r m)))
+      (define get-st        (lift-env-t get-st))
+      (define (put-st x)    (lift-env-t (put-st x)))
+      (define (modify-st f) (lift-env-t (modify-st f))))
+
+    (define-instance ((MonadState s m) (Monoid w) => (MonadState s (WriterT w m)))
+      (define get-st        (lift-writer-t get-st))
+      (define (put-st x)    (lift-writer-t (put-st x)))
+      (define (modify-st f) (lift-writer-t (modify-st f))))
+
+    (define-instance ((MonadState s m) => (MonadState s (ExceptT e m)))
+      (define get-st        (lift-except-t get-st))
+      (define (put-st x)    (lift-except-t (put-st x)))
+      (define (modify-st f) (lift-except-t (modify-st f))))
+
+    ;; ----- MonadEnv (Reader) ------------------------------------
+
+    (define-class ((Monad m) => (MonadEnv r (m :: (-> * *))))
+      (#:fundep m -> r)
+      (: ask-en   (m r))
+      (: local-en (-> (-> r r) (-> (m a) (m a)))))
+
+    (define-instance (MonadEnv r (Env r))
+      (define ask-en     ask)
+      (define (local-en f e) (local f e)))
+
+    (define-instance ((Monad m) => (MonadEnv r (EnvT r m)))
+      (define ask-en     ask-t)
+      (define (local-en f e) (local-t f e)))
+
+    (define-instance ((MonadEnv r m) => (MonadEnv r (StateT s m)))
+      (define ask-en     (lift-state-t ask-en))
+      (define (local-en f sm)
+        (racket (StateT s m a) (f sm) #f)))
+
+    (define-instance ((MonadEnv r m) (Monoid w) => (MonadEnv r (WriterT w m)))
+      (define ask-en     (lift-writer-t ask-en))
+      (define (local-en f wm)
+        (racket (WriterT w m a) (f wm) #f)))
+
+    (define-instance ((MonadEnv r m) => (MonadEnv r (ExceptT e m)))
+      (define ask-en     (lift-except-t ask-en))
+      (define (local-en f em)
+        (racket (ExceptT e m a) (f em) #f)))
+
+    ;; ----- MonadWriter ------------------------------------------
+
+    (define-class ((Monoid w) (Monad m) => (MonadWriter w (m :: (-> * *))))
+      (#:fundep m -> w)
+      (: tell-w (-> w (m Unit))))
+
+    (define-instance ((Monoid w) (Monad m) => (MonadWriter w (WriterT w m)))
+      (define (tell-w x) (tell x)))
+
+    (define-instance ((MonadWriter w m) => (MonadWriter w (StateT s m)))
+      (define (tell-w x) (lift-state-t (tell-w x))))
+
+    (define-instance ((MonadWriter w m) => (MonadWriter w (EnvT r m)))
+      (define (tell-w x) (lift-env-t (tell-w x))))
+
+    (define-instance ((MonadWriter w m) => (MonadWriter w (ExceptT e m)))
+      (define (tell-w x) (lift-except-t (tell-w x))))
+
+    ;; ----- MonadError -------------------------------------------
+
+    (define-class ((Monad m) => (MonadError e (m :: (-> * *))))
+      (#:fundep m -> e)
+      (: throw-e (-> e (m a)))
+      (: catch-e (-> (m a) (-> (-> e (m a)) (m a)))))
+
+    (define-instance ((Monad m) => (MonadError e (ExceptT e m)))
+      (define (throw-e e)    (throw-error e))
+      (define (catch-e ea h) (catch-error ea h)))
+
+    (define-instance ((MonadError e m) => (MonadError e (StateT s m)))
+      (define (throw-e ev)   (lift-state-t (throw-e ev)))
+      (define (catch-e sm h)
+        (racket (StateT s m a) (sm h) #f)))
+
+    (define-instance ((MonadError e m) => (MonadError e (EnvT r m)))
+      (define (throw-e ev)   (lift-env-t (throw-e ev)))
+      (define (catch-e em h)
+        (racket (EnvT r m a) (em h) #f)))
+
+    (define-instance ((MonadError e m) (Monoid w) =>
+                      (MonadError e (WriterT w m)))
+      (define (throw-e ev)   (lift-writer-t (throw-e ev)))
+      (define (catch-e wm h)
+        (racket (WriterT w m a) (wm h) #f)))
+
     (: filter (-> (-> a Boolean) (-> (List a) (List a))))
     (define (filter p xs)
       (match xs

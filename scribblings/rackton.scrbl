@@ -1578,6 +1578,78 @@ Phase 31 builds on this to ship the mtl-style classes
 @racket[MonadError]) with full instance matrices including the
 lifted cases.
 
+@section{mtl-style classes (Phase 31)}
+
+Phase 31 ships four polymorphic effect classes — @racket[MonadState],
+@racket[MonadEnv], @racket[MonadWriter], @racket[MonadError] — each
+parameterized by an effect payload and a monad with a functional
+dependency from the monad to the payload (@code{m -> s} etc.) so type
+inference can recover the payload from the chosen monad.  Code can
+ask for "any monad with state" via @code{(MonadState Integer m) => …}
+and have the concrete transformer chosen at the call site:
+
+@codeblock|{
+(: incr-by ((MonadState Integer m) => (-> Integer (m Unit))))
+(define (incr-by n)
+  (do [k <- get-st]
+    (put-st (+ k n))))
+
+(define s-incr   (incr-by 5))   ;; (State  Integer Unit)
+(define s-t-incr (incr-by 3))   ;; (StateT Integer IO Unit)
+(define e-incr   (incr-by 7))   ;; (EnvT String (State Integer) Unit)
+}|
+
+Each class has both a @emph{base} instance (e.g.
+@racket[(MonadState s (State s))]) and @emph{lifted} instances over
+the other three transformers (e.g.
+@code{(MonadState s m) => (MonadState s (EnvT r m))}), so any pairing
+of transformers — including nested stacks like
+@code{(StateT s (EnvT r IO) String)} — picks up the right effect
+methods.
+
+The dispatch story extends earlier phases in three steps:
+
+@itemlist[
+  @item{@bold{Fundep-aware dispatch.}  Per-class return-typed impl
+        names drop arg slots that the fundep makes redundant —
+        @racket[(MonadState s (State s))] uses @code{$get-st:State},
+        not @code{$get-st:Integer-State}.  Both
+        @racket[resolve-return-impl] (infer) and
+        @racket[compile-instance] (codegen) consult
+        @racket[class-info-fundeps] when forming or matching the impl
+        name.  @racket[find-dispatch-pos] similarly skips arg
+        positions whose only class-params are fundep-determined.}
+  @item{@bold{Superclass-closure dict-passing.}  A constraint of class
+        @racket[C] now ships dicts for every reachable return-typed
+        method — @racket[C]'s own plus those of every transitive
+        superclass.  A @code{(MonadEnv String m) =>} function carries
+        dicts for @racket[ask-en] (own) and @racket[pure] (Monad via
+        Applicative superclass).  @racket[collect-dict-method-args]
+        recurses through @racket[class-info-supers], threading outer
+        arg-types through each super-pred so inherited methods see
+        only their own class's args.}
+  @item{@bold{Nested instance-qual dicts.}  Each impl in the
+        dict-passing path is wrapped via
+        @racket[resolve-impl-with-quals] with the dicts its matching
+        instance's qual context demands.  So @racket[(incr-by 3)] at
+        @racket[(StateT Integer IO Unit)] emits not just
+        @code{$get-st:StateT} but @code{($get-st:StateT $pure:IO)} —
+        the call pre-applies the inner-monad dict so the
+        dispatcher sees a saturated transformer value.  Dedup
+        matches @racket[build-dict-skolems]' @code{(skolem . method)}
+        key so multi-constraint signatures like
+        @code{((MonadState … m) (MonadEnv … m) =>)} produce the same
+        number of dict args on each side.}
+]
+
+The runtime impls (@code{$get-st:T}, @code{$ask-en:T},
+@code{$tell-w:T}, @code{$throw-e:T}, plus the matching positional
+methods) live alongside the existing transformer code in
+@code{prelude-runtime.rkt}.  Lifted impls accept the inner-monad's
+return-typed dicts as leading curried args in alphabetical method
+order followed by superclass-closure dicts — matching what the call
+site emits.
+
 @section{Not yet supported}
 
 Overlapping instances, kind polymorphism (kind variables), threads /

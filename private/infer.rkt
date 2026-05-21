@@ -164,21 +164,63 @@
   ;;               local dict-arg name
   ;;   arg-names : (Listof symbol) in declaration order — what the
   ;;               compiled lambda will accept as leading params.
+  ;;
+  ;; `reqs` may be either shape:
+  ;;   (cons class-name (list tvar-name ...))     — Phase 29/30 legacy
+  ;;   (cons class-name (list pred-arg-type ...)) — Phase 31, multi-param
+  ;; Walks superclass closures so inherited return-typed methods (e.g.
+  ;; `pure` via Monad super of MonadState) get their own dict slot.
+  (define (resolve-arg p)
+    (cond
+      [(symbol? p) (hash-ref subst p)]
+      [else        (apply-subst subst p)]))
+  (define (filter-skolems cls arg-types)
+    (define cinfo (and env (env-ref-class env cls)))
+    (cond
+      [(and cinfo (= (length (class-info-params cinfo)) (length arg-types)))
+       (define determined
+         (for/fold ([acc (seteq)])
+                   ([fd (in-list (class-info-fundeps cinfo))])
+           (set-union acc (list->seteq (cdr fd)))))
+       (for/list ([p (in-list arg-types)]
+                  [cp (in-list (class-info-params cinfo))]
+                  #:when (or (symbol? p) (tvar? p))
+                  #:unless (set-member? determined cp))
+         (resolve-arg p))]
+      [else
+       (for/list ([p (in-list arg-types)]
+                  #:when (or (symbol? p) (tvar? p)))
+         (resolve-arg p))]))
   (define-values (sk-map arg-names-rev)
     (for/fold ([sk (hash)] [args '()])
               ([req (in-list reqs)])
       (define cls (car req))
-      (define param-names (cdr req))
+      (define arg-types (cdr req))
       (for/fold ([sk sk] [args args])
-                ([dm (in-list (dict-class-return-methods cls env))]
-                 #:when #t
-                 [p (in-list param-names)])
-        (define skolem (hash-ref subst p))
-        (define skolem-name (tcon-name skolem))
-        (define arg-name
-          (string->symbol (format "$dict-~a-~a" dm skolem-name)))
-        (values (hash-set sk (cons skolem-name dm) arg-name)
-                (cons arg-name args)))))
+                ([pair (in-list (collect-dict-method-args cls arg-types env))])
+        (define dm           (car pair))
+        (define method-args  (cdr pair))
+        (define dm-cls
+          (or (and env (env-ref-method-class env dm))
+              (case dm
+                [(pure)   'Applicative]
+                [(mempty) 'Monoid]
+                [else cls])))
+        (define skolems (filter-skolems dm-cls method-args))
+        (for/fold ([sk sk] [args args]) ([sk-ty (in-list skolems)])
+          (define skolem-name (tcon-name sk-ty))
+          (define arg-name
+            (string->symbol (format "$dict-~a-~a" dm skolem-name)))
+          ;; Two constraints sharing a superclass (e.g. MonadState +
+          ;; MonadEnv both reach Monad) would produce the same
+          ;; (skolem . method) entry twice; keep the first occurrence
+          ;; so the compiled lambda's params remain unique.
+          (cond
+            [(hash-has-key? sk (cons skolem-name dm))
+             (values sk args)]
+            [else
+             (values (hash-set sk (cons skolem-name dm) arg-name)
+                     (cons arg-name args))])))))
   (values sk-map (reverse arg-names-rev)))
 
 ;; Skolemize: replace each bound type variable with a fresh tcon, so the
@@ -1010,7 +1052,7 @@
              (values t p (hasheq) '())]
             [else
              (define-values (t p s) (skolemize/tracked decl-scheme))
-             (define-values (sk-map args) (build-dict-skolems needs-dict-reqs s))
+             (define-values (sk-map args) (build-dict-skolems needs-dict-reqs s env))
              (values t p sk-map args)]))
         ;; Pre-register with the FULL polymorphic scheme rather than the
         ;; skolemized monomorphic type, enabling polymorphic recursion:
@@ -1162,11 +1204,17 @@
   ;; type does (e.g. `pure :: a -> f a`), mark the method as
   ;; return-typed — at use sites it is resolved at compile time from the
   ;; expected return type rather than from a runtime value tag.
+  ;; Compute fundeps first so dispatchpos can consult them — class
+  ;; methods of fundep-bearing classes skip args whose type is wholly
+  ;; "determined" by the fundep (no instance-disambiguation value).
+  (define fundeps
+    (for/list ([m (in-list methods)] #:when (class-fundep? m))
+      (cons (class-fundep-lhs m) (class-fundep-rhs m))))
   (define dispatchpos
     (for/fold ([acc (hasheq)])
               ([(method-name sch) (in-hash method-schemes)])
       (define body-type (qual-body-type (scheme-body sch)))
-      (define pos (find-dispatch-pos body-type class-params))
+      (define pos (find-dispatch-pos body-type class-params fundeps))
       (cond
         [pos (hash-set acc method-name pos)]
         [(return-type-mentions-class-param? body-type class-params)
@@ -1176,9 +1224,6 @@
            (format "class method ~s does not have any argument whose type mentions a class parameter — single dispatch cannot resolve it"
                    method-name)
            stx)])))
-  (define fundeps
-    (for/list ([m (in-list methods)] #:when (class-fundep? m))
-      (cons (class-fundep-lhs m) (class-fundep-rhs m))))
   ;; Compute per-method dict requirements — for each method, the list
   ;; of (class-name . param-names) entries whose return-typed methods
   ;; must be inserted as extra leading arguments at call sites.  See
@@ -1268,15 +1313,30 @@
     [(k:arr d c)   (kind-arr (surface-kind->core d) (surface-kind->core c))]
     [_             (kind-star)]))
 
-;; Walk the arrow chain of a method type and return the position of the
-;; first argument whose type mentions any of `class-params`, or #f.
-(define (find-dispatch-pos t class-params)
+;; Walk the arrow chain of a method type and return the position of
+;; the first argument whose type mentions a class-param other than
+;; "determined" ones (params on the RHS of a fundep).  Why this
+;; refinement: for a class like `(MonadState s m | m -> s)`, the `s`
+;; in `put :: s -> m Unit` is fundep-determined by `m` — dispatching
+;; on the runtime value of `s` (e.g. an Integer) doesn't pick the
+;; right instance, because multiple `m`s share the same `s`.  Skip
+;; those args; the method falls through to return-typed dispatch.
+;; For single-param classes (no fundeps), the determined set is
+;; empty and the behaviour is unchanged.
+(define (find-dispatch-pos t class-params [fundeps '()])
+  (define determined
+    (for/fold ([acc (seteq)]) ([fd (in-list fundeps)])
+      (set-union acc (list->seteq (cdr fd)))))
   (let loop ([t t] [pos 0])
     (cond
       [(arrow? t)
        (define dom (arrow-dom t))
+       (define mentions
+         (filter (lambda (p) (set-member? (type-vars dom) p)) class-params))
        (cond
-         [(ormap (lambda (p) (set-member? (type-vars dom) p)) class-params)
+         [(and (not (null? mentions))
+               (not (andmap (lambda (p) (set-member? determined p))
+                            mentions)))
           pos]
          [else (loop (arrow-cod t) (add1 pos))])]
       [else #f])))
@@ -1309,7 +1369,7 @@
   (define constraints (qual-constraints-of (scheme-body sch)))
   (for/list ([c (in-list constraints)]
              #:when (class-has-return-typed-methods? env (pred-class c)))
-    (cons (pred-class c) (constraint-tvar-names c))))
+    (cons (pred-class c) (pred-args c))))
 
 (define (class-has-return-typed-methods? env class-name)
   ;; A class is "dict-passable" if it directly owns a return-typed
@@ -1328,7 +1388,7 @@
   (define declaring-set (list->seteq class-params))
   (for/list ([c (in-list constraints)]
              #:unless (subset? (constraint-param-set c) declaring-set))
-    (cons (pred-class c) (constraint-tvar-names c))))
+    (cons (pred-class c) (pred-args c))))
 
 (define (constraint-param-set c)
   (apply set-union/empty (map type-vars (pred-args c))))
@@ -1408,9 +1468,9 @@
     (define dict-entries
       (for/list ([req (in-list reqs)])
         (define cls (car req))
-        (define param-names (cdr req))
-        (cons cls (for/list ([p (in-list param-names)])
-                    (hash-ref sub p)))))
+        (define arg-types (cdr req))
+        (cons cls (for/list ([a (in-list arg-types)])
+                    (apply-subst sub a)))))
     (hash-set! table stx (list 'dict method-name dict-entries))))
 
 ;; After a top-level def's constraints have been reduced, walk every
@@ -1430,7 +1490,7 @@
       (match entry
         [(list 'return method-name class-param-tvars)
          (define impl (resolve-return-impl method-name class-param-tvars
-                                           final-subst stx))
+                                           final-subst stx env))
          (hash-set! resolutions stx impl)
          ;; Phase 25.3: when the matching instance carries a qual
          ;; context with return-typed-method-bearing constraints, the
@@ -1442,18 +1502,35 @@
          (unless (null? inst-dict-impls)
            (hash-set! dict-resolutions stx inst-dict-impls))]
         [(list 'dict method-name dict-entries)
+         ;; For each constraint, expand into (method . arg-types) pairs
+         ;; following the class's superclass hierarchy so inherited
+         ;; methods (e.g. `pure` reached from MonadState via Monad) see
+         ;; only their own class's arg slots.  Each impl is wrapped with
+         ;; its instance-qual dicts (Phase 31) so needs-dict transformer
+         ;; instances pre-apply their inner-monad dicts at the call site.
+         ;; Pairs are deduped across constraints (e.g. MonadState +
+         ;; MonadEnv both reaching Monad.pure) — matches
+         ;; build-dict-skolems' (skolem.method) dedup used to size the
+         ;; needs-dict lambda's params.
+         (define all-pairs
+           (apply append
+                  (for/list ([entry (in-list dict-entries)])
+                    (collect-dict-method-args (car entry) (cdr entry) env))))
+         (define dedup-pairs
+           (let loop ([ps all-pairs] [seen (seteq)] [acc '()])
+             (cond
+               [(null? ps) (reverse acc)]
+               [(set-member? seen (car (car ps)))
+                (loop (cdr ps) seen acc)]
+               [else
+                (loop (cdr ps)
+                      (set-add seen (car (car ps)))
+                      (cons (car ps) acc))])))
          (define impls
-           (for/list ([entry (in-list dict-entries)])
-             (define cls (car entry))
-             (define tvars (cdr entry))
-             ;; For each return-typed method of the dict-class, look
-             ;; up the impl name under the resolved type.  Phase 20
-             ;; only ships dicts for Applicative (single return-typed
-             ;; method `pure`); to keep the wiring local this code
-             ;; consults a small dict-method registry.
-             (for/list ([dm (in-list (dict-class-return-methods cls env))])
-               (resolve-return-impl dm tvars final-subst stx))))
-         (hash-set! dict-resolutions stx (apply append impls))]
+           (for/list ([pair (in-list dedup-pairs)])
+             (resolve-impl-with-quals (car pair) (cdr pair)
+                                      final-subst stx env)))
+         (hash-set! dict-resolutions stx impls)]
         [(list 'inst-dispatch method-name class-param-tvars)
          ;; Phase 27: route a class-method call to a per-instance
          ;; impl if the matching instance is needs-dict; otherwise
@@ -1485,6 +1562,20 @@
                (hash-set! dict-resolutions stx inst-dict-impls))))]))
     (hash-clear! uses)))
 
+;; Phase 31: resolve a method-name + arg-types to either a bare impl
+;; symbol or an s-expression `(impl-name dict-args...)` that the
+;; codegen splices into the dict-prepend.  Used by the 'dict
+;; resolution path, where each impl passed to a needs-dict function
+;; may itself reference a needs-dict instance (e.g. $get-st:StateT
+;; takes an inner-pure dict from the (Monad m) qual).
+(define (resolve-impl-with-quals method-name arg-types final-subst stx env)
+  (define base (resolve-return-impl method-name arg-types final-subst stx env))
+  (define qual-impls
+    (instance-qual-return-impls env method-name arg-types final-subst stx))
+  (cond
+    [(null? qual-impls) base]
+    [else (cons base qual-impls)]))
+
 ;; Walk the matching instance for a return-typed method's resolved
 ;; class param types; emit impl names for return-typed-bearing
 ;; constraints in the instance's qual context.  Returns a (possibly
@@ -1513,40 +1604,61 @@
                (for/list ([c (in-list (instance-info-context inst))])
                  (define inst-pred (apply-subst σ c))
                  (define cls (pred-class inst-pred))
-                 (define ctx-tcons
-                   (for/list ([a (in-list (pred-args inst-pred))])
-                     (type-head-tcon a)))
+                 (define arg-types (pred-args inst-pred))
                  (cond
-                   [(andmap values ctx-tcons)
-                    (for/list ([dm (in-list (dict-class-return-methods cls env))])
-                      (string->symbol
-                       (format "$~a:~a"
-                               dm
-                               (string-join (map symbol->string ctx-tcons)
-                                            "-"))))]
+                   [(class-has-return-typed-methods? env cls)
+                    (for/list ([pair (in-list
+                                      (collect-dict-method-args cls arg-types env))])
+                      (resolve-impl-with-quals (car pair) (cdr pair)
+                                               final-subst stx env))]
                    [else '()])))])]))
 
-(define (resolve-return-impl method-name class-param-tvars final-subst stx)
+(define (resolve-return-impl method-name class-param-tvars final-subst stx
+                             [env #f])
   (define tcon-names
     (for/list ([tv (in-list class-param-tvars)])
       (type-head-tcon (apply-subst final-subst tv))))
+  ;; For fundep-bearing classes, only the "determining" params (those
+  ;; not on the RHS of any fundep) participate in the impl name —
+  ;; matches the impl name compile-instance emits, which is keyed by
+  ;; the head-tcon of the determining-param position.
+  (define keep-tcon-names
+    (cond
+      [(not env) tcon-names]
+      [else
+       (define owner (env-ref-method-class env method-name))
+       (define cinfo (and owner (env-ref-class env owner)))
+       (cond
+         [(or (not cinfo) (null? (class-info-fundeps cinfo))) tcon-names]
+         [else
+          (define determined
+            (for/fold ([acc (seteq)])
+                      ([fd (in-list (class-info-fundeps cinfo))])
+              (set-union acc (list->seteq (cdr fd)))))
+          (for/list ([p (in-list (class-info-params cinfo))]
+                     [tn (in-list tcon-names)]
+                     #:unless (set-member? determined p))
+            tn)])]))
   (cond
-    [(andmap values tcon-names)
+    [(andmap values keep-tcon-names)
      ;; Phase 29: if a class-param resolves to a tracked skolem,
      ;; the call is inside a needs-dict-body — emit a reference to
      ;; the locally-bound dict-arg instead of the per-tcon impl.
      (define skol-map (current-dict-skolems))
      (define skolem-local
        (and skol-map
-            (= (length tcon-names) 1)
-            (hash-ref skol-map (cons (car tcon-names) method-name) #f)))
+            ;; For a multi-param class only one of the resolved tcons
+            ;; is the skolem we tracked (the determining param via
+            ;; fundep) — scan all of them and pick whichever matches.
+            (for/or ([tn (in-list tcon-names)])
+              (hash-ref skol-map (cons tn method-name) #f))))
      (cond
        [skolem-local skolem-local]
        [else
         (string->symbol
          (format "$~a:~a"
                  method-name
-                 (string-join (map symbol->string tcon-names) "-")))])]
+                 (string-join (map symbol->string keep-tcon-names) "-")))])]
     [else
      (raise-syntax-error 'infer
        (format "ambiguous use of ~s: cannot determine target type at this call site"
@@ -1561,10 +1673,15 @@
 ;; constraint `(Monad m) =>` carries `pure` because Applicative is a
 ;; superclass of Monad and Applicative declares pure as return-typed.
 (define (dict-class-return-methods class-name [env #f])
-  ;; The hardcoded registry encodes the prelude's superclass closures
-  ;; (Monad → pure via Applicative; Monoid → mempty).  For any other
-  ;; class we consult its class-info to discover its own return-typed
-  ;; methods.
+  ;; Return-typed methods reachable from a constraint of class
+  ;; `class-name`: the class's own methods *plus* a transitive
+  ;; superclass closure (e.g. a MonadEnv constraint implies Monad
+  ;; which transitively implies Applicative — whose `pure` shows up).
+  ;; The hardcoded registry retains the prelude's well-known closures
+  ;; for fast paths and for callers without an env in hand.
+  ;; The method list is sorted by symbol name for deterministic
+  ;; ordering across producer (call sites) and consumer (instance
+  ;; impls) — `in-hash` order is implementation-defined.
   (define from-registry
     (case class-name
       [(Applicative) '(pure)]
@@ -1578,10 +1695,69 @@
      (cond
        [(not cinfo) '()]
        [else
+        (define own
+          (sort
+           (for/list ([(m dp) (in-hash (class-info-dispatchpos cinfo))]
+                      #:when (eq? dp 'return))
+             m)
+           symbol<?))
+        (define super-methods
+          (apply append
+                 (for/list ([sp (in-list (class-info-supers cinfo))])
+                   (dict-class-return-methods (pred-class sp) env))))
+        (remove-duplicates (append own super-methods))])]
+    [else '()]))
+
+;; Collect (method-name . arg-types) pairs for every return-typed
+;; method reachable from a constraint of class `cls` with arg list
+;; `arg-types`.  Walks the superclass hierarchy, threading the outer
+;; arg-types through each super-pred so methods inherited from a
+;; super-class see only THEIR class's arg slots.
+(define (collect-dict-method-args cls arg-types env)
+  (define cinfo (and env (env-ref-class env cls)))
+  (define own-methods
+    (cond
+      [cinfo
+       (sort
         (for/list ([(m dp) (in-hash (class-info-dispatchpos cinfo))]
                    #:when (eq? dp 'return))
-          m)])]
-    [else '()]))
+          m)
+        symbol<?)]
+      [else
+       (case cls
+         [(Applicative) '(pure)]
+         [(Monad)       '(pure)]
+         [(Monoid)      '(mempty)]
+         [else '()])]))
+  (define own-pairs
+    (for/list ([m (in-list own-methods)]) (cons m arg-types)))
+  (define super-pairs
+    (cond
+      [(not cinfo) '()]
+      [else
+       (define params (class-info-params cinfo))
+       (apply
+        append
+        (for/list ([sp (in-list (class-info-supers cinfo))])
+          (define super-cls (pred-class sp))
+          (define mapped-args
+            (for/list ([sa (in-list (pred-args sp))])
+              (cond
+                [(tvar? sa)
+                 (define idx
+                   (for/or ([p (in-list params)] [i (in-naturals)]
+                            #:when (eq? p (tvar-name sa)))
+                     i))
+                 (cond [idx (list-ref arg-types idx)]
+                       [else sa])]
+                [else sa])))
+          (collect-dict-method-args super-cls mapped-args env)))]))
+  (define merged
+    (for/fold ([acc own-pairs]) ([sp (in-list super-pairs)])
+      (cond
+        [(assq (car sp) acc) acc]
+        [else (append acc (list sp))])))
+  merged)
 
 ;; Extract the head type-constructor name from a (possibly applied)
 ;; concrete type.  Returns #f if the type is still polymorphic.
@@ -1610,7 +1786,7 @@
   (define inst-needs-dict-reqs
     (for/list ([c (in-list ctx-preds-raw)]
                #:when (class-has-return-typed-methods? env (pred-class c)))
-      (cons (pred-class c) (constraint-tvar-names c))))
+      (cons (pred-class c) (pred-args c))))
   (define-values (sk-subst dict-skolems dict-arg-names)
     (cond
       [(null? inst-needs-dict-reqs) (values empty-subst (hasheq) '())]

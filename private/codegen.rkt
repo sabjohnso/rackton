@@ -24,6 +24,8 @@
          compile-top)
 
 (require racket/match
+         racket/list
+         racket/set
          (for-template (except-in racket/base
                                   + - * < > <= >= = compose
                                   not and or length foldr filter
@@ -268,7 +270,7 @@
         (apply +
                (for/list ([req (in-list (hash-ref (class-info-dictreqs cinfo)
                                                   n '()))])
-                 (length (dict-class-return-method-names (car req))))))
+                 (length (dict-class-return-method-names (car req) env)))))
       (define pos (+ base-pos   dict-arg-count))
       (define ar  (+ base-arity dict-arg-count))
       (with-syntax ([meth     (datum->syntax stx n stx)]
@@ -332,8 +334,23 @@
                      m head-pred-class)]))
          (loop (cdr rest) (cons (cons m body) acc))])))
 
-  (define head-tcon-names
+  (define head-tcon-names-raw
     (for/list ([t (in-list head-arg-types)]) (head-tcon-name t)))
+  ;; Filter out tcons at fundep-determined positions so the per-method
+  ;; impl name matches what `resolve-return-impl` synthesizes in
+  ;; infer.rkt.  Single-param classes have no fundeps and pass through.
+  (define head-tcon-names
+    (cond
+      [(null? (class-info-fundeps cinfo)) head-tcon-names-raw]
+      [else
+       (define determined
+         (for/fold ([acc (seteq)])
+                   ([fd (in-list (class-info-fundeps cinfo))])
+           (set-union acc (list->seteq (cdr fd)))))
+       (for/list ([p (in-list (class-info-params cinfo))]
+                  [tn (in-list head-tcon-names-raw)]
+                  #:unless (set-member? determined p))
+         tn)]))
   (define register-forms
     (apply
      append
@@ -404,19 +421,41 @@
 ;; Mirror of the dict-class-return-methods registry in
 ;; private/infer.rkt — kept terse and local so both phases can compute
 ;; the same dict-arg-count without sharing state.
-(define (dict-class-return-method-names class-name)
-  (case class-name
-    [(Applicative) '(pure)]
-    [(Monad)       '(pure)]
-    [(Monoid)      '(mempty)]
+(define (dict-class-return-method-names class-name [env #f])
+  (define from-registry
+    (case class-name
+      [(Applicative) '(pure)]
+      [(Monad)       '(pure)]
+      [(Monoid)      '(mempty)]
+      [else '()]))
+  (cond
+    [(not (null? from-registry)) from-registry]
+    [env
+     (define cinfo (env-ref-class env class-name))
+     (cond
+       [(not cinfo) '()]
+       [else
+        (define own
+          (sort
+           (for/list ([(m dp) (in-hash (class-info-dispatchpos cinfo))]
+                      #:when (eq? dp 'return))
+             m)
+           symbol<?))
+        (define super-methods
+          (apply append
+                 (for/list ([sp (in-list (class-info-supers cinfo))])
+                   (dict-class-return-method-names (pred-class sp) env))))
+        (remove-duplicates (append own super-methods))])]
     [else '()]))
 
 (define (head-tcon-name t)
   (match t
     [(tcon n) n]
     [(tapp h _) (head-tcon-name h)]
-    [_ (error 'compile-instance
-              "instance head arg must be a concrete type, got ~v" t)]))
+    ;; Phase 31: a tvar at a fundep-determined head-arg position is
+    ;; legitimate — return-impl-symbol consults class fundeps and drops
+    ;; those positions, so we can safely report #f here.
+    [_ #f]))
 
 ;; Build the impl name the codegen emits for a return-typed method on
 ;; an instance whose head args are `tcon-names`.  Must agree byte-for-

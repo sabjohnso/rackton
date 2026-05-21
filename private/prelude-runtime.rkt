@@ -120,6 +120,25 @@
  |$>>=:StateT|  |$<*>:StateT|  |$liftA2:StateT|
  |$>>=:EnvT|    |$<*>:EnvT|    |$liftA2:EnvT|
  |$mempty:String| |$mempty:List| |$mempty:Sum| |$mempty:Product|
+ ;; Phase 31: mtl-style class impls.  Base instances are 0-dict; lifted
+ ;; instances over a transformer take per-method dict args from the
+ ;; inner monad's instance (order matches the class's return-typed
+ ;; method declaration order — see build-dict-skolems in infer.rkt).
+ |$get-st:State|    |$put-st:State|    |$modify-st:State|
+ |$get-st:StateT|   |$put-st:StateT|   |$modify-st:StateT|
+ |$get-st:EnvT|     |$put-st:EnvT|     |$modify-st:EnvT|
+ |$get-st:WriterT|  |$put-st:WriterT|  |$modify-st:WriterT|
+ |$get-st:ExceptT|  |$put-st:ExceptT|  |$modify-st:ExceptT|
+ |$ask-en:Env|     |$local-en:Env|
+ |$ask-en:EnvT|    |$local-en:EnvT|
+ |$ask-en:StateT|  |$local-en:StateT|
+ |$ask-en:WriterT| |$local-en:WriterT|
+ |$ask-en:ExceptT| |$local-en:ExceptT|
+ |$tell-w:WriterT| |$tell-w:StateT| |$tell-w:EnvT| |$tell-w:ExceptT|
+ |$throw-e:ExceptT| |$catch-e:ExceptT|
+ |$throw-e:StateT|  |$catch-e:StateT|
+ |$throw-e:EnvT|    |$catch-e:EnvT|
+ |$throw-e:WriterT| |$catch-e:WriterT|
 
  ;; Dispatch tables — exposed so user modules that declare new
  ;; instances (including derived ones) can register against them.
@@ -1276,4 +1295,125 @@
           (match r
             [(Err x) (inner-pure (Err x))]
             [(Ok  a) (run-except-t (f a))])))))
+
+;; ----- Phase 31: mtl-style class instance impls ------------------
+;; Naming: `$<method>:<head-tcon>`.  Lifted instances over a
+;; transformer take one dict per return-typed method of the inner
+;; class as leading args, in method-declaration order (see
+;; build-dict-skolems in infer.rkt).
+
+;; ----- MonadState s X -------------------------------------------
+
+(define |$get-st:State|       get-state)
+(define |$put-st:State|       put-state)
+(define |$modify-st:State|    modify-state)
+
+;; StateT over inner Monad m carries the inner pure dict already
+;; through get-state-t / put-state-t / modify-state-t.
+(define |$get-st:StateT|      get-state-t)
+(define |$put-st:StateT|      put-state-t)
+(define |$modify-st:StateT|   modify-state-t)
+
+;; EnvT r m: lifts the inner MonadState dict through lift-env-t.
+;; Dict-arg order matches collect-dict-method-args: methods of the
+;; class sorted alphabetically, then superclass closure (Monad's
+;; `pure`).  For MonadState that's (get-st, modify-st, put-st, pure).
+(define/curried (|$get-st:EnvT|
+                  inner-get inner-modify inner-put inner-pure)
+  (lift-env-t inner-get))
+(define/curried (|$put-st:EnvT|
+                  inner-get inner-modify inner-put inner-pure x)
+  (lift-env-t (inner-put x)))
+(define/curried (|$modify-st:EnvT|
+                  inner-get inner-modify inner-put inner-pure f)
+  (lift-env-t (inner-modify f)))
+
+;; WriterT w m: also gets Monoid w's mempty dict appended after the
+;; MonadState dicts (own-methods sorted, then super-closure: pure,
+;; then per-extra-constraint Monoid's mempty).
+(define/curried (|$get-st:WriterT|
+                  inner-get inner-modify inner-put inner-pure mempty-w)
+  (lift-writer-t mempty-w inner-get))
+(define/curried (|$put-st:WriterT|
+                  inner-get inner-modify inner-put inner-pure mempty-w x)
+  (lift-writer-t mempty-w (inner-put x)))
+(define/curried (|$modify-st:WriterT|
+                  inner-get inner-modify inner-put inner-pure mempty-w f)
+  (lift-writer-t mempty-w (inner-modify f)))
+
+;; ExceptT e m: lifts via lift-except-t.
+(define/curried (|$get-st:ExceptT|
+                  inner-get inner-modify inner-put inner-pure)
+  (lift-except-t inner-get))
+(define/curried (|$put-st:ExceptT|
+                  inner-get inner-modify inner-put inner-pure x)
+  (lift-except-t (inner-put x)))
+(define/curried (|$modify-st:ExceptT|
+                  inner-get inner-modify inner-put inner-pure f)
+  (lift-except-t (inner-modify f)))
+
+;; ----- MonadEnv r X ---------------------------------------------
+
+(define |$ask-en:Env|       ask)
+(define |$local-en:Env|     local)
+(define |$ask-en:EnvT|      ask-t)
+(define |$local-en:EnvT|    local-t)
+
+;; MonadEnv's `local-en` is positional (not return-typed), so it never
+;; appears in the dict-args.  Dict-arg order for MonadEnv is own
+;; return-typed sorted (ask-en) + Monad super closure (pure).
+(define/curried (|$ask-en:StateT| inner-ask inner-pure)
+  (lift-state-t inner-ask))
+(define/curried (|$local-en:StateT| inner-ask inner-pure f sm)
+  (MkStateT (lambda (s) ((run-state-t sm) s))))
+
+(define/curried (|$ask-en:WriterT| inner-ask inner-pure mempty-w)
+  (lift-writer-t mempty-w inner-ask))
+(define/curried (|$local-en:WriterT| inner-ask inner-pure mempty-w f wm)
+  (MkWriterT (run-writer-t wm)))
+
+(define/curried (|$ask-en:ExceptT| inner-ask inner-pure)
+  (lift-except-t inner-ask))
+(define/curried (|$local-en:ExceptT| inner-ask inner-pure f em)
+  (MkExceptT (run-except-t em)))
+
+;; ----- MonadWriter w X ------------------------------------------
+
+;; Base: WriterT is the canonical writer.  Needs (Monad m) for >>=
+;; and Monoid w's mempty (carried by tell already).  No extra dicts.
+(define |$tell-w:WriterT|     tell)
+
+;; MonadWriter dict-arg order: own (tell-w), then super closure of
+;; ((Monoid w) (Monad m)) → (mempty, pure).
+(define/curried (|$tell-w:StateT| inner-tell inner-mempty inner-pure x)
+  (lift-state-t (inner-tell x)))
+(define/curried (|$tell-w:EnvT| inner-tell inner-mempty inner-pure x)
+  (lift-env-t (inner-tell x)))
+(define/curried (|$tell-w:ExceptT|
+                  inner-tell inner-mempty inner-pure x)
+  (lift-except-t (inner-tell x)))
+
+;; ----- MonadError e X -------------------------------------------
+
+(define |$throw-e:ExceptT|    throw-error)
+(define |$catch-e:ExceptT|    catch-error)
+
+;; MonadError: catch-e is positional (drops out of dict-args). Order:
+;; own return-typed (throw-e), then Monad super closure (pure).
+(define/curried (|$throw-e:StateT| inner-throw inner-pure ev)
+  (lift-state-t (inner-throw ev)))
+(define/curried (|$catch-e:StateT| inner-throw inner-pure sm h)
+  (MkStateT (lambda (s) ((run-state-t sm) s))))
+
+(define/curried (|$throw-e:EnvT| inner-throw inner-pure ev)
+  (lift-env-t (inner-throw ev)))
+(define/curried (|$catch-e:EnvT| inner-throw inner-pure em h)
+  (MkEnvT (lambda (r) ((run-env-t em) r))))
+
+(define/curried (|$throw-e:WriterT|
+                  inner-throw inner-pure mempty-w ev)
+  (lift-writer-t mempty-w (inner-throw ev)))
+(define/curried (|$catch-e:WriterT|
+                  inner-throw inner-pure mempty-w wm h)
+  (MkWriterT (run-writer-t wm)))
 
