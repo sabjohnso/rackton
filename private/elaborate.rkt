@@ -36,7 +36,8 @@
   ;; emitting `e:var` references.
   (parameterize ([current-method-uses             (make-hasheq)]
                  [current-method-resolutions      (make-hasheq)]
-                 [current-method-dict-resolutions (make-hasheq)])
+                 [current-method-dict-resolutions (make-hasheq)]
+                 [current-needs-dict-defs         (make-hasheq)])
     (define env (infer-program parsed prelude-env))
     (define compiled
       (filter values

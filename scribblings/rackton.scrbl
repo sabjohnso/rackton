@@ -33,8 +33,14 @@ algebraic data types, and pattern matching — inside Racket, either as an
 @hash-lang[] @racketmodfont{rackton} program.
 
 This documentation describes the @bold{Phase 1 + 2 + 3 + 4 + 5 + 6 + 7
-+ 8 + 9 + 10 + 11 + 12 + 13 + 14 + 15 + 16 + 17 + 18 + 19 + 20 + 21 + 22 + 23 + 24 + 25 + 26 + 27 + 28}
-subset.  Phase 28 added the @racket[Char] and @racket[Bytes]
++ 8 + 9 + 10 + 11 + 12 + 13 + 14 + 15 + 16 + 17 + 18 + 19 + 20 + 21 + 22 + 23 + 24 + 25 + 26 + 27 + 28 + 29}
+subset.  Phase 29 closes the long-standing Phase 24 limitation —
+user code can now write its own needs-dict function bodies (e.g.
+@racket[(define (my-concat xs) (foldr <> mempty xs))]); the
+elaborator tracks the skolems introduced by the declared qualifying
+context and redirects polymorphic return-typed-method references in
+the body to locally-bound dict-arg parameters.
+Phase 28 added the @racket[Char] and @racket[Bytes]
 primitives — single Unicode codepoints and binary blobs — with
 literal syntax (@code{#\A} / @code{#"hello"}), conversions in both
 directions to @racket[String], and basic per-element accessors.
@@ -1242,18 +1248,9 @@ The user-facing code reads naturally:
 (mconcat (ann Nil (List Sum)))                  ;; ⇒ (MkSum 0)
 }|
 
-@bold{Honest limitation.}  Phase 24 makes call sites work, but it
-does @emph{not} let users write their own needs-dict function bodies.
-A user-supplied @racket[(define (mc xs) (foldr <> mempty xs))] still
-raises @tt{ambiguous use of mempty} because the body's polymorphic
-@racket[mempty] has no concrete @racket[a] to resolve against.  The
-prelude's @racket[mconcat] is declared @racket[(:)] without a Rackton
-body; the runtime impl is hand-written.  A later phase can add the
-body-rewriting story (skolems-from-qual-context → local dict-arg
-references) to lift this limitation.  In the meantime, two
-workarounds: define a thin wrapper as a class method (Phase 20's
-mechanism handles those), or write the call inline using
-@racket[(foldr <> (ann mempty T) xs)] with an explicit ascription.
+Phase 29 closes this loop: user code can now write needs-dict
+function bodies that use polymorphic @racket[mempty] / @racket[pure]
+calls.  See @secref{User_needs-dict_bodies_(Phase_29)} below.
 
 @section{State, Env, and their transformers (Phase 25)}
 
@@ -1476,6 +1473,61 @@ Partial operations like @racket[integer->char],
 @racket[string-ref], @racket[bytes-ref], and @racket[bytes->string]
 return @racket[(Maybe …)] so the caller decides what to do on
 failure.  @racket[string->bytes] uses UTF-8.
+
+@section{User needs-dict bodies (Phase 29)}
+
+Phase 24 added the call-site half of dict-passing: a function declared
+with a return-typed-bearing qualifying context (like @racket[Monoid a]
+or @racket[Applicative f]) had the resolved impl inserted at every
+call.  But until Phase 29 the elaborator wouldn't accept the
+@emph{body} of such a function if it used the polymorphic class method
+itself — @tt{ambiguous use of mempty / pure} would fire because the
+class param is still abstract.  Users were limited to declared-only
+prelude wrappers.
+
+Phase 29 lifts that.  When a top-level definition declares a needs-dict
+qualifying context, the elaborator:
+
+@itemlist[
+ @item{pre-allocates a fresh local dict-arg name for each
+       return-typed-method that the qual context demands;}
+ @item{skolemizes the qual-context tvars with tracking, building a map
+       from each skolem @racket[tcon] back to its dict-arg name;}
+ @item{makes that map visible to the resolver while inferring the body
+       — any return-typed method call whose class param resolves to a
+       tracked skolem gets routed to the local dict-arg instead of a
+       (nonexistent) per-tcon impl;}
+ @item{prepends the dict-arg parameters to the compiled lambda.}]
+
+The result is that user code looks the way it ought to:
+
+@codeblock|{
+(: my-concat ((Monoid a) => (-> (List a) a)))
+(define (my-concat xs)
+  (foldr (lambda (x acc) (<> x acc)) mempty xs))
+
+(my-concat (Cons "a" (Cons "b" (Cons "c" Nil))))   ;; ⇒ "abc"
+(my-concat (Cons (MkSum 3) (Cons (MkSum 5) Nil))) ;; ⇒ (MkSum 8)
+
+(: my-pure-pair ((Applicative f) => (-> a (f (Pair a a)))))
+(define (my-pure-pair x) (pure (MkPair x x)))
+
+(ann (my-pure-pair 42) (Maybe (Pair Integer Integer)))
+;; ⇒ (Some (MkPair 42 42))
+}|
+
+The mechanism interacts cleanly with the rest of the dispatch story.
+@racket[<>] in the body of @racket[my-concat] is positional-dispatched
+at runtime on its value arg, which carries its concrete type tag, so
+no compile-time work is needed for it — only the return-typed
+@racket[mempty] (where there is no value to dispatch on) takes the
+dict-arg route.
+
+@bold{Limits.}  The mechanism is single-skolem-per-constraint: a
+multi-parameter dict class (none in the prelude yet) would need
+parallel local args.  Mutually recursive needs-dict definitions are
+not handled — each def is independently tracked but cross-references
+would need a forward-declaration pass to align the dict-arg names.
 
 @section{Not yet supported}
 

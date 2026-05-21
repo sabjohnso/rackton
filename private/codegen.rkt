@@ -54,6 +54,18 @@
          "match.rkt"
          "infer.rkt")
 
+;; Prepend `dict-arg-names` to an expression's outermost lambda
+;; parameter list.  If `expr` is already an e:lam, return a new e:lam
+;; with the dict args added in front; otherwise wrap `expr` in a fresh
+;; e:lam that binds the dict args (so even a non-lambda RHS for a
+;; needs-dict value becomes a function awaiting its dict).
+(define (prepend-lambda-params expr dict-arg-names ctx-stx)
+  (match expr
+    [(e:lam params body stx)
+     (e:lam (append dict-arg-names params) body stx)]
+    [_
+     (e:lam dict-arg-names expr ctx-stx)]))
+
 ;; Build a (possibly curried) lambda over `param-stxs` whose body is the
 ;; already-compiled `body-stx`.  For arity ≤ 1 we just emit
 ;; `(lambda (p ...) body)`.  For higher arity we emit a `case-lambda`
@@ -198,8 +210,20 @@
     [(top:dec _ _ _) #f]
     [(top:alias _ _ _ _) #f]
     [(top:def name expr stx)
+     ;; Phase 29: a needs-dict-body def has pre-allocated dict-arg
+     ;; names recorded under current-needs-dict-defs.  Prepend them
+     ;; to the RHS lambda's parameter list so the body's resolved
+     ;; references to the locally-bound names actually find them.
+     (define dict-args
+       (and (current-needs-dict-defs)
+            (hash-ref (current-needs-dict-defs) name #f)))
+     (define expr*
+       (cond
+         [(and dict-args (not (null? dict-args)))
+          (prepend-lambda-params expr dict-args stx)]
+         [else expr]))
      (with-syntax ([n (datum->syntax stx name stx)]
-                   [e (compile-expr expr)])
+                   [e (compile-expr expr*)])
        (syntax/loc stx (define n e)))]
     [(top:data tname tparams ctors stx)
      (with-syntax

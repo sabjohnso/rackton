@@ -25,6 +25,8 @@
          current-method-uses
          current-method-resolutions
          current-method-dict-resolutions
+         current-dict-skolems
+         current-needs-dict-defs
          resolve-method-uses!)
 
 (require racket/match
@@ -62,6 +64,15 @@
 ;; impl-name-symbol) — the codegen prepends these to the e:app args
 ;; when compiling the call site (Phase 20).
 (define current-method-dict-resolutions (make-parameter #f))
+;; Phase 29: per-needs-dict-def skolem map and dict-arg name table.
+;;   current-dict-skolems    : hasheq from skolem-tcon-name → local
+;;                              dict-arg-name; set during body
+;;                              inference of a needs-dict-body def.
+;;   current-needs-dict-defs : hasheq from top-def name → list of
+;;                              dict-arg-names; consumed by codegen
+;;                              when prepending lambda params.
+(define current-dict-skolems    (make-parameter (hasheq)))
+(define current-needs-dict-defs (make-parameter #f))
 
 (define (fresh-tvar [prefix 'a])
   (define box (current-fresh-state))
@@ -142,6 +153,29 @@
   (cond [(qual? t) (qual-body-deep (qual-body t))]
         [else t]))
 
+;; Phase 29 helper: given a list of `(class-name . param-name-list)`
+;; dict requirements and the substitution produced by
+;; `skolemize/tracked`, produce (values skolem-map arg-names) where
+;;   skolem-map : hasheq from skolem-tcon-name → arg-name
+;;   arg-names  : (Listof symbol) in declaration order
+(define (build-dict-skolems reqs subst)
+  (define-values (sk-map arg-names-rev)
+    (for/fold ([sk (hasheq)] [args '()])
+              ([req (in-list reqs)])
+      (define cls (car req))
+      (define param-names (cdr req))
+      (for/fold ([sk sk] [args args])
+                ([dm (in-list (dict-class-return-methods cls))]
+                 #:when #t
+                 [p (in-list param-names)])
+        (define skolem (hash-ref subst p))
+        (define skolem-name (tcon-name skolem))
+        (define arg-name
+          (string->symbol (format "$dict-~a-~a" dm skolem-name)))
+        (values (hash-set sk skolem-name arg-name)
+                (cons arg-name args)))))
+  (values sk-map (reverse arg-names-rev)))
+
 ;; Skolemize: replace each bound type variable with a fresh tcon, so the
 ;; declared signature acts rigidly — the body can't sneak a more specific
 ;; type past a polymorphic declaration.  Returns (values body extra-preds);
@@ -161,6 +195,24 @@
      (cond
        [(qual? skol) (values (qual-body skol) (qual-constraints skol))]
        [else         (values skol '())])]))
+
+;; Like `skolemize`, but also returns the substitution it used.  The
+;; caller can read out which skolem-tcon replaced which scheme-bound
+;; var — needed by Phase 29 to map return-typed-method references in
+;; a needs-dict-body back to local dict-arg names instead of looking
+;; up the (nonexistent) per-skolem-tcon impl.
+(define (skolemize/tracked sch)
+  (match sch
+    [(scheme vs body)
+     (define s
+       (for/fold ([s empty-subst]) ([v (in-list vs)])
+         (subst-extend s v (tcon (gensym (format "$skolem.~a." v))))))
+     (define skol (apply-subst s body))
+     (define-values (b preds)
+       (cond
+         [(qual? skol) (values (qual-body skol) (qual-constraints skol))]
+         [else         (values skol '())]))
+     (values b preds s)]))
 
 ;; ---------- FD improvement -----------------------------------------
 ;;
@@ -940,12 +992,33 @@
      (cond
        [(hash-has-key? declared name)
         (define decl-scheme (hash-ref declared name))
-        ;; Skolemize bound vars so the body cannot covertly specialize them.
-        (define-values (decl-ty decl-preds) (skolemize decl-scheme))
+        ;; Phase 29: detect needs-dict-body — a def whose qual context
+        ;; introduces a return-typed-bearing constraint over a tvar.
+        ;; Pre-allocate the dict-arg local names and a skolem map so
+        ;; the body's polymorphic mempty/pure refs resolve to the
+        ;; locals rather than to (nonexistent) per-skolem impls.
+        (define needs-dict-reqs (var-dict-requirements env decl-scheme))
+        (define-values (decl-ty decl-preds dict-skolems dict-arg-names)
+          (cond
+            [(null? needs-dict-reqs)
+             (define-values (t p) (skolemize decl-scheme))
+             (values t p (hasheq) '())]
+            [else
+             (define-values (t p s) (skolemize/tracked decl-scheme))
+             (define-values (sk-map args) (build-dict-skolems needs-dict-reqs s))
+             (values t p sk-map args)]))
         ;; Pre-register with the FULL polymorphic scheme rather than the
         ;; skolemized monomorphic type, enabling polymorphic recursion:
         ;; the body may call itself at different instantiations.
         (define env-rec (env-extend-var env name decl-scheme))
+        (when (and (current-needs-dict-defs) (not (null? dict-arg-names)))
+          (hash-set! (current-needs-dict-defs) name dict-arg-names))
+        ;; The dict-skolem map must be visible to BOTH the body
+        ;; inference AND the post-reduction `resolve-method-uses!`
+        ;; pass that follows below; mutate the parameter directly
+        ;; for the whole branch instead of wrapping just infer-expr.
+        (define saved-skolems (current-dict-skolems))
+        (current-dict-skolems dict-skolems)
         (define-values (s t) (infer-expr expr env-rec))
         (define s-u
           (with-handlers
@@ -973,6 +1046,7 @@
              stx)]
           [else (restore-preds! '())])
         (resolve-method-uses! final-subst env)
+        (current-dict-skolems saved-skolems)
         (values (env-extend-var env name decl-scheme)
                 (hash-remove declared name))]
        [else
@@ -1448,10 +1522,21 @@
       (type-head-tcon (apply-subst final-subst tv))))
   (cond
     [(andmap values tcon-names)
-     (string->symbol
-      (format "$~a:~a"
-              method-name
-              (string-join (map symbol->string tcon-names) "-")))]
+     ;; Phase 29: if a class-param resolves to a tracked skolem,
+     ;; the call is inside a needs-dict-body — emit a reference to
+     ;; the locally-bound dict-arg instead of the per-tcon impl.
+     (define skol-map (current-dict-skolems))
+     (define skolem-local
+       (and skol-map
+            (= (length tcon-names) 1)
+            (hash-ref skol-map (car tcon-names) #f)))
+     (cond
+       [skolem-local skolem-local]
+       [else
+        (string->symbol
+         (format "$~a:~a"
+                 method-name
+                 (string-join (map symbol->string tcon-names) "-")))])]
     [else
      (raise-syntax-error 'infer
        (format "ambiguous use of ~s: cannot determine target type at this call site"
