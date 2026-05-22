@@ -826,6 +826,49 @@
     (: write-ref (-> (Ref a) (-> a (IO Unit))))
     (define (write-ref r v) (racket (IO Unit) (r v) #f))
 
+    ;; --- Concurrency (Phase 36) ------------------------------
+    ;;
+    ;; Thin wrappers over Racket's threads + semaphores + async
+    ;; channels.  All operations live in IO.  See "Concurrency
+    ;; primitives (Phase 36)" in the docs for usage patterns.
+
+    (define-data ThreadId)
+    (define-data (MVar a))
+    (define-data (Chan a))
+
+    (: fork-io     (-> (IO a) (IO ThreadId)))
+    (define (fork-io action) (racket (IO ThreadId) (action) #f))
+
+    (: wait-thread (-> ThreadId (IO Unit)))
+    (define (wait-thread tid) (racket (IO Unit) (tid) #f))
+
+    (: new-mvar       (-> a (IO (MVar a))))
+    (define (new-mvar v) (racket (IO (MVar a)) (v) #f))
+
+    (: new-empty-mvar (IO (MVar a)))
+    (define new-empty-mvar (racket (IO (MVar a)) () #f))
+
+    (: take-mvar      (-> (MVar a) (IO a)))
+    (define (take-mvar m) (racket (IO a) (m) #f))
+
+    (: put-mvar       (-> (MVar a) (-> a (IO Unit))))
+    (define (put-mvar m v) (racket (IO Unit) (m v) #f))
+
+    (: read-mvar      (-> (MVar a) (IO a)))
+    (define (read-mvar m) (racket (IO a) (m) #f))
+
+    (: modify-mvar    (-> (MVar a) (-> (-> a a) (IO Unit))))
+    (define (modify-mvar m f) (racket (IO Unit) (m f) #f))
+
+    (: new-chan  (IO (Chan a)))
+    (define new-chan (racket (IO (Chan a)) () #f))
+
+    (: send-chan (-> (Chan a) (-> a (IO Unit))))
+    (define (send-chan ch v) (racket (IO Unit) (ch v) #f))
+
+    (: recv-chan (-> (Chan a) (IO a)))
+    (define (recv-chan ch) (racket (IO a) (ch) #f))
+
     ;; --- File I/O --------------------------------------------
 
     (: read-file    (-> String (IO String)))

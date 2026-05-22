@@ -1824,6 +1824,43 @@ also derives @racket[Eq] (the synthesized @racket[<] calls
 @racket[==]), and the deriving menu's error message lists every
 supported class.
 
+@section{Concurrency primitives (Phase 36)}
+
+Three opaque types — @racket[ThreadId], @racket[(MVar a)],
+@racket[(Chan a)] — plus a small surface of IO-returning primitives,
+all thin wrappers over Racket's @racket[thread] / semaphore / async
+channel APIs.
+
+@codeblock|{
+(define counter-action
+  (do [counter <- (new-mvar 0)]
+      [t1 <- (fork-io (modify-mvar counter (lambda (n) (+ n 1))))]
+      [t2 <- (fork-io (modify-mvar counter (lambda (n) (+ n 1))))]
+      [_  <- (wait-thread t1)]
+      [_  <- (wait-thread t2)]
+    (read-mvar counter)))
+}|
+
+@itemlist[
+  @item{@bold{@racket[fork-io] / @racket[wait-thread].}  Spawn a
+        Racket thread running the given IO action; @racket[wait-thread]
+        blocks until the thread terminates.}
+  @item{@bold{@racket[MVar a].}  A rendezvous variable backed by a box
+        and two semaphores.  @racket[put-mvar] blocks while full,
+        @racket[take-mvar] blocks while empty, @racket[read-mvar]
+        reads non-destructively (also blocks while empty), and
+        @racket[modify-mvar] atomically take-transform-puts while
+        holding the filled-permit.}
+  @item{@bold{@racket[Chan a].}  An unbounded async channel — sends
+        never block, @racket[recv-chan] blocks until a value is
+        available.}
+]
+
+All operations are total: the only failure modes are deadlocks the
+user constructs, which the runtime can't catch.  No polymorphic
+@code{(Concurrent m)} class — yet; concurrency is anchored to IO for
+now.
+
 @section{Not yet supported}
 
 Overlapping instances, kind polymorphism (kind variables), threads /

@@ -76,6 +76,7 @@
          racket/format
          racket/match
          racket/file
+         racket/async-channel
          "adt.rkt"
          "dict.rkt")
 
@@ -199,6 +200,11 @@
  ;; Mutable refs and file I/O
  make-ref read-ref write-ref
  read-file write-file file-exists?
+
+ ;; Concurrency (Phase 36)
+ fork-io wait-thread
+ new-mvar new-empty-mvar take-mvar put-mvar read-mvar modify-mvar
+ new-chan send-chan recv-chan
 
  ;; List + Pair helpers
  reverse append zip take drop find sort
@@ -674,6 +680,76 @@
 (define (make-ref v) ($io (lambda () (box v))))
 (define (read-ref r) ($io (lambda () (unbox r))))
 (define/curried (write-ref r v) ($io (lambda () (set-box! r v) MkUnit)))
+
+;; ----- Concurrency (Phase 36) ---------------------------------
+;;
+;; ThreadId wraps a Racket thread; MVar is a box guarded by two
+;; semaphores so put/take block on full/empty respectively; Chan is
+;; a thin wrapper over make-async-channel (unbounded, non-blocking
+;; send).  All operations are IO thunks.
+
+(struct $mvar (cell filled empty) #:transparent)
+
+(define (fork-io action)
+  ($io (lambda ()
+         (define t (thread (lambda () (run-io action))))
+         t)))
+
+(define (wait-thread t)
+  ($io (lambda () (thread-wait t) MkUnit)))
+
+(define (new-mvar v)
+  ($io (lambda ()
+         ($mvar (box v) (make-semaphore 1) (make-semaphore 0)))))
+
+(define new-empty-mvar
+  ($io (lambda ()
+         ($mvar (box #f) (make-semaphore 0) (make-semaphore 1)))))
+
+(define (take-mvar m)
+  ($io (lambda ()
+         (semaphore-wait ($mvar-filled m))
+         (define v (unbox ($mvar-cell m)))
+         (set-box! ($mvar-cell m) #f)
+         (semaphore-post ($mvar-empty m))
+         v)))
+
+(define/curried (put-mvar m v)
+  ($io (lambda ()
+         (semaphore-wait ($mvar-empty m))
+         (set-box! ($mvar-cell m) v)
+         (semaphore-post ($mvar-filled m))
+         MkUnit)))
+
+;; read-mvar takes the filled-permit, reads, then re-posts the
+;; filled-permit so other readers/takers can proceed.  The empty
+;; semaphore is left untouched — the cell is still occupied.
+(define (read-mvar m)
+  ($io (lambda ()
+         (semaphore-wait ($mvar-filled m))
+         (define v (unbox ($mvar-cell m)))
+         (semaphore-post ($mvar-filled m))
+         v)))
+
+;; modify-mvar atomically takes, applies `f`, puts the result back.
+;; Holds the filled-permit across the function call so concurrent
+;; takers / readers block until the modification completes.
+(define/curried (modify-mvar m f)
+  ($io (lambda ()
+         (semaphore-wait ($mvar-filled m))
+         (define v (unbox ($mvar-cell m)))
+         (set-box! ($mvar-cell m) (f v))
+         (semaphore-post ($mvar-filled m))
+         MkUnit)))
+
+(define new-chan
+  ($io (lambda () (make-async-channel))))
+
+(define/curried (send-chan ch v)
+  ($io (lambda () (async-channel-put ch v) MkUnit)))
+
+(define (recv-chan ch)
+  ($io (lambda () (async-channel-get ch))))
 
 ;; ----- File I/O ------------------------------------------------
 
