@@ -1703,6 +1703,54 @@ the per-instance impl name (so @code{$local-en:EnvT} matches
 @racket[compile-instance]'s emission instead of the previous
 @code{$local-en:String-EnvT}).
 
+@section{Runtime resolvers for needs-dict instances (Phase 33)}
+
+Phase 27 / 30 wired up compile-time @emph{inst-dispatch} so a call to
+a class method whose target instance is needs-dict
+(e.g. @racket[(MonadError e (ExceptT e m))]) gets routed at the call
+site with its qual dicts pre-applied.  That only works when the call
+site's type is concrete: a polymorphic monad body like
+@code{(MonadError e m) =>} reaches the call with @racket[m] still a
+tvar, falls through to the runtime dispatcher, and crashes — no
+runtime registration ever existed for @racket[(>>= ea f)] on a
+@racket[MkExceptT] value.
+
+The same trap bit @racket[do]-notation chains over @racket[ExceptT]:
+each desugared @racket[>>=] dispatches by the runtime tag of its
+first arg, and that tag is @racket[$ctor:MkExceptT] with no entry
+in the @racket[>>=] table.
+
+Phase 33 closes the loop:
+
+@itemlist[
+  @item{@bold{@racket[pure-via-witness]} resolves @racket[pure] from
+        any monadic value by walking its ctor chain.  For wrapper
+        ctors (@racket[MkExceptT], @racket[MkStateT], @racket[MkEnvT])
+        it unwraps, recurses on the inner tag, and re-wraps; for
+        non-needs-dict bases (@racket[IO], @racket[Maybe], @racket[List],
+        @racket[Result]) it looks up in a per-tag @racket[$pure-by-tag]
+        table.  @racket[WriterT] is excluded — its
+        @racket[pure] also needs the log @racket[Monoid]'s
+        @racket[mempty], which isn't recoverable from the runtime tag.}
+  @item{@bold{Runtime closures on @racket[$ctor:MkExceptT]} register
+        in @racket[$dispatch:>>=] / @racket[$dispatch:<*>] /
+        @racket[$dispatch:liftA2] / a new @racket[$dispatch:catch-e]
+        table.  Each closure calls the existing needs-dict impl
+        (@code{$>>=:ExceptT}, @racket[catch-error], ...) with
+        @racket[(pure-via-witness (run-except-t ea))] as the
+        inner-pure dict — letting the runtime path do what the
+        compile-time inst-dispatch path was doing.}
+  @item{@bold{Lifted @racket[catch-e] now recursively dispatches.}
+        @racket[$catch-e:StateT] / @racket[$catch-e:EnvT] /
+        @racket[$catch-e:WriterT] used to hard-call @racket[catch-error]
+        on the unwrapped inner value, which assumed the inner monad
+        was always base @racket[ExceptT].  They now call
+        @racket[catch-e] (the class method, runtime-dispatched), so
+        deeper qual chains like @code{ExceptT e1 (ExceptT e2 IO)}
+        resolve correctly through whatever @racket[catch-e] instance
+        is registered for the inner value.}
+]
+
 @section{Not yet supported}
 
 Overlapping instances, kind polymorphism (kind variables), threads /

@@ -308,6 +308,60 @@
 (define $dispatch:censor (make-hasheq))
 (define-class-method censor $dispatch:censor 1 2)
 
+;; Phase 33: runtime catch-e dispatcher.  Phase 27/30 routed `catch-e`
+;; through compile-time inst-dispatch when call sites had concrete
+;; types, but polymorphic-monad bodies (e.g. `(MonadError e m) =>`)
+;; reach call sites whose types are tvars.  At runtime we look up
+;; catch-e by the (m a) value's outer ctor tag.
+(define $dispatch:catch-e (make-hasheq))
+(define-class-method catch-e $dispatch:catch-e 0 2)
+
+;; Phase 33: pure-via-witness resolves `pure :: a -> m a` from any
+;; m-value at runtime by walking the ctor chain.  Used by needs-dict
+;; instance method closures (ExceptT's >>=, catch-e, ...) which need
+;; the inner monad's `pure` to lift / rewrap values.  Bottoms out at
+;; non-needs-dict bases registered in $pure-by-tag.
+;;
+;; For wrapper ctors (MkExceptT, MkStateT, MkEnvT, MkWriterT) we
+;; unwrap the inner value, recurse on its tag, and build a curried
+;; pure that re-wraps.  Concrete `m`s (IO, Maybe, List, ...) have
+;; their pures registered directly.
+(define $pure-by-tag (make-hasheq))
+(define (register-pure-impl! tag impl)
+  (hash-set! $pure-by-tag tag impl))
+
+(define (pure-via-witness witness)
+  (define tag (dispatch-tag witness))
+  (case tag
+    [($ctor:MkExceptT)
+     (define inner-pure (pure-via-witness (run-except-t witness)))
+     (lambda (a) (MkExceptT (inner-pure (Ok a))))]
+    [($ctor:MkStateT)
+     (define inner-pure (pure-via-witness
+                          ;; A canonical inner witness: feed `#f` as
+                          ;; the state — the result is the inner
+                          ;; monad's (m (Pair s a)) shape.  Only the
+                          ;; outer ctor is consulted, not the value.
+                          ((run-state-t witness) #f)))
+     (lambda (a) (MkStateT (lambda (s) (inner-pure (MkPair s a)))))]
+    [($ctor:MkEnvT)
+     (define inner-pure (pure-via-witness ((run-env-t witness) #f)))
+     (lambda (a) (MkEnvT (lambda (_) (inner-pure a))))]
+    [($ctor:MkWriterT)
+     ;; WriterT's pure needs both inner-pure AND the log Monoid's
+     ;; mempty.  The witness alone doesn't carry the monoid type;
+     ;; punt and fall through to the table lookup which will fail
+     ;; loudly if hit.
+     (hash-ref $pure-by-tag tag
+               (lambda ()
+                 (error 'pure-via-witness
+                        "pure for WriterT not derivable from witness alone")))]
+    [else
+     (hash-ref $pure-by-tag tag
+               (lambda ()
+                 (error 'pure-via-witness
+                        "no pure-via-witness impl for tag: ~v" tag)))]))
+
 ;; ----- Num Integer ------------------------------------------------
 
 (register-instance-method! $dispatch:+  'Integer (lambda (x y) (rkt:+  x y)))
@@ -533,6 +587,17 @@
 (define (|$pure:List|   x) (Cons x Nil))
 (define (|$pure:Result| x) (Ok x))
 (define (|$pure:IO|     x) ($io (lambda () x)))
+
+;; Phase 33: register the non-needs-dict pures with their witness
+;; ctor tags so pure-via-witness can find them at runtime.  Lists
+;; have two ctors (Nil, Cons); register both.  Result has two too.
+(register-pure-impl! '$ctor:None  |$pure:Maybe|)
+(register-pure-impl! '$ctor:Some  |$pure:Maybe|)
+(register-pure-impl! '$ctor:Nil   |$pure:List|)
+(register-pure-impl! '$ctor:Cons  |$pure:List|)
+(register-pure-impl! '$ctor:Ok    |$pure:Result|)
+(register-pure-impl! '$ctor:Err   |$pure:Result|)
+(register-pure-impl! '$io          |$pure:IO|)
 
 ;; ----- Monoid mempty (return-typed) -------------------------------
 (define |$mempty:String|  "")
@@ -1348,6 +1413,32 @@
             [(Err x) (inner-pure (Err x))]
             [(Ok  a) (run-except-t (f a))])))))
 
+;; Phase 33: register ExceptT's needs-dict methods at runtime,
+;; deriving the inner-pure dict via pure-via-witness on the
+;; passed-in m-value's tag.  This lets polymorphic-monad code that
+;; reaches MkExceptT values at runtime work without the call site
+;; having to resolve the inst-dispatch chain at compile time.
+;;
+;; pure-via-witness inspects the wrapped m's ctor tag and walks
+;; needs-dict layers until it bottoms out at a registered base
+;; (IO, Maybe, List, Result).
+(register-instance-method! $dispatch:>>= '$ctor:MkExceptT
+  (lambda (ea f)
+    (|$>>=:ExceptT| (pure-via-witness (run-except-t ea)) ea f)))
+(register-instance-method! $dispatch:<*> '$ctor:MkExceptT
+  (lambda (ef ea)
+    (|$<*>:ExceptT| (pure-via-witness (run-except-t ef)) ef ea)))
+(register-instance-method! $dispatch:liftA2 '$ctor:MkExceptT
+  (lambda (g ea eb)
+    (|$liftA2:ExceptT| (pure-via-witness (run-except-t ea)) g ea eb)))
+;; Phase 33: register catch-e on MkExceptT.  The base impl is
+;; `catch-error`; we wrap it with pure-via-witness so callers that
+;; reach the runtime dispatcher (e.g. lifted $catch-e:StateT calling
+;; `catch-e` on the inner value) don't have to thread inner-pure.
+(register-instance-method! $dispatch:catch-e '$ctor:MkExceptT
+  (lambda (ea handler)
+    (catch-error (pure-via-witness (run-except-t ea)) ea handler)))
+
 ;; ----- Phase 31: mtl-style class instance impls ------------------
 ;; Naming: `$<method>:<head-tcon>`.  Lifted instances over a
 ;; transformer take one dict per return-typed method of the inner
@@ -1479,22 +1570,24 @@
 
 ;; MonadError: catch-e is positional (drops out of dict-args). Order:
 ;; own return-typed (throw-e), then Monad super closure (pure).
-;; Phase 32: catch-e lifted impls call `catch-error` directly — the
-;; only base MonadError instance is ExceptT, so the inner monadic
-;; value is always an ExceptT and `catch-error` is its catch routine.
+;; Phase 33: lifted catch-e impls now call the runtime-dispatched
+;; `catch-e` on the inner monad value rather than hard-coding
+;; `catch-error`.  That lets deeper qual chains (e.g. ExceptT-over-
+;; ExceptT-over-IO) resolve correctly — the inner catch is whatever
+;; instance is registered for the inner value's ctor.
 (define/curried (|$throw-e:StateT| inner-throw inner-pure ev)
   (lift-state-t (inner-throw ev)))
 (define/curried (|$catch-e:StateT| inner-throw inner-pure sm h)
   (MkStateT (lambda (s)
-              (catch-error inner-pure ((run-state-t sm) s)
-                           (lambda (e) ((run-state-t (h e)) s))))))
+              (catch-e ((run-state-t sm) s)
+                       (lambda (e) ((run-state-t (h e)) s))))))
 
 (define/curried (|$throw-e:EnvT| inner-throw inner-pure ev)
   (lift-env-t (inner-throw ev)))
 (define/curried (|$catch-e:EnvT| inner-throw inner-pure em h)
   (MkEnvT (lambda (r)
-            (catch-error inner-pure ((run-env-t em) r)
-                         (lambda (e) ((run-env-t (h e)) r))))))
+            (catch-e ((run-env-t em) r)
+                     (lambda (e) ((run-env-t (h e)) r))))))
 
 (define/curried (|$throw-e:WriterT|
                   inner-throw inner-pure mempty-w ev)
@@ -1502,6 +1595,6 @@
 (define/curried (|$catch-e:WriterT|
                   inner-throw inner-pure mempty-w wm h)
   (MkWriterT
-   (catch-error inner-pure (run-writer-t wm)
-                (lambda (e) (run-writer-t (h e))))))
+   (catch-e (run-writer-t wm)
+            (lambda (e) (run-writer-t (h e))))))
 
