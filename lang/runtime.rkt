@@ -44,7 +44,8 @@
                     bytes-length bytes-ref bytes-append
                     bytes->list list->bytes make-bytes
                     bytes->string/utf-8 string->bytes/utf-8
-                    string))
+                    string
+                    void when unless))
 
 (provide
  ;; the macro that does the real work

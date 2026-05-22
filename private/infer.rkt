@@ -1511,7 +1511,11 @@
          ;; Pairs are deduped across constraints (e.g. MonadState +
          ;; MonadEnv both reaching Monad.pure) — matches
          ;; build-dict-skolems' (skolem.method) dedup used to size the
-         ;; needs-dict lambda's params.
+         ;; needs-dict lambda's params.  Pairs whose class-params are
+         ;; fully concrete (after fundep filter) at this call site are
+         ;; dropped: the function's body resolves those references to
+         ;; per-type globals (e.g. `$mempty:String`) directly, with no
+         ;; corresponding dict-arg slot.
          (define all-pairs
            (apply append
                   (for/list ([entry (in-list dict-entries)])
@@ -1526,8 +1530,12 @@
                 (loop (cdr ps)
                       (set-add seen (car (car ps)))
                       (cons (car ps) acc))])))
+         (define active-pairs
+           (filter (lambda (pair)
+                     (pair-has-tvar-at-undetermined-position? pair env))
+                   dedup-pairs))
          (define impls
-           (for/list ([pair (in-list dedup-pairs)])
+           (for/list ([pair (in-list active-pairs)])
              (resolve-impl-with-quals (car pair) (cdr pair)
                                       final-subst stx env)))
          (hash-set! dict-resolutions stx impls)]
@@ -1543,17 +1551,35 @@
              (type-head-tcon rt)))
          (when (andmap values tcon-names)
            (define class-name (env-ref-method-class env method-name))
+           (define cinfo (and class-name (env-ref-class env class-name)))
            (define target-pred (pred class-name resolved-types))
            (define matching
              (for/or ([inst (in-list (env-instances env class-name))])
                (define σ (match-pred (instance-info-head inst) target-pred))
                (and σ (cons inst σ))))
+           ;; Phase 32: filter tcon-names by fundep-determined params
+           ;; — matches the impl name compile-instance emits and what
+           ;; the 'return-typed resolver uses.
+           (define keep-tcon-names
+             (cond
+               [(or (not cinfo) (null? (class-info-fundeps cinfo)))
+                tcon-names]
+               [else
+                (define determined
+                  (for/fold ([acc (seteq)])
+                            ([fd (in-list (class-info-fundeps cinfo))])
+                    (set-union acc (list->seteq (cdr fd)))))
+                (for/list ([p (in-list (class-info-params cinfo))]
+                           [tn (in-list tcon-names)]
+                           #:unless (set-member? determined p))
+                  tn)]))
            (when (and matching (instance-needs-dict? env (car matching)))
              (define impl
                (string->symbol
                 (format "$~a:~a"
                         method-name
-                        (string-join (map symbol->string tcon-names) "-"))))
+                        (string-join (map symbol->string keep-tcon-names)
+                                     "-"))))
              (hash-set! resolutions stx impl)
              (define inst-dict-impls
                (instance-qual-return-impls env method-name
@@ -1561,6 +1587,37 @@
              (unless (null? inst-dict-impls)
                (hash-set! dict-resolutions stx inst-dict-impls))))]))
     (hash-clear! uses)))
+
+;; Phase 32: predicate matching build-dict-skolems' filter-skolems —
+;; a `(method . arg-types)` pair contributes a dict slot only when
+;; at least one arg at a non-fundep-determined position is a tvar.
+;; Class-params fully concrete in the scheme's qual (e.g. the `String`
+;; in `(MonadWriter String m) =>`) resolve to per-type globals in the
+;; body directly, without a dict.
+(define (pair-has-tvar-at-undetermined-position? pair env)
+  (define method-name (car pair))
+  (define arg-types   (cdr pair))
+  (define owner-class (and env (env-ref-method-class env method-name)))
+  (define cinfo       (and owner-class (env-ref-class env owner-class)))
+  (define determined
+    (cond
+      [(and cinfo (not (null? (class-info-fundeps cinfo))))
+       (for/fold ([acc (seteq)])
+                 ([fd (in-list (class-info-fundeps cinfo))])
+         (set-union acc (list->seteq (cdr fd))))]
+      [else (seteq)]))
+  (define params
+    (cond
+      [cinfo (class-info-params cinfo)]
+      [else (build-list (length arg-types) (lambda (i) #f))]))
+  (cond
+    [(or (not cinfo) (not (= (length params) (length arg-types))))
+     ;; Conservative: keep the pair if we can't reason about it.
+     #t]
+    [else
+     (for/or ([p (in-list params)] [a (in-list arg-types)]
+              #:unless (set-member? determined p))
+       (or (tvar? a) (symbol? a)))]))
 
 ;; Phase 31: resolve a method-name + arg-types to either a bare impl
 ;; symbol or an s-expression `(impl-name dict-args...)` that the

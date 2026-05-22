@@ -62,7 +62,10 @@
                     [char-numeric?    rkt:char-numeric?]
                     [char-whitespace? rkt:char-whitespace?]
                     [char->integer  rkt:char->integer]
-                    [integer->char  rkt:integer->char])
+                    [integer->char  rkt:integer->char]
+                    [void           rkt:void]
+                    [when           rkt:when]
+                    [unless         rkt:unless])
          (only-in racket/base
                   [string=? rkt:string=?])
          (only-in racket/string
@@ -135,10 +138,16 @@
  |$ask-en:WriterT| |$local-en:WriterT|
  |$ask-en:ExceptT| |$local-en:ExceptT|
  |$tell-w:WriterT| |$tell-w:StateT| |$tell-w:EnvT| |$tell-w:ExceptT|
+ |$listen:WriterT| |$censor:WriterT|
  |$throw-e:ExceptT| |$catch-e:ExceptT|
  |$throw-e:StateT|  |$catch-e:StateT|
  |$throw-e:EnvT|    |$catch-e:EnvT|
  |$throw-e:WriterT| |$catch-e:WriterT|
+ ;; Phase 32: runtime dispatchers for the positional class methods
+ ;; introduced by mtl polish (local-en already covered above).
+ local-en listen censor
+ ;; Phase 32: mtl-style combinators (derived from class methods).
+ asks gets void when unless
 
  ;; Dispatch tables — exposed so user modules that declare new
  ;; instances (including derived ones) can register against them.
@@ -284,6 +293,20 @@
 ;; to 2 and total arity to 3.
 (define $dispatch:traverse (make-hasheq))
 (define-class-method traverse $dispatch:traverse 2 3)
+;; Phase 32: MonadEnv's `local-en` dispatcher.  It's positional on the
+;; second argument (the `(m a)`); the first argument is `(-> r r)`.
+;; Only base instances (Env / EnvT) get registered through this
+;; dispatcher — lifted needs-dict instances are routed at compile
+;; time by Phase 27 / 30 with their inner-pure dicts attached.
+(define $dispatch:local-en (make-hasheq))
+(define-class-method local-en $dispatch:local-en 1 2)
+;; MonadWriter's `listen` (arity 1, pos 0) and `censor` (arity 2,
+;; pos 1).  Same caveat — Phase 27 handles needs-dict instances at
+;; compile time; only base instances reach this dispatcher.
+(define $dispatch:listen (make-hasheq))
+(define-class-method listen $dispatch:listen 0 1)
+(define $dispatch:censor (make-hasheq))
+(define-class-method censor $dispatch:censor 1 2)
 
 ;; ----- Num Integer ------------------------------------------------
 
@@ -350,6 +373,33 @@
 (define/curried (compose f g) (lambda (x) (f (g x))))
 (define (flip f) (lambda (x y) (f y x)))
 (define (const x) (lambda (_y) x))
+
+;; Phase 32: mtl-flavoured combinators.  Each needs-dict body's
+;; dict-args appear as leading params in the same order Phase 31's
+;; build-dict-skolems produces (own return-typed methods sorted +
+;; superclass closure appended).
+
+;; asks :: (MonadEnv r m) => (-> r a) -> m a
+;; MonadEnv's return-typed own methods sorted = (ask-en); Monad's
+;; super closure = (pure).
+(define/curried (asks $dict-ask-en $dict-pure f)
+  (fmap f $dict-ask-en))
+
+;; gets :: (MonadState s m) => (-> s a) -> m a
+;; MonadState's own methods sorted = (get-st, modify-st, put-st);
+;; Monad super = (pure).
+(define/curried (gets $dict-get-st $dict-modify-st $dict-put-st $dict-pure f)
+  (fmap f $dict-get-st))
+
+;; void :: (Functor f) => f a -> f Unit — no dicts; fmap is positional.
+(define (void fa) (fmap (const MkUnit) fa))
+
+;; when / unless :: (Applicative f) => Boolean -> f Unit -> f Unit.
+;; One dict for Applicative's `pure`.
+(define/curried (when $dict-pure b fu)
+  (if b fu ($dict-pure MkUnit)))
+(define/curried (unless $dict-pure b fu)
+  (if b ($dict-pure MkUnit) fu))
 
 ;; ----- Stdlib ----------------------------------------------------
 
@@ -859,7 +909,8 @@
 
 (define (run-env e) (match e [(MkEnv f) f]))
 (define ask (MkEnv (lambda (r) r)))
-(define (local f e) (MkEnv (lambda (r) ((run-env e) (f r)))))
+(define/curried (local f e) (MkEnv (lambda (r) ((run-env e) (f r)))))
+(register-instance-method! $dispatch:local-en '$ctor:MkEnv local)
 
 (define |$pure:Env|
   (lambda (a) (MkEnv (lambda (_) a))))
@@ -962,6 +1013,7 @@
 ;; ask-t is 0-user-arg (just takes the dict).
 (define (ask-t inner-pure) (MkEnvT (lambda (r) (inner-pure r))))
 (define/curried (local-t f e) (MkEnvT (lambda (r) ((run-env-t e) (f r)))))
+(register-instance-method! $dispatch:local-en '$ctor:MkEnvT local-t)
 (define (lift-env-t ma) (MkEnvT (lambda (_) ma)))
 
 (define (env-t-fmap f e)
@@ -1357,31 +1409,58 @@
 (define |$ask-en:Env|       ask)
 (define |$local-en:Env|     local)
 (define |$ask-en:EnvT|      ask-t)
-(define |$local-en:EnvT|    local-t)
+;; Phase 32: $local-en:EnvT accepts the inner-pure dict (from the
+;; EnvT MonadEnv instance's `(Monad m)` qual) as a leading arg, even
+;; though local-t itself doesn't use it.  Without this slot the dict
+;; layout would mis-shift the user args.
+(define/curried (|$local-en:EnvT| inner-pure f e) (local-t f e))
 
 ;; MonadEnv's `local-en` is positional (not return-typed), so it never
 ;; appears in the dict-args.  Dict-arg order for MonadEnv is own
 ;; return-typed sorted (ask-en) + Monad super closure (pure).
 (define/curried (|$ask-en:StateT| inner-ask inner-pure)
   (lift-state-t inner-ask))
+;; Phase 32: lifted local-en routes through the local-en runtime
+;; dispatcher to find the base instance for the inner monad value.
 (define/curried (|$local-en:StateT| inner-ask inner-pure f sm)
-  (MkStateT (lambda (s) ((run-state-t sm) s))))
+  (MkStateT (lambda (s) (local-en f ((run-state-t sm) s)))))
 
 (define/curried (|$ask-en:WriterT| inner-ask inner-pure mempty-w)
   (lift-writer-t mempty-w inner-ask))
 (define/curried (|$local-en:WriterT| inner-ask inner-pure mempty-w f wm)
-  (MkWriterT (run-writer-t wm)))
+  (MkWriterT (local-en f (run-writer-t wm))))
 
 (define/curried (|$ask-en:ExceptT| inner-ask inner-pure)
   (lift-except-t inner-ask))
 (define/curried (|$local-en:ExceptT| inner-ask inner-pure f em)
-  (MkExceptT (run-except-t em)))
+  (MkExceptT (local-en f (run-except-t em))))
 
 ;; ----- MonadWriter w X ------------------------------------------
 
-;; Base: WriterT is the canonical writer.  Needs (Monad m) for >>=
-;; and Monoid w's mempty (carried by tell already).  No extra dicts.
-(define |$tell-w:WriterT|     tell)
+;; Base: WriterT is the canonical writer.  Dict-arg order matches
+;; the qual context `((Monoid w) (Monad m) =>)` — mempty first, then
+;; pure.  $tell-w only uses pure but accepts mempty as a dummy slot
+;; so the call-site dict layout aligns.
+(define/curried (|$tell-w:WriterT| inner-mempty inner-pure w)
+  (MkWriterT (inner-pure (MkPair w MkUnit))))
+
+;; $listen:WriterT — wrap each (Pair w a) inside the inner monad so
+;; the user observes the accumulated log.  Uses runtime-dispatched
+;; fmap on the inner monadic value, so neither inner-mempty nor
+;; inner-pure are touched (they exist solely to match the dict
+;; layout the call site passes).
+(define/curried (|$listen:WriterT| inner-mempty inner-pure wm)
+  (MkWriterT
+   (fmap (lambda (p)
+           (match p [(MkPair w a) (MkPair w (MkPair a w))]))
+         (run-writer-t wm))))
+
+;; $censor:WriterT — apply `f` to the accumulated `w`.
+(define/curried (|$censor:WriterT| inner-mempty inner-pure f wm)
+  (MkWriterT
+   (fmap (lambda (p)
+           (match p [(MkPair w a) (MkPair (f w) a)]))
+         (run-writer-t wm))))
 
 ;; MonadWriter dict-arg order: own (tell-w), then super closure of
 ;; ((Monoid w) (Monad m)) → (mempty, pure).
@@ -1400,20 +1479,29 @@
 
 ;; MonadError: catch-e is positional (drops out of dict-args). Order:
 ;; own return-typed (throw-e), then Monad super closure (pure).
+;; Phase 32: catch-e lifted impls call `catch-error` directly — the
+;; only base MonadError instance is ExceptT, so the inner monadic
+;; value is always an ExceptT and `catch-error` is its catch routine.
 (define/curried (|$throw-e:StateT| inner-throw inner-pure ev)
   (lift-state-t (inner-throw ev)))
 (define/curried (|$catch-e:StateT| inner-throw inner-pure sm h)
-  (MkStateT (lambda (s) ((run-state-t sm) s))))
+  (MkStateT (lambda (s)
+              (catch-error inner-pure ((run-state-t sm) s)
+                           (lambda (e) ((run-state-t (h e)) s))))))
 
 (define/curried (|$throw-e:EnvT| inner-throw inner-pure ev)
   (lift-env-t (inner-throw ev)))
 (define/curried (|$catch-e:EnvT| inner-throw inner-pure em h)
-  (MkEnvT (lambda (r) ((run-env-t em) r))))
+  (MkEnvT (lambda (r)
+            (catch-error inner-pure ((run-env-t em) r)
+                         (lambda (e) ((run-env-t (h e)) r))))))
 
 (define/curried (|$throw-e:WriterT|
                   inner-throw inner-pure mempty-w ev)
   (lift-writer-t mempty-w (inner-throw ev)))
 (define/curried (|$catch-e:WriterT|
                   inner-throw inner-pure mempty-w wm h)
-  (MkWriterT (run-writer-t wm)))
+  (MkWriterT
+   (catch-error inner-pure (run-writer-t wm)
+                (lambda (e) (run-writer-t (h e))))))
 

@@ -19,7 +19,8 @@
                                bytes-length bytes-ref bytes-append
                                bytes->list list->bytes make-bytes
                                bytes->string/utf-8 string->bytes/utf-8
-                               string)]]
+                               string
+                               void when unless)]]
 
 @title{Rackton}
 @author{sbj}
@@ -1649,6 +1650,58 @@ methods) live alongside the existing transformer code in
 return-typed dicts as leading curried args in alphabetical method
 order followed by superclass-closure dicts — matching what the call
 site emits.
+
+@section{MTL polish (Phase 32)}
+
+Phase 32 sands off the rough edges Phase 31 left behind and grows the
+combinator surface for everyday MTL code.
+
+@itemlist[
+  @item{@bold{Lifted @racket[local-en] now actually rewrites the env}
+        rather than passing the inner action through unchanged.  A new
+        runtime dispatch table (@code{$dispatch:local-en}) carries the
+        @racket[Env] and @racket[EnvT] base impls so the lifted
+        StateT / WriterT / ExceptT cases can recurse via
+        @racket[local-en] on the unwrapped inner-monad value.}
+  @item{@bold{Lifted @racket[catch-e] for StateT / EnvT / WriterT}
+        properly invokes the user handler.  The lifted impls hard-wire
+        @racket[catch-error] for the inner @racket[ExceptT] (the only
+        base @racket[MonadError] instance) rather than chasing a
+        dispatcher that can't carry the @racket[ExceptT] qual's
+        inner-pure dict.  Lifted @racket[catch-e] through a
+        @emph{transformer-of-transformer} stack still needs deeper
+        qual-chain resolution and is listed under Not Yet Supported.}
+  @item{@bold{@racket[MonadWriter] grows @racket[listen] and
+        @racket[censor]} as positional methods.  The base @racket[WriterT]
+        impls reach into the inner @code{(Pair w a)} via runtime-
+        dispatched @racket[fmap] (so they need no extra dicts);
+        lifted instances for the other transformers remain
+        host-language stubs and aren't exercised in tests.}
+  @item{@bold{Five new derived combinators}: @racket[asks] / @racket[gets]
+        wrap a pure transformation around an env / state read;
+        @racket[void] drops a Functor's result to @racket[Unit];
+        @racket[when] and @racket[unless] are Applicative-conditional
+        actions returning @racket[Unit].  All four are needs-dict free
+        functions threading the resolved class-method impls
+        as leading curried params.}
+  @item{@bold{Concrete-class-param dict pruning.}  When a needs-dict
+        function's scheme pins one of a class-param slot to a concrete
+        type (e.g. @code{(MonadWriter String m) =>}), the body's
+        references to that class's methods resolve to a per-type
+        global (@code{$mempty:String}) rather than through a dict.
+        The call site no longer emits a spurious dict arg for those
+        cases — matching @racket[build-dict-skolems]' empty-skolems
+        treatment in the body's lambda layout.  Without this fix,
+        @racket[(MonadWriter String m) (Monad m) =>] callers would
+        pass an unexpected @racket[mempty] arg and crash with an
+        arity mismatch.}
+]
+
+The fundep-aware inst-dispatch impl name was also generalized: positional
+class methods at fundep-bearing classes now drop determined params from
+the per-instance impl name (so @code{$local-en:EnvT} matches
+@racket[compile-instance]'s emission instead of the previous
+@code{$local-en:String-EnvT}).
 
 @section{Not yet supported}
 

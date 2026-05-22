@@ -45,7 +45,8 @@
                                   bytes-length bytes-ref bytes-append
                                   bytes->list list->bytes make-bytes
                                   bytes->string/utf-8 string->bytes/utf-8
-                                  string)
+                                  string
+                                  void when unless)
                        (except-in racket/match ==)
                        "adt.rkt"
                        "dict.rkt"

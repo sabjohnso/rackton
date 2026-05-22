@@ -659,19 +659,29 @@
 
     (define-class ((Monoid w) (Monad m) => (MonadWriter w (m :: (-> * *))))
       (#:fundep m -> w)
-      (: tell-w (-> w (m Unit))))
+      (: tell-w (-> w (m Unit)))
+      (: listen (-> (m a) (m (Pair a w))))
+      (: censor (-> (-> w w) (-> (m a) (m a)))))
 
     (define-instance ((Monoid w) (Monad m) => (MonadWriter w (WriterT w m)))
-      (define (tell-w x) (tell x)))
+      (define (tell-w x)    (tell x))
+      (define (listen wm)   (racket (WriterT w m (Pair a w))    (wm)   #f))
+      (define (censor f wm) (racket (WriterT w m a)             (f wm) #f)))
 
     (define-instance ((MonadWriter w m) => (MonadWriter w (StateT s m)))
-      (define (tell-w x) (lift-state-t (tell-w x))))
+      (define (tell-w x)    (lift-state-t (tell-w x)))
+      (define (listen sm)   (racket (StateT s m (Pair a w))     (sm)   #f))
+      (define (censor f sm) (racket (StateT s m a)              (f sm) #f)))
 
     (define-instance ((MonadWriter w m) => (MonadWriter w (EnvT r m)))
-      (define (tell-w x) (lift-env-t (tell-w x))))
+      (define (tell-w x)    (lift-env-t (tell-w x)))
+      (define (listen em)   (racket (EnvT r m (Pair a w))       (em)   #f))
+      (define (censor f em) (racket (EnvT r m a)                (f em) #f)))
 
     (define-instance ((MonadWriter w m) => (MonadWriter w (ExceptT e m)))
-      (define (tell-w x) (lift-except-t (tell-w x))))
+      (define (tell-w x)    (lift-except-t (tell-w x)))
+      (define (listen ex)   (racket (ExceptT e m (Pair a w))    (ex)   #f))
+      (define (censor f ex) (racket (ExceptT e m a)             (f ex) #f)))
 
     ;; ----- MonadError -------------------------------------------
 
@@ -699,6 +709,29 @@
       (define (throw-e ev)   (lift-writer-t (throw-e ev)))
       (define (catch-e wm h)
         (racket (WriterT w m a) (wm h) #f)))
+
+    ;; ----- mtl-style combinators (Phase 32) ---------------------
+    ;;
+    ;; `asks` / `gets` thread a pure transformation through the
+    ;; reader / state effect.  `void`, `when`, `unless` are basic
+    ;; Functor / Applicative helpers.
+
+    (: asks ((MonadEnv r m) => (-> (-> r a) (m a))))
+    (define (asks f) (fmap f ask-en))
+
+    (: gets ((MonadState s m) => (-> (-> s a) (m a))))
+    (define (gets f) (fmap f get-st))
+
+    (: void ((Functor f) => (-> (f a) (f Unit))))
+    (define (void fa) (fmap (const MkUnit) fa))
+
+    (: when ((Applicative f) => (-> Boolean (-> (f Unit) (f Unit)))))
+    (define (when b fu)
+      (if b fu (pure MkUnit)))
+
+    (: unless ((Applicative f) => (-> Boolean (-> (f Unit) (f Unit)))))
+    (define (unless b fu)
+      (if b (pure MkUnit) fu))
 
     (: filter (-> (-> a Boolean) (-> (List a) (List a))))
     (define (filter p xs)
