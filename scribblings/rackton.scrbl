@@ -1751,6 +1751,40 @@ Phase 33 closes the loop:
         is registered for the inner value.}
 ]
 
+@section{Transformer-side runtime registrations (Phase 34)}
+
+Phase 33 wired the @code{$ctor:MkExceptT} side of the runtime
+dispatcher.  Phase 34 finishes the same treatment for the rest of the
+transformer ctors:
+
+@itemlist[
+  @item{@bold{@racket[catch-e]} on @racket[$ctor:MkStateT] /
+        @racket[$ctor:MkEnvT] / @racket[$ctor:MkWriterT] —
+        delegates to runtime @racket[catch-e] on the inner monadic
+        value after unwrapping with @racket[run-state-t] /
+        @racket[run-env-t] / @racket[run-writer-t].}
+  @item{@bold{@racket[listen] and @racket[censor]} on
+        @racket[$ctor:MkWriterT] — both @racket[fmap] over the
+        inner @racket[(Pair w a)] via runtime-dispatched
+        @racket[fmap], so they need no dict args.}
+  @item{@bold{@racket[local-en]} on @racket[$ctor:MkStateT] /
+        @racket[$ctor:MkWriterT] / @racket[$ctor:MkExceptT] — same
+        recursion-via-inner pattern.}
+]
+
+Each registered closure has the same body as Phase 31's curried
+@code{$method:T} impl with the unused dict slots dropped — Phase 33's
+refactor stopped consuming them, leaving the dicts purely as a
+layout match for the compile-time inst-dispatch path.  Polymorphic-
+monad bodies (e.g. @code{(MonadWriter String m) => …} run at
+@racket[WriterT String IO]) now resolve every call site through one
+of these two paths.
+
+No @racket[mempty-via-witness] is needed: nothing in the runtime path
+actually consumes @racket[inner-mempty].  Only @racket[pure] (return-
+typed, compile-time-resolved) and @racket[lift-writer-t] (Phase 31
+compile-time-resolved) do, and both routes already supply the dict.
+
 @section{Not yet supported}
 
 Overlapping instances, kind polymorphism (kind variables), threads /

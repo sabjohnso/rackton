@@ -1598,3 +1598,61 @@
    (catch-e (run-writer-t wm)
             (lambda (e) (run-writer-t (h e))))))
 
+;; ----- Phase 34: runtime registrations for transformer-side -----
+;;
+;; Phase 31's `$method:T` impls accept dict args to match the
+;; call-site layout when the elaborator resolves needs-dict instances
+;; at compile time.  Phase 33's lifted catch-e refactor stopped using
+;; those dict args inside the bodies — the recursion happens via
+;; runtime-dispatched `catch-e` / `local-en` on the inner value.
+;;
+;; That means we can register the bodies as plain runtime closures
+;; (no dict slots), so polymorphic-monad call sites that fall through
+;; to the runtime dispatcher succeed instead of crashing with
+;; "no instance".  The compile-time inst-dispatch path keeps using
+;; the curried `$method:T` impls; this just adds a parallel path.
+
+;; catch-e on transformer-wrapped values.
+(register-instance-method! $dispatch:catch-e '$ctor:MkStateT
+  (lambda (sm h)
+    (MkStateT (lambda (s)
+                (catch-e ((run-state-t sm) s)
+                         (lambda (e) ((run-state-t (h e)) s)))))))
+(register-instance-method! $dispatch:catch-e '$ctor:MkEnvT
+  (lambda (em h)
+    (MkEnvT (lambda (r)
+              (catch-e ((run-env-t em) r)
+                       (lambda (e) ((run-env-t (h e)) r)))))))
+(register-instance-method! $dispatch:catch-e '$ctor:MkWriterT
+  (lambda (wm h)
+    (MkWriterT
+     (catch-e (run-writer-t wm)
+              (lambda (e) (run-writer-t (h e)))))))
+
+;; listen and censor on WriterT.
+(register-instance-method! $dispatch:listen '$ctor:MkWriterT
+  (lambda (wm)
+    (MkWriterT
+     (fmap (lambda (p)
+             (match p [(MkPair w a) (MkPair w (MkPair a w))]))
+           (run-writer-t wm)))))
+(register-instance-method! $dispatch:censor '$ctor:MkWriterT
+  (lambda (f wm)
+    (MkWriterT
+     (fmap (lambda (p)
+             (match p [(MkPair w a) (MkPair (f w) a)]))
+           (run-writer-t wm)))))
+
+;; local-en on transformer-wrapped values.  These all recurse via
+;; runtime local-en on the inner value, so register the same impl
+;; without the unused dict slots.
+(register-instance-method! $dispatch:local-en '$ctor:MkStateT
+  (lambda (f sm)
+    (MkStateT (lambda (s) (local-en f ((run-state-t sm) s))))))
+(register-instance-method! $dispatch:local-en '$ctor:MkWriterT
+  (lambda (f wm)
+    (MkWriterT (local-en f (run-writer-t wm)))))
+(register-instance-method! $dispatch:local-en '$ctor:MkExceptT
+  (lambda (f em)
+    (MkExceptT (local-en f (run-except-t em)))))
+
