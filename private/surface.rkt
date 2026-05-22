@@ -66,7 +66,8 @@
          lowercase-id?)
 
 (require syntax/parse
-         racket/match)
+         racket/match
+         racket/list)
 
 ;; ----- AST -----------------------------------------------------------
 
@@ -324,6 +325,64 @@
      (e:app (e:var 'fmap stx) (list (e:var 'f stx) arg-var) stx)]
     ;; otherwise leave the field unchanged
     [_ arg-var]))
+
+;; Derived Foldable: synthesize `foldr` for an ADT whose LAST type
+;; parameter is the fold element.  For each ctor's fields, walk
+;; right-to-left and combine with `f`:
+;;   - field is exactly the foldable param → call `(f field acc)`
+;;   - field is a recursive use of the data type → recurse via foldr
+;;   - other fields are skipped (no `a` inside)
+;; No qualifying context on the head — Foldable's `foldr` doesn't
+;; constrain the fold element (unlike Eq/Show/Ord).
+(define (synthesize-foldable-instance tname tparams ctors stx)
+  (define fparam (last tparams))
+  (define other-tparams (drop-right tparams 1))
+  (define head-ty
+    (cond
+      [(null? other-tparams) (ty:con tname stx)]
+      [else (ty:app (ty:con tname stx)
+                    (for/list ([p (in-list other-tparams)]) (ty:var p stx))
+                    stx)]))
+  (define head (constraint 'Foldable (list head-ty) stx))
+  (define foldr-body
+    (e:match
+     (e:var 'x stx)
+     (for/list ([c (in-list ctors)])
+       (define name (data-ctor-name c))
+       (define field-types (data-ctor-field-types c))
+       (define arity (length field-types))
+       (clause (ctor-x-pattern name arity stx) #f
+               (synthesize-foldable-combine field-types fparam tname stx)
+               stx))
+     #f stx))
+  (top:instance '() head
+                (list (top:def 'foldr
+                               (e:lam '(f z x) foldr-body stx)
+                               stx))
+                stx))
+
+;; Build right-to-left combine of `f` over the ctor's fields, starting
+;; from `z`.  Returns the body expression (`z` if no fields contribute).
+(define (synthesize-foldable-combine field-types fparam tname stx)
+  (for/foldr ([acc (e:var 'z stx)])
+             ([ft (in-list field-types)]
+              [i  (in-naturals)])
+    (define arg (e:var (a-name i) stx))
+    (cond
+      ;; field is exactly the foldable parameter — combine directly.
+      [(and (ty:var? ft) (eq? (ty:var-name ft) fparam))
+       (e:app (e:var 'f stx) (list arg acc) stx)]
+      ;; recursive use of the same data type — recurse via foldr.
+      [(or (and (ty:app? ft)
+                (ty:con? (ty:app-head ft))
+                (eq? (ty:con-name (ty:app-head ft)) tname))
+           (and (ty:con? ft)
+                (eq? (ty:con-name ft) tname)))
+       (e:app (e:var 'foldr stx)
+              (list (e:var 'f stx) acc arg)
+              stx)]
+      ;; otherwise the field carries no `a`, skip.
+      [else acc])))
 
 (define (synthesize-show-instance tname tparams ctors stx)
   (define head-ty (data-head-type-ast tname tparams stx))
@@ -675,30 +734,35 @@
                       stx
                       #'tname)]
 
-    ;; (define-newtype Name (Wrap T))
-    ;; (define-newtype (Name a ...) (Wrap T))
+    ;; (define-newtype Name (Wrap T) [#:deriving Cls ...])
+    ;; (define-newtype (Name a ...) (Wrap T) [#:deriving Cls ...])
     ;; Sugar over define-data for the common "one ctor, one field"
     ;; case.  A nominal wrapper around an existing type.  At runtime
     ;; the wrapper is a plain ADT — the "zero-cost" of a newtype is
-    ;; documentary, not a perf optimization.
-    [(define-newtype (tname:id tparam:id ...) (ctor:id ftype))
+    ;; documentary, not a perf optimization.  Phase 35: trailing
+    ;; `#:deriving Cls ...` flows through to parse-data-form.
+    [(define-newtype (tname:id tparam:id ...) (ctor:id ftype) rest ...)
      #:fail-unless (not (lowercase-id? (syntax->datum #'tname)))
      "newtype name must be a non-lowercase identifier"
      #:fail-unless (not (lowercase-id? (syntax->datum #'ctor)))
      "newtype constructor name must be a non-lowercase identifier"
+     #:fail-unless (newtype-rest-ok? #'(rest ...))
+     "newtype must declare exactly one constructor with one field — for multiple ctors or multiple fields use define-data"
      (parse-data-form (syntax->datum #'tname)
                       (map syntax->datum (syntax->list #'(tparam ...)))
-                      (list #'(ctor ftype))
+                      (cons #'(ctor ftype) (syntax->list #'(rest ...)))
                       stx
                       #'tname)]
-    [(define-newtype tname:id (ctor:id ftype))
+    [(define-newtype tname:id (ctor:id ftype) rest ...)
      #:fail-unless (not (lowercase-id? (syntax->datum #'tname)))
      "newtype name must be a non-lowercase identifier"
      #:fail-unless (not (lowercase-id? (syntax->datum #'ctor)))
      "newtype constructor name must be a non-lowercase identifier"
+     #:fail-unless (newtype-rest-ok? #'(rest ...))
+     "newtype must declare exactly one constructor with one field — for multiple ctors or multiple fields use define-data"
      (parse-data-form (syntax->datum #'tname)
                       '()
-                      (list #'(ctor ftype))
+                      (cons #'(ctor ftype) (syntax->list #'(rest ...)))
                       stx
                       #'tname)]
     [(define-newtype _ _ ...)
@@ -803,14 +867,7 @@
 ;; that show up only on individual identifier-leaf syntax objects.
 (define (parse-data-form tname tparams items stx [tname-stx #f])
   (define-values (ctor-stxs deriving-classes)
-    (let loop ([rem items] [acc '()])
-      (cond
-        [(null? rem) (values (reverse acc) '())]
-        [(eq? (syntax->datum (car rem)) '#:deriving)
-         (values (reverse acc)
-                 (for/list ([c (in-list (cdr rem))])
-                   (syntax->datum c)))]
-        [else (loop (cdr rem) (cons (car rem) acc))])))
+    (split-deriving items))
   (define ctors
     (for/list ([c (in-list ctor-stxs)]) (parse-data-ctor c)))
   (define data-form (top:data tname tparams ctors stx))
@@ -818,49 +875,86 @@
     [(null? deriving-classes) data-form]
     [else
      (define ctx-stx
-       ;; Anchor synthesised identifiers to a *leaf* identifier from the
-       ;; user's source — the type name carries the user's full scope
-       ;; set including module-level imports, which the whole-form syntax
-       ;; sometimes does not.
        (cond
          [tname-stx tname-stx]
          [(pair? ctor-stxs) (car ctor-stxs)]
          [else stx]))
-     ;; Deriving Ord implies deriving Eq (since Ord has Eq as a
-     ;; superclass, and our derived `<` calls `==`).  Auto-include Eq
-     ;; when Ord is asked for, deduping if the user listed both.
-     (define classes-needing-eq
-       (cond
-         [(and (member 'Ord deriving-classes)
-               (not (member 'Eq deriving-classes)))
-          (cons 'Eq deriving-classes)]
-         [else deriving-classes]))
-     (define derived
-       (apply append
-              (for/list ([cls (in-list classes-needing-eq)])
-                (case cls
-                  [(Eq)   (list (synthesize-eq-instance      tname tparams ctors ctx-stx))]
-                  [(Show) (list (synthesize-show-instance    tname tparams ctors ctx-stx))]
-                  [(Ord)  (list (synthesize-ord-instance     tname tparams ctors ctx-stx))]
-                  [(Functor)
-                   (cond
-                     [(null? tparams)
-                      (raise-syntax-error 'define-data
-                        "cannot derive Functor for a type with no type parameters"
-                        stx)]
-                     [else
-                      (list (synthesize-functor-instance tname tparams ctors ctx-stx))])]
-                  [else
-                   (raise-syntax-error 'define-data
-                     (format "cannot derive ~s — supported: Eq, Ord, Show, Functor" cls)
-                     stx)]))))
-     (cons data-form derived)]))
+     (cons data-form
+           (synthesize-deriving deriving-classes
+                                tname tparams ctors ctx-stx stx
+                                'define-data))]))
+
+;; A newtype's `rest` after `(ctor ftype)` is permitted only if it
+;; is either empty or starts with the `#:deriving` keyword.  Reject
+;; anything else (extra ctor specs, stray items) at parse time.
+(define (newtype-rest-ok? rest-stx)
+  (define rest (syntax->list rest-stx))
+  (or (null? rest)
+      (eq? (syntax->datum (car rest)) '#:deriving)))
+
+;; Split the trailing `#:deriving Cls ...` clause off a list of body
+;; items.  Returns (values items-before deriving-classes).  Phase 35:
+;; shared by define-data, define-newtype, and define-struct so all
+;; three honor the same deriving menu.
+(define (split-deriving items)
+  (let loop ([rem items] [acc '()])
+    (cond
+      [(null? rem) (values (reverse acc) '())]
+      [(eq? (syntax->datum (car rem)) '#:deriving)
+       (values (reverse acc)
+               (for/list ([c (in-list (cdr rem))])
+                 (syntax->datum c)))]
+      [else (loop (cdr rem) (cons (car rem) acc))])))
+
+;; Synthesize the per-class instance forms for a data type's
+;; deriving list.  `kind-tag` is the surface keyword raising the
+;; error so messages stay accurate ('define-data / 'define-struct).
+(define (synthesize-deriving classes tname tparams ctors ctx-stx err-stx kind-tag)
+  ;; Deriving Ord implies deriving Eq (Ord has Eq as a superclass
+  ;; and our `<` calls `==`); same for Foldable's required Functor
+  ;; superclass when the user asks for Foldable without Functor.
+  (define classes-needing-eq
+    (cond
+      [(and (member 'Ord classes) (not (member 'Eq classes)))
+       (cons 'Eq classes)]
+      [else classes]))
+  (apply append
+         (for/list ([cls (in-list classes-needing-eq)])
+           (case cls
+             [(Eq)   (list (synthesize-eq-instance      tname tparams ctors ctx-stx))]
+             [(Show) (list (synthesize-show-instance    tname tparams ctors ctx-stx))]
+             [(Ord)  (list (synthesize-ord-instance     tname tparams ctors ctx-stx))]
+             [(Functor)
+              (cond
+                [(null? tparams)
+                 (raise-syntax-error kind-tag
+                   "cannot derive Functor for a type with no type parameters"
+                   err-stx)]
+                [else
+                 (list (synthesize-functor-instance tname tparams ctors ctx-stx))])]
+             [(Foldable)
+              (cond
+                [(null? tparams)
+                 (raise-syntax-error kind-tag
+                   "cannot derive Foldable for a type with no type parameters"
+                   err-stx)]
+                [else
+                 (list (synthesize-foldable-instance tname tparams ctors ctx-stx))])]
+             [else
+              (raise-syntax-error kind-tag
+                (format "cannot derive ~s — supported: Eq, Ord, Show, Functor, Foldable" cls)
+                err-stx)]))))
 
 ;; ----- records: define-struct ---------------------------------------
 
 (define (parse-struct-form name tparams field-stxs stx tname-stx)
+  ;; Phase 35: split off a trailing `#:deriving Cls ...` clause before
+  ;; parsing field specs — the deriving classes are routed through the
+  ;; shared synthesize-deriving helper.
+  (define-values (field-only-stxs deriving-classes)
+    (split-deriving field-stxs))
   (define field-pairs
-    (for/list ([fs (in-list field-stxs)]) (parse-field-spec fs)))
+    (for/list ([fs (in-list field-only-stxs)]) (parse-field-spec fs)))
   (define field-names (map car field-pairs))
   (define field-types (map cdr field-pairs))
   (define ctor (data-ctor name field-types stx))
@@ -869,7 +963,14 @@
     (for/list ([fname (in-list field-names)]
                [i (in-naturals)])
       (synthesize-accessor name (length field-names) fname i tname-stx)))
-  (cons data-form accessor-defs))
+  (define derived
+    (cond
+      [(null? deriving-classes) '()]
+      [else
+       (synthesize-deriving deriving-classes
+                            name tparams (list ctor)
+                            tname-stx stx 'define-struct)]))
+  (append (cons data-form accessor-defs) derived))
 
 (define (parse-field-spec stx)
   (syntax-parse stx

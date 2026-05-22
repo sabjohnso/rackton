@@ -1785,6 +1785,45 @@ actually consumes @racket[inner-mempty].  Only @racket[pure] (return-
 typed, compile-time-resolved) and @racket[lift-writer-t] (Phase 31
 compile-time-resolved) do, and both routes already supply the dict.
 
+@section{Deriving for records and Foldable (Phase 35)}
+
+@racket[define-data] has shipped @racket[#:deriving Eq Show Ord Functor]
+since Phase 11.  Phase 35 extends the same mechanism to two more
+surfaces and one more class.
+
+@itemlist[
+  @item{@bold{@racket[define-struct] accepts @racket[#:deriving]}
+        as a trailing clause after the field specs.  Records are
+        single-ctor data types, so the existing
+        @racket[synthesize-eq-instance] / @racket[synthesize-show-instance]
+        / @racket[synthesize-ord-instance] /
+        @racket[synthesize-functor-instance] helpers work without
+        modification.  Constraint propagation (e.g.
+        @code{(Eq a) (Eq b) => (Eq (Pair2 a b))}) is the same as
+        for @racket[define-data].}
+  @item{@bold{@racket[define-newtype] accepts @racket[#:deriving]} —
+        already routed through @racket[parse-data-form], so this is
+        mostly a documentation + regression-test reach.  Phase 35
+        also tightens the rest-args validator so a malformed newtype
+        body (multiple ctors) still raises the proper error.}
+  @item{@bold{@racket[Foldable] joins the deriving menu.}  Synthesizes
+        @racket[foldr] for an ADT whose last type parameter is the
+        fold element: walk each ctor's fields right-to-left, calling
+        @racket[f] when a field's type @emph{is} the parameter,
+        recursing via @racket[foldr] for recursive uses of the same
+        data type, and skipping otherwise.  No constraint
+        propagation — Foldable doesn't constrain its element type.
+        The class's other methods (@racket[length], @racket[to-list],
+        @racket[sum]) come from class defaults, so deriving Foldable
+        gives all three for free.}
+]
+
+The shared @code{synthesize-deriving} helper used by all three
+surface forms handles superclass implication: deriving @racket[Ord]
+also derives @racket[Eq] (the synthesized @racket[<] calls
+@racket[==]), and the deriving menu's error message lists every
+supported class.
+
 @section{Not yet supported}
 
 Overlapping instances, kind polymorphism (kind variables), threads /
