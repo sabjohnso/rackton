@@ -1922,6 +1922,50 @@ over an overlap-group class needs the class constraint in its qual
 context so dict resolution can pin the specific impl at the call
 site.  Less-common cases may need explicit type annotations.
 
+@section{Bifunctor / Semigroup / Monoid deriving (Phase 38)}
+
+Phase 38 extends the @racket[#:deriving] menu with three more
+classes (Traversable deferred — see Not Yet Supported).
+
+@itemlist[
+  @item{@bold{@racket[Bifunctor]} for ADTs with at least two type
+        parameters.  The penultimate tparam is the first bifunctor
+        argument, the last is the second.  For each ctor's fields,
+        rebuild via @racket[bimap]: first-tparam fields get @racket[f],
+        last-tparam fields get @racket[g], recursive-tcon fields
+        recurse via @racket[bimap], anything else passes through.}
+  @item{@bold{@racket[Semigroup]} for single-ctor ADTs.  Combine
+        fields pairwise via @racket[<>].  The qual context carries
+        a @code{(Semigroup ft)} constraint for each field type @code{ft}:
+        concrete @code{ft}s (e.g. @racket[String]) get discharged at
+        instance-elaboration time; tvar @code{ft}s flow through as
+        the instance's actual qual.  Multi-ctor ADTs error — there's
+        no canonical way to combine across constructors.}
+  @item{@bold{@racket[Monoid]} for single-ctor ADTs.  Synthesizes
+        @racket[mempty] as the ctor applied to per-field
+        @racket[mempty]s.  Asking for @racket[Monoid] alone
+        auto-derives @racket[Semigroup] too (Monoid's superclass).}
+]
+
+Two infrastructure fixes shipped alongside:
+
+@itemlist[
+  @item{The derivation synthesizers now use a @code{fresh-stx}
+        helper to give every @racket[e:var] node a distinct syntax
+        identity.  Previously all leaves of a synthesized body
+        shared a single @racket[stx], causing
+        @racket[current-method-resolutions] (keyed by stx) to alias
+        every variable reference to the most-recently-resolved
+        class method.  Visible only for class-method-heavy synth
+        bodies like Semigroup's @racket[<>] and Monoid's
+        @racket[mempty].}
+  @item{@racket[instance-qual-return-impls] now skips dict-impl
+        passing when the matched instance's @emph{original} qual
+        context has no tvar-bearing constraints — concrete-qual
+        instances are emitted without a dict-arg lambda, and
+        passing dicts to them at the call site would arity-mismatch.}
+]
+
 @section{Not yet supported}
 
 Overlapping instances, kind polymorphism (kind variables), threads /

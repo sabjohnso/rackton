@@ -1717,18 +1717,32 @@
        [else
         (define inst (car matching))
         (define σ   (cdr matching))
-        (apply append
-               (for/list ([c (in-list (instance-info-context inst))])
-                 (define inst-pred (apply-subst σ c))
-                 (define cls (pred-class inst-pred))
-                 (define arg-types (pred-args inst-pred))
-                 (cond
-                   [(class-has-return-typed-methods? env cls)
-                    (for/list ([pair (in-list
-                                      (collect-dict-method-args cls arg-types env))])
-                      (resolve-impl-with-quals (car pair) (cdr pair)
-                                               final-subst stx env))]
-                   [else '()])))])]))
+        ;; Phase 38: an instance whose qual context is fully concrete
+        ;; (no tvar-bearing constraints) gets compiled WITHOUT a
+        ;; dict-arg lambda — its body resolved all class-method refs
+        ;; to global impl names directly.  Passing dict-impls to such
+        ;; an instance would arity-mismatch.  Detect this by checking
+        ;; whether the instance's ORIGINAL qual context has any tvars.
+        (define instance-needs-dict-args?
+          (for/or ([c (in-list (instance-info-context inst))])
+            (and (class-has-return-typed-methods? env (pred-class c))
+                 (for/or ([a (in-list (pred-args c))])
+                   (not (set-empty? (type-vars a)))))))
+        (cond
+          [(not instance-needs-dict-args?) '()]
+          [else
+           (apply append
+                  (for/list ([c (in-list (instance-info-context inst))])
+                    (define inst-pred (apply-subst σ c))
+                    (define cls (pred-class inst-pred))
+                    (define arg-types (pred-args inst-pred))
+                    (cond
+                      [(class-has-return-typed-methods? env cls)
+                       (for/list ([pair (in-list
+                                         (collect-dict-method-args cls arg-types env))])
+                         (resolve-impl-with-quals (car pair) (cdr pair)
+                                                  final-subst stx env))]
+                      [else '()])))])])]))
 
 (define (resolve-return-impl method-name class-param-tvars final-subst stx
                              [env #f])

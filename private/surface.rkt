@@ -150,6 +150,16 @@
 (define (a-name i) (string->symbol (format "a~a" i)))
 (define (b-name i) (string->symbol (format "b~a" i)))
 
+;; Phase 38: fresh-stx creates a new syntax object sharing `base`'s
+;; lexical context but distinct as a struct.  Synthesizers that emit
+;; multiple references to the same class method (Semigroup `<>`,
+;; Monoid `mempty`) need each reference to have a unique stx, since
+;; current-method-resolutions / dict-resolutions are keyed by stx.
+;; Sharing stxs across leaves caused all e:vars in a synth body to
+;; collide on the most-recently-resolved class method.
+(define (fresh-stx base)
+  (datum->syntax base (gensym 'syn) base))
+
 (define (ctor-x-pattern name arity stx)
   (p:ctor name
           (for/list ([i (in-range arity)]) (p:var (a-name i) stx))
@@ -383,6 +393,222 @@
               stx)]
       ;; otherwise the field carries no `a`, skip.
       [else acc])))
+
+;; ----- Traversable deriving (Phase 38) --------------------------
+;; For an ADT `(T a … b)` whose LAST tparam `b` is the traversed
+;; element, emit `(define (traverse f x) (match x ctors…))` where each
+;; ctor clause rebuilds the ctor via Applicative composition over
+;; lifted fields:
+;;   - field type is `b`         → `(f field)`
+;;   - field is a recursive `(T …)` → `(traverse f field)`
+;;   - otherwise                  → `(pure field)`
+;; Composition shape by arity:
+;;   0 fields → `(pure Ctor)`
+;;   1 field  → `(fmap Ctor lift0)`
+;;   2 fields → `(liftA2 Ctor lift0 lift1)`
+;;   N≥3      → `(<*> (<*> … (liftA2 Ctor lift0 lift1) … lift_{N-2}) lift_{N-1})`
+(define (synthesize-traversable-instance tname tparams ctors stx)
+  (when (null? tparams)
+    (raise-syntax-error 'define-data
+      "cannot derive Traversable for a type with no type parameters"
+      stx))
+  (define fparam (last tparams))
+  (define other-tparams (drop-right tparams 1))
+  (define head-ty
+    (cond
+      [(null? other-tparams) (ty:con tname stx)]
+      [else (ty:app (ty:con tname stx)
+                    (for/list ([p (in-list other-tparams)]) (ty:var p stx))
+                    stx)]))
+  (define head (constraint 'Traversable (list head-ty) stx))
+  (define traverse-body
+    (e:match
+     (e:var 'x stx)
+     (for/list ([c (in-list ctors)])
+       (define name (data-ctor-name c))
+       (define field-types (data-ctor-field-types c))
+       (define arity (length field-types))
+       (clause (ctor-x-pattern name arity stx) #f
+               (synthesize-traverse-rebuild name field-types fparam tname stx)
+               stx))
+     #f stx))
+  (top:instance '() head
+                (list (top:def 'traverse
+                               (e:lam '(f x) traverse-body stx)
+                               stx))
+                stx))
+
+(define (synthesize-traverse-rebuild ctor-name field-types fparam tname stx)
+  (define lifted-fields
+    (for/list ([ft (in-list field-types)] [i (in-naturals)])
+      (transform-traverse-field ft (a-name i) fparam tname stx)))
+  (define arity (length field-types))
+  (cond
+    [(zero? arity)
+     (e:app (e:var 'pure stx) (list (e:var ctor-name stx)) stx)]
+    [(= arity 1)
+     (e:app (e:var 'fmap stx)
+            (list (e:var ctor-name stx) (car lifted-fields))
+            stx)]
+    [else
+     ;; (liftA2 Ctor lift0 lift1) then chain (<*> acc liftN) for N≥2.
+     (for/fold ([acc (e:app (e:var 'liftA2 stx)
+                            (list (e:var ctor-name stx)
+                                  (car lifted-fields)
+                                  (cadr lifted-fields))
+                            stx)])
+               ([lf (in-list (cddr lifted-fields))])
+       (e:app (e:var '<*> stx) (list acc lf) stx))]))
+
+(define (transform-traverse-field ft arg-name fparam tname stx)
+  (define arg (e:var arg-name stx))
+  (cond
+    [(and (ty:var? ft) (eq? (ty:var-name ft) fparam))
+     (e:app (e:var 'f stx) (list arg) stx)]
+    [(or (and (ty:app? ft)
+              (ty:con? (ty:app-head ft))
+              (eq? (ty:con-name (ty:app-head ft)) tname))
+         (and (ty:con? ft)
+              (eq? (ty:con-name ft) tname)))
+     (e:app (e:var 'traverse stx) (list (e:var 'f stx) arg) stx)]
+    [else
+     (e:app (e:var 'pure stx) (list arg) stx)]))
+
+;; ----- Bifunctor deriving (Phase 38) ----------------------------
+;; For an ADT with at least TWO tparams.  The penultimate is the
+;; first bifunctor param, the last is the second.  For each ctor's
+;; fields:
+;;   - field type is penultimate-tparam → `(f field)`
+;;   - field type is last-tparam        → `(g field)`
+;;   - field is recursive `(T …)` (same outer ctor) → `(bimap f g field)`
+;;   - otherwise                         → field
+;; No qual context.
+(define (synthesize-bifunctor-instance tname tparams ctors stx)
+  (when (< (length tparams) 2)
+    (raise-syntax-error 'define-data
+      "cannot derive Bifunctor for a type with fewer than two type parameters"
+      stx))
+  (define f1 (list-ref tparams (- (length tparams) 2)))
+  (define f2 (last tparams))
+  (define other-tparams (drop-right tparams 2))
+  (define head-ty
+    (cond
+      [(null? other-tparams) (ty:con tname stx)]
+      [else (ty:app (ty:con tname stx)
+                    (for/list ([p (in-list other-tparams)]) (ty:var p stx))
+                    stx)]))
+  (define head (constraint 'Bifunctor (list head-ty) stx))
+  (define bimap-body
+    (e:match
+     (e:var 'x stx)
+     (for/list ([c (in-list ctors)])
+       (define name (data-ctor-name c))
+       (define field-types (data-ctor-field-types c))
+       (define arity (length field-types))
+       (clause (ctor-x-pattern name arity stx) #f
+               (synthesize-bifunctor-rebuild name field-types
+                                             f1 f2 tname stx)
+               stx))
+     #f stx))
+  (top:instance '() head
+                (list (top:def 'bimap
+                               (e:lam '(f g x) bimap-body stx)
+                               stx))
+                stx))
+
+(define (synthesize-bifunctor-rebuild ctor-name field-types f1 f2 tname stx)
+  (cond
+    [(null? field-types) (e:var ctor-name stx)]
+    [else
+     (define transformed
+       (for/list ([ft (in-list field-types)] [i (in-naturals)])
+         (transform-bifunctor-field ft (a-name i) f1 f2 tname stx)))
+     (e:app (e:var ctor-name stx) transformed stx)]))
+
+(define (transform-bifunctor-field ft arg-name f1 f2 tname stx)
+  (define arg (e:var arg-name stx))
+  (cond
+    [(and (ty:var? ft) (eq? (ty:var-name ft) f1))
+     (e:app (e:var 'f stx) (list arg) stx)]
+    [(and (ty:var? ft) (eq? (ty:var-name ft) f2))
+     (e:app (e:var 'g stx) (list arg) stx)]
+    [(or (and (ty:app? ft)
+              (ty:con? (ty:app-head ft))
+              (eq? (ty:con-name (ty:app-head ft)) tname))
+         (and (ty:con? ft)
+              (eq? (ty:con-name ft) tname)))
+     (e:app (e:var 'bimap stx) (list (e:var 'f stx) (e:var 'g stx) arg) stx)]
+    [else arg]))
+
+;; ----- Semigroup deriving (Phase 38) ----------------------------
+;; Single-ctor ADTs only.  Combine fields pairwise via `<>`.  Qual
+;; context carries `(Semigroup ft)` for each unique field type.
+;; Concrete field types (e.g. `String`) get discharged immediately
+;; by reduce-context; tvar field types stay in the qual.
+(define (synthesize-semigroup-instance tname tparams ctors stx)
+  (unless (= (length ctors) 1)
+    (raise-syntax-error 'define-data
+      "cannot derive Semigroup for a type with multiple constructors — only single-ctor types can be combined pointwise"
+      stx))
+  (define ctor (car ctors))
+  (define ctor-name (data-ctor-name ctor))
+  (define arity (length (data-ctor-field-types ctor)))
+  (define head-ty (data-head-type-ast tname tparams stx))
+  (define ctx (for/list ([ft (in-list (data-ctor-field-types ctor))])
+                (constraint 'Semigroup (list ft) stx)))
+  (define head (constraint 'Semigroup (list head-ty) stx))
+  (define combined
+    (cond
+      [(zero? arity) (e:var ctor-name (fresh-stx stx))]
+      [else
+       (e:app (e:var ctor-name (fresh-stx stx))
+              (for/list ([i (in-range arity)])
+                (e:app (e:var '<> (fresh-stx stx))
+                       (list (e:var (a-name i) (fresh-stx stx))
+                             (e:var (b-name i) (fresh-stx stx)))
+                       (fresh-stx stx)))
+              (fresh-stx stx))]))
+  (define body
+    (e:match
+     (e:var 'x (fresh-stx stx))
+     (list (clause (ctor-x-pattern ctor-name arity stx) #f
+                   (e:match
+                    (e:var 'y (fresh-stx stx))
+                    (list (clause (ctor-y-pattern ctor-name arity stx) #f
+                                  combined stx))
+                    #f stx)
+                   stx))
+     #f stx))
+  (top:instance ctx head
+                (list (top:def '<> (e:lam '(x y) body stx) stx))
+                stx))
+
+;; ----- Monoid deriving (Phase 38) -------------------------------
+;; Single-ctor ADTs only.  `mempty` is the ctor applied to per-field
+;; `mempty`s.  Qual context carries `(Monoid a)` per tparam.
+(define (synthesize-monoid-instance tname tparams ctors stx)
+  (unless (= (length ctors) 1)
+    (raise-syntax-error 'define-data
+      "cannot derive Monoid for a type with multiple constructors — only single-ctor types have a canonical empty"
+      stx))
+  (define ctor (car ctors))
+  (define ctor-name (data-ctor-name ctor))
+  (define arity (length (data-ctor-field-types ctor)))
+  (define head-ty (data-head-type-ast tname tparams stx))
+  (define ctx (for/list ([ft (in-list (data-ctor-field-types ctor))])
+                (constraint 'Monoid (list ft) stx)))
+  (define head (constraint 'Monoid (list head-ty) stx))
+  (define empty-body
+    (cond
+      [(zero? arity) (e:var ctor-name (fresh-stx stx))]
+      [else
+       (e:app (e:var ctor-name (fresh-stx stx))
+              (for/list ([i (in-range arity)])
+                (e:var 'mempty (fresh-stx stx)))
+              (fresh-stx stx))]))
+  (top:instance ctx head
+                (list (top:def 'mempty empty-body stx))
+                stx))
 
 (define (synthesize-show-instance tname tparams ctors stx)
   (define head-ty (data-head-type-ast tname tparams stx))
@@ -918,8 +1144,16 @@
       [(and (member 'Ord classes) (not (member 'Eq classes)))
        (cons 'Eq classes)]
       [else classes]))
+  ;; Phase 38: deriving Monoid implies deriving Semigroup since
+  ;; Monoid's class declaration lists Semigroup as a superclass.
+  (define classes-needing-semigroup
+    (cond
+      [(and (member 'Monoid classes-needing-eq)
+            (not (member 'Semigroup classes-needing-eq)))
+       (cons 'Semigroup classes-needing-eq)]
+      [else classes-needing-eq]))
   (apply append
-         (for/list ([cls (in-list classes-needing-eq)])
+         (for/list ([cls (in-list classes-needing-semigroup)])
            (case cls
              [(Eq)   (list (synthesize-eq-instance      tname tparams ctors ctx-stx))]
              [(Show) (list (synthesize-show-instance    tname tparams ctors ctx-stx))]
@@ -940,9 +1174,17 @@
                    err-stx)]
                 [else
                  (list (synthesize-foldable-instance tname tparams ctors ctx-stx))])]
+             [(Traversable)
+              (list (synthesize-traversable-instance tname tparams ctors ctx-stx))]
+             [(Bifunctor)
+              (list (synthesize-bifunctor-instance tname tparams ctors ctx-stx))]
+             [(Semigroup)
+              (list (synthesize-semigroup-instance tname tparams ctors ctx-stx))]
+             [(Monoid)
+              (list (synthesize-monoid-instance tname tparams ctors ctx-stx))]
              [else
               (raise-syntax-error kind-tag
-                (format "cannot derive ~s — supported: Eq, Ord, Show, Functor, Foldable" cls)
+                (format "cannot derive ~s — supported: Eq, Ord, Show, Functor, Foldable, Traversable, Bifunctor, Semigroup, Monoid" cls)
                 err-stx)]))))
 
 ;; ----- records: define-struct ---------------------------------------
