@@ -368,13 +368,14 @@
           ;; is needs-dict, prepend dict-arg parameters so the impl
           ;; can accept them (and use them in the body via the
           ;; current-dict-skolems-driven local references).
-          (define dict-args
+          (define dict-pair
             (and (current-needs-dict-defs)
                  (hash-ref (current-needs-dict-defs)
                            (list head-pred-class
                                  (car head-tcon-names)
                                  name)
                            #f)))
+          (define dict-args (combined-dict-args dict-pair))
           (define body*
             (cond
               [(and dict-args (not (null? dict-args)))
@@ -387,21 +388,33 @@
                         [impl (compile-expr body*)])
             (list #'(define impl-name impl)))]
          [else
-          ;; Phase 30: a needs-dict instance method gets a named
-          ;; `(define $method:Tcon (lambda (dict-args... user-args...) body))`
-          ;; so Phase 27's call-site dispatch can route to it with the
-          ;; resolved dict args.  Skip the per-tag dispatch-table
-          ;; registration — the runtime dispatcher can't carry dict
-          ;; args, so falling through to it wouldn't help anyway.
-          (define dict-args
+          ;; Phase 30/39: positional class-method instance impls have
+          ;; two kinds of dict-args, stored as a (inst-args .
+          ;; method-args) pair under current-needs-dict-defs.  Phase 30
+          ;; (instance-qual): the runtime wrapper can't insert these,
+          ;; so we use compile-time inst-dispatch + a named impl.
+          ;; Phase 39 (method-qual ONLY): the runtime wrapper already
+          ;; inserts method-qual dicts at the call site (per class-
+          ;; info-dictreqs at compile-class time), so we can register
+          ;; the impl in the runtime dispatch table with method-qual
+          ;; dicts as leading lambda params.
+          (define dict-pair
             (and (current-needs-dict-defs)
                  (hash-ref (current-needs-dict-defs)
                            (list head-pred-class
                                  (car head-tcon-names)
                                  name)
                            #f)))
+          (define inst-args   (and dict-pair (car dict-pair)))
+          (define method-args (and dict-pair (cdr dict-pair)))
           (cond
-            [(and dict-args (not (null? dict-args)))
+            [(and inst-args (not (null? inst-args)))
+             ;; Phase 30: instance-qual dicts present → named impl,
+             ;; skip runtime registration.  Method-qual dicts (if
+             ;; any) are prepended too so the impl's parameter list
+             ;; matches what compile-time inst-dispatch supplies plus
+             ;; what the runtime wrapper inserts.
+             (define dict-args (append inst-args method-args))
              (define expr* (prepend-lambda-params body dict-args stx))
              (with-syntax ([impl-name (datum->syntax
                                        stx
@@ -425,11 +438,18 @@
                            [impl (compile-expr body)])
                (list #'(define impl-name impl)))]
             [else
+             ;; Phase 39: method-qual dicts (if any) become leading
+             ;; lambda params of the runtime-registered impl.
+             (define body*
+               (cond
+                 [(and method-args (not (null? method-args)))
+                  (prepend-lambda-params body method-args stx)]
+                 [else body]))
              (for/list ([tag (in-list tags)])
                (with-syntax ([table   (datum->syntax stx
                                                      (method-dispatch-symbol name)
                                                      stx)]
-                             [impl    (compile-expr body)]
+                             [impl    (compile-expr body*)]
                              [tag-sym (datum->syntax stx tag stx)])
                  #'(register-instance-method! table 'tag-sym impl)))])]))))
   (with-syntax ([(register ...) register-forms])
@@ -464,6 +484,14 @@
                    (dict-class-return-method-names (pred-class sp) env))))
         (remove-duplicates (append own super-methods))])]
     [else '()]))
+
+;; Phase 39: current-needs-dict-defs entries for instance methods are
+;; a (inst-args . method-args) cons.  Flatten into a single list for
+;; consumers that don't care which group an arg came from.
+(define (combined-dict-args entry)
+  (cond
+    [(not entry) '()]
+    [else (append (car entry) (cdr entry))]))
 
 (define (head-tcon-name t)
   (match t

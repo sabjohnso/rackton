@@ -1966,6 +1966,68 @@ Two infrastructure fixes shipped alongside:
         passing dicts to them at the call site would arity-mismatch.}
 ]
 
+@section{Method-qual dict-threading + user-defined Traversable (Phase 39)}
+
+Phase 30 set up dict-skolems for an instance's qual context
+(@code{(MonadState s m) =>} on a lifted instance).  Phase 39 extends
+the same mechanism to a method's own qual context: every method
+scheme can carry its own @code{=>} clause introducing method-local
+quantifiers, and references inside the body to dict-needing methods
+on those quantifiers need to flow through dict args.
+
+The canonical case is @racket[traverse]:
+
+@codeblock|{
+(define-class (Traversable (t :: (-> * *)))
+  (: traverse ((Applicative f) =>
+               (-> (-> a (f b)) (-> (t a) (f (t b)))))))
+}|
+
+A user-written @racket[(Traversable Tree)] instance body uses
+@racket[pure] / @racket[<*>] / @racket[liftA2] on the method-local
+@racket[f].  Before Phase 39, these references couldn't be resolved
+(no concrete @racket[f] yet; no skolem-dict mapping).  Phase 39 fixes
+this with:
+
+@itemlist[
+  @item{Skolemize the method-local tvars in the method-qual
+        constraints (e.g. @racket[f] in @code{(Applicative f) =>}).
+        Apply the skolem-subst to @racket[expected-type] and
+        @racket[method-extra-preds] so they're rigid during body
+        inference.}
+  @item{Build a dict-skolems map for the method-qual constraints
+        (same mechanism as @racket[build-dict-skolems] for instance-
+        qual), merge with the instance-qual skolems, save the
+        combined @racket[dict-arg-names] in
+        @racket[current-needs-dict-defs] per method.  Entries are now
+        stored as @code{(inst-args . method-args)} so
+        @racket[compile-instance] can route differently for the two
+        kinds.}
+  @item{@racket[compile-instance] for positional class methods now
+        picks the dispatch path by which kind of dicts the instance
+        carries:
+        @itemlist[
+          @item{Instance-qual dicts present → named impl
+                (@code{$method:Tcon}) + skip runtime-table
+                registration.  Compile-time inst-dispatch routes
+                the call (Phase 30).}
+          @item{Method-qual dicts only → register in the runtime
+                dispatch table with method-qual dicts as leading
+                lambda params.  The existing class-method wrapper
+                already inserts these at call sites via
+                @racket[class-info-dictreqs].}
+        ]
+  }
+  @item{@racket[dispatchpos] computation in @racket[handle-class-form]
+        now uses @racket[qual-body-deep] to peel @emph{all} qual
+        layers before calling @racket[find-dispatch-pos] — without
+        this, method-qual @code{=>} clauses hid the method's arrow
+        type and any method with a qual context was misclassified as
+        @code{'return}-dispatched.}
+  @item{Traversable rejoins the @racket[#:deriving] menu (deferred
+        in Phase 38).}
+]
+
 @section{Not yet supported}
 
 Overlapping instances, kind polymorphism (kind variables), threads /

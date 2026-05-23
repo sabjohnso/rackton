@@ -1218,7 +1218,14 @@
   (define dispatchpos
     (for/fold ([acc (hasheq)])
               ([(method-name sch) (in-hash method-schemes)])
-      (define body-type (qual-body-type (scheme-body sch)))
+      ;; Phase 39: peel ALL qual layers from the body type so methods
+      ;; with their own qual context (e.g. `traverse :: (Applicative
+      ;; f) => ...`) still get their arrow examined for positional
+      ;; dispatch.  Previously qual-body-type peeled only one layer
+      ;; and `traverse`'s (Applicative f) qual hid the arrow,
+      ;; causing find-dispatch-pos to return #f and the method to be
+      ;; classified as 'return.
+      (define body-type (qual-body-deep (scheme-body sch)))
       (define pos (find-dispatch-pos body-type class-params fundeps))
       (cond
         [pos (hash-set acc method-name pos)]
@@ -1959,7 +1966,7 @@
       (cons (pred-class c) (pred-args c))))
   (define-values (sk-subst dict-skolems dict-arg-names)
     (cond
-      [(null? inst-needs-dict-reqs) (values empty-subst (hasheq) '())]
+      [(null? inst-needs-dict-reqs) (values empty-subst (hash) '())]
       [else
        (define inner-vars
          (for/fold ([acc '()]) ([c (in-list ctx-preds-raw)])
@@ -1978,15 +1985,9 @@
   (define inst-args-sk (map (lambda (a) (apply-subst sk-subst a)) inst-args-raw))
   (define head-pred-sk (apply-subst sk-subst head-pred-raw))
   (define ctx-preds-sk (map (lambda (p) (apply-subst sk-subst p)) ctx-preds-raw))
-  ;; Stash the dict-arg names so compile-instance can find them when
-  ;; emitting the per-instance impl defs.  Key by (class-name, head
-  ;; tcon, method-name) — see compile-instance for the lookup.
-  (when (and (current-needs-dict-defs) (not (null? dict-arg-names)))
-    (define head-tcon (type-head-tcon (car inst-args-raw)))
-    (for ([m (in-hash-keys (class-info-methods cinfo))])
-      (hash-set! (current-needs-dict-defs)
-                 (list class-name head-tcon m)
-                 dict-arg-names)))
+  ;; Phase 39: dict-arg names are saved per-method (combined
+  ;; instance-qual + method-qual), inside the method loop below.
+  (define head-tcon (type-head-tcon (car inst-args-raw)))
   (define user-impls
     (for/fold ([acc (hasheq)]) ([m (in-list methods)])
       (match m
@@ -2014,25 +2015,65 @@
                    [a (in-list inst-args-sk)])
           (subst-extend s p a)))
       (define inst-method-qual (apply-subst σ (scheme-body method-sch)))
-      ;; Strip ALL qual layers — a method type may carry its own
-      ;; qualifying context on top of the class head (e.g.
-      ;; `traverse :: (Applicative f) => ...`), which leaves nested
-      ;; quals after substitution.  We need the bare body for
-      ;; unification and the full constraint list as hypotheses.
-      (define expected-type (qual-body-deep inst-method-qual))
-      (define method-extra-preds
-        ;; Constraints from the method's own qualifying context only —
-        ;; drop the class's head pred since it appears separately as
-        ;; `head-pred` below.
+      ;; Phase 39: skolemize method-local tvars that appear in this
+      ;; method's qual context (e.g. `(Applicative f) =>` on traverse).
+      ;; Without this, the body's polymorphic class-method references
+      ;; (pure, <*>, …) can't resolve — the f tvar isn't a concrete
+      ;; tcon nor an instance-qual skolem.  Make it a fresh tcon so
+      ;; the same dict-skolem mechanism that Phase 30 uses for
+      ;; instance-qual tvars resolves them to local dict-arg names.
+      (define raw-method-qual-preds
         (filter (lambda (p) (not (equal? p head-pred-sk)))
                 (qual-constraints-of inst-method-qual)))
+      (define method-needs-dict-reqs
+        (for/list ([p (in-list raw-method-qual-preds)]
+                   #:when (class-has-return-typed-methods? env (pred-class p)))
+          (cons (pred-class p) (pred-args p))))
+      (define method-sk-tvars
+        (apply append
+               (for/list ([req (in-list method-needs-dict-reqs)])
+                 (for/list ([a (in-list (cdr req))] #:when (tvar? a))
+                   (tvar-name a)))))
+      (define method-sk-subst
+        (for/fold ([s empty-subst]) ([v (in-list (remove-duplicates method-sk-tvars))])
+          (subst-extend s v (tcon (gensym (format "$method-skolem.~a." v))))))
+      (define-values (method-dict-skolems method-arg-names)
+        (cond
+          [(null? method-needs-dict-reqs) (values (hash) '())]
+          [else
+           (build-dict-skolems method-needs-dict-reqs method-sk-subst env)]))
+      (define combined-skolems
+        (for/fold ([acc dict-skolems])
+                  ([(k v) (in-hash method-dict-skolems)])
+          (hash-set acc k v)))
+      (define combined-arg-names
+        (append dict-arg-names method-arg-names))
+      ;; Phase 39: store the two arg-name groups separately so
+      ;; compile-instance can decide which dispatch path to use.
+      ;; Instance-qual dicts require compile-time inst-dispatch
+      ;; (the runtime wrapper doesn't insert them).  Method-qual
+      ;; dicts flow through the existing runtime wrapper (whose
+      ;; arity is bumped by class-info-dictreqs at compile-class
+      ;; time), so the impl can be registered in the runtime
+      ;; dispatch table with method-qual dicts as leading params.
+      (when (and (current-needs-dict-defs)
+                 (not (null? combined-arg-names)))
+        (hash-set! (current-needs-dict-defs)
+                   (list class-name head-tcon method-name)
+                   (cons dict-arg-names method-arg-names)))
+      ;; Apply method-skolem subst to the expected type and method-
+      ;; extra-preds so the tvars become rigid for body inference.
+      (define expected-type
+        (apply-subst method-sk-subst (qual-body-deep inst-method-qual)))
+      (define method-extra-preds
+        (map (lambda (p) (apply-subst method-sk-subst p))
+             raw-method-qual-preds))
       (parameterize ([current-pending-preds (box '())])
-        ;; Make the instance-qual skolem map visible while inferring
-        ;; the body AND while resolve-method-uses! runs afterward —
-        ;; mirroring Phase 29's mutate-then-restore pattern for
-        ;; top-defs.
+        ;; Make the instance-qual + method-qual skolem map visible
+        ;; while inferring the body AND while resolve-method-uses!
+        ;; runs afterward.
         (define saved-skolems (current-dict-skolems))
-        (current-dict-skolems dict-skolems)
+        (current-dict-skolems combined-skolems)
         (define-values (s t) (infer-expr body env))
         (define s-u
           (with-handlers
