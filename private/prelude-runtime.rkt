@@ -85,7 +85,7 @@
  None Some Nil Cons MkPair Ok Err MkUnit
  MkSum MkProduct
  get-sum get-product
- MkState MkEnv MkStateT MkEnvT MkWriterT MkExceptT
+ MkState MkEnv MkStateT MkEnvT MkWriterT MkExceptT MkIdentity
  run-state eval-state exec-state get-state put-state modify-state
  run-env ask local
  run-state-t eval-state-t exec-state-t
@@ -153,8 +153,10 @@
  ;; Dispatch tables — exposed so user modules that declare new
  ;; instances (including derived ones) can register against them.
  $dispatch:+  $dispatch:-  $dispatch:*
+ $dispatch:abs $dispatch:negate
  $dispatch:== $dispatch:/=
  $dispatch:<  $dispatch:>  $dispatch:<= $dispatch:>=
+ $dispatch:min $dispatch:max
  $dispatch:show
  $dispatch:fmap
  $dispatch:<*>
@@ -191,8 +193,8 @@
  bytes->list list->bytes
  string->bytes bytes->string
 
- ;; Numeric helpers (mod/div migrated to Integral class in Phase 40)
- abs min max integer->string string->integer
+ ;; Numeric helpers (mod/div → Integral, abs/negate → Num, min/max → Ord)
+ abs negate min max integer->string string->integer
 
  ;; IO
  print println read-line pure-io run-io
@@ -213,6 +215,9 @@
 
  ;; Concurrent (Phase 43)
  fork-c |$await-c:IO| |$yield-c:IO|
+
+ ;; Identity + Concurrent Identity (Phase 44)
+ run-identity |$await-c:Identity| |$yield-c:Identity| |$pure:Identity|
 
  ;; List + Pair helpers
  reverse append zip take drop find sort
@@ -274,6 +279,8 @@
 
 (define-data-ctor MkWriterT 1)
 (define-data-ctor MkExceptT 1)
+;; Phase 44: Identity for the Mock Concurrent demo.
+(define-data-ctor MkIdentity 1)
 
 ;; ----- Class dispatch tables -------------------------------------
 
@@ -283,6 +290,11 @@
 (define $dispatch:+  (make-hasheq))  (define-class-method +  $dispatch:+  0 2)
 (define $dispatch:-  (make-hasheq))  (define-class-method -  $dispatch:-  0 2)
 (define $dispatch:*  (make-hasheq))  (define-class-method *  $dispatch:*  0 2)
+;; Phase 44: abs / negate as Num methods, min / max as Ord methods.
+(define $dispatch:abs    (make-hasheq))(define-class-method abs    $dispatch:abs    0 1)
+(define $dispatch:negate (make-hasheq))(define-class-method negate $dispatch:negate 0 1)
+(define $dispatch:min    (make-hasheq))(define-class-method min    $dispatch:min    0 2)
+(define $dispatch:max    (make-hasheq))(define-class-method max    $dispatch:max    0 2)
 (define $dispatch:== (make-hasheq))  (define-class-method == $dispatch:== 0 2)
 (define $dispatch:/= (make-hasheq))  (define-class-method /= $dispatch:/= 0 2)
 (define $dispatch:<  (make-hasheq))  (define-class-method <  $dispatch:<  0 2)
@@ -391,18 +403,24 @@
 (register-instance-method! $dispatch:+  'Integer (lambda (x y) (rkt:+  x y)))
 (register-instance-method! $dispatch:-  'Integer (lambda (x y) (rkt:-  x y)))
 (register-instance-method! $dispatch:*  'Integer (lambda (x y) (rkt:*  x y)))
+(register-instance-method! $dispatch:abs    'Integer (lambda (x) (rkt:abs x)))
+(register-instance-method! $dispatch:negate 'Integer (lambda (x) (rkt:- x)))
 
 ;; ----- Num / Eq / Ord / Show Float --------------------------------
 
 (register-instance-method! $dispatch:+  'Float (lambda (x y) (rkt:+ x y)))
 (register-instance-method! $dispatch:-  'Float (lambda (x y) (rkt:- x y)))
 (register-instance-method! $dispatch:*  'Float (lambda (x y) (rkt:* x y)))
+(register-instance-method! $dispatch:abs    'Float (lambda (x) (rkt:abs x)))
+(register-instance-method! $dispatch:negate 'Float (lambda (x) (rkt:- x)))
 (register-instance-method! $dispatch:== 'Float (lambda (x y) (rkt:= x y)))
 (register-instance-method! $dispatch:/= 'Float (lambda (x y) (rkt:not (rkt:= x y))))
 (register-instance-method! $dispatch:<  'Float (lambda (x y) (rkt:<  x y)))
 (register-instance-method! $dispatch:>  'Float (lambda (x y) (rkt:>  x y)))
 (register-instance-method! $dispatch:<= 'Float (lambda (x y) (rkt:<= x y)))
 (register-instance-method! $dispatch:>= 'Float (lambda (x y) (rkt:>= x y)))
+(register-instance-method! $dispatch:min 'Float (lambda (x y) (rkt:min x y)))
+(register-instance-method! $dispatch:max 'Float (lambda (x y) (rkt:max x y)))
 (register-instance-method! $dispatch:show 'Float (lambda (x) (rkt:number->string x)))
 
 ;; ----- Eq instances ----------------------------------------------
@@ -421,6 +439,18 @@
 (register-instance-method! $dispatch:>  'Integer (lambda (x y) (rkt:>  x y)))
 (register-instance-method! $dispatch:<= 'Integer (lambda (x y) (rkt:<= x y)))
 (register-instance-method! $dispatch:>= 'Integer (lambda (x y) (rkt:>= x y)))
+(register-instance-method! $dispatch:min 'Integer (lambda (x y) (rkt:min x y)))
+(register-instance-method! $dispatch:max 'Integer (lambda (x y) (rkt:max x y)))
+
+;; Phase 44: Ord String (lex order).
+(register-instance-method! $dispatch:<  'String (lambda (x y) (string<? x y)))
+(register-instance-method! $dispatch:>  'String (lambda (x y) (string>? x y)))
+(register-instance-method! $dispatch:<= 'String (lambda (x y) (string<=? x y)))
+(register-instance-method! $dispatch:>= 'String (lambda (x y) (string>=? x y)))
+(register-instance-method! $dispatch:min 'String
+                           (lambda (x y) (if (string<? x y) x y)))
+(register-instance-method! $dispatch:max 'String
+                           (lambda (x y) (if (string<? x y) y x)))
 
 ;; ----- Show instances --------------------------------------------
 
@@ -522,10 +552,10 @@
 
 ;; ----- Numeric helpers -----------------------------------------
 ;; mod / div migrated to the Integral class in Phase 40.
+;; abs / negate migrated to Num and min / max to Ord in Phase 44 —
+;; runtime impls registered against the per-instance dispatch
+;; tables below.
 
-(define (abs n) (rkt:abs n))
-(define/curried (min a b) (rkt:min a b))
-(define/curried (max a b) (rkt:max a b))
 (define (integer->string n) (rkt:number->string n))
 (define (string->integer s)
   (define n (rkt:string->number s))
@@ -779,7 +809,12 @@
 ;; versions), and returns the result.  Mismatch → retry the whole
 ;; transaction.
 
-(struct $tvar (cell version-box) #:transparent)
+;; Phase 44: each TVar also carries a `wake-signal` semaphore.  On
+;; commit, every WRITTEN TVar's wake-signal is posted so retrying
+;; transactions watching that TVar can resume.  `retry` now waits
+;; (via `sync`) on the union of the read-logged TVars' wake-signals,
+;; then restarts.  No more busy-loop.
+(struct $tvar (cell version-box wake-signal) #:transparent)
 (struct $stm  (thunk)             #:transparent)
 
 (define $stm-retry-sentinel (gensym 'stm-retry))
@@ -813,7 +848,9 @@
 
 (define (new-tvar v)
   ($stm (lambda (_log)
-          ($tvar (box v) (box 0)))))
+          ;; Phase 44: each TVar's wake-signal starts unposted; commits
+          ;; that write to it post it so retrying watchers can advance.
+          ($tvar (box v) (box 0) (make-semaphore 0)))))
 
 (define (read-tvar tv)
   ($stm (lambda (log) (log-read! log tv))))
@@ -842,7 +879,24 @@
                (set-box! result-box (($stm-thunk stm) log))
                #f))
            (cond
-             [retried? (loop)]
+             [retried?
+              ;; Phase 44: block on the wake-signals of every TVar
+              ;; the transaction read before retrying.  When any
+              ;; writer commits to one of these TVars, its
+              ;; wake-signal is posted and `sync` returns.  Then we
+              ;; restart from a fresh log.
+              (define read-tvars
+                (for/list ([(tv entry) (in-hash log)]
+                           #:when (eq? (car entry) 'read))
+                  tv))
+              (cond
+                [(null? read-tvars)
+                 ;; No reads recorded — `retry` was called blindly.
+                 ;; Falling back to immediate restart matches Haskell.
+                 (loop)]
+                [else
+                 (apply sync (map $tvar-wake-signal read-tvars))
+                 (loop)])]
              [else
               ;; Commit: acquire global lock; verify read versions;
               ;; apply writes (bumping versions); release.
@@ -865,10 +919,18 @@
                  (for ([(tv entry) (in-hash log)])
                    (define mode (car entry))
                    (define v    (cadr entry))
-                   (when (eq? mode 'write)
-                     (set-box! ($tvar-cell tv) v)
-                     (set-box! ($tvar-version-box tv)
-                               (+ 1 (unbox ($tvar-version-box tv))))))
+                   ;; NOTE: this looks like Racket's `when` but our
+                   ;; Phase 32 `define/curried (when …)` shadows
+                   ;; the macro in this module — so we use `cond`
+                   ;; explicitly to avoid an arity error.
+                   (cond
+                     [(eq? mode 'write)
+                      (set-box! ($tvar-cell tv) v)
+                      (set-box! ($tvar-version-box tv)
+                                (+ 1 (unbox ($tvar-version-box tv))))
+                      ;; Phase 44: wake all watchers of this TVar.
+                      ;; Each retry-waiter consumes one post via sync.
+                      (semaphore-post ($tvar-wake-signal tv))]))
                  (semaphore-post $atomically-lock)
                  (unbox result-box)]
                 [else
@@ -945,6 +1007,52 @@
 
 (define |$await-c:IO| await-c-io)
 (define |$yield-c:IO| ($io (lambda () (sleep 0) MkUnit)))
+
+;; ----- Identity monad + Concurrent Identity (Phase 44) -------
+
+(define (run-identity i)
+  (match i [(MkIdentity x) x]))
+
+;; Functor / Applicative / Monad for Identity
+(define (identity-fmap f i)
+  (match i [(MkIdentity x) (MkIdentity (f x))]))
+(register-instance-method! $dispatch:fmap '$ctor:MkIdentity identity-fmap)
+
+(define |$pure:Identity| MkIdentity)
+(register-pure-impl! '$ctor:MkIdentity |$pure:Identity|)
+
+(define (identity-ap ifn ix)
+  (match ifn
+    [(MkIdentity f)
+     (match ix [(MkIdentity x) (MkIdentity (f x))])]))
+(register-instance-method! $dispatch:<*> '$ctor:MkIdentity identity-ap)
+
+(define (identity-liftA2 g ia ib)
+  (match ia
+    [(MkIdentity a)
+     (match ib [(MkIdentity b) (MkIdentity (g a b))])]))
+(register-instance-method! $dispatch:liftA2 '$ctor:MkIdentity identity-liftA2)
+
+(define (identity-bind i f)
+  (match i [(MkIdentity x) (f x)]))
+(register-instance-method! $dispatch:>>= '$ctor:MkIdentity identity-bind)
+
+;; Concurrent Identity — fork-c runs the computation immediately
+;; and uses the bare value as the Future; await-c rewraps in
+;; Identity.  Since Identity is a transparent monad, no synchronization
+;; needed.
+(define (fork-c-identity m)
+  ;; m :: Identity a == (MkIdentity x).  Return (MkIdentity x) — the
+  ;; "Future a" representation at Identity is just the raw value.
+  m)
+(define (await-c-identity fut)
+  ;; fut is the raw a value (after do-notation extracted from
+  ;; MkIdentity); wrap back as Identity a.
+  (MkIdentity fut))
+(register-instance-method! $dispatch:fork-c '$ctor:MkIdentity fork-c-identity)
+
+(define |$await-c:Identity| await-c-identity)
+(define |$yield-c:Identity| (MkIdentity MkUnit))
 
 ;; ----- File I/O ------------------------------------------------
 
@@ -1148,12 +1256,16 @@
 (register-instance-method! $dispatch:+ 'Rational (lambda (x y) (rkt:+ x y)))
 (register-instance-method! $dispatch:- 'Rational (lambda (x y) (rkt:- x y)))
 (register-instance-method! $dispatch:* 'Rational (lambda (x y) (rkt:* x y)))
+(register-instance-method! $dispatch:abs    'Rational (lambda (x) (rkt:abs x)))
+(register-instance-method! $dispatch:negate 'Rational (lambda (x) (rkt:- x)))
 (register-instance-method! $dispatch:== 'Rational (lambda (x y) (rkt:= x y)))
 (register-instance-method! $dispatch:/= 'Rational (lambda (x y) (not (rkt:= x y))))
 (register-instance-method! $dispatch:<  'Rational (lambda (x y) (rkt:< x y)))
 (register-instance-method! $dispatch:>  'Rational (lambda (x y) (rkt:> x y)))
 (register-instance-method! $dispatch:<= 'Rational (lambda (x y) (rkt:<= x y)))
 (register-instance-method! $dispatch:>= 'Rational (lambda (x y) (rkt:>= x y)))
+(register-instance-method! $dispatch:min 'Rational (lambda (x y) (rkt:min x y)))
+(register-instance-method! $dispatch:max 'Rational (lambda (x y) (rkt:max x y)))
 (register-instance-method! $dispatch:show 'Rational
                            (lambda (r)
                              (format "~a/~a" (rkt:numerator r) (rkt:denominator r))))
@@ -1163,6 +1275,8 @@
 (register-instance-method! $dispatch:+ 'Complex (lambda (x y) (rkt:+ x y)))
 (register-instance-method! $dispatch:- 'Complex (lambda (x y) (rkt:- x y)))
 (register-instance-method! $dispatch:* 'Complex (lambda (x y) (rkt:* x y)))
+(register-instance-method! $dispatch:abs    'Complex (lambda (x) (rkt:magnitude x)))
+(register-instance-method! $dispatch:negate 'Complex (lambda (x) (rkt:- x)))
 (register-instance-method! $dispatch:== 'Complex (lambda (x y) (rkt:= x y)))
 (register-instance-method! $dispatch:/= 'Complex (lambda (x y) (not (rkt:= x y))))
 (register-instance-method! $dispatch:show 'Complex

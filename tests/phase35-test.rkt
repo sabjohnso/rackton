@@ -90,11 +90,11 @@
   (: wrap-show String)
   (define wrap-show (show (MkWrap 42)))
 
-  (define-newtype (Identity a) (MkIdentity a)
+  (define-newtype (Idiom a) (MkIdiom a)
     #:deriving Functor)
 
-  (: id-mapped (Identity Integer))
-  (define id-mapped (fmap (lambda (n) (* n 2)) (MkIdentity 21))))
+  (: id-mapped (Idiom Integer))
+  (define id-mapped (fmap (lambda (n) (* n 2)) (MkIdiom 21))))
 
 ;; ---------- assertions ---------------------------------------
 
@@ -120,4 +120,4 @@
 (test-case "newtype deriving (Eq/Show/Functor)"
   (check-true   wrap-eq)
   (check-equal? wrap-show "(MkWrap 42)")
-  (check-equal? id-mapped (MkIdentity 42)))
+  (check-equal? id-mapped (MkIdiom 42)))

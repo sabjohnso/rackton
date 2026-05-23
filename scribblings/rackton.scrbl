@@ -2210,9 +2210,57 @@ inst-dispatch routing — the existing return-typed
         nice but unrelated to the polymorphism win.}
 ]
 
+@section{Deferred items resolved (Phase 44)}
+
+Phase 44 cleared the deferred-items backlog accumulated across
+Phases 41 / 43.
+
+@itemlist[
+  @item{@bold{Blocking @racket[retry] (44.1).}  Each @racket[TVar]
+        now carries a wake-signal semaphore that's posted on every
+        commit involving that TVar.  When @racket[retry] fires inside
+        @racket[atomically], the runtime collects the read-logged
+        TVars from the failed transaction and @racket[sync]s on the
+        union of their wake-signals before restarting.  No more
+        busy-loop — a transaction blocked on @racket[retry] sleeps
+        until at least one of its watched TVars changes.}
+  @item{@bold{Nested @racket[atomically] (44.2): not applicable.}
+        In our typed model @racket[STM] and @racket[IO] are distinct
+        monads; @racket[atomically :: (STM a) -> (IO a)] cannot be
+        called inside an @racket[STM] block because that would mix
+        the two monads.  The ``nested atomically'' concern only
+        arises in untyped models like Haskell where the type system
+        doesn't separate IO from STM (Haskell explicitly errors at
+        runtime in that case).  Resolved by design.}
+  @item{@bold{STM @racket[Concurrent] instance (44.3): not applicable.}
+        @racket[fork-c :: m a -> m (Future a)] has no meaningful
+        semantics inside a transaction — transactions can't spawn
+        sub-transactions without breaking atomicity.  Resolved by
+        design; concurrent transactions are sequenced at the IO
+        level by fork-c-ing separate @racket[atomically] calls.}
+  @item{@bold{Mock @racket[Concurrent] instance (44.4).}  Added an
+        @racket[Identity a] monad and a trivial @racket[Concurrent
+        Identity] instance where @racket[fork-c] runs the computation
+        immediately and @racket[await-c] retrieves the result.  Lets
+        users smoke-test polymorphic-Concurrent code deterministically:
+        a @code{(Concurrent m) =>} function run at @racket[Identity]
+        executes synchronously with no threads.}
+  @item{@bold{@racket[Num] / @racket[Ord] hierarchy refactor (44.5).}
+        @racket[abs] and @racket[negate] migrated from free Integer-
+        only functions to @racket[Num] class methods (instances for
+        Integer / Float / Rational / Complex).  @racket[min] and
+        @racket[max] migrated to @racket[Ord] class methods with
+        default implementations in terms of @racket[<] (instances
+        for Integer / Float / Rational / String).  All existing call
+        sites are direct applications and dispatch through the new
+        tables transparently.}
+]
+
 @section{Not yet supported}
 
-Overlapping instances, kind polymorphism (kind variables), threads /
-channels, subprocesses, a fuller numeric tower (rationals, complex,
-exact decimals), and bare-var references to dict-needing methods.
-These are tracked under later phases.
+Larger directions still open: lenses / optics, GADTs and existential
+types, polymorphic record updates (@code{{ r | f = x }} syntax),
+module-level type-class coherence and sealed abstract types,
+algebraic effects / handlers, performance optimization (codegen
+inlining and specialization), and developer tooling (REPL,
+formatter, type-aware highlighting).

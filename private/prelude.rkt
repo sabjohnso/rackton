@@ -32,16 +32,26 @@
       (: >  (-> a (-> a Boolean)))
       (: <= (-> a (-> a Boolean)))
       (: >= (-> a (-> a Boolean)))
+      ;; Phase 44: min and max as Ord methods (comparison-based,
+      ;; doesn't need numeric ops) with default impls in terms of <.
+      (: min (-> a (-> a a)))
+      (: max (-> a (-> a a)))
       (define (>  x y) (<  y x))
       (define (<= x y) (if (<  x y) #t (== x y)))
-      (define (>= x y) (if (>  x y) #t (== x y))))
+      (define (>= x y) (if (>  x y) #t (== x y)))
+      (define (min x y) (if (< x y) x y))
+      (define (max x y) (if (< x y) y x)))
 
     ;; --- Num ----------------------------------------------------
 
     (define-class (Num a)
-      (: + (-> a (-> a a)))
-      (: - (-> a (-> a a)))
-      (: * (-> a (-> a a))))
+      (: +      (-> a (-> a a)))
+      (: -      (-> a (-> a a)))
+      (: *      (-> a (-> a a)))
+      ;; Phase 44: abs and negate as Num methods, polymorphic over
+      ;; the numeric tower (Integer / Float / Rational / Complex).
+      (: abs    (-> a a))
+      (: negate (-> a a)))
 
     ;; --- Show ---------------------------------------------------
 
@@ -56,7 +66,9 @@
     (define-instance (Num Integer)
       (define (+ x y) (racket Integer (x y) 0))
       (define (- x y) (racket Integer (x y) 0))
-      (define (* x y) (racket Integer (x y) 0)))
+      (define (* x y) (racket Integer (x y) 0))
+      (define (abs    x) (racket Integer (x) 0))
+      (define (negate x) (racket Integer (x) 0)))
 
     (define-instance (Eq Integer)
       (define (== x y) (racket Boolean (x y) #f)))
@@ -78,6 +90,10 @@
 
     (define-instance (Show String)
       (define (show x) x))
+
+    ;; Phase 44: Ord String (lex order) so min/max work on strings.
+    (define-instance (Ord String)
+      (define (< x y) (racket Boolean (x y) #f)))
 
     ;; --- ADTs ---------------------------------------------------
 
@@ -763,15 +779,7 @@
 
     ;; --- Numeric helpers --------------------------------------
     ;; `mod` and `div` migrated to the Integral class (Phase 40).
-
-    (: abs (-> Integer Integer))
-    (define (abs n) (racket Integer (n) 0))
-
-    (: min (-> Integer (-> Integer Integer)))
-    (define (min a b) (racket Integer (a b) 0))
-
-    (: max (-> Integer (-> Integer Integer)))
-    (define (max a b) (racket Integer (a b) 0))
+    ;; `abs` / `negate` migrated to Num; `min` / `max` to Ord (Phase 44).
 
     (: integer->string (-> Integer String))
     (define (integer->string n) (racket String (n) ""))
@@ -925,6 +933,43 @@
         (racket (IO a)          (fut)   #f))
       (define yield-c
         (racket (IO Unit)       ()      #f)))
+
+    ;; --- Identity monad + Concurrent Identity (Phase 44) -----
+    ;;
+    ;; A trivial Mock for polymorphic-Concurrent code: fork-c runs
+    ;; the computation immediately and stuffs its result into a
+    ;; Future; await-c reads it back.  Useful for deterministic
+    ;; unit tests of polymorphic concurrent code.
+
+    (define-data (Identity a) (MkIdentity a))
+
+    (: run-identity (-> (Identity a) a))
+    (define (run-identity i)
+      (match i [(MkIdentity x) x]))
+
+    (define-instance (Functor Identity)
+      (define (fmap f i)
+        (match i [(MkIdentity x) (MkIdentity (f x))])))
+
+    (define-instance (Applicative Identity)
+      (define (pure x)        (MkIdentity x))
+      (define (<*>  ifn ix)
+        (match ifn
+          [(MkIdentity f)
+           (match ix [(MkIdentity x) (MkIdentity (f x))])])))
+
+    (define-instance (Monad Identity)
+      (define (>>= i f)
+        (match i [(MkIdentity x) (f x)])))
+
+    (define-instance (Concurrent Identity)
+      (define (fork-c m)
+        (match m
+          [(MkIdentity x) (MkIdentity (racket (Future a) (x) #f))]))
+      (define (await-c fut)
+        (MkIdentity (racket a (fut) #f)))
+      (define yield-c
+        (MkIdentity MkUnit)))
 
     ;; --- File I/O --------------------------------------------
 
@@ -1100,7 +1145,9 @@
     (define-instance (Num Float)
       (define (+ x y) (racket Float (x y) 0.0))
       (define (- x y) (racket Float (x y) 0.0))
-      (define (* x y) (racket Float (x y) 0.0)))
+      (define (* x y) (racket Float (x y) 0.0))
+      (define (abs    x) (racket Float (x) 0.0))
+      (define (negate x) (racket Float (x) 0.0)))
 
     (define-instance (Eq Float)
       (define (== x y) (racket Boolean (x y) #f)))
@@ -1164,7 +1211,9 @@
     (define-instance (Num Rational)
       (define (+ x y) (racket Rational (x y) #f))
       (define (- x y) (racket Rational (x y) #f))
-      (define (* x y) (racket Rational (x y) #f)))
+      (define (* x y) (racket Rational (x y) #f))
+      (define (abs    x) (racket Rational (x) #f))
+      (define (negate x) (racket Rational (x) #f)))
     (define-instance (Fractional Rational)
       (define (float-div x y) (racket Rational (x y) #f)))
 
@@ -1177,7 +1226,9 @@
     (define-instance (Num Complex)
       (define (+ x y) (racket Complex (x y) #f))
       (define (- x y) (racket Complex (x y) #f))
-      (define (* x y) (racket Complex (x y) #f)))
+      (define (* x y) (racket Complex (x y) #f))
+      (define (abs    x) (racket Complex (x) #f))
+      (define (negate x) (racket Complex (x) #f)))
     (define-instance (Fractional Complex)
       (define (float-div x y) (racket Complex (x y) #f)))
 
