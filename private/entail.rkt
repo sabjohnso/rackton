@@ -219,9 +219,25 @@
          [(entail? env hypotheses p)
           (loop (cdr ps) acc)]
          [else
+          ;; Phase 42: enrich the "no instance" error with the list of
+          ;; instances we do have for this class, so the user can see
+          ;; whether they hit a typo, a missing instance for their
+          ;; specific type, or a class that's missing all instances.
+          (define cls (pred-class p))
+          (define available (env-instances env cls))
+          (define avail-msg
+            (cond
+              [(null? available)
+               (format " (no instances declared for ~s)" cls)]
+              [else
+               (format "\n  available ~s instances: ~s"
+                       cls
+                       (for/list ([inst (in-list available)])
+                         (pred->datum (instance-info-head inst))))]))
           (raise
            (exn:fail
-            (format "no instance for ~s" (pred->datum p))
+            (format "no instance for ~s~a"
+                    (pred->datum p) avail-msg)
             (current-continuation-marks)))])])))
 
 ;; A predicate is in head-normal form when at least one of its

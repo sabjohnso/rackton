@@ -2130,6 +2130,35 @@ disjoint TVars; contended TVars cause retries.
   @item{Nested @racket[atomically] — flatten manually for now.}
 ]
 
+@section{Error message polish (Phase 42)}
+
+Phase 42 sharpens three commonly-hit error paths:
+
+@itemlist[
+  @item{@bold{``no instance for X'' lists what's available.}  When
+        @racket[reduce-context] fails to discharge a constraint, the
+        error now appends the heads of every instance currently
+        registered for that class:
+        @verbatim|{
+no instance for (Showable String)
+  available Showable instances: ((Showable Integer) (Showable Boolean))
+}|
+        Lets the user see at a glance whether they hit a typo, a
+        missing instance for their specific type, or a class that's
+        missing all instances.}
+  @item{@bold{Type-mismatch errors pin to the bad argument.}  The
+        @racket[e:app] inferer already blames the specific argument's
+        @racket[stx] when its type doesn't match the head's expected
+        domain; Phase 42 documents this behavior alongside the
+        ``expected/got'' format produced by @racket[raise-type-mismatch!].}
+  @item{@bold{Did-you-mean works for class methods.}  Misspelled
+        class method names (e.g. @racket[pyre] for @racket[pure])
+        now surface a ``did you mean'' suggestion via the existing
+        @racket[suggest-similar] helper — class methods land in the
+        value env at class-declaration time, so they're already in
+        the search candidates.}
+]
+
 @section{Not yet supported}
 
 Overlapping instances, kind polymorphism (kind variables), threads /
