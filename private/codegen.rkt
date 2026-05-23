@@ -55,6 +55,7 @@
          "env.rkt"
          "surface.rkt"
          "match.rkt"
+         "entail.rkt"
          "infer.rkt")
 
 ;; Prepend `dict-arg-names` to an expression's outermost lambda
@@ -408,6 +409,21 @@
                                        stx)]
                            [impl (compile-expr expr*)])
                (list #'(define impl-name impl)))]
+            ;; Phase 37: for an overlap-group instance (any class
+            ;; whose instance set has at least one pair related by
+            ;; "strictly more specific"), emit a deep-fingerprint
+            ;; impl name and skip runtime-table registration — two
+            ;; instances with the same outer ctor would clobber each
+            ;; other in the table, and call sites are routed to the
+            ;; right fingerprint at compile time by inst-dispatch.
+            [(env-class-has-overlap? env head-pred-class)
+             (with-syntax ([impl-name
+                            (datum->syntax
+                             stx
+                             (overlap-impl-symbol name head-arg-types)
+                             stx)]
+                           [impl (compile-expr body)])
+               (list #'(define impl-name impl)))]
             [else
              (for/list ([tag (in-list tags)])
                (with-syntax ([table   (datum->syntax stx
@@ -457,6 +473,39 @@
     ;; legitimate — return-impl-symbol consults class fundeps and drops
     ;; those positions, so we can safely report #f here.
     [_ #f]))
+
+;; Phase 37: deep fingerprint of a head argument, encoding nested
+;; ctors so e.g. (Box Integer) → "Box_Integer" and (Box a) → "Box_*".
+;; Used as the impl-name suffix for instances in an overlap group so
+;; two same-outer-ctor instances don't clobber each other.  Tvars
+;; render as "*" — overlap means the specific instance always wins at
+;; compile time for monomorphic call sites, and tvar positions in a
+;; less-specific match show up as wildcards.
+(define (head-fingerprint t)
+  (match t
+    [(tcon n) (symbol->string n)]
+    [(tvar _) "*"]
+    [(tapp h args)
+     (string-append (head-fingerprint h)
+                    (apply string-append
+                           (for/list ([a (in-list args)])
+                             (string-append "_" (head-fingerprint a)))))]
+    [_ "*"]))
+
+;; Phase 37: impl name for an overlap-group instance, using a
+;; deep-fingerprint of each head arg.  Must agree byte-for-byte with
+;; the resolver path in infer.rkt.
+(define (overlap-impl-symbol method-name head-arg-types)
+  (string->symbol
+   (format "$~a:~a"
+           method-name
+           (apply string-append
+                  (let loop ([ts head-arg-types])
+                    (cond
+                      [(null? ts) '()]
+                      [(null? (cdr ts)) (list (head-fingerprint (car ts)))]
+                      [else (cons (head-fingerprint (car ts))
+                                  (cons "-" (loop (cdr ts))))]))))))
 
 ;; Build the impl name the codegen emits for a return-typed method on
 ;; an instance whose head args are `tcon-names`.  Must agree byte-for-

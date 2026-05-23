@@ -23,6 +23,7 @@
          env-extend-tcon
          env-ref-tcon
          env-extend-class
+         env-clear-instances
          env-ref-class
          env-extend-instance
          env-instances
@@ -110,6 +111,15 @@
   (hash-ref (env-tcons e) name default))
 
 ;; ----- classes & instances ------------------------------------------
+
+;; Phase 37: drop all instances registered for `class-name`.  Called
+;; when a class is redeclared so its prior instances (which belonged
+;; to the old class definition) don't leak into the new one's
+;; instance set.
+(define (env-clear-instances e class-name)
+  (struct-copy env e
+               [instance-table
+                (hash-remove (env-instance-table e) class-name)]))
 
 (define (env-extend-class e name info)
   (define vars*

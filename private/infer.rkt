@@ -634,11 +634,16 @@
                   (hash-ref sub p)))
               (record-method-use! x stx env class-param-tvars)]
              [(and (integer? dispatchpos)
-                   (class-has-needs-dict-instances? env owner-class))
+                   (or (class-has-needs-dict-instances? env owner-class)
+                       (env-class-has-overlap? env owner-class)))
               ;; Phase 27: positional class-method call on a class that
               ;; has at least one needs-dict instance.  Record so the
               ;; resolver can route to a per-instance impl after the
               ;; dispatch arg's type is settled.
+              ;; Phase 37 extends this to classes with overlapping
+              ;; instances — runtime dispatch can't tell apart
+              ;; same-outer-ctor instances, so we resolve at compile
+              ;; time when the call site is monomorphic.
               (define class-param-tvars
                 (for/list ([p (in-list (class-info-params cinfo))])
                   (hash-ref sub p)))
@@ -1238,7 +1243,17 @@
   (define info (class-info class-name class-params class-kinds
                            super-preds method-schemes defaults
                            dispatchpos fundeps dictreqs))
-  (values (env-extend-class env class-name info) declared))
+  ;; Phase 37: when a class is redeclared, its previously-registered
+  ;; instances belong to a now-superseded class.  Clear them out so
+  ;; the new declaration starts fresh — without this the duplicate-
+  ;; instance check would fire for `(== Eq Integer)` re-registrations,
+  ;; and env-class-has-overlap? would spuriously trigger.
+  (define env*
+    (cond
+      [(env-ref-class env class-name #f)
+       (env-clear-instances env class-name)]
+      [else env]))
+  (values (env-extend-class env* class-name info) declared))
 
 ;; Process a (require "file.rkt" …) form inside a rackton block.
 ;; For each spec, attempt to load the corresponding (submod spec
@@ -1553,10 +1568,13 @@
            (define class-name (env-ref-method-class env method-name))
            (define cinfo (and class-name (env-ref-class env class-name)))
            (define target-pred (pred class-name resolved-types))
+           (define matching-inst
+             (find-matching-instance env class-name target-pred))
            (define matching
-             (for/or ([inst (in-list (env-instances env class-name))])
-               (define σ (match-pred (instance-info-head inst) target-pred))
-               (and σ (cons inst σ))))
+             (and matching-inst
+                  (cons matching-inst
+                        (match-pred (instance-info-head matching-inst)
+                                    target-pred))))
            ;; Phase 32: filter tcon-names by fundep-determined params
            ;; — matches the impl name compile-instance emits and what
            ;; the 'return-typed resolver uses.
@@ -1573,20 +1591,59 @@
                            [tn (in-list tcon-names)]
                            #:unless (set-member? determined p))
                   tn)]))
-           (when (and matching (instance-needs-dict? env (car matching)))
-             (define impl
-               (string->symbol
-                (format "$~a:~a"
-                        method-name
-                        (string-join (map symbol->string keep-tcon-names)
-                                     "-"))))
-             (hash-set! resolutions stx impl)
-             (define inst-dict-impls
-               (instance-qual-return-impls env method-name
-                                           class-param-tvars final-subst stx))
-             (unless (null? inst-dict-impls)
-               (hash-set! dict-resolutions stx inst-dict-impls))))]))
+           (cond
+             [(and matching (instance-needs-dict? env (car matching)))
+              (define impl
+                (string->symbol
+                 (format "$~a:~a"
+                         method-name
+                         (string-join (map symbol->string keep-tcon-names)
+                                      "-"))))
+              (hash-set! resolutions stx impl)
+              (define inst-dict-impls
+                (instance-qual-return-impls env method-name
+                                            class-param-tvars final-subst stx))
+              (unless (null? inst-dict-impls)
+                (hash-set! dict-resolutions stx inst-dict-impls))]
+             ;; Phase 37: for overlap-group classes, emit a deep-
+             ;; fingerprint impl name from the MATCHED instance's
+             ;; head (not the call site's type) so a generic
+             ;; instance `(Show (Box a))` resolves to `$show:Box_*`
+             ;; and the specific `(Show (Box Integer))` resolves to
+             ;; `$show:Box_Integer`.
+             [(and matching (env-class-has-overlap? env class-name))
+              (define inst-head-args
+                (pred-args (instance-info-head (car matching))))
+              (define impl
+                (overlap-impl-symbol method-name inst-head-args))
+              (hash-set! resolutions stx impl)]))]))
     (hash-clear! uses)))
+
+;; Phase 37: must agree byte-for-byte with overlap-impl-symbol in
+;; codegen.rkt — encodes nested ctors deeply so two same-outer-ctor
+;; overlap-group instances get distinct impl names.
+(define (overlap-impl-symbol method-name head-arg-types)
+  (string->symbol
+   (format "$~a:~a"
+           method-name
+           (apply string-append
+                  (let loop ([ts head-arg-types])
+                    (cond
+                      [(null? ts) '()]
+                      [(null? (cdr ts)) (list (head-fingerprint (car ts)))]
+                      [else (cons (head-fingerprint (car ts))
+                                  (cons "-" (loop (cdr ts))))]))))))
+
+(define (head-fingerprint t)
+  (match t
+    [(tcon n) (symbol->string n)]
+    [(tvar _) "*"]
+    [(tapp h args)
+     (string-append (head-fingerprint h)
+                    (apply string-append
+                           (for/list ([a (in-list args)])
+                             (string-append "_" (head-fingerprint a)))))]
+    [_ "*"]))
 
 ;; Phase 32: predicate matching build-dict-skolems' filter-skolems —
 ;; a `(method . arg-types)` pair contributes a dict slot only when
@@ -1648,10 +1705,13 @@
        (for/list ([tv (in-list class-param-tvars)])
          (apply-subst final-subst tv)))
      (define target-pred (pred owner-class resolved-types))
+     (define matching-inst
+       (find-matching-instance env owner-class target-pred))
      (define matching
-       (for/or ([inst (in-list (env-instances env owner-class))])
-         (define σ (match-pred (instance-info-head inst) target-pred))
-         (and σ (cons inst σ))))
+       (and matching-inst
+            (cons matching-inst
+                  (match-pred (instance-info-head matching-inst)
+                              target-pred))))
      (cond
        [(not matching) '()]
        [else
@@ -1824,6 +1884,22 @@
     [(tapp h _) (type-head-tcon h)]
     [_ #f]))
 
+;; Phase 37: a pre-existing instance is a "true duplicate" only if
+;; its methods (per the elaboration that recorded it) align with the
+;; currently-known class shape.  Conservative impl: compare the keys
+;; of `instance-info-methods` against the class's method names — if
+;; the existing instance defines methods the current class doesn't
+;; know about, it belonged to a previously-declared (and now
+;; superseded) class and isn't a real duplicate.
+(define (instance-matches-class-shape? inst cinfo)
+  (define inst-method-names
+    (sort (hash-keys (instance-info-methods inst)) symbol<?))
+  (define class-method-names
+    (sort (hash-keys (class-info-methods cinfo)) symbol<?))
+  (or (null? inst-method-names)
+      (for/and ([m (in-list inst-method-names)])
+        (member m class-method-names))))
+
 (define (handle-instance-form ctx head methods stx env declared)
   (define head-pred-raw (resolve-constraint head))
   (define class-name (pred-class head-pred-raw))
@@ -1833,6 +1909,29 @@
       (format "unknown class: ~s~a"
               class-name (suggest-similar class-name env 'class))
       stx))
+  ;; Phase 37: reject duplicate instance registrations (heads
+  ;; α-equivalent to an existing one) at compile time.  A test
+  ;; corpus that re-declares a prelude class (e.g. classes-test.rkt
+  ;; defining its own `Eq`) re-establishes instances against the
+  ;; redeclared class — skip the dup check when the class itself
+  ;; was redeclared in this elaboration (a previously-registered
+  ;; class-info now overlaps with a fresh one).  Detect this by
+  ;; checking if there are instances for the class but the class
+  ;; methods are a subset of the redeclared class's methods.
+  (for ([existing (in-list (env-instances env class-name))])
+    (when (instance-heads-equivalent? (instance-info-head existing)
+                                      head-pred-raw)
+      ;; The "already-known" instance is a duplicate only if it
+      ;; belongs to a class with the same method set.  When the
+      ;; user redeclares a class, the old instance still hangs
+      ;; around but its method scheme is from the previous
+      ;; declaration — silently shadow it (drop the duplicate
+      ;; error) and let env-extend-instance append the new one.
+      (when (instance-matches-class-shape? existing cinfo)
+        (raise-syntax-error 'infer
+          (format "duplicate instance: ~s already declared"
+                  (pretty-pred head-pred-raw))
+          stx))))
   (define inst-args-raw (pred-args head-pred-raw))
   (define ctx-preds-raw (for/list ([c (in-list ctx)]) (resolve-constraint c)))
   ;; Phase 30: if the qual context introduces tvars that pin a

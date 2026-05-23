@@ -1861,6 +1861,67 @@ user constructs, which the runtime can't catch.  No polymorphic
 @code{(Concurrent m)} class — yet; concurrency is anchored to IO for
 now.
 
+@section{Overlapping instances (Phase 37)}
+
+Earlier phases dispatched every positional class method through a
+runtime hash table keyed by the value's outer ctor.  That worked
+fine when each ctor had at most one instance per class, but quietly
+clobbered if two instances shared the same outer ctor — a specific
+@racket[(Show (Box Integer))] declared after a generic
+@racket[(Show (Box a))] would overwrite the generic in the table,
+making @racket[(show (MkBox "hi"))] return the wrong answer.
+
+Phase 37 introduces compile-time specificity-based dispatch for
+classes that have overlapping instances:
+
+@codeblock|{
+(define-data (Box a) (MkBox a))
+
+(define-instance ((Show a) => (Show (Box a)))
+  (define (show b) (match b [(MkBox v) (<> "box(" (<> (show v) ")"))])))
+
+(define-instance (Show (Box Integer))
+  (define (show b) "int-box"))
+
+(show (MkBox 99))         ;; → "int-box"
+(show (MkBox "hello"))    ;; → "box(\"hello\")"
+}|
+
+@itemlist[
+  @item{@bold{@racket[find-matching-instance]} picks the unique
+        most-specific match among all matching instances.  Instance
+        A is @emph{strictly more specific than} B when
+        @racket[match-pred] from B's head to A's head succeeds but
+        the reverse fails.  Incomparable matches raise an
+        ``overlapping instances'' error.}
+  @item{@bold{@racket[env-class-has-overlap?]} detects overlap via
+        head-unification: any two instances whose heads unify share
+        at least one concrete target and so overlap.  Both the
+        strictly-more-specific case (Box a vs Box Integer) and the
+        incomparable case (P2 Integer b vs P2 a Integer) are caught.}
+  @item{@bold{Compile-time impl names for overlap groups.}  When a
+        class has overlap, @racket[compile-instance] emits a
+        deep-fingerprint impl name (@code{$show:Box_Integer},
+        @code{$show:Box_*}) and skips runtime-table registration.
+        Call sites with concrete class-arg types resolve at compile
+        time via @racket[record-inst-dispatch-use!] (extended here
+        to fire for overlap-having classes, not just needs-dict).}
+  @item{@bold{Duplicate-instance rejection.}  Two instances with
+        α-equivalent heads (e.g. @code{(Eq Integer)} declared twice
+        within the same elaboration) raise a compile-time error.
+        A class redeclaration via @racket[define-class] clears the
+        prior instances for that class so the redeclaration starts
+        from a clean slate.}
+]
+
+The rule for polymorphic call sites: when the call site's class-arg
+is still a tvar after final substitution, no static resolution is
+possible and the call falls through to runtime dispatch — which for
+overlap-group classes has no entries.  In practice, polymorphic code
+over an overlap-group class needs the class constraint in its qual
+context so dict resolution can pin the specific impl at the call
+site.  Less-common cases may need explicit type annotations.
+
 @section{Not yet supported}
 
 Overlapping instances, kind polymorphism (kind variables), threads /

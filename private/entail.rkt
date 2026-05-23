@@ -15,7 +15,10 @@
 ;; instance environment fully discharges, keeping only those in head-
 ;; normal form (a tvar at the head of every argument).
 
-(provide entail?
+(provide find-matching-instance
+         instance-heads-equivalent?
+         env-class-has-overlap?
+         entail?
          reduce-context
          by-super
          match-pred)
@@ -23,7 +26,8 @@
 (require racket/match
          racket/list
          "types.rkt"
-         "env.rkt")
+         "env.rkt"
+         "unify.rkt")
 
 ;; ----- one-way pattern matching ------------------------------------
 
@@ -107,13 +111,91 @@
     [else (entail-by-inst? env hypotheses target)]))
 
 (define (entail-by-inst? env hypotheses target)
-  (for/or ([inst (in-list (env-instances env (pred-class target)))])
-    (define σ (match-pred (instance-info-head inst) target))
+  (define inst (find-matching-instance env (pred-class target) target))
+  (cond
+    [(not inst) #f]
+    [else
+     (define σ (match-pred (instance-info-head inst) target))
+     (for/and ([cp (in-list (instance-info-context inst))])
+       (entail? env hypotheses (apply-subst σ cp)))]))
+
+;; Phase 37: pick the most-specific matching instance of `class-name`
+;; for the given `target` predicate.  Returns #f when nothing matches;
+;; raises `exn:fail` with an overlap-explanation when the maximal-
+;; specific set has more than one element (the matches are
+;; incomparable).
+;;
+;; Specificity rule: instance A is *strictly more specific* than B if
+;; `match-pred B.head A.head` succeeds (B can be specialised to A)
+;; but `match-pred A.head B.head` fails (A cannot be specialised
+;; back).  The maximal-specific set is the set of matches that no
+;; other match strictly generalises.
+(define (find-matching-instance env class-name target)
+  (define matches
+    (for/list ([inst (in-list (env-instances env class-name))]
+               #:when (match-pred (instance-info-head inst) target))
+      inst))
+  (cond
+    [(null? matches) #f]
+    [else
+     (define maximal
+       (for/list ([i (in-list matches)]
+                  #:unless (for/or ([j (in-list matches)]
+                                    #:unless (eq? i j))
+                             (strictly-more-specific? j i)))
+         i))
+     (cond
+       [(null? maximal)
+        ;; Mathematically impossible — at least one element of a finite
+        ;; partially-ordered set is always maximal.  Treat as a logic
+        ;; error.
+        (error 'find-matching-instance
+               "no maximal match (internal invariant violated)")]
+       [(> (length maximal) 1)
+        (raise
+         (exn:fail
+          (format "overlapping instances for ~s: ~s"
+                  (pred->datum target)
+                  (for/list ([m (in-list maximal)])
+                    (pred->datum (instance-info-head m))))
+          (current-continuation-marks)))]
+       [else (car maximal)])]))
+
+(define (strictly-more-specific? a b)
+  (and (match-pred (instance-info-head b) (instance-info-head a))
+       (not (match-pred (instance-info-head a) (instance-info-head b)))))
+
+;; Two instance heads are equivalent (α-renaming away) when each
+;; matches the other.  Used at env-extend-instance to detect duplicate
+;; registrations.
+(define (instance-heads-equivalent? h1 h2)
+  (and (match-pred h1 h2) (match-pred h2 h1)))
+
+;; Phase 37: a class has overlap when two of its instances' heads
+;; unify — meaning some concrete target matches both.  This covers
+;; both strictly-more-specific pairs (e.g. (Box a) vs (Box Integer))
+;; and incomparable pairs (e.g. (P2 Integer b) vs (P2 a Integer)).
+;; When overlap exists, all instances of the class compile via the
+;; fingerprint-named static-dispatch path; the runtime dispatch table
+;; isn't reliable because two instances can share the same outer
+;; ctor tag.
+(define (env-class-has-overlap? env class-name)
+  (define insts (env-instances env class-name))
+  (for/or ([i (in-list insts)])
+    (for/or ([j (in-list insts)]
+             #:unless (eq? i j))
+      (heads-unify? (instance-info-head i) (instance-info-head j)))))
+
+(define (heads-unify? h1 h2)
+  (with-handlers ([exn:fail:unify? (lambda (_) #f)])
+    (define args1 (pred-args h1))
+    (define args2 (pred-args h2))
     (cond
-      [(not σ) #f]
+      [(not (= (length args1) (length args2))) #f]
       [else
-       (for/and ([cp (in-list (instance-info-context inst))])
-         (entail? env hypotheses (apply-subst σ cp)))])))
+       (for/fold ([s empty-subst]) ([a (in-list args1)] [b (in-list args2)])
+         (unify (apply-subst s a) (apply-subst s b)))
+       #t])))
 
 ;; ----- context reduction ------------------------------------------
 
