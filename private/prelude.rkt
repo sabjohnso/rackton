@@ -762,12 +762,7 @@
     (define (string-join sep ss) (racket String (sep ss) ""))
 
     ;; --- Numeric helpers --------------------------------------
-
-    (: mod (-> Integer (-> Integer Integer)))
-    (define (mod a b) (racket Integer (a b) 0))
-
-    (: div (-> Integer (-> Integer Integer)))
-    (define (div a b) (racket Integer (a b) 0))
+    ;; `mod` and `div` migrated to the Integral class (Phase 40).
 
     (: abs (-> Integer Integer))
     (define (abs n) (racket Integer (n) 0))
@@ -962,7 +957,11 @@
       (let ([n (length xs)])
         (if (< n 2)
             xs
-            (let ([halves (split-at (div n 2) xs)])
+            ;; Phase 40: was `(div n 2)` when div was a free Integer
+            ;; helper; div is now an Integral class method declared
+            ;; later in the prelude, so we host-escape the quotient
+            ;; here to keep sort's definition order-independent.
+            (let ([halves (split-at (racket Integer (n) 0) xs)])
               (merge-lists (sort (fst halves))
                            (sort (snd halves)))))))
 
@@ -1056,14 +1055,162 @@
     (define-instance (Fractional Float)
       (define (float-div x y) (racket Float (x y) 0.0)))
 
-    (: sqrt (-> Float Float))
-    (define (sqrt x) (racket Float (x) 0.0))
-
     (: integer->float (-> Integer Float))
     (define (integer->float n) (racket Float (n) 0.0))
 
     (: float->integer (-> Float Integer))
     (define (float->integer x) (racket Integer (x) 0))
+
+    (: abs-float (-> Float Float))
+    (define (abs-float x) (racket Float (x) 0.0))
+
+    ;; --- Phase 40: Rational + Complex types -----------------
+
+    (define-data Rational)
+    (define-data Complex)
+
+    (: make-rational (-> Integer (-> Integer Rational)))
+    (define (make-rational n d) (racket Rational (n d) #f))
+
+    (: numerator   (-> Rational Integer))
+    (define (numerator   r) (racket Integer (r) 0))
+
+    (: denominator (-> Rational Integer))
+    (define (denominator r) (racket Integer (r) 1))
+
+    (: make-complex (-> Float (-> Float Complex)))
+    (define (make-complex re im) (racket Complex (re im) #f))
+
+    (: real-part (-> Complex Float))
+    (define (real-part c) (racket Float (c) 0.0))
+
+    (: imag-part (-> Complex Float))
+    (define (imag-part c) (racket Float (c) 0.0))
+
+    (: magnitude (-> Complex Float))
+    (define (magnitude c) (racket Float (c) 0.0))
+
+    ;; Eq / Ord / Show for Rational
+    (define-instance (Eq Rational)
+      (define (== x y) (racket Boolean (x y) #f)))
+    (define-instance (Ord Rational)
+      (define (< x y) (racket Boolean (x y) #f)))
+    (define-instance (Show Rational)
+      (define (show x) (racket String (x) "")))
+
+    ;; Num / Fractional for Rational
+    (define-instance (Num Rational)
+      (define (+ x y) (racket Rational (x y) #f))
+      (define (- x y) (racket Rational (x y) #f))
+      (define (* x y) (racket Rational (x y) #f)))
+    (define-instance (Fractional Rational)
+      (define (float-div x y) (racket Rational (x y) #f)))
+
+    ;; Eq / Show for Complex
+    (define-instance (Eq Complex)
+      (define (== x y) (racket Boolean (x y) #f)))
+    (define-instance (Show Complex)
+      (define (show x) (racket String (x) "")))
+
+    (define-instance (Num Complex)
+      (define (+ x y) (racket Complex (x y) #f))
+      (define (- x y) (racket Complex (x y) #f))
+      (define (* x y) (racket Complex (x y) #f)))
+    (define-instance (Fractional Complex)
+      (define (float-div x y) (racket Complex (x y) #f)))
+
+    ;; --- Phase 40: Integral class ----------------------------
+
+    (define-class ((Num a) => (Integral a))
+      (: div  (-> a (-> a a)))
+      (: mod  (-> a (-> a a)))
+      (: quot (-> a (-> a a)))
+      (: rem  (-> a (-> a a))))
+
+    (define-instance (Integral Integer)
+      (define (div  a b) (racket Integer (a b) 0))
+      (define (mod  a b) (racket Integer (a b) 0))
+      (define (quot a b) (racket Integer (a b) 0))
+      (define (rem  a b) (racket Integer (a b) 0)))
+
+    ;; --- Phase 40: Real class --------------------------------
+
+    (define-class ((Num a) (Ord a) => (Real a))
+      (: to-rational (-> a Rational)))
+
+    (define-instance (Real Integer)
+      (define (to-rational n) (racket Rational (n) #f)))
+    (define-instance (Real Float)
+      (define (to-rational x) (racket Rational (x) #f)))
+    (define-instance (Real Rational)
+      (define (to-rational x) (racket Rational (x) #f)))
+
+    ;; --- Phase 40: Floating class ----------------------------
+
+    (define-class ((Fractional a) => (Floating a))
+      (: pi   a)
+      (: exp  (-> a a))
+      (: log  (-> a a))
+      (: sqrt (-> a a))
+      (: sin  (-> a a))
+      (: cos  (-> a a))
+      (: tan  (-> a a))
+      (: **   (-> a (-> a a))))
+
+    (define-instance (Floating Float)
+      (define pi   (racket Float () 0.0))
+      (define (exp  x)   (racket Float (x)   0.0))
+      (define (log  x)   (racket Float (x)   0.0))
+      (define (sqrt x)   (racket Float (x)   0.0))
+      (define (sin  x)   (racket Float (x)   0.0))
+      (define (cos  x)   (racket Float (x)   0.0))
+      (define (tan  x)   (racket Float (x)   0.0))
+      (define (**   x y) (racket Float (x y) 0.0)))
+
+    (define-instance (Floating Complex)
+      (define pi   (racket Complex () #f))
+      (define (exp  x)   (racket Complex (x)   #f))
+      (define (log  x)   (racket Complex (x)   #f))
+      (define (sqrt x)   (racket Complex (x)   #f))
+      (define (sin  x)   (racket Complex (x)   #f))
+      (define (cos  x)   (racket Complex (x)   #f))
+      (define (tan  x)   (racket Complex (x)   #f))
+      (define (**   x y) (racket Complex (x y) #f)))
+
+    ;; --- Phase 40: RealFrac class ----------------------------
+    ;;
+    ;; Methods are named `*-real` to avoid clashing with potential
+    ;; future Racket-side helpers; the rounding operations all
+    ;; produce Integer regardless of `a`.
+
+    (define-class ((Real a) (Fractional a) => (RealFrac a))
+      (: floor-real    (-> a Integer))
+      (: ceiling-real  (-> a Integer))
+      (: round-real    (-> a Integer))
+      (: truncate-real (-> a Integer)))
+
+    (define-instance (RealFrac Float)
+      (define (floor-real    x) (racket Integer (x) 0))
+      (define (ceiling-real  x) (racket Integer (x) 0))
+      (define (round-real    x) (racket Integer (x) 0))
+      (define (truncate-real x) (racket Integer (x) 0)))
+    (define-instance (RealFrac Rational)
+      (define (floor-real    x) (racket Integer (x) 0))
+      (define (ceiling-real  x) (racket Integer (x) 0))
+      (define (round-real    x) (racket Integer (x) 0))
+      (define (truncate-real x) (racket Integer (x) 0)))
+
+    ;; --- Phase 40: RealFloat class ---------------------------
+
+    (define-class ((RealFrac a) (Floating a) => (RealFloat a))
+      (: is-nan?      (-> a Boolean))
+      (: is-infinite? (-> a Boolean))
+      (: atan2        (-> a (-> a a))))
+
+    (define-instance (RealFloat Float)
+      (define (is-nan?      x)   (racket Boolean (x)   #f))
+      (define (is-infinite? x)   (racket Boolean (x)   #f))
+      (define (atan2        y x) (racket Float   (y x) 0.0)))
 
     ;; --- try / raise-io ------------------------------------
 

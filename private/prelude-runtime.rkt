@@ -191,8 +191,8 @@
  bytes->list list->bytes
  string->bytes bytes->string
 
- ;; Numeric helpers
- mod div abs min max integer->string string->integer
+ ;; Numeric helpers (mod/div migrated to Integral class in Phase 40)
+ abs min max integer->string string->integer
 
  ;; IO
  print println read-line pure-io run-io
@@ -221,7 +221,17 @@
  concat-map group-by
 
  ;; Float
- float-div sqrt integer->float float->integer
+ float-div integer->float float->integer abs-float
+
+ ;; Phase 40: numeric tower
+ make-rational numerator denominator
+ make-complex real-part imag-part magnitude
+ div mod quot rem
+ sqrt exp log sin cos tan **
+ floor-real ceiling-real round-real truncate-real
+ is-nan? is-infinite? atan2
+ |$pi:Float| |$pi:Complex|
+ to-rational
 
  ;; Error handling
  try raise-io
@@ -503,9 +513,8 @@
   (lambda strs (apply rkt:string-append strs)))
 
 ;; ----- Numeric helpers -----------------------------------------
+;; mod / div migrated to the Integral class in Phase 40.
 
-(define/curried (mod a b) (rkt:modulo a b))
-(define/curried (div a b) (rkt:quotient a b))
 (define (abs n) (rkt:abs n))
 (define/curried (min a b) (rkt:min a b))
 (define/curried (max a b) (rkt:max a b))
@@ -907,9 +916,188 @@
 (register-instance-method! $dispatch:float-div 'Float
                            (lambda (x y) (rkt:/ x y)))
 
-(define (sqrt x) (rkt:sqrt x))
 (define (integer->float n) (rkt:exact->inexact n))
 (define (float->integer x) (rkt:inexact->exact (rkt:truncate x)))
+(define (abs-float x) (rkt:abs x))
+
+;; ----- Phase 40: numeric tower ------------------------------
+;;
+;; All four new numeric types build on Racket's built-in numbers:
+;; Rational = exact non-integer rationals, Complex = numbers with
+;; an imaginary part.  Their dispatch tags are added in dict.rkt's
+;; dispatch-tag.
+
+(define/curried (make-rational n d) (rkt:/ n d))
+(define (numerator   r) (rkt:numerator   r))
+(define (denominator r) (rkt:denominator r))
+
+(require (only-in racket/base
+                  [numerator   rkt:numerator]
+                  [denominator rkt:denominator]
+                  [make-rectangular rkt:make-rectangular]
+                  [real-part rkt:real-part]
+                  [imag-part rkt:imag-part]
+                  [magnitude rkt:magnitude]
+                  [expt rkt:expt]
+                  [log rkt:log]
+                  [exp rkt:exp]
+                  [sin rkt:sin]
+                  [cos rkt:cos]
+                  [tan rkt:tan]
+                  [floor rkt:floor]
+                  [ceiling rkt:ceiling]
+                  [round rkt:round]
+                  [exact->inexact rkt:e->i]
+                  [atan rkt:atan]
+                  [remainder rkt:remainder])
+         (only-in racket/math [pi rkt:pi] [nan? rkt:nan?] [infinite? rkt:infinite?]))
+
+(define/curried (make-complex re im) (rkt:make-rectangular re im))
+(define (real-part c) (rkt:real-part c))
+(define (imag-part c) (rkt:imag-part c))
+(define (magnitude c) (rkt:magnitude c))
+
+;; Num / Eq / Ord / Show for Rational + Complex.  The existing
+;; $dispatch:+ / $dispatch:- / etc. tables get new entries.
+(register-instance-method! $dispatch:+ 'Rational (lambda (x y) (rkt:+ x y)))
+(register-instance-method! $dispatch:- 'Rational (lambda (x y) (rkt:- x y)))
+(register-instance-method! $dispatch:* 'Rational (lambda (x y) (rkt:* x y)))
+(register-instance-method! $dispatch:== 'Rational (lambda (x y) (rkt:= x y)))
+(register-instance-method! $dispatch:/= 'Rational (lambda (x y) (not (rkt:= x y))))
+(register-instance-method! $dispatch:<  'Rational (lambda (x y) (rkt:< x y)))
+(register-instance-method! $dispatch:>  'Rational (lambda (x y) (rkt:> x y)))
+(register-instance-method! $dispatch:<= 'Rational (lambda (x y) (rkt:<= x y)))
+(register-instance-method! $dispatch:>= 'Rational (lambda (x y) (rkt:>= x y)))
+(register-instance-method! $dispatch:show 'Rational
+                           (lambda (r)
+                             (format "~a/~a" (rkt:numerator r) (rkt:denominator r))))
+(register-instance-method! $dispatch:float-div 'Rational
+                           (lambda (x y) (rkt:/ x y)))
+
+(register-instance-method! $dispatch:+ 'Complex (lambda (x y) (rkt:+ x y)))
+(register-instance-method! $dispatch:- 'Complex (lambda (x y) (rkt:- x y)))
+(register-instance-method! $dispatch:* 'Complex (lambda (x y) (rkt:* x y)))
+(register-instance-method! $dispatch:== 'Complex (lambda (x y) (rkt:= x y)))
+(register-instance-method! $dispatch:/= 'Complex (lambda (x y) (not (rkt:= x y))))
+(register-instance-method! $dispatch:show 'Complex
+                           (lambda (c) (format "~v" c)))
+(register-instance-method! $dispatch:float-div 'Complex
+                           (lambda (x y) (rkt:/ x y)))
+
+;; ----- Integral class ---------------------------------------
+
+(define $dispatch:div  (make-hasheq))
+(define-class-method div  $dispatch:div  0 2)
+(define $dispatch:mod  (make-hasheq))
+(define-class-method mod  $dispatch:mod  0 2)
+(define $dispatch:quot (make-hasheq))
+(define-class-method quot $dispatch:quot 0 2)
+(define $dispatch:rem  (make-hasheq))
+(define-class-method rem  $dispatch:rem  0 2)
+
+(register-instance-method! $dispatch:div  'Integer
+                           (lambda (a b) (rkt:quotient a b)))
+(register-instance-method! $dispatch:mod  'Integer
+                           (lambda (a b) (rkt:modulo a b)))
+(register-instance-method! $dispatch:quot 'Integer
+                           (lambda (a b) (rkt:quotient a b)))
+(register-instance-method! $dispatch:rem  'Integer
+                           (lambda (a b) (rkt:remainder a b)))
+
+;; ----- Real class -------------------------------------------
+
+(define $dispatch:to-rational (make-hasheq))
+(define-class-method to-rational $dispatch:to-rational 0 1)
+(register-instance-method! $dispatch:to-rational 'Integer
+                           (lambda (n) n))
+(register-instance-method! $dispatch:to-rational 'Float
+                           (lambda (x) (rkt:inexact->exact x)))
+(register-instance-method! $dispatch:to-rational 'Rational
+                           (lambda (x) x))
+
+;; ----- Floating class ---------------------------------------
+
+(define |$pi:Float|   rkt:pi)
+(define |$pi:Complex| (rkt:make-rectangular rkt:pi 0))
+
+(define $dispatch:exp  (make-hasheq))
+(define-class-method exp  $dispatch:exp  0 1)
+(define $dispatch:log  (make-hasheq))
+(define-class-method log  $dispatch:log  0 1)
+(define $dispatch:sqrt (make-hasheq))
+(define-class-method sqrt $dispatch:sqrt 0 1)
+(define $dispatch:sin  (make-hasheq))
+(define-class-method sin  $dispatch:sin  0 1)
+(define $dispatch:cos  (make-hasheq))
+(define-class-method cos  $dispatch:cos  0 1)
+(define $dispatch:tan  (make-hasheq))
+(define-class-method tan  $dispatch:tan  0 1)
+(define $dispatch:**   (make-hasheq))
+(define-class-method **   $dispatch:**   0 2)
+
+(register-instance-method! $dispatch:exp  'Float (lambda (x) (rkt:exp x)))
+(register-instance-method! $dispatch:log  'Float (lambda (x) (rkt:log x)))
+(register-instance-method! $dispatch:sqrt 'Float (lambda (x) (rkt:sqrt x)))
+(register-instance-method! $dispatch:sin  'Float (lambda (x) (rkt:sin x)))
+(register-instance-method! $dispatch:cos  'Float (lambda (x) (rkt:cos x)))
+(register-instance-method! $dispatch:tan  'Float (lambda (x) (rkt:tan x)))
+(register-instance-method! $dispatch:**   'Float (lambda (x y) (rkt:expt x y)))
+
+(register-instance-method! $dispatch:exp  'Complex (lambda (x) (rkt:exp x)))
+(register-instance-method! $dispatch:log  'Complex (lambda (x) (rkt:log x)))
+(register-instance-method! $dispatch:sqrt 'Complex (lambda (x) (rkt:sqrt x)))
+(register-instance-method! $dispatch:sin  'Complex (lambda (x) (rkt:sin x)))
+(register-instance-method! $dispatch:cos  'Complex (lambda (x) (rkt:cos x)))
+(register-instance-method! $dispatch:tan  'Complex (lambda (x) (rkt:tan x)))
+(register-instance-method! $dispatch:**   'Complex (lambda (x y) (rkt:expt x y)))
+
+;; ----- RealFrac class ---------------------------------------
+
+(define $dispatch:floor-real    (make-hasheq))
+(define-class-method floor-real    $dispatch:floor-real    0 1)
+(define $dispatch:ceiling-real  (make-hasheq))
+(define-class-method ceiling-real  $dispatch:ceiling-real  0 1)
+(define $dispatch:round-real    (make-hasheq))
+(define-class-method round-real    $dispatch:round-real    0 1)
+(define $dispatch:truncate-real (make-hasheq))
+(define-class-method truncate-real $dispatch:truncate-real 0 1)
+
+(define (to-int x)
+  (rkt:inexact->exact x))
+
+(register-instance-method! $dispatch:floor-real    'Float
+                           (lambda (x) (to-int (rkt:floor    x))))
+(register-instance-method! $dispatch:ceiling-real  'Float
+                           (lambda (x) (to-int (rkt:ceiling  x))))
+(register-instance-method! $dispatch:round-real    'Float
+                           (lambda (x) (to-int (rkt:round    x))))
+(register-instance-method! $dispatch:truncate-real 'Float
+                           (lambda (x) (to-int (rkt:truncate x))))
+
+(register-instance-method! $dispatch:floor-real    'Rational
+                           (lambda (x) (rkt:floor    x)))
+(register-instance-method! $dispatch:ceiling-real  'Rational
+                           (lambda (x) (rkt:ceiling  x)))
+(register-instance-method! $dispatch:round-real    'Rational
+                           (lambda (x) (rkt:round    x)))
+(register-instance-method! $dispatch:truncate-real 'Rational
+                           (lambda (x) (rkt:truncate x)))
+
+;; ----- RealFloat class --------------------------------------
+
+(define $dispatch:is-nan?      (make-hasheq))
+(define-class-method is-nan?      $dispatch:is-nan?      0 1)
+(define $dispatch:is-infinite? (make-hasheq))
+(define-class-method is-infinite? $dispatch:is-infinite? 0 1)
+(define $dispatch:atan2        (make-hasheq))
+(define-class-method atan2        $dispatch:atan2        0 2)
+
+(register-instance-method! $dispatch:is-nan?      'Float
+                           (lambda (x) (rkt:nan? x)))
+(register-instance-method! $dispatch:is-infinite? 'Float
+                           (lambda (x) (rkt:infinite? x)))
+(register-instance-method! $dispatch:atan2        'Float
+                           (lambda (y x) (rkt:atan y x)))
 
 ;; ----- try / raise-io ---------------------------------------
 

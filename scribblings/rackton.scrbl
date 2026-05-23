@@ -20,7 +20,10 @@
                                bytes->list list->bytes make-bytes
                                bytes->string/utf-8 string->bytes/utf-8
                                string
-                               void when unless)]]
+                               void when unless
+                               exp log sin cos tan
+                               numerator denominator
+                               real-part imag-part magnitude)]]
 
 @title{Rackton}
 @author{sbj}
@@ -2027,6 +2030,50 @@ this with:
   @item{Traversable rejoins the @racket[#:deriving] menu (deferred
         in Phase 38).}
 ]
+
+@section{Numeric tower (Phase 40)}
+
+Phase 40 adds @racket[Rational] and @racket[Complex] types and the
+Haskell-style class hierarchy on top of @racket[Num] / @racket[Fractional]:
+
+@itemlist[
+  @item{@bold{@racket[Rational]} — exact non-integer rationals backed
+        by Racket's exact-rational arithmetic.  Constructed via
+        @racket[(make-rational n d)]; @racket[numerator] /
+        @racket[denominator] extract.  Instances: @racket[Eq],
+        @racket[Ord], @racket[Show], @racket[Num], @racket[Fractional],
+        @racket[Real], @racket[RealFrac].}
+  @item{@bold{@racket[Complex]} — Racket complex numbers over
+        @racket[Float].  Constructed via @racket[(make-complex re im)];
+        @racket[real-part] / @racket[imag-part] / @racket[magnitude].
+        Instances: @racket[Eq], @racket[Show], @racket[Num],
+        @racket[Fractional], @racket[Floating].}
+  @item{@bold{@racket[Integral a]} — @code{(Num a) =>}; methods
+        @racket[div], @racket[mod], @racket[quot], @racket[rem].
+        The previous free-function @racket[div]/@racket[mod] are
+        migrated to this class.  Instance: @racket[Integer].}
+  @item{@bold{@racket[Real a]} — @code{(Num a) (Ord a) =>}; method
+        @racket[to-rational].  Instances: @racket[Integer],
+        @racket[Float], @racket[Rational].}
+  @item{@bold{@racket[Floating a]} — @code{(Fractional a) =>}; methods
+        @racket[pi], @racket[exp], @racket[log], @racket[sqrt],
+        @racket[sin], @racket[cos], @racket[tan], @racket[**].  The
+        previous free-function @racket[sqrt] is migrated here.
+        Instances: @racket[Float], @racket[Complex].}
+  @item{@bold{@racket[RealFrac a]} — @code{(Real a) (Fractional a) =>};
+        methods @racket[floor-real], @racket[ceiling-real],
+        @racket[round-real], @racket[truncate-real] — all producing
+        @racket[Integer].  Instances: @racket[Float], @racket[Rational].}
+  @item{@bold{@racket[RealFloat a]} — @code{(RealFrac a) (Floating a) =>};
+        methods @racket[is-nan?], @racket[is-infinite?],
+        @racket[atan2].  Instance: @racket[Float].}
+]
+
+@racket[dispatch-tag] gains two new cases: exact non-integer rationals
+map to @racket['Rational], non-real numbers map to @racket['Complex].
+Existing arithmetic call sites (@racket[+], @racket[-], @racket[*])
+work on the new types without modification — the @racket[Num]
+instances register through the same dispatch tables.
 
 @section{Not yet supported}
 

@@ -30,7 +30,14 @@
 (define (dispatch-tag v)
   (cond
     [(exact-integer? v) 'Integer]
+    ;; Phase 40: Racket's exact rationals that aren't integers map to
+    ;; Rackton's Rational; non-real numbers (with an imaginary part)
+    ;; map to Complex.  Order matters — integer / rational / float
+    ;; are progressively more general.
+    [(and (rational? v) (exact? v) (not (exact-integer? v)))
+     'Rational]
     [(inexact-real? v)  'Float]
+    [(and (number? v) (not (real? v))) 'Complex]
     [(boolean? v)       'Boolean]
     [(string? v)        'String]
     [(char? v)          'Char]

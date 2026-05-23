@@ -46,7 +46,10 @@
                                   bytes->list list->bytes make-bytes
                                   bytes->string/utf-8 string->bytes/utf-8
                                   string
-                                  void when unless)
+                                  void when unless
+                                  exp log sin cos tan
+                                  numerator denominator
+                                  real-part imag-part magnitude)
                        (except-in racket/match ==)
                        "adt.rkt"
                        "dict.rkt"
