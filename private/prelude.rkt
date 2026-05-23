@@ -864,6 +864,45 @@
     (: recv-chan (-> (Chan a) (IO a)))
     (define (recv-chan ch) (racket (IO a) (ch) #f))
 
+    ;; --- STM (Phase 41) --------------------------------------
+    ;;
+    ;; Optimistic-concurrency software transactional memory.  An
+    ;; STM action is composed monadically; `atomically` runs it
+    ;; against a transaction log, verifies read versions at
+    ;; commit time under a global commit lock, and applies writes
+    ;; or restarts on a version mismatch (or on `retry`).
+
+    (define-data (TVar a))
+    (define-data (STM a))
+
+    (define-instance (Functor STM)
+      (define (fmap f s) (racket (STM b) (f s) #f)))
+
+    (define-instance (Applicative STM)
+      (define (pure x)      (racket (STM a) (x)    #f))
+      (define (<*>  sf sa)  (racket (STM b) (sf sa) #f)))
+
+    (define-instance (Monad STM)
+      (define (>>= s f) (racket (STM b) (s f) #f)))
+
+    (: new-tvar   (-> a (STM (TVar a))))
+    (define (new-tvar v) (racket (STM (TVar a)) (v) #f))
+
+    (: read-tvar  (-> (TVar a) (STM a)))
+    (define (read-tvar tv) (racket (STM a) (tv) #f))
+
+    (: write-tvar (-> (TVar a) (-> a (STM Unit))))
+    (define (write-tvar tv v) (racket (STM Unit) (tv v) #f))
+
+    (: retry (STM a))
+    (define retry (racket (STM a) () #f))
+
+    (: or-else (-> (STM a) (-> (STM a) (STM a))))
+    (define (or-else s1 s2) (racket (STM a) (s1 s2) #f))
+
+    (: atomically (-> (STM a) (IO a)))
+    (define (atomically s) (racket (IO a) (s) #f))
+
     ;; --- File I/O --------------------------------------------
 
     (: read-file    (-> String (IO String)))

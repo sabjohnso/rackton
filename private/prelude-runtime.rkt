@@ -206,6 +206,11 @@
  new-mvar new-empty-mvar take-mvar put-mvar read-mvar modify-mvar
  new-chan send-chan recv-chan
 
+ ;; STM (Phase 41)
+ new-tvar read-tvar write-tvar
+ retry or-else atomically
+ |$pure:STM|
+
  ;; List + Pair helpers
  reverse append zip take drop find sort
  fst snd swap
@@ -759,6 +764,144 @@
 
 (define (recv-chan ch)
   ($io (lambda () (async-channel-get ch))))
+
+;; ----- STM (Phase 41) -----------------------------------------
+;;
+;; TVar is a box + a version counter.  STM is a thunk taking a
+;; transaction log; the log is an equal?-hash from TVar to
+;; (cons value flag) where flag is either 'read (with the version
+;; observed) or 'write.  atomically runs the thunk against a fresh
+;; log; on commit, takes a global lock, verifies all read versions
+;; still match each TVar's current version, applies writes (bumping
+;; versions), and returns the result.  Mismatch → retry the whole
+;; transaction.
+
+(struct $tvar (cell version-box) #:transparent)
+(struct $stm  (thunk)             #:transparent)
+
+(define $stm-retry-sentinel (gensym 'stm-retry))
+(define (stm-retry?-exn? e) (eq? e $stm-retry-sentinel))
+
+(define $atomically-lock (make-semaphore 1))
+
+;; Log entries: a TVar maps to (list 'read   value version)
+;;                          OR (list 'write  value version-observed-on-first-read-or-#f)
+;; A TVar that's first read then written transitions read→write.
+
+(define (log-read! log tv)
+  (define existing (hash-ref log tv #f))
+  (cond
+    [existing (cadr existing)]   ;; current logged value
+    [else
+     (define v   (unbox ($tvar-cell tv)))
+     (define ver (unbox ($tvar-version-box tv)))
+     (hash-set! log tv (list 'read v ver))
+     v]))
+
+(define (log-write! log tv v)
+  (define existing (hash-ref log tv #f))
+  (cond
+    [existing
+     (define mode (car existing))
+     (define obs-ver (caddr existing))
+     (hash-set! log tv (list 'write v obs-ver))]
+    [else
+     (hash-set! log tv (list 'write v #f))]))
+
+(define (new-tvar v)
+  ($stm (lambda (_log)
+          ($tvar (box v) (box 0)))))
+
+(define (read-tvar tv)
+  ($stm (lambda (log) (log-read! log tv))))
+
+(define/curried (write-tvar tv v)
+  ($stm (lambda (log) (log-write! log tv v) MkUnit)))
+
+(define retry
+  ($stm (lambda (_log) (raise $stm-retry-sentinel))))
+
+(define/curried (or-else s1 s2)
+  ($stm (lambda (log)
+          (with-handlers ([stm-retry?-exn?
+                           (lambda (_)
+                             ;; First branch retried — fall through.
+                             (($stm-thunk s2) log))])
+            (($stm-thunk s1) log)))))
+
+(define (atomically stm)
+  ($io (lambda ()
+         (let loop ()
+           (define log (make-hash))
+           (define result-box (box #f))
+           (define retried?
+             (with-handlers ([stm-retry?-exn? (lambda (_) #t)])
+               (set-box! result-box (($stm-thunk stm) log))
+               #f))
+           (cond
+             [retried? (loop)]
+             [else
+              ;; Commit: acquire global lock; verify read versions;
+              ;; apply writes (bumping versions); release.
+              (semaphore-wait $atomically-lock)
+              (define all-ok?
+                (for/and ([(tv entry) (in-hash log)])
+                  (define mode    (car entry))
+                  (define obs-ver (caddr entry))
+                  ;; 'write entries with no observed version (never
+                  ;; read) skip the check; otherwise the observed
+                  ;; version must still match the TVar's current.
+                  (cond
+                    [(eq? mode 'read)
+                     (= (unbox ($tvar-version-box tv)) obs-ver)]
+                    [(and (eq? mode 'write) (number? obs-ver))
+                     (= (unbox ($tvar-version-box tv)) obs-ver)]
+                    [else #t])))
+              (cond
+                [all-ok?
+                 (for ([(tv entry) (in-hash log)])
+                   (define mode (car entry))
+                   (define v    (cadr entry))
+                   (when (eq? mode 'write)
+                     (set-box! ($tvar-cell tv) v)
+                     (set-box! ($tvar-version-box tv)
+                               (+ 1 (unbox ($tvar-version-box tv))))))
+                 (semaphore-post $atomically-lock)
+                 (unbox result-box)]
+                [else
+                 (semaphore-post $atomically-lock)
+                 (loop)])])))))
+
+;; STM Functor / Applicative / Monad — register against the
+;; runtime dispatch tables on the STM ctor tag.
+
+(define (stm-fmap f s)
+  ($stm (lambda (log) (f (($stm-thunk s) log)))))
+(register-instance-method! $dispatch:fmap '$stm stm-fmap)
+
+(define (stm-pure x) ($stm (lambda (_log) x)))
+(define (stm-ap sf sa)
+  ($stm (lambda (log)
+          (define f (($stm-thunk sf) log))
+          (define a (($stm-thunk sa) log))
+          (f a))))
+(define (stm-liftA2 g sa sb)
+  ($stm (lambda (log)
+          (define a (($stm-thunk sa) log))
+          (define b (($stm-thunk sb) log))
+          (g a b))))
+(define (stm-bind s f)
+  ($stm (lambda (log)
+          (define a (($stm-thunk s) log))
+          (($stm-thunk (f a)) log))))
+
+;; STM's pure is return-typed, so register via the impl-name path.
+(define |$pure:STM| stm-pure)
+(register-pure-impl! '$stm |$pure:STM|)
+
+(register-instance-method! $dispatch:<*>    '$stm stm-ap)
+(register-instance-method! $dispatch:liftA2 '$stm stm-liftA2)
+(register-instance-method! $dispatch:>>=    '$stm stm-bind)
 
 ;; ----- File I/O ------------------------------------------------
 

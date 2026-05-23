@@ -2075,6 +2075,61 @@ Existing arithmetic call sites (@racket[+], @racket[-], @racket[*])
 work on the new types without modification — the @racket[Num]
 instances register through the same dispatch tables.
 
+@section{Software transactional memory (Phase 41)}
+
+Phase 41 adds optimistic-concurrency STM on top of Racket's threads
+and semaphores.  Two new opaque types:
+
+@itemlist[
+  @item{@racket[(TVar a)] — a versioned transactional variable.}
+  @item{@racket[(STM a)] — a monadic STM computation.  Has
+        @racket[Functor], @racket[Applicative], @racket[Monad]
+        instances, so @racket[do]-notation composes STM blocks.}
+]
+
+Core surface:
+
+@codeblock|{
+(: counter-example (IO Integer))
+(define counter-example
+  (do [tv  <- (atomically (new-tvar 0))]
+      [t1  <- (fork-io (atomically (increment-tvar tv)))]
+      [t2  <- (fork-io (atomically (increment-tvar tv)))]
+      [_   <- (wait-thread t1)]
+      [_   <- (wait-thread t2)]
+    (atomically (read-tvar tv))))
+}|
+
+@itemlist[
+  @item{@racket[(new-tvar v)] — create a TVar starting at @racket[v].}
+  @item{@racket[(read-tvar tv)] / @racket[(write-tvar tv v)] —
+        log a read or write of @racket[tv] in the current
+        transaction.}
+  @item{@racket[retry] — abort and restart the enclosing
+        @racket[atomically].}
+  @item{@racket[(or-else s1 s2)] — try @racket[s1]; if it retries,
+        fall back to @racket[s2].}
+  @item{@racket[(atomically s)] — run an STM transaction.  On
+        commit, takes a global lock, verifies every logged read
+        version still matches the TVar's current version, applies
+        writes (bumping versions), and returns.  Mismatch ⇒ retry
+        the entire transaction.}
+]
+
+@bold{Concurrency model.}  Optimistic: transactions accumulate a
+log of reads (with observed versions) and writes (queued values).
+The commit step is the only synchronization point — a single
+global semaphore serializes commits.  This gives full
+serializability with low contention for transactions that touch
+disjoint TVars; contended TVars cause retries.
+
+@bold{Out of scope:}
+@itemlist[
+  @item{Blocking @racket[retry] (waiting for a read TVar to change
+        before retrying) — current implementation busy-loops.}
+  @item{Nested @racket[atomically] — flatten manually for now.}
+]
+
 @section{Not yet supported}
 
 Overlapping instances, kind polymorphism (kind variables), threads /
