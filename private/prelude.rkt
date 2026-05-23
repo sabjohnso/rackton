@@ -903,6 +903,29 @@
     (: atomically (-> (STM a) (IO a)))
     (define (atomically s) (racket (IO a) (s) #f))
 
+    ;; --- Concurrent class (Phase 43) -------------------------
+    ;;
+    ;; `Future a` is a handle to a forked computation's result.
+    ;; `Concurrent m` abstracts fork/await/yield across monads.
+    ;; The Concurrent IO instance is the only one provided here;
+    ;; future phases may add STM (transactional) or Mock (pure-
+    ;; time-step) instances.
+
+    (define-data (Future a))
+
+    (define-class ((Monad m) => (Concurrent (m :: (-> * *))))
+      (: fork-c   (-> (m a) (m (Future a))))
+      (: await-c  (-> (Future a) (m a)))
+      (: yield-c  (m Unit)))
+
+    (define-instance (Concurrent IO)
+      (define (fork-c io)
+        (racket (IO (Future a)) (io)    #f))
+      (define (await-c fut)
+        (racket (IO a)          (fut)   #f))
+      (define yield-c
+        (racket (IO Unit)       ()      #f)))
+
     ;; --- File I/O --------------------------------------------
 
     (: read-file    (-> String (IO String)))

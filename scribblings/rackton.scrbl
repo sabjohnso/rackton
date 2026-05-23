@@ -2159,6 +2159,57 @@ no instance for (Showable String)
         the search candidates.}
 ]
 
+@section{Polymorphic Concurrent class (Phase 43)}
+
+Phase 36's @racket[fork-io] and friends are anchored to IO.  Phase 43
+introduces a polymorphic @racket[Concurrent] class so the same
+concurrency idiom (fork two computations, await both) can be written
+once and run against any monad with a Concurrent instance:
+
+@codeblock|{
+(: par-pair ((Concurrent m) => (-> (m a) (-> (m b) (m (Pair a b))))))
+(define (par-pair ma mb)
+  (do [fa <- (fork-c ma)]
+      [fb <- (fork-c mb)]
+      [a  <- (await-c fa)]
+      [b  <- (await-c fb)]
+    (pure (MkPair a b))))
+}|
+
+@itemlist[
+  @item{@racket[(Future a)] — opaque handle to a forked
+        computation's eventual result.  The IO instance backs it
+        with an @racket[MVar a].}
+  @item{@racket[(Concurrent (m :: (-> * *)))] — class with
+        superclass @racket[Monad m], three methods:
+        @racket[fork-c] (positional on the @racket[(m a)] action),
+        @racket[await-c] (return-typed), @racket[yield-c]
+        (return-typed value).}
+  @item{@racket[(Concurrent IO)] instance — @racket[fork-c] spawns
+        a Racket thread that puts its result to an MVar wrapped as
+        a @racket[Future]; @racket[await-c] reads the MVar non-
+        destructively (re-posting the filled semaphore) so multiple
+        awaiters can read; @racket[yield-c] does a zero-delay sleep
+        to surrender the scheduler.}
+]
+
+A small concurrency-classes infra fix shipped alongside:
+@racket[instance-needs-dict?] now also checks that the instance's
+qual context carries tvars, not just return-typed-bearing classes.
+@racket[(Concurrent IO) :- (Monad IO)] has a fully-concrete
+@racket[Monad IO] qual and so doesn't need compile-time
+inst-dispatch routing — the existing return-typed
+@code{$method:Tcon} resolution suffices.
+
+@bold{Out of scope:}
+@itemlist[
+  @item{STM instance — atomic transactions don't have a meaningful
+        @racket[fork-c] semantics; would need a different class
+        hierarchy.}
+  @item{Pure / Mock instance for deterministic tests — would be
+        nice but unrelated to the polymorphism win.}
+]
+
 @section{Not yet supported}
 
 Overlapping instances, kind polymorphism (kind variables), threads /

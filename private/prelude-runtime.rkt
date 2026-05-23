@@ -211,6 +211,9 @@
  retry or-else atomically
  |$pure:STM|
 
+ ;; Concurrent (Phase 43)
+ fork-c |$await-c:IO| |$yield-c:IO|
+
  ;; List + Pair helpers
  reverse append zip take drop find sort
  fst snd swap
@@ -902,6 +905,46 @@
 (register-instance-method! $dispatch:<*>    '$stm stm-ap)
 (register-instance-method! $dispatch:liftA2 '$stm stm-liftA2)
 (register-instance-method! $dispatch:>>=    '$stm stm-bind)
+
+;; ----- Concurrent class + Future (Phase 43) -----------------
+;;
+;; Future a is a thin wrapper around an MVar a; the Concurrent IO
+;; instance spawns a thread that runs the IO action and puts its
+;; result, so await-c can read.
+
+(struct $future (mvar) #:transparent)
+
+;; fork-c is positional (dispatches on the (m a) arg).  await-c
+;; and yield-c are return-typed (m appears only in the return), so
+;; the inferer resolves them at compile time to `$method:Tcon`
+;; globals that must be defined here.
+
+(define $dispatch:fork-c  (make-hasheq))
+(define-class-method fork-c  $dispatch:fork-c  0 1)
+
+(define (fork-c-io io)
+  ($io (lambda ()
+         (define m ($mvar (box #f) (make-semaphore 0) (make-semaphore 1)))
+         (thread (lambda ()
+                   (define v (run-io io))
+                   (semaphore-wait ($mvar-empty m))
+                   (set-box! ($mvar-cell m) v)
+                   (semaphore-post ($mvar-filled m))))
+         ($future m))))
+
+(define (await-c-io fut)
+  ($io (lambda ()
+         (define m ($future-mvar fut))
+         (semaphore-wait ($mvar-filled m))
+         (define v (unbox ($mvar-cell m)))
+         ;; Re-post filled so multiple awaiters can all read.
+         (semaphore-post ($mvar-filled m))
+         v)))
+
+(register-instance-method! $dispatch:fork-c  '$io fork-c-io)
+
+(define |$await-c:IO| await-c-io)
+(define |$yield-c:IO| ($io (lambda () (sleep 0) MkUnit)))
 
 ;; ----- File I/O ------------------------------------------------
 

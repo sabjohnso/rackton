@@ -1477,8 +1477,17 @@
     (instance-needs-dict? env inst)))
 
 (define (instance-needs-dict? env inst)
+  ;; Phase 43: an instance is genuinely needs-dict (in the sense
+  ;; that compile-instance emits a `(define $method:Tcon impl)`
+  ;; with dict-arg lambda params) only when the qual context's
+  ;; return-typed-bearing constraints involve tvars.  If the qual
+  ;; is fully concrete (e.g. `(Concurrent IO) :- (Monad IO)` —
+  ;; concrete IO), the body resolves to global impl names directly
+  ;; and runtime-table registration is used.
   (for/or ([c (in-list (instance-info-context inst))])
-    (class-has-return-typed-methods? env (pred-class c))))
+    (and (class-has-return-typed-methods? env (pred-class c))
+         (for/or ([a (in-list (pred-args c))])
+           (not (set-empty? (type-vars a)))))))
 
 ;; Stash a Phase-20 dict-requiring-method entry under `stx`.  The
 ;; entry shape is `(list 'dict method-name dict-entries)` where each
