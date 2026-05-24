@@ -2448,15 +2448,53 @@ each one.
         compose with traversal-based code.}
 ]
 
-@bold{Out of scope:}
+@bold{Out of scope (rolled in by Phase 49 or still deferred):}
 @itemlist[
-  @item{Auto-deriving prisms for @racket[define-data] constructors.}
+  @item{Auto-deriving prisms for @racket[define-data] constructors —
+        Phase 49.}
   @item{Indexed traversals.}
   @item{@code{Fold s a} / @racket[foldMapOf]-style folds — could be
         a separate type.}
   @item{Cross-kind composition (Prism × Lens etc.) — would need a
         unified ``Optic'' abstraction.}
 ]
+
+@section{Auto-derived prisms (Phase 49)}
+
+@racket[define-data] gains @racket[#:deriving Prism] support.  Each
+0-arg or 1-arg constructor produces a named prism @code{T-Ctor-prism}.
+
+@codeblock|{
+(define-data (Opt a)
+  Absent
+  (Present a)
+  #:deriving Prism)
+
+(preview Opt-Absent-prism Absent)         ;; → (Some MkUnit)
+(preview Opt-Absent-prism (Present 7))    ;; → None
+(review  Opt-Absent-prism MkUnit)         ;; → Absent
+
+(preview Opt-Present-prism (Present 7))   ;; → (Some 7)
+(review  Opt-Present-prism 99)            ;; → (Present 99)
+}|
+
+For each constructor:
+
+@itemlist[
+  @item{@bold{0-arg ctor @code{Foo}} → @code{T-Foo-prism :: (Prism T Unit)}.
+        @racket[preview] returns @code{(Some MkUnit)} when the
+        scrutinee is @code{Foo}, @code{None} otherwise; @racket[review]
+        ignores its @racket[Unit] argument and produces @code{Foo}.}
+  @item{@bold{1-arg ctor @code{Foo}} → @code{T-Foo-prism :: (Prism T fieldT)}.
+        @racket[preview] extracts the field; @racket[review] is the
+        constructor itself (Phase 17 auto-curry covers the partial
+        application).}
+  @item{@bold{N≥2-arg ctors} are silently skipped — a tuple-focused
+        prism would need product encoding we don't offer here.}
+]
+
+@racket[Prism] deriving rejects @racket[define-struct] (single-ctor
+record); the error message suggests @racket[Lens] instead.
 
 @section{Not yet supported}
 

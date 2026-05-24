@@ -620,6 +620,77 @@
                 (list (top:def 'mempty empty-body stx))
                 stx))
 
+;; ----- Prism deriving (Phase 49) --------------------------------
+;; For each constructor of a multi-ctor ADT, emit a top-level prism
+;; definition.  Arity-0 ctors get a `(Prism T Unit)`; arity-1 ctors
+;; get a `(Prism T fieldT)`.  Arity ≥ 2 ctors are silently skipped
+;; (a tuple-focused prism would need a product encoding we don't
+;; offer in this phase).
+(define (synthesize-prism-defs tname tparams ctors ctx-stx)
+  (apply append
+         (for/list ([c (in-list ctors)])
+           (define name (data-ctor-name c))
+           (define arity (length (data-ctor-field-types c)))
+           (cond
+             [(= arity 0) (list (synth-prism-0-arg tname name ctors ctx-stx))]
+             [(= arity 1) (list (synth-prism-1-arg tname name ctors ctx-stx))]
+             [else '()]))))
+
+(define (synth-prism-0-arg tname ctor-name all-ctors ctx-stx)
+  (define lens-name (string->symbol (format "~a-~a-prism" tname ctor-name)))
+  (define extractor
+    (e:lam '(s)
+           (e:match
+            (e:var 's (fresh-stx ctx-stx))
+            (list (clause (p:ctor ctor-name '() ctx-stx) #f
+                          (e:app (e:var 'Some (fresh-stx ctx-stx))
+                                 (list (e:var 'MkUnit (fresh-stx ctx-stx)))
+                                 (fresh-stx ctx-stx))
+                          ctx-stx)
+                  ;; Always emit a wildcard fallback even when the
+                  ;; type has just one ctor — keeps the match
+                  ;; well-formed without consulting exhaustiveness.
+                  (clause (p:wild ctx-stx) #f
+                          (e:var 'None (fresh-stx ctx-stx))
+                          ctx-stx))
+            #f ctx-stx)
+           (fresh-stx ctx-stx)))
+  (define builder
+    (e:lam '(_)
+           (e:var ctor-name (fresh-stx ctx-stx))
+           (fresh-stx ctx-stx)))
+  (top:def lens-name
+           (e:app (e:var 'MkPrism (fresh-stx ctx-stx))
+                  (list extractor builder)
+                  (fresh-stx ctx-stx))
+           ctx-stx))
+
+(define (synth-prism-1-arg tname ctor-name all-ctors ctx-stx)
+  (define lens-name (string->symbol (format "~a-~a-prism" tname ctor-name)))
+  (define extractor
+    (e:lam '(s)
+           (e:match
+            (e:var 's (fresh-stx ctx-stx))
+            (list (clause (p:ctor ctor-name (list (p:var 'x ctx-stx))
+                                  ctx-stx) #f
+                          (e:app (e:var 'Some (fresh-stx ctx-stx))
+                                 (list (e:var 'x (fresh-stx ctx-stx)))
+                                 (fresh-stx ctx-stx))
+                          ctx-stx)
+                  (clause (p:wild ctx-stx) #f
+                          (e:var 'None (fresh-stx ctx-stx))
+                          ctx-stx))
+            #f ctx-stx)
+           (fresh-stx ctx-stx)))
+  ;; Builder is just a reference to the ctor — auto-curry makes
+  ;; `(Foo x)` and `Foo` interchangeable for arity-1 ctors.
+  (define builder (e:var ctor-name (fresh-stx ctx-stx)))
+  (top:def lens-name
+           (e:app (e:var 'MkPrism (fresh-stx ctx-stx))
+                  (list extractor builder)
+                  (fresh-stx ctx-stx))
+           ctx-stx))
+
 (define (synthesize-show-instance tname tparams ctors stx)
   (define head-ty (data-head-type-ast tname tparams stx))
   (define ctx (for/list ([p (in-list tparams)])
@@ -1192,9 +1263,17 @@
               (list (synthesize-semigroup-instance tname tparams ctors ctx-stx))]
              [(Monoid)
               (list (synthesize-monoid-instance tname tparams ctors ctx-stx))]
+             [(Prism)
+              (cond
+                [(eq? kind-tag 'define-struct)
+                 (raise-syntax-error kind-tag
+                   "cannot derive Prism for define-struct (single-ctor record) — use Lens instead"
+                   err-stx)]
+                [else
+                 (synthesize-prism-defs tname tparams ctors ctx-stx)])]
              [else
               (raise-syntax-error kind-tag
-                (format "cannot derive ~s — supported: Eq, Ord, Show, Functor, Foldable, Traversable, Bifunctor, Semigroup, Monoid" cls)
+                (format "cannot derive ~s — supported: Eq, Ord, Show, Functor, Foldable, Traversable, Bifunctor, Semigroup, Monoid, Prism" cls)
                 err-stx)]))))
 
 ;; ----- records: define-struct ---------------------------------------
