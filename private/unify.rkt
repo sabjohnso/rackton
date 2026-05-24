@@ -50,7 +50,49 @@
     [((tcon c) (tcon c))     empty-subst]
     [((tapp h1 args1) (tapp h2 args2))
      (unify-tapp h1 args1 h2 args2 σ τ)]
+    [((tforall vs1 b1) (tforall vs2 b2))
+     ;; Phase 51: alpha-equivalent unification of two polymorphic
+     ;; types.  Same arity required; rename one side's bound vars
+     ;; to fresh names, then unify the bodies.  The result subst
+     ;; must not mention either side's bound vars — if it does,
+     ;; the types weren't really equivalent (one side leaked a
+     ;; bound var) and we reject.
+     (cond
+       [(not (= (length vs1) (length vs2)))
+        (raise-unify! 'arity σ τ)]
+       [else
+        (define fresh
+          (for/list ([v (in-list vs1)])
+            (gensym (format "$alpha.~a." v))))
+        (define s1 (alpha-rename vs1 fresh b1))
+        (define s2 (alpha-rename vs2 fresh b2))
+        (define θ (unify s1 s2))
+        (define escapes? (escapes-fresh? θ fresh))
+        (cond
+          [escapes? (raise-unify! 'escape σ τ)]
+          [else θ])])]
     [(_ _) (raise-unify! 'mismatch σ τ)]))
+
+;; Build a fresh-renaming substitution from a list of bound vars to
+;; a list of fresh names, then apply to the body — returns the
+;; renamed body.  Used by alpha-equivalent unification of tforalls.
+(define (alpha-rename old-vars new-names body)
+  (define s
+    (for/fold ([s empty-subst]) ([o (in-list old-vars)]
+                                  [n (in-list new-names)])
+      (subst-extend s o (tvar n))))
+  (apply-subst s body))
+
+;; A unifier escapes its tforall scope if either its domain or its
+;; image references one of the fresh-rename names — that would mean
+;; a free tvar on one side got pinned to a bound var on the other.
+(define (escapes-fresh? θ fresh)
+  (define fresh-set (list->seteq fresh))
+  (for/or ([(k v) (in-hash θ)])
+    (or (set-member? fresh-set k)
+        (set-member? (type-vars v) k)
+        (for/or ([f (in-list fresh)])
+          (set-member? (type-vars v) f)))))
 
 ;; Unify two flat type applications, allowing for arity mismatches by
 ;; peeling off arguments from the right.  This is what lets `(c a)`

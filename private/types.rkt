@@ -19,6 +19,7 @@
 (provide (struct-out tvar)
          (struct-out tcon)
          (struct-out tapp)
+         (struct-out tforall)
          (struct-out scheme)
          (struct-out qual)
          (struct-out pred)
@@ -72,6 +73,12 @@
 (struct tcon   (name)       #:transparent)
 (struct tapp   (head args)  #:transparent)
 (struct scheme (vars body)  #:transparent)
+;; Phase 51: a polymorphic type embedded inside a larger type.
+;; `(tforall vars body)` reads "∀vars. body" and may appear in any
+;; type-level position (most usefully a function's argument type for
+;; rank-N).  This is distinct from `scheme`, which only lives at the
+;; top of env entries and never embeds.
+(struct tforall (vars body) #:transparent)
 
 ;; A class predicate, e.g. (Eq a) or (Ord Integer).
 (struct pred   (class args) #:transparent)
@@ -97,7 +104,7 @@
 (struct qual   (constraints body) #:transparent)
 
 (define (type? v)
-  (or (tvar? v) (tcon? v) (tapp? v)))
+  (or (tvar? v) (tcon? v) (tapp? v) (tforall? v)))
 
 (define (mqual constraints body)
   (cond
@@ -158,7 +165,11 @@
     [(pred _ args)   (for/fold ([acc (seteq)]) ([a (in-list args)])
                        (set-union acc (type-vars a)))]
     [(qual cs body)  (for/fold ([acc (type-vars body)]) ([c (in-list cs)])
-                       (set-union acc (type-vars c)))]))
+                       (set-union acc (type-vars c)))]
+    [(tforall vs body)
+     ;; Phase 51: a tforall's quantified vars are bound there and
+     ;; don't count as free in the surrounding type.
+     (set-subtract (type-vars body) (list->seteq vs))]))
 
 ;; The free type variables of a single predicate, exposed for callers
 ;; that don't want to dispatch through `type-vars`.
@@ -205,7 +216,15 @@
                                 (apply-subst s a)))]
        [(qual cs body)
         (mqual (for/list ([c (in-list cs)]) (apply-subst s c))
-               (apply-subst s body))])]))
+               (apply-subst s body))]
+       [(tforall vs body)
+        ;; Phase 51: a tforall's bound vars shadow `s`.  Drop the
+        ;; bound vars from `s` before recursing, matching the way
+        ;; `scheme` handles substitution.
+        (define s*
+          (for/fold ([acc s]) ([v (in-list vs)])
+            (hash-remove acc v)))
+        (tforall vs (apply-subst s* body))])]))
 
 (define (apply-subst/scheme s sch)
   (match sch
@@ -239,7 +258,9 @@
     [(tapp h args)
      `(,(type->datum h) ,@(map type->datum args))]
     [(qual cs body)
-     `(,@(map pred->datum cs) => ,(type->datum body))]))
+     `(,@(map pred->datum cs) => ,(type->datum body))]
+    [(tforall vs body)
+     `(All ,vs ,(type->datum body))]))
 
 (define (pred->datum p)
   (match p

@@ -2563,11 +2563,56 @@ discharged at use; mismatches surface as a typecheck error.
 (pair-eq 7 "hi")   ;; rejected: type-equality fails Integer ≠ String
 }|
 
+@section{Higher-rank polymorphism (Phase 51)}
+
+Phase 51 lifts the type system to full rank-N: a function may
+declare a parameter whose type is itself polymorphic, and call
+that parameter at several distinct concrete types inside the
+same body.  The classic rank-2 idiom is a function that takes a
+polymorphic identity and uses it at two unrelated types:
+
+@codeblock|{
+(: pair-id (-> (All (a) (-> a a)) (Pair Integer String)))
+(define (pair-id f)
+  (MkPair (f 7) (f "hi")))
+
+(pair-id (lambda (x) x))    ;; ok
+}|
+
+In a rank-1 system the parameter @racket[f] would receive type
+@code{(-> α α)} for a single fresh @racket[α], and the second
+call site would fail to typecheck.  Under rank-N, @racket[f] keeps
+its polymorphic type at the binding site and is instantiated
+separately at each use.
+
+The three moving parts:
+
+@itemlist[
+  @item{@bold{@racket[tforall] internal type}.  Types now carry
+        embedded polymorphism: any type-level @racket[(All ...)]
+        outside a top-level scheme position is preserved as a
+        @racket[tforall] rather than flattened.}
+  @item{@bold{Bidirectional check at applications}.  When a
+        function's arrow domain at the next argument position is a
+        @racket[tforall], the argument is type-CHECKED against the
+        polymorphic type rather than inferred.  Checking pushes
+        skolems for the universals into env, so the argument's
+        body must actually inhabit the polymorphic type.}
+  @item{@bold{Per-use instantiation}.  When an @racket[e:var]
+        lookup yields a top-level @racket[tforall] type, the
+        quantified vars become fresh tvars at each occurrence —
+        what makes @racket[(f 7)] and @racket[(f "hi")] work in
+        the same body.}
+]
+
+Soundness is preserved by the check-mode skolemization: passing a
+@code{(lambda (x) 42)} where @code{(All (a) (-> a a))} is expected
+is rejected because the lambda's body has type @code{Integer},
+incompatible with the skolemized @code{a}.
+
 @section{Not yet supported}
 
-Larger directions still open: full higher-rank polymorphism with
-@racket[forall] in nested arrow positions (currently only rank-1
-declarations are honoured),
+Larger directions still open:
 polymorphic record updates (curly-brace update syntax),
 module-level type-class coherence and sealed abstract types,
 algebraic effects / handlers, performance optimization (codegen

@@ -137,6 +137,10 @@
 
 ;; Instantiate a scheme.  If the body is a qualified type, the constraints
 ;; are added to the running pred-box and the bare type is returned.
+;; Phase 51: also strips a top-level `tforall` from the body — the
+;; quantified vars become fresh tvars, the same way scheme-bound vars
+;; do.  This lets `(f 7)` typecheck when `f` was bound at a tforall
+;; type by some outer rank-N declaration.
 (define (instantiate sch)
   (define raw
     (match sch
@@ -146,11 +150,87 @@
          (for/fold ([s empty-subst]) ([v (in-list vs)])
            (subst-extend s v (fresh-tvar v))))
        (apply-subst s body)]))
+  (define unforalled (instantiate-tforall raw))
   (cond
-    [(qual? raw)
-     (add-preds! (qual-constraints raw))
-     (qual-body raw)]
-    [else raw]))
+    [(qual? unforalled)
+     (add-preds! (qual-constraints unforalled))
+     (instantiate-tforall (qual-body unforalled))]
+    [else unforalled]))
+
+;; Phase 51: strip any leading `tforall` from a type, replacing each
+;; bound var with a fresh tvar.  Non-`tforall` types pass through.
+;; Only the OUTERMOST tforall is unwrapped — nested tforalls (e.g.
+;; the argument of a rank-2 function) stay intact so they can carry
+;; their polymorphism into argument positions.
+(define (instantiate-tforall t)
+  (match t
+    [(tforall vs body)
+     (define s
+       (for/fold ([s empty-subst]) ([v (in-list vs)])
+         (subst-extend s v (fresh-tvar v))))
+     (instantiate-tforall (apply-subst s body))]
+    [_ t]))
+
+;; Phase 51: bidirectional check companion to `infer-expr`.
+;; Checks that `expr` has type `expected-ty` under `env`, returning
+;; the same shape `(values subst type)` that `infer-expr` does.
+;; Three cases steer the work:
+;;   - expected is `(tforall vs body)`: skolemize the bound vars to
+;;     fresh refinable-skolem tcons, then check `expr` against the
+;;     skolemized body.  This is what unblocks rank-N: a caller can
+;;     pass `(lambda (x) x)` where `(All (a) (-> a a))` is expected
+;;     and the lambda's parameter gets the skolem type as its env
+;;     binding, so a downstream `(f 7)` is REJECTED (good — the
+;;     polymorphic function isn't allowed to specialize to Integer
+;;     at the wrong site).
+;;   - expected is an arrow AND expr is a lambda: push the declared
+;;     argument types into env and check the body against the
+;;     codomain.  Generalizes the phase-50 trick for top-level def.
+;;   - otherwise: fall back to `infer-expr` and unify the result
+;;     with `expected-ty`.
+(define (check-expr expr env expected-ty)
+  (cond
+    [(tforall? expected-ty)
+     (match-define (tforall vs body) expected-ty)
+     (define s-skol
+       (for/fold ([s empty-subst]) ([v (in-list vs)])
+         (subst-extend s v (tcon (gensym (format "$skolem.~a." v))))))
+     (check-expr expr env (apply-subst s-skol body))]
+    [(and (arrow? expected-ty) (e:lam? expr))
+     (match-define (e:lam params body _) expr)
+     (define-values (arg-tys cod)
+       (unfold-arrow-checked expected-ty (length params) expr))
+     (define env*
+       (for/fold ([e env]) ([p (in-list params)] [t (in-list arg-tys)])
+         (env-extend-var e p (scheme '() t))))
+     (define-values (s-body t-body) (check-expr body env* cod))
+     (values s-body
+             (foldr make-arrow t-body
+                    (for/list ([t (in-list arg-tys)])
+                      (apply-subst s-body t))))]
+    [else
+     (define-values (s t) (infer-expr expr env))
+     (define s-u
+       (with-handlers
+        ([exn:fail:unify?
+          (lambda (_)
+            (raise-type-mismatch! (expr-stx expr)
+                                  expected-ty
+                                  (apply-subst s t)))])
+        (unify (apply-subst s t) expected-ty)))
+     (values (subst-compose s-u s) (apply-subst s-u t))]))
+
+;; Like `unfold-arrow` but raises a friendly typecheck error rather
+;; than an internal exception when the expected arrow has fewer
+;; arrows than the lambda has params.
+(define (unfold-arrow-checked t n stx)
+  (cond
+    [(decl-arrow-depth-ge? t n) (unfold-arrow t n)]
+    [else
+     (raise-syntax-error 'infer
+       (format "expected type ~a has fewer arrows than the lambda has params"
+               (pretty-type t))
+       (expr-stx stx))]))
 
 ;; Like `instantiate` but also returns the substitution it built so
 ;; callers can recover the fresh tvar that replaced any specific
@@ -623,7 +703,12 @@
     [(ty:app h args _)
      (make-tapp (resolve-type h)
                 (for/list ([a (in-list args)]) (resolve-type a)))]
-    [(ty:forall _ body _) (resolve-type body)]
+    [(ty:forall vs body _)
+     ;; Phase 51: preserve nested `(All ...)` quantifiers as
+     ;; `tforall` so the type can carry embedded polymorphism
+     ;; into argument positions for rank-N.  Top-level schemes
+     ;; come through `resolve-scheme` instead.
+     (tforall vs (resolve-type body))]
     [(ty:qual cs body _)
      (mqual (for/list ([c (in-list cs)]) (resolve-constraint c))
             (resolve-type body))]))
@@ -787,6 +872,12 @@
      ;; arg's type, unify the current head-type's domain with the
      ;; arg's type.  On failure, blame the SPECIFIC arg so the error
      ;; points at the bad token, not the whole call form.
+     ;;
+     ;; Phase 51: if the head's arrow domain at this position is a
+     ;; `tforall`, switch to bidirectional check-mode — the arg
+     ;; must be type-checked against the polymorphic type, not
+     ;; inferred and unified.  Inferring would just specialize to
+     ;; one fresh tvar, missing the whole point of rank-N.
      (define-values (s-final result-type)
        (let loop ([args args]
                   [s s-head]
@@ -796,35 +887,44 @@
            [(null? args) (values s head-ty)]
            [else
             (define this-arg (car args))
-            (define-values (s-arg t-arg) (infer-expr this-arg env))
-            (define s-now (subst-compose s-arg s))
-            (define head-ty-now (apply-subst s-now head-ty))
-            (define β (fresh-tvar))
-            (define expected-arrow (make-arrow t-arg β))
-            (define s-u
-              (with-handlers
-               ([exn:fail:unify?
-                 (lambda (_)
-                   (cond
-                     ;; The head's type is concretely an arrow but the
-                     ;; argument type doesn't match — blame the arg.
-                     [(arrow? head-ty-now)
-                      (raise-type-mismatch!
-                        (expr-stx this-arg)
-                        (apply-subst s-now (arrow-dom head-ty-now))
-                        (apply-subst s-now t-arg))]
-                     ;; Otherwise the head itself isn't applicable —
-                     ;; blame the head.
-                     [else
-                      (raise-type-mismatch!
-                        (expr-stx head)
-                        expected-arrow
-                        head-ty-now)]))])
-               (unify head-ty-now expected-arrow)))
-            (loop (cdr args)
-                  (subst-compose s-u s-now)
-                  (apply-subst s-u β)
-                  (apply-subst/env s-arg env))])))
+            (define head-ty-pre (apply-subst s head-ty))
+            (cond
+              [(and (arrow? head-ty-pre)
+                    (tforall? (arrow-dom head-ty-pre)))
+               (define dom (arrow-dom head-ty-pre))
+               (define cod (arrow-cod head-ty-pre))
+               (define-values (s-arg _t-arg) (check-expr this-arg env dom))
+               (define s-now (subst-compose s-arg s))
+               (loop (cdr args)
+                     s-now
+                     (apply-subst s-now cod)
+                     (apply-subst/env s-arg env))]
+              [else
+               (define-values (s-arg t-arg) (infer-expr this-arg env))
+               (define s-now (subst-compose s-arg s))
+               (define head-ty-now (apply-subst s-now head-ty))
+               (define β (fresh-tvar))
+               (define expected-arrow (make-arrow t-arg β))
+               (define s-u
+                 (with-handlers
+                  ([exn:fail:unify?
+                    (lambda (_)
+                      (cond
+                        [(arrow? head-ty-now)
+                         (raise-type-mismatch!
+                           (expr-stx this-arg)
+                           (apply-subst s-now (arrow-dom head-ty-now))
+                           (apply-subst s-now t-arg))]
+                        [else
+                         (raise-type-mismatch!
+                           (expr-stx head)
+                           expected-arrow
+                           head-ty-now)]))])
+                  (unify head-ty-now expected-arrow)))
+               (loop (cdr args)
+                     (subst-compose s-u s-now)
+                     (apply-subst s-u β)
+                     (apply-subst/env s-arg env))])])))
      (values s-final result-type)]
 
     [(e:let bindings body _)
