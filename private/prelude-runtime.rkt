@@ -81,6 +81,12 @@
          "dict.rkt")
 
 (provide
+ ;; Phase 57: monomorphization log accessors — exported so the
+ ;; rackton macro's emitted code can call the setter from a user
+ ;; module without dragging in codegen.
+ set-rackton-monomorphized-log-snapshot!
+ rackton-monomorphized-sites
+
  ;; ADTs (constructors usable as expressions and as match patterns)
  None Some Nil Cons MkPair Ok Err MkUnit
  MkSum MkProduct
@@ -259,6 +265,21 @@
  ;; System surface
  random-integer random-float current-time-seconds
  list-directory getenv argv delete-file make-directory)
+
+;; ----- Phase 57: monomorphization log -----------------------------
+
+;; The rackton macro emits one call to `set-rackton-monomorphized-
+;; log-snapshot!` at the end of each elaborate, passing the list of
+;; (method . impl) pairs that were resolved at compile time.  Tests
+;; call `rackton-monomorphized-sites` to inspect the most recent
+;; elaborate's log.
+(define rackton-monomorphized-log-snapshot-value '())
+
+(define (set-rackton-monomorphized-log-snapshot! v)
+  (set! rackton-monomorphized-log-snapshot-value v))
+
+(define (rackton-monomorphized-sites)
+  rackton-monomorphized-log-snapshot-value)
 
 ;; ----- ADTs -------------------------------------------------------
 

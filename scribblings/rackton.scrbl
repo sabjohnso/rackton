@@ -2875,10 +2875,57 @@ runtime dispatch silently pick whichever was registered last.
 The same-module duplicate-instance check from Phase 37 still
 operates within a single module.
 
+@section{Compile-time monomorphization (Phase 57)}
+
+Phase 57 specializes positional class-method call sites whose
+dispatch type is concretely known at compile time.  Rather than
+indirecting through a per-class hash table at runtime, the call
+is rewritten to invoke the per-instance impl directly.
+
+@codeblock|{
+(define-class (Tag a)
+  (: tag-of (-> a Integer)))
+
+(define-instance (Tag Integer)
+  (define (tag-of x) (+ x 100)))
+
+(tag-of 7)         ;; -> direct call to $tag-of:Integer, no
+                   ;;    dispatch-table lookup
+}|
+
+How it works:
+
+@itemlist[
+  @item{@racket[define-instance] now emits a named global
+        @code{$method:Tcon} for every method body and registers
+        that named global in the dispatch table.  The runtime path
+        is unchanged.}
+  @item{At each positional class-method call site, the inference
+        engine records the dispatch tvars.  After constraint
+        reduction, when the tvars resolve to a concrete tcon and
+        a matching instance is found, the resolver writes the
+        impl name into @racket[current-method-resolutions] and
+        codegen emits the direct call.}
+  @item{Polymorphic call sites (where the dispatch type is still
+        a tvar after reduction) are left untouched and dispatch
+        at runtime as before.}
+  @item{Prelude instances whose bodies are @code{(racket τ ...)}
+        escapes are intentionally NOT monomorphized — their real
+        implementations live in the runtime registration calls,
+        not under the @code{$method:Tcon} symbol.}
+]
+
+The @racket[rackton-monomorphized-sites] runtime function
+returns a list of @code{(method-name . impl-name)} pairs
+recording the most recent @racket[(rackton …)] block's
+monomorphized call sites.  Useful for tooling and testing.
+
 @section{Not yet supported}
 
 Larger directions still open:
 effect tracking in types (row polymorphism over effect signatures),
-performance optimization (codegen inlining and specialization),
+codegen inlining of small monomorphized calls (the named globals
+are now in place, so a function-inliner could fire on them
+next),
 and additional developer tooling (formatter, type-aware
 highlighting).

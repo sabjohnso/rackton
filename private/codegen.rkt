@@ -603,18 +603,31 @@
             [else
              ;; Phase 39: method-qual dicts (if any) become leading
              ;; lambda params of the runtime-registered impl.
+             ;; Phase 57: emit a NAMED `(define $method:Tcon impl)`
+             ;; alongside the dispatch-table registration so that
+             ;; compile-time monomorphization at call sites can
+             ;; reference the impl directly without going through
+             ;; the table.
              (define body*
                (cond
                  [(and method-args (not (null? method-args)))
                   (prepend-lambda-params body method-args stx)]
                  [else body]))
-             (for/list ([tag (in-list tags)])
-               (with-syntax ([table   (datum->syntax stx
-                                                     (method-dispatch-symbol name)
-                                                     stx)]
-                             [impl    (compile-expr body*)]
-                             [tag-sym (datum->syntax stx tag stx)])
-                 #'(register-instance-method! table 'tag-sym impl)))])]))))
+             (define impl-name-sym
+               (return-impl-symbol name head-tcon-names))
+             (define def-form
+               (with-syntax ([impl-name (datum->syntax stx impl-name-sym stx)]
+                             [impl      (compile-expr body*)])
+                 #'(define impl-name impl)))
+             (define register-forms
+               (for/list ([tag (in-list tags)])
+                 (with-syntax ([table     (datum->syntax stx
+                                                         (method-dispatch-symbol name)
+                                                         stx)]
+                               [impl-name (datum->syntax stx impl-name-sym stx)]
+                               [tag-sym   (datum->syntax stx tag stx)])
+                   #'(register-instance-method! table 'tag-sym impl-name))))
+             (cons def-form register-forms)])]))))
   (with-syntax ([(register ...) register-forms])
     (syntax/loc stx (begin register ...))))
 

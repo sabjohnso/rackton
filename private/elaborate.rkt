@@ -21,7 +21,13 @@
                      "codegen.rkt"
                      "prelude.rkt"
                      "scheme-codec.rkt"
-                     "env.rkt"))
+                     "env.rkt")
+         ;; Phase 57: runtime require so that the macro templates
+         ;; below can reference set-rackton-monomorphized-log-
+         ;; snapshot! (and rackton-monomorphized-sites) — Racket's
+         ;; hygiene then makes the spliced identifier resolve to
+         ;; the runtime binding here.
+         "prelude-runtime.rkt")
 
 ;; Shared elaboration helper: returns (values compiled-syntax-list
 ;; bindings-data data-ctors-data tcons-data classes-data instances-data).
@@ -40,13 +46,26 @@
                  ;; equal?-keyed so we can use composite list keys
                  ;; for instance method lookups (Phase 30).  Symbol-
                  ;; keyed top-def names compare equal? fine too.
-                 [current-needs-dict-defs         (make-hash)])
+                 [current-needs-dict-defs         (make-hash)]
+                 ;; Phase 57: monomorphization log starts empty per
+                 ;; elaborate, accumulates each resolved site.
+                 [current-monomorphized-sites     (box '())])
     (define env (infer-program parsed prelude-env))
     (define compiled
       (filter values
               (for/list ([f (in-list parsed)])
                 (compile-top f env))))
-    (elaborate-finish parsed env compiled)))
+    ;; Phase 57: emit a runtime form that publishes this elaborate's
+    ;; monomorphization log via the codegen-exposed setter.  The
+    ;; rackton-monomorphized-sites accessor returns this list so
+    ;; tests can verify the optimization fired.
+    (define mono-log (unbox (current-monomorphized-sites)))
+    ;; Phase 57: pass the log alongside compiled forms; the rackton
+    ;; macro turns it into a runtime form using a `for-template`
+    ;; binding it has but rackton-elaborate doesn't.
+    (define-values (final-compiled bs dcs tcs cls insts)
+      (elaborate-finish parsed env compiled))
+    (values final-compiled bs dcs tcs cls insts mono-log)))
 
 (define-for-syntax (elaborate-finish parsed env compiled)
   (define export-bindings
@@ -91,10 +110,13 @@
 (define-syntax (rackton stx)
   (syntax-parse stx
     [(_ form ...)
-     (define-values (compiled _b _d _t _c _i)
+     (define-values (compiled _b _d _t _c _i mono-log)
        (rackton-elaborate #'(form ...)))
-     (with-syntax ([(out ...) compiled])
-       (syntax/loc stx (begin out ...)))]))
+     (with-syntax ([(out ...) compiled]
+                   [entries mono-log])
+       (syntax/loc stx
+         (begin (set-rackton-monomorphized-log-snapshot! 'entries)
+                out ...)))]))
 
 ;; `(rackton/main form ...)` — top-of-module form used by `#lang
 ;; rackton`.  Emits the schemes submodule so importing modules can
@@ -102,7 +124,7 @@
 (define-syntax (rackton/main stx)
   (syntax-parse stx
     [(_ form ...)
-     (define-values (compiled bs dcs tcs cls insts)
+     (define-values (compiled bs dcs tcs cls insts _mono)
        (rackton-elaborate #'(form ...)))
      (define at-module-level?
        (memq (syntax-local-context) '(module module-begin)))

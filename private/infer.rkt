@@ -30,6 +30,8 @@
          current-method-dict-resolutions
          current-dict-skolems
          current-needs-dict-defs
+         current-monomorphized-sites
+         current-prelude-build?
          resolve-method-uses!)
 
 (require racket/match
@@ -76,6 +78,14 @@
 ;;                              when prepending lambda params.
 (define current-dict-skolems    (make-parameter (hasheq)))
 (define current-needs-dict-defs (make-parameter #f))
+
+;; Phase 57: log of compile-time monomorphizations.  When a
+;; positional class-method call site's dispatch type resolves to a
+;; concrete tcon, the inst-dispatch resolver records the
+;; (method-name . impl-name) pair here.  The list survives the
+;; elaborate call and is published to runtime via the emit at the
+;; end of rackton-elaborate.
+(define current-monomorphized-sites (make-parameter #f))
 
 ;; Phase 50: when checking a function body against a declared
 ;; signature, the body's expected return type is known up front.
@@ -817,17 +827,15 @@
                 (for/list ([p (in-list (class-info-params cinfo))])
                   (hash-ref sub p)))
               (record-method-use! x stx env class-param-tvars)]
-             [(and (integer? dispatchpos)
-                   (or (class-has-needs-dict-instances? env owner-class)
-                       (env-class-has-overlap? env owner-class)))
-              ;; Phase 27: positional class-method call on a class that
-              ;; has at least one needs-dict instance.  Record so the
-              ;; resolver can route to a per-instance impl after the
-              ;; dispatch arg's type is settled.
-              ;; Phase 37 extends this to classes with overlapping
-              ;; instances — runtime dispatch can't tell apart
-              ;; same-outer-ctor instances, so we resolve at compile
-              ;; time when the call site is monomorphic.
+             [(integer? dispatchpos)
+              ;; Phase 27: positional class-method call on a class
+              ;; that has at least one needs-dict instance — resolver
+              ;; routes to per-instance impl after the dispatch arg's
+              ;; type settles.  Phase 37 covers overlapping
+              ;; instances similarly.  Phase 57 generalizes the
+              ;; recording to ALL positional method calls so any
+              ;; concrete-type call site can be monomorphized
+              ;; (direct impl call instead of runtime dispatch).
               (define class-param-tvars
                 (for/list ([p (in-list (class-info-params cinfo))])
                   (hash-ref sub p)))
@@ -2303,8 +2311,65 @@
                 (pred-args (instance-info-head (car matching))))
               (define impl
                 (overlap-impl-symbol method-name inst-head-args))
-              (hash-set! resolutions stx impl)]))]))
+              (hash-set! resolutions stx impl)]
+             ;; Phase 57: regular positional method call whose
+             ;; dispatch type is now concrete — emit a direct call
+             ;; to the named per-instance impl that compile-instance
+             ;; emits.  Same naming scheme as the needs-dict path so
+             ;; (== Integer Integer) resolves to $==:Integer.
+             ;; Skip prelude-style instances whose bodies are
+             ;; `(racket ...)` escapes — those have no real named
+             ;; impl and still rely on the runtime dispatch table.
+             [(and matching
+                   (instance-has-monomorphizable-impl?
+                    (car matching) method-name))
+              (define impl
+                (string->symbol
+                 (format "$~a:~a"
+                         method-name
+                         (string-join (map symbol->string keep-tcon-names)
+                                      "-"))))
+              (hash-set! resolutions stx impl)
+              (when (current-monomorphized-sites)
+                (define b (current-monomorphized-sites))
+                (set-box! b (cons (cons method-name impl) (unbox b))))]))]))
     (hash-clear! uses)))
+
+;; Phase 57: does this instance have a real, named compile-emitted
+;; impl for the given method?  Two signals say "no":
+;;   - the body is a `(racket τ (vars) ...)` escape with no real
+;;     Rackton-level definition (prelude placeholder convention);
+;;   - the instance was registered as part of the prelude env build
+;;     (compile-instance was never invoked, so no `$method:Tcon`
+;;     global got emitted).
+;; Both correspond to runtime-only impls that monomorphization must
+;; not redirect to.
+(define (instance-has-monomorphizable-impl? inst method-name)
+  (define body (hash-ref (instance-info-methods inst) method-name #f))
+  (cond
+    [(not body) #f]
+    [(e:escape? body) #f]
+    [(and (e:lam? body) (e:escape? (e:lam-body body))) #f]
+    [(prelude-instance? inst) #f]
+    [else #t]))
+
+;; Phase 57: an instance that was registered during prelude-env
+;; construction is "prelude" — no compile-instance ran for it.
+;; The runtime-only flag is recorded on the instance-info struct;
+;; handle-instance-form sets it based on `current-prelude-build?`.
+(define current-prelude-build? (make-parameter #f))
+
+(define (prelude-instance? inst)
+  ;; The flag is stored as a `prelude-source` mark on the instance's
+  ;; methods hash via a thread-local box — handle-instance-form
+  ;; consults `current-prelude-build?` and tags the methods hash if
+  ;; #t.  We retrieve via a weak equal-hash from instances to a flag.
+  (hash-ref prelude-instances-table inst #f))
+
+;; Equal-keyed weak hash from instance-info → #t for prelude
+;; instances.  Populated by handle-instance-form when
+;; `current-prelude-build?` is true.
+(define prelude-instances-table (make-weak-hash))
 
 ;; Phase 37: must agree byte-for-byte with overlap-impl-symbol in
 ;; codegen.rkt — encodes nested ctors deeply so two same-outer-ctor
@@ -2818,4 +2883,9 @@
       (hash-set acc method-name body)))
   (define info (instance-info head-pred-raw ctx-preds-raw checked-bodies
                               type-family-bindings))
+  ;; Phase 57: mark instances added during prelude-env construction
+  ;; so the monomorphization resolver knows not to redirect calls
+  ;; to a non-existent named impl.
+  (when (current-prelude-build?)
+    (hash-set! prelude-instances-table info #t))
   (values (env-extend-instance env class-name info) declared))

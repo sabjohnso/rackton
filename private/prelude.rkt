@@ -1438,6 +1438,7 @@
     (define (make-directory path) (racket (IO Unit) (path) #f))))
 
 (define prelude-env
-  (let ([forms (for/list ([f (in-list prelude-source-forms)])
-                 (parse-top (datum->syntax #f f)))])
-    (infer-program forms initial-env)))
+  (parameterize ([current-prelude-build? #t])
+    (let ([forms (for/list ([f (in-list prelude-source-forms)])
+                   (parse-top (datum->syntax #f f)))])
+      (infer-program forms initial-env))))
