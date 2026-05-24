@@ -2351,11 +2351,54 @@ getter / setter, or compose two lenses through nested structure.
 
 @bold{Out of scope (deferred):}
 @itemlist[
-  @item{Auto-deriving field lenses from @racket[define-struct].}
   @item{Prisms (for sum types — focus on a specific constructor).}
   @item{Traversals (multiple foci).}
   @item{Van Laarhoven encoding (would need higher-rank polymorphism).}
 ]
+
+@section{Auto-derived field lenses (Phase 47)}
+
+@racket[define-struct] gains @racket[#:deriving Lens] support.
+Each field @code{f} of struct @code{T} produces a named lens
+@code{T-f-lens} of type @code{(Lens T fieldT)}, ready for view /
+set / over.
+
+@codeblock|{
+(define-struct Point
+  [x : Integer]
+  [y : Integer]
+  #:deriving Lens)
+
+(view Point-x-lens (Point 3 7))             ;; → 3
+(set  Point-x-lens 99 (Point 3 7))          ;; → (Point 99 7)
+(over Point-y-lens (lambda (n) (+ n 1))
+                   (Point 3 7))             ;; → (Point 3 8)
+
+(define-struct Segment
+  [start : Point] [end : Point]
+  #:deriving Lens)
+
+(define start-x-lens
+  (lens-compose Segment-start-lens Point-x-lens))
+}|
+
+The synthesizer generates, for each field at index i:
+
+@verbatim|{
+(define T-fi-lens
+  (MkLens (lambda (p) (T-fi p))
+          (lambda (p)
+            (lambda (v)
+              (T (T-f0 p) ... v ... (T-fn p))))))
+}|
+
+The getter reuses the existing accessor; the setter rebuilds the
+struct with the new value at slot @code{i} and the existing values
+at all other slots.
+
+Lens-deriving is only valid for @racket[define-struct] (single
+constructor with named fields).  For multi-constructor
+@racket[define-data], use prisms instead (deferred to a later phase).
 
 @section{Not yet supported}
 

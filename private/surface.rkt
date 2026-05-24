@@ -1215,14 +1215,76 @@
     (for/list ([fname (in-list field-names)]
                [i (in-naturals)])
       (synthesize-accessor name (length field-names) fname i tname-stx)))
+  ;; Phase 47: Lens-deriving needs field-NAMES (to name the lenses
+  ;; and generate the accessor / re-builder), which the generic
+  ;; synthesize-deriving doesn't have.  Peel `Lens` out and handle
+  ;; it here; pass the rest through to synthesize-deriving normally.
+  (define-values (lens? other-deriving-classes)
+    (partition-by-eq 'Lens deriving-classes))
+  (define lens-defs
+    (cond
+      [lens? (synthesize-lens-defs name tparams field-names tname-stx)]
+      [else '()]))
   (define derived
     (cond
-      [(null? deriving-classes) '()]
+      [(null? other-deriving-classes) '()]
       [else
-       (synthesize-deriving deriving-classes
+       (synthesize-deriving other-deriving-classes
                             name tparams (list ctor)
                             tname-stx stx 'define-struct)]))
-  (append (cons data-form accessor-defs) derived))
+  (append (cons data-form accessor-defs) derived lens-defs))
+
+;; Phase 47: peel a class symbol out of the deriving list.  Returns
+;; (values present? rest).
+(define (partition-by-eq sym xs)
+  (cond
+    [(member sym xs) (values #t (filter (lambda (x) (not (eq? x sym))) xs))]
+    [else            (values #f xs)]))
+
+;; Phase 47: emit per-field lens defs `Tname-fname-lens` for a
+;; single-ctor define-struct.  Each lens reuses the existing
+;; accessor `Tname-fname` as the getter and rebuilds the struct
+;; with `(Tname ...)` for the setter.
+(define (synthesize-lens-defs tname tparams field-names ctx-stx)
+  (define arity (length field-names))
+  (for/list ([fname (in-list field-names)] [idx (in-naturals)])
+    (define lens-name
+      (string->symbol (format "~a-~a-lens" tname fname)))
+    (define accessor-name
+      (string->symbol (format "~a-~a" tname fname)))
+    ;; Getter:  (lambda (p) (Tname-fname p))
+    (define getter
+      (e:lam '(p)
+             (e:app (e:var accessor-name (fresh-stx ctx-stx))
+                    (list (e:var 'p (fresh-stx ctx-stx)))
+                    (fresh-stx ctx-stx))
+             (fresh-stx ctx-stx)))
+    ;; Setter:  (lambda (p) (lambda (v) (Tname f0 ... v ... fn)))
+    ;; where f_j = (Tname-f_j p) for j != idx, and v at slot idx.
+    (define ctor-args
+      (for/list ([f-other (in-list field-names)] [j (in-naturals)])
+        (cond
+          [(= j idx)
+           (e:var 'v (fresh-stx ctx-stx))]
+          [else
+           (define other-accessor
+             (string->symbol (format "~a-~a" tname f-other)))
+           (e:app (e:var other-accessor (fresh-stx ctx-stx))
+                  (list (e:var 'p (fresh-stx ctx-stx)))
+                  (fresh-stx ctx-stx))])))
+    (define setter
+      (e:lam '(p)
+             (e:lam '(v)
+                    (e:app (e:var tname (fresh-stx ctx-stx))
+                           ctor-args
+                           (fresh-stx ctx-stx))
+                    (fresh-stx ctx-stx))
+             (fresh-stx ctx-stx)))
+    (define lens-body
+      (e:app (e:var 'MkLens (fresh-stx ctx-stx))
+             (list getter setter)
+             (fresh-stx ctx-stx)))
+    (top:def lens-name lens-body ctx-stx)))
 
 (define (parse-field-spec stx)
   (syntax-parse stx
