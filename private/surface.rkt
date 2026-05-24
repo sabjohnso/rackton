@@ -51,6 +51,8 @@
          (struct-out method-sig)
          (struct-out method-default)
          (struct-out class-fundep)
+         (struct-out class-type-fam)
+         (struct-out inst-type-fam)
          (struct-out top:require)
          (struct-out top:alias)
          (struct-out k:star)
@@ -139,6 +141,14 @@
 ;; rhs-positioned types are uniquely determined by the lhs-positioned
 ;; ones.  `lhs` and `rhs` are lists of parameter-name symbols.
 (struct class-fundep   (lhs rhs stx) #:transparent)
+;; Phase 53: a `#:type FamilyName` declaration inside a class body.
+;; The family is a one-parameter type-level function whose argument
+;; is the class's parameter; each instance supplies a concrete rhs.
+(struct class-type-fam  (name stx) #:transparent)
+;; Phase 53: a `#:type (FamilyName = Type)` clause inside an instance
+;; body, binding the named family to a concrete type for this
+;; instance.
+(struct inst-type-fam   (name type stx) #:transparent)
 ;; A multi-file import: `(require "file.rkt" ...)` inside a rackton form.
 ;; Specs are the raw require specs (passed verbatim to Racket's require).
 (struct top:require    (specs stx) #:transparent)
@@ -1152,12 +1162,21 @@
     [(#:fundep lhs:id ...+ -> rhs:id ...+)
      (class-fundep (map syntax->datum (syntax->list #'(lhs ...)))
                    (map syntax->datum (syntax->list #'(rhs ...)))
-                   stx)]))
+                   stx)]
+    [(#:type name:id)
+     #:fail-unless (not (lowercase-id? (syntax->datum #'name)))
+     "associated-type name must be a non-lowercase identifier"
+     (class-type-fam (syntax->datum #'name) stx)]))
 
-;; An instance method must be a `define`.
+;; An instance method must be a `define`, or a `#:type` binding for
+;; an associated type declared by the class.
 (define (parse-instance-method stx)
   (syntax-parse stx
-    #:datum-literals (define)
+    #:datum-literals (define =)
+    [(#:type (name:id = ty))
+     #:fail-unless (not (lowercase-id? (syntax->datum #'name)))
+     "associated-type name must be a non-lowercase identifier"
+     (inst-type-fam (syntax->datum #'name) (parse-type #'ty) stx)]
     [(define (f:id arg:id ...) body)
      (top:def (syntax->datum #'f)
               (e:lam (map syntax->datum (syntax->list #'(arg ...)))

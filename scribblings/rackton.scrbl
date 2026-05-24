@@ -2650,6 +2650,55 @@ phase-52 tests work without wrangling stdin/stdout.  Errors in
 one form don't crash the session; the kernel catches them and
 moves on.
 
+@section{Associated types (Phase 53)}
+
+Phase 53 introduces associated types — class-level type-level
+functions whose concrete rhs is supplied per instance.  A class
+declares an associated type with @racket[(#:type FamilyName)];
+each instance supplies its concrete value with
+@racket[(#:type (FamilyName = Type))]:
+
+@codeblock|{
+(define-class (Sized (c :: *))
+  (#:type Index)
+  (: size-of (-> c (Index c))))
+
+(define-instance (Sized (List a))
+  (#:type (Index = Integer))
+  (define (size-of xs) (length xs)))
+
+(size-of (Cons 1 (Cons 2 Nil)))   ;; :: Integer
+}|
+
+References like @code{(Index (List Integer))} are eagerly rewritten
+to @racket[Integer] by @racket[normalize-type] whenever the
+argument is concrete enough to match an instance head.  The same
+class can have multiple instances with different rhs values:
+
+@codeblock|{
+(define-data MyMap (MkMap Integer))
+
+(define-instance (Sized MyMap)
+  (#:type (Index = MyMap))
+  (define (size-of m) m))
+
+(size-of (MkMap 99))    ;; :: MyMap
+}|
+
+A few rules:
+
+@itemlist[
+  @item{An instance that omits @racket[#:type] for a family the
+        class declared is rejected at compile time.}
+  @item{Normalization is @emph{eager} — if the argument still has
+        free tvars and no instance matches yet, the family
+        application stays symbolic.  No deferred-equality
+        constraints are emitted.}
+  @item{Type-family bindings are serialized into the sidecar
+        @racket[rackton-instances] submodule, so importing modules
+        see them too.}
+]
+
 @section{Not yet supported}
 
 Larger directions still open:

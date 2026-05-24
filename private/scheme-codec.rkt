@@ -121,10 +121,30 @@
         (for/list ([fd (in-list (class-info-fundeps ci))])
           (list (car fd) (cdr fd)))
         (for/list ([(m cs) (in-hash (class-info-dictreqs ci))])
-          (list m cs))))
+          (list m cs))
+        ;; Phase 53: list of associated-type names.
+        (class-info-type-families ci)))
 
 (define (decode-class-info datum)
   (match datum
+    ;; Phase 53 shape: trailing type-families list.
+    [(list name params kinds-list supers-list methods-list dispatchpos-list
+           fundeps-list dictreqs-list type-families-list)
+     (class-info name
+                 params
+                 (for/hasheq ([entry (in-list kinds-list)])
+                   (values (car entry) (decode-kind (cadr entry))))
+                 (map sexp->pred supers-list)
+                 (for/hasheq ([entry (in-list methods-list)])
+                   (values (car entry) (sexp->scheme (cadr entry))))
+                 (hasheq)
+                 (for/hasheq ([entry (in-list dispatchpos-list)])
+                   (values (car entry) (cadr entry)))
+                 (for/list ([entry (in-list fundeps-list)])
+                   (cons (car entry) (cadr entry)))
+                 (for/hasheq ([entry (in-list dictreqs-list)])
+                   (values (car entry) (cadr entry)))
+                 type-families-list)]
     [(list name params kinds-list supers-list methods-list dispatchpos-list
            fundeps-list dictreqs-list)
      (class-info name
@@ -134,13 +154,14 @@
                  (map sexp->pred supers-list)
                  (for/hasheq ([entry (in-list methods-list)])
                    (values (car entry) (sexp->scheme (cadr entry))))
-                 (hasheq)   ; defaults not transmitted
+                 (hasheq)
                  (for/hasheq ([entry (in-list dispatchpos-list)])
                    (values (car entry) (cadr entry)))
                  (for/list ([entry (in-list fundeps-list)])
                    (cons (car entry) (cadr entry)))
                  (for/hasheq ([entry (in-list dictreqs-list)])
-                   (values (car entry) (cadr entry))))]
+                   (values (car entry) (cadr entry)))
+                 '())]
     [(list name params kinds-list supers-list methods-list dispatchpos-list
            fundeps-list)
      (class-info name
@@ -150,13 +171,13 @@
                  (map sexp->pred supers-list)
                  (for/hasheq ([entry (in-list methods-list)])
                    (values (car entry) (sexp->scheme (cadr entry))))
-                 (hasheq)   ; defaults not transmitted
+                 (hasheq)
                  (for/hasheq ([entry (in-list dispatchpos-list)])
                    (values (car entry) (cadr entry)))
                  (for/list ([entry (in-list fundeps-list)])
                    (cons (car entry) (cadr entry)))
-                 (hasheq))]
-    ;; Backward compat: older sidecar submodules omit the fundeps list.
+                 (hasheq)
+                 '())]
     [(list name params kinds-list supers-list methods-list dispatchpos-list)
      (class-info name
                  params
@@ -169,7 +190,8 @@
                  (for/hasheq ([entry (in-list dispatchpos-list)])
                    (values (car entry) (cadr entry)))
                  '()
-                 (hasheq))]))
+                 (hasheq)
+                 '())]))
 
 ;; Instance info is encoded with its owning class name as the first
 ;; element so we know where to install it on decode.  Method bodies
@@ -178,12 +200,25 @@
 (define (encode-instance-info class-name ii)
   (list class-name
         (pred->sexp (instance-info-head ii))
-        (map pred->sexp (instance-info-context ii))))
+        (map pred->sexp (instance-info-context ii))
+        ;; Phase 53: emit the type-family bindings as (name . type)
+        ;; sexps so the importer can normalize associated types
+        ;; against this instance.
+        (for/list ([(name ty) (in-hash (instance-info-type-family-bindings ii))])
+          (list name (type->datum ty)))))
 
 (define (decode-instance-info datum)
   (match datum
+    [(list class-name head-sexp ctx-list bindings-list)
+     (cons class-name
+           (instance-info (sexp->pred head-sexp)
+                          (map sexp->pred ctx-list)
+                          (hasheq)
+                          (for/hasheq ([entry (in-list bindings-list)])
+                            (values (car entry) (sexp->type (cadr entry))))))]
     [(list class-name head-sexp ctx-list)
      (cons class-name
            (instance-info (sexp->pred head-sexp)
                           (map sexp->pred ctx-list)
+                          (hasheq)
                           (hasheq)))]))

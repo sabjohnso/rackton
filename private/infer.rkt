@@ -1452,6 +1452,10 @@
                             (for/list ([ty (in-list arg-tys)])
                               (apply-subst s-body ty))))]
             [else (infer-expr expr env-rec)]))
+        ;; Phase 53: normalize the inferred body type so any
+        ;; associated-type applications resolve against the env's
+        ;; registered instances before comparing to the declared
+        ;; type.
         (define s-u
           (with-handlers
            ([exn:fail:unify?
@@ -1462,7 +1466,7 @@
                          (pretty-type (apply-subst s t))
                          (scheme->datum decl-scheme))
                  stx))])
-           (unify (apply-subst s t) decl-ty)))
+           (unify (normalize-type env (apply-subst s t)) decl-ty)))
         ;; Discharge any constraints raised inside the body against the
         ;; declaration's preds (hypotheses).
         (define final-subst (subst-compose s-u s))
@@ -1665,9 +1669,15 @@
       (cond
         [(null? reqs) acc]
         [else (hash-set acc method-name reqs)])))
+  ;; Phase 53: collect declared associated-type names so each
+  ;; instance can be checked for matching #:type bindings.
+  (define type-families
+    (for/list ([m (in-list methods)] #:when (class-type-fam? m))
+      (class-type-fam-name m)))
   (define info (class-info class-name class-params class-kinds
                            super-preds method-schemes defaults
-                           dispatchpos fundeps dictreqs))
+                           dispatchpos fundeps dictreqs
+                           type-families))
   ;; Phase 37: when a class is redeclared, its previously-registered
   ;; instances belong to a now-superseded class.  Clear them out so
   ;; the new declaration starts fresh — without this the duplicate-
@@ -2418,7 +2428,34 @@
   (define user-impls
     (for/fold ([acc (hasheq)]) ([m (in-list methods)])
       (match m
-        [(top:def name expr _) (hash-set acc name expr)])))
+        [(top:def name expr _) (hash-set acc name expr)]
+        [(inst-type-fam _ _ _) acc])))
+  ;; Phase 53: collect this instance's type-family bindings and
+  ;; check that every family the class declared is supplied.
+  (define type-family-bindings
+    (for/fold ([acc (hasheq)]) ([m (in-list methods)]
+                                #:when (inst-type-fam? m))
+      (hash-set acc
+                (inst-type-fam-name m)
+                (resolve-type (inst-type-fam-type m)))))
+  (for ([fam (in-list (class-info-type-families cinfo))])
+    (unless (hash-has-key? type-family-bindings fam)
+      (raise-syntax-error 'infer
+        (format "instance ~s missing #:type binding for associated type ~s"
+                (pred->datum head-pred-raw) fam)
+        stx)))
+  ;; Phase 53: register the instance (with empty method bodies, full
+  ;; type-family bindings) into a working env BEFORE checking method
+  ;; bodies so normalize-type can resolve `(Family arg)` references
+  ;; inside the method types against this instance's bindings.
+  (define env-with-inst
+    (cond
+      [(hash-empty? type-family-bindings) env]
+      [else
+       (env-extend-instance env class-name
+                            (instance-info head-pred-raw ctx-preds-raw
+                                           (hasheq)
+                                           type-family-bindings))]))
   (define checked-bodies
     (for/fold ([acc (hasheq)])
               ([(method-name method-sch)
@@ -2490,8 +2527,12 @@
                    (cons dict-arg-names method-arg-names)))
       ;; Apply method-skolem subst to the expected type and method-
       ;; extra-preds so the tvars become rigid for body inference.
+      ;; Phase 53: normalize-type rewrites any associated-type
+      ;; references (e.g. `(Index (List a))`) to their concrete rhs
+      ;; for this instance before unify.
       (define expected-type
-        (apply-subst method-sk-subst (qual-body-deep inst-method-qual)))
+        (normalize-type env-with-inst
+          (apply-subst method-sk-subst (qual-body-deep inst-method-qual))))
       (define method-extra-preds
         (map (lambda (p) (apply-subst method-sk-subst p))
              raw-method-qual-preds))
@@ -2501,7 +2542,7 @@
         ;; runs afterward.
         (define saved-skolems (current-dict-skolems))
         (current-dict-skolems combined-skolems)
-        (define-values (s t) (infer-expr body env))
+        (define-values (s t) (infer-expr body env-with-inst))
         (define s-u
           (with-handlers
            ([exn:fail:unify?
@@ -2532,5 +2573,6 @@
         (resolve-method-uses! final-subst env)
         (current-dict-skolems saved-skolems))
       (hash-set acc method-name body)))
-  (define info (instance-info head-pred-raw ctx-preds-raw checked-bodies))
+  (define info (instance-info head-pred-raw ctx-preds-raw checked-bodies
+                              type-family-bindings))
   (values (env-extend-instance env class-name info) declared))

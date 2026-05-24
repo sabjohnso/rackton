@@ -315,7 +315,10 @@
   (define user-impls
     (for/fold ([acc '()]) ([m (in-list methods)])
       (match m
-        [(top:def name expr _) (cons (cons name expr) acc)])))
+        [(top:def name expr _) (cons (cons name expr) acc)]
+        ;; Phase 53: #:type bindings are compile-time only — no
+        ;; runtime code is emitted for an associated-type binding.
+        [(inst-type-fam _ _ _) acc])))
   (define all-method-bodies
     (let loop ([rest (hash-keys (class-info-methods cinfo))]
                [acc  '()])

@@ -25,6 +25,7 @@
          env-extend-class
          env-clear-instances
          env-ref-class
+         env-class-owning-family
          env-extend-instance
          env-instances
          env-ref-method-class
@@ -84,15 +85,20 @@
 ;;                   `Applicative f`), the list of constraint class
 ;;                   names whose return-typed methods need to be
 ;;                   passed as extra leading args at call sites.
+;; Phase 53 added `type-families` (list of associated-type names
+;; declared by the class via `#:type Foo`).  Each instance must
+;; supply concrete bindings for every declared family.
 (struct class-info (name params kinds supers methods defaults dispatchpos
-                    fundeps dictreqs)
+                    fundeps dictreqs type-families)
   #:transparent)
 
 ;; An instance's information.
 ;;   head    : pred — the instance head, e.g. (Eq Integer) or (Eq (Maybe a))
 ;;   context : (Listof pred) — qualifying preds for this instance
 ;;   methods : (HashEq method-name → surface-expr) — method bodies
-(struct instance-info (head context methods) #:transparent)
+;;   type-family-bindings : (HashEq family-name → type) — Phase 53;
+;;                          empty for classes with no associated types
+(struct instance-info (head context methods type-family-bindings) #:transparent)
 
 (define empty-env (env (hasheq) (hasheq) (hasheq) (hasheq) (hasheq) (hasheq) (hasheq)))
 
@@ -157,6 +163,13 @@
 
 (define (env-ref-method-class e method [default #f])
   (hash-ref (env-method-owners e) method default))
+
+;; Phase 53: which class declared this associated-type name?
+;; Returns the class name on the first match, or #f.
+(define (env-class-owning-family e family-name)
+  (for/or ([(cname ci) (in-hash (env-classes e))])
+    (and (memq family-name (class-info-type-families ci))
+         cname)))
 
 ;; ----- type aliases -----------------------------------------------
 ;; `aliases` maps an alias name to (cons param-list target-ty-ast).

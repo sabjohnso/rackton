@@ -72,7 +72,8 @@
                 (hasheq)
                 (hasheq '== 0)
                 '()
-                (hasheq)))
+                (hasheq)
+                '()))
   (define eq-env (env-extend-class empty-env 'Eq eq-info))
 
   (check-equal? (env-ref-class eq-env 'Eq) eq-info)
@@ -83,7 +84,8 @@
   ;; instance registry
   (define eq-int-inst
     (instance-info (pred 'Eq (list t-int)) '()
-                   (hasheq '== (e:var '= #f))))
+                   (hasheq '== (e:var '= #f))
+                   (hasheq)))
   (define eq-env2 (env-extend-instance eq-env 'Eq eq-int-inst))
   (check-equal? (env-instances eq-env2 'Eq) (list eq-int-inst))
   (check-equal? (env-instances eq-env2 'Ord) '()))

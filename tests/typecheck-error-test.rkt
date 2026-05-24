@@ -77,3 +77,12 @@
    (: pair-id (-> (All (a) (-> a a)) (Pair Integer String)))
    (define (pair-id f) (MkPair (f 7) (f "hi")))
    (define bad (pair-id (lambda (x) (+ x 1))))))
+
+(test-case "associated type: instance missing #:type binding is rejected"
+  (check-rackton-compile-error
+   (define-class (Sized (c :: *))
+     (#:type Index)
+     (: size-of (-> c (Index c))))
+   ;; No (#:type (Index = ...)) — instance is incomplete.
+   (define-instance (Sized (List a))
+     (define (size-of xs) (length xs)))))

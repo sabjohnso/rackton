@@ -26,7 +26,8 @@
                 (hasheq)
                 (for/hasheq ([m methods]) (values (car m) 0))
                 '()
-                (hasheq)))
+                (hasheq)
+                '()))
 
   ;; A class env with:
   ;;   class Eq a
@@ -51,14 +52,15 @@
                                                        (make-arrow (tvar 'a)
                                                                    (make-arrow (tvar 'a) t-bool))))))))]
            [e (env-extend-instance e 'Eq
-                                   (instance-info (pred 'Eq (list t-int)) '() (hasheq)))]
+                                   (instance-info (pred 'Eq (list t-int)) '() (hasheq) (hasheq)))]
            [e (env-extend-instance
                e 'Eq
                (instance-info (pred 'Eq (list (tapp (tcon 'Maybe) (list (tvar 'a)))))
                               (list (pred 'Eq (list (tvar 'a))))
+                              (hasheq)
                               (hasheq)))]
            [e (env-extend-instance e 'Ord
-                                   (instance-info (pred 'Ord (list t-int)) '() (hasheq)))])
+                                   (instance-info (pred 'Ord (list t-int)) '() (hasheq) (hasheq)))])
       e))
 
   ;; ----- reflexivity ---------------------------------------------

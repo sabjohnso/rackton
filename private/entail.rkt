@@ -21,7 +21,8 @@
          entail?
          reduce-context
          by-super
-         match-pred)
+         match-pred
+         normalize-type)
 
 (require racket/match
          racket/list
@@ -304,3 +305,53 @@
 ;; Phase 50.1: does the type still contain any tvars?
 (define (has-tvar? t)
   (not (set-empty? (type-vars t))))
+
+;; ----- Phase 53: type-family normalization -----------------------
+
+;; Walk a type, eagerly rewriting type-family applications.  A type
+;; application `(Foo τ ...)` is normalized when `Foo` is a registered
+;; associated-type name for some class C, AND the args match a
+;; concrete instance head of C.  Rewrites to the instance's bound rhs
+;; (with the instance head's tvars substituted by `τ ...`).
+;;
+;; Normalization is bottom-up: arguments are normalized first so
+;; nested family applications resolve in inner-then-outer order.
+;; When no matching instance is found, the application is left
+;; symbolic — a later substitution may make it normalizable.
+(define (normalize-type env t)
+  (match t
+    [(tvar _) t]
+    [(tcon _) t]
+    [(tapp h args)
+     (define h*    (normalize-type env h))
+     (define args* (for/list ([a (in-list args)]) (normalize-type env a)))
+     (define rewritten
+       (cond
+         [(tcon? h*) (try-normalize-family env (tcon-name h*) args*)]
+         [else #f]))
+     (or rewritten (make-tapp h* args*))]
+    [(qual cs body)
+     (mqual (for/list ([c (in-list cs)]) (normalize-type env c))
+            (normalize-type env body))]
+    [(pred c args)
+     (pred c (for/list ([a (in-list args)]) (normalize-type env a)))]
+    [_ t]))
+
+;; If `name` is the associated-type name of some class C, and `args`
+;; matches an instance head of C, return that instance's rhs with the
+;; instance head's tvars renamed to `args`.  Otherwise #f.
+(define (try-normalize-family env name args)
+  (define cls (env-class-owning-family env name))
+  (cond
+    [(not cls) #f]
+    [else
+     (define target (pred cls args))
+     (with-handlers ([exn:fail? (lambda (_) #f)])
+       (define inst (find-matching-instance env cls target))
+       (cond
+         [(not inst) #f]
+         [else
+          (define σ (match-pred (instance-info-head inst) target))
+          (define binding
+            (hash-ref (instance-info-type-family-bindings inst) name #f))
+          (and binding σ (apply-subst σ binding))]))]))
