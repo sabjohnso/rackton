@@ -1002,6 +1002,53 @@
        (lambda (s b)
          (set outer (set inner b (view outer s)) s))))
 
+    ;; --- Prisms (Phase 48) -----------------------------------
+    ;;
+    ;; A prism focuses on a single sum-type constructor.  preview
+    ;; returns Some when the target ctor matches, None otherwise.
+    ;; review always succeeds — it builds the target ctor.
+
+    (define-data (Prism s a)
+      (MkPrism (-> s (Maybe a)) (-> a s)))
+
+    (: preview (-> (Prism s a) (-> s (Maybe a))))
+    (define (preview p s)
+      (match p [(MkPrism extract _) (extract s)]))
+
+    (: review  (-> (Prism s a) (-> a s)))
+    (define (review p a)
+      (match p [(MkPrism _ build) (build a)]))
+
+    ;; --- Traversals (Phase 48) -------------------------------
+    ;;
+    ;; A traversal focuses on zero-or-more sub-parts.  to-list-of
+    ;; gathers them; over-of transforms all of them.
+
+    (define-data (Traversal s a)
+      (MkTraversal (-> s (List a))
+                   (-> (-> a a) (-> s s))))
+
+    (: to-list-of (-> (Traversal s a) (-> s (List a))))
+    (define (to-list-of t s)
+      (match t [(MkTraversal get-all _) (get-all s)]))
+
+    (: over-of    (-> (Traversal s a) (-> (-> a a) (-> s s))))
+    (define (over-of t f s)
+      (match t [(MkTraversal _ modify-all) ((modify-all f) s)]))
+
+    ;; A built-in traversal that focuses on every element of a
+    ;; List.  Folds (length-preserving) via map.
+    (: list-traversal (Traversal (List a) a))
+    (define list-traversal
+      (MkTraversal id (lambda (f) (lambda (xs) (fmap f xs)))))
+
+    ;; Promote a Lens to a Traversal with a single focus.
+    (: lens-as-traversal (-> (Lens s a) (Traversal s a)))
+    (define (lens-as-traversal l)
+      (MkTraversal
+       (lambda (s) (Cons (view l s) Nil))
+       (lambda (f) (lambda (s) (over l f s)))))
+
     ;; --- File I/O --------------------------------------------
 
     (: read-file    (-> String (IO String)))

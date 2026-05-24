@@ -2398,7 +2398,65 @@ at all other slots.
 
 Lens-deriving is only valid for @racket[define-struct] (single
 constructor with named fields).  For multi-constructor
-@racket[define-data], use prisms instead (deferred to a later phase).
+@racket[define-data], use prisms instead.
+
+@section{Prisms and traversals (Phase 48)}
+
+Two more optic kinds, both using the simple (non-van-Laarhoven)
+encoding:
+
+@codeblock|{
+(define-data (Prism s a)
+  (MkPrism (-> s (Maybe a)) (-> a s)))
+
+(define-data (Traversal s a)
+  (MkTraversal (-> s (List a))
+               (-> (-> a a) (-> s s))))
+}|
+
+@bold{Prisms} focus on a sum-type constructor.  @racket[preview]
+extracts when the constructor matches, returns @racket[None]
+otherwise; @racket[review] always builds the target constructor.
+
+@codeblock|{
+(define some-prism
+  (MkPrism (lambda (m) (match m [(Some x) (Some x)] [(None) None]))
+           Some))
+
+(preview some-prism (Some 7))   ;; → (Some 7)
+(preview some-prism None)       ;; → None
+(review  some-prism 42)         ;; → (Some 42)
+}|
+
+@bold{Traversals} focus on zero-or-more sub-parts.
+@racket[to-list-of] gathers all foci; @racket[over-of] transforms
+each one.
+
+@codeblock|{
+(to-list-of list-traversal (Cons 1 (Cons 2 (Cons 3 Nil))))
+  ;; → (Cons 1 (Cons 2 (Cons 3 Nil)))
+(over-of list-traversal (lambda (n) (* n 2))
+                        (Cons 1 (Cons 2 (Cons 3 Nil))))
+  ;; → (Cons 2 (Cons 4 (Cons 6 Nil)))
+}|
+
+@itemlist[
+  @item{@racket[list-traversal] is built in — focuses on every
+        element of a @code{(List a)}.}
+  @item{@racket[lens-as-traversal] promotes a @racket[Lens] to a
+        single-focus @racket[Traversal], letting lens-based code
+        compose with traversal-based code.}
+]
+
+@bold{Out of scope:}
+@itemlist[
+  @item{Auto-deriving prisms for @racket[define-data] constructors.}
+  @item{Indexed traversals.}
+  @item{@code{Fold s a} / @racket[foldMapOf]-style folds — could be
+        a separate type.}
+  @item{Cross-kind composition (Prism × Lens etc.) — would need a
+        unified ``Optic'' abstraction.}
+]
 
 @section{Not yet supported}
 

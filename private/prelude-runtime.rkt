@@ -86,6 +86,7 @@
  MkSum MkProduct
  get-sum get-product
  MkState MkEnv MkStateT MkEnvT MkWriterT MkExceptT MkIdentity MkLens
+ MkPrism MkTraversal
  run-state eval-state exec-state get-state put-state modify-state
  run-env ask local
  run-state-t eval-state-t exec-state-t
@@ -226,6 +227,9 @@
  ;; Lens primitives (Phase 46)
  view set over lens-compose
 
+ ;; Prisms and traversals (Phase 48)
+ preview review to-list-of over-of list-traversal lens-as-traversal
+
  ;; Panic
  panic
 
@@ -286,6 +290,9 @@
 (define-data-ctor MkIdentity 1)
 ;; Phase 46: Lens stores a (getter, setter) pair.
 (define-data-ctor MkLens     2)
+;; Phase 48: prisms and traversals.
+(define-data-ctor MkPrism    2)
+(define-data-ctor MkTraversal 2)
 
 ;; ----- Class dispatch tables -------------------------------------
 
@@ -1169,6 +1176,30 @@
    (lambda (s) (view inner (view outer s)))
    (lambda (s)
      (lambda (b) (set outer (set inner b (view outer s)) s)))))
+
+;; ----- Prism primitives (Phase 48) ---------------------------
+
+(define/curried (preview p s)
+  (match p [(MkPrism extract _) (extract s)]))
+
+(define/curried (review p a)
+  (match p [(MkPrism _ build) (build a)]))
+
+;; ----- Traversal primitives (Phase 48) -----------------------
+
+(define/curried (to-list-of t s)
+  (match t [(MkTraversal get-all _) (get-all s)]))
+
+(define/curried (over-of t f s)
+  (match t [(MkTraversal _ modify-all) ((modify-all f) s)]))
+
+(define list-traversal
+  (MkTraversal id (lambda (f) (lambda (xs) (fmap f xs)))))
+
+(define (lens-as-traversal l)
+  (MkTraversal
+   (lambda (s) (Cons (view l s) Nil))
+   (lambda (f) (lambda (s) (over l f s)))))
 
 ;; ----- panic ---------------------------------------------------
 
