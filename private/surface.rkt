@@ -125,7 +125,9 @@
 
 (struct top:def      (name expr stx) #:transparent)
 (struct top:dec      (name type stx) #:transparent)
-(struct top:data     (name params ctors stx) #:transparent)
+;; Phase 56: `abstract?` flag — when #t, the data type's ctors are
+;; NOT re-exported to importing modules.  The type-name itself is.
+(struct top:data     (name params ctors stx abstract?) #:transparent)
 ;; Phase 45: a data ctor may carry its own existential quantifier
 ;; via `#:forall (a) #:where (Cls a) ...` keywords between the ctor
 ;; name and the field types.  `extra-tvars` lists the existentially
@@ -1318,11 +1320,14 @@
 ;; syntax instead leaves the synthesised identifiers missing scopes
 ;; that show up only on individual identifier-leaf syntax objects.
 (define (parse-data-form tname tparams items stx [tname-stx #f])
+  ;; Phase 56: peel off the `#:abstract` flag (it may appear
+  ;; alongside `#:deriving` in any order before the ctor list ends).
+  (define-values (items-1 abstract?) (split-abstract items))
   (define-values (ctor-stxs deriving-classes)
-    (split-deriving items))
+    (split-deriving items-1))
   (define ctors
     (for/list ([c (in-list ctor-stxs)]) (parse-data-ctor c)))
-  (define data-form (top:data tname tparams ctors stx))
+  (define data-form (top:data tname tparams ctors stx abstract?))
   (cond
     [(null? deriving-classes) data-form]
     [else
@@ -1343,6 +1348,17 @@
   (define rest (syntax->list rest-stx))
   (or (null? rest)
       (eq? (syntax->datum (car rest)) '#:deriving)))
+
+;; Phase 56: peel off a `#:abstract` flag anywhere it appears in a
+;; data/struct body items list.  Returns (values rest abstract?)
+;; where abstract? is #t iff the keyword was found.
+(define (split-abstract items)
+  (let loop ([rem items] [acc '()] [abs? #f])
+    (cond
+      [(null? rem) (values (reverse acc) abs?)]
+      [(eq? (syntax->datum (car rem)) '#:abstract)
+       (loop (cdr rem) acc #t)]
+      [else (loop (cdr rem) (cons (car rem) acc) abs?)])))
 
 ;; Split the trailing `#:deriving Cls ...` clause off a list of body
 ;; items.  Returns (values items-before deriving-classes).  Phase 35:
@@ -1427,14 +1443,16 @@
   ;; Phase 35: split off a trailing `#:deriving Cls ...` clause before
   ;; parsing field specs — the deriving classes are routed through the
   ;; shared synthesize-deriving helper.
+  ;; Phase 56: also peel off `#:abstract` from anywhere in the body.
+  (define-values (field-stxs-1 abstract?) (split-abstract field-stxs))
   (define-values (field-only-stxs deriving-classes)
-    (split-deriving field-stxs))
+    (split-deriving field-stxs-1))
   (define field-pairs
     (for/list ([fs (in-list field-only-stxs)]) (parse-field-spec fs)))
   (define field-names (map car field-pairs))
   (define field-types (map cdr field-pairs))
   (define ctor (data-ctor-plain name field-types stx))
-  (define data-form (top:data name tparams (list ctor) stx))
+  (define data-form (top:data name tparams (list ctor) stx abstract?))
   (define accessor-defs
     (for/list ([fname (in-list field-names)]
                [i (in-naturals)])

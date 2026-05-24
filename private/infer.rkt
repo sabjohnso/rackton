@@ -1728,7 +1728,7 @@
                                   (effect-op-name o)))
              declared)]
 
-    [(top:data tname tparams ctors stx)
+    [(top:data tname tparams ctors stx abstract?)
      (define default-result-type
        (make-tapp (tcon tname)
                   (for/list ([p (in-list tparams)]) (tvar p))))
@@ -1736,7 +1736,8 @@
        (env-extend-tcon env tname
                         (tcon-info tname (length tparams)
                                    (for/list ([c (in-list ctors)])
-                                     (data-ctor-name c)))))
+                                     (data-ctor-name c))
+                                   abstract?)))
      (define env**
        (for/fold ([e env*]) ([c (in-list ctors)])
          (define field-tys
@@ -1922,9 +1923,19 @@
       (cond
         [(not submod-spec) e]
         [else
-         (with-handlers ([exn:fail? (lambda (_) e)])
-           (define bindings
-             (dynamic-require submod-spec 'rackton-bindings))
+         ;; Phase 56: the catch-all `with-handlers` around the
+         ;; dynamic-requires must NOT swallow coherence errors —
+         ;; only the "this isn't a rackton module" case where the
+         ;; sidecar's rackton-bindings binding isn't found.  Scope
+         ;; the recovery narrowly to the bindings lookup; once we
+         ;; know it IS a rackton module, let later errors (like
+         ;; coherence violations) propagate.
+         (define bindings
+           (with-handlers ([exn:fail? (lambda (_) #f)])
+             (dynamic-require submod-spec 'rackton-bindings)))
+         (cond
+          [(not bindings) e]
+          [else
            (define data-ctors
              (with-handlers ([exn:fail? (lambda (_) '())])
                (dynamic-require submod-spec 'rackton-data-ctors)))
@@ -1955,7 +1966,21 @@
                                  (decode-class-info (cdr entry)))))
            (for/fold ([acc e4]) ([entry (in-list instances)])
              (define decoded (decode-instance-info entry))
-             (env-extend-instance acc (car decoded) (cdr decoded))))])))
+             (define class-name (car decoded))
+             (define new-inst (cdr decoded))
+             ;; Phase 56: module-level coherence — reject when an
+             ;; imported instance's head is alpha-equivalent to one
+             ;; already in scope.  This catches the same instance
+             ;; declared in two independent modules.
+             (for ([existing (in-list (env-instances acc class-name))])
+               (when (instance-heads-equivalent?
+                      (instance-info-head existing)
+                      (instance-info-head new-inst))
+                 (raise-syntax-error 'require
+                   (format "instance coherence: ~s would conflict with an instance already in scope"
+                           (pred->datum (instance-info-head new-inst)))
+                   stx)))
+             (env-extend-instance acc class-name new-inst))])])))
   (values new-env declared))
 
 ;; Resolve a require spec syntax to a usable `(submod ... rackton-schemes)`

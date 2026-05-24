@@ -53,9 +53,16 @@
     (for/list ([(name sch) (in-hash (env-vars env))]
                #:unless (env-ref-var prelude-env name #f))
       (cons name (scheme->sexp sch))))
+  ;; Phase 56: omit ctors whose owning type was declared with the
+  ;; #:abstract flag — importers can still mention the TYPE in
+  ;; signatures (it's exported via the tcons table) but they
+  ;; can't construct or pattern-match.
   (define export-data-ctors
     (for/list ([(name di) (in-hash (env-data-ctors env))]
-               #:unless (env-ref-data prelude-env name #f))
+               #:unless
+               (or (env-ref-data prelude-env name #f)
+                   (let ([ti (env-ref-tcon env (data-info-type-name di))])
+                     (and ti (tcon-info-abstract? ti)))))
       (cons name (encode-data-info di))))
   (define export-tcons
     (for/list ([(name ti) (in-hash (env-tcons env))]

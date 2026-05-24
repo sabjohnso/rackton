@@ -86,11 +86,17 @@
 (define (encode-tcon-info ti)
   (list (tcon-info-name ti)
         (tcon-info-arity ti)
-        (tcon-info-ctors ti)))
+        (tcon-info-ctors ti)
+        ;; Phase 56: abstract? flag, present for newly-emitted
+        ;; sidecars; old sidecars decode with #f.
+        (tcon-info-abstract? ti)))
 
 (define (decode-tcon-info datum)
   (match datum
-    [(list name arity ctors) (tcon-info name arity ctors)]))
+    [(list name arity ctors abstract?)
+     (tcon-info name arity ctors abstract?)]
+    [(list name arity ctors)
+     (tcon-info name arity ctors #f)]))
 
 ;; ----- kinds, classes, instances ------------------------------
 

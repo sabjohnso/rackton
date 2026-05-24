@@ -2806,10 +2806,78 @@ Three classic effects exercised by the test suite:
   (raise-e -> Integer))
 }|
 
+@section{Sealed abstract types + module coherence (Phase 56)}
+
+Phase 56 lands two paired features library writers care about:
+@bold{abstract types} (hide constructors at the module boundary)
+and @bold{module-level coherence} (reject overlapping class
+instances that span modules).
+
+@subsection{Abstract types}
+
+Add @racket[#:abstract] to a @racket[define-data] or
+@racket[define-struct] body to keep the type's constructors
+private to the defining module while still exporting the
+type-name itself:
+
+@codeblock|{
+;; phase56-lib-counter.rkt
+#lang rackton
+
+(define-data Counter
+  (MkCounter Integer)
+  #:abstract)
+
+(: make-counter   (-> Integer Counter))
+(define (make-counter n) (MkCounter n))
+
+(: inc-counter    (-> Counter Counter))
+(define (inc-counter c)
+  (match c [(MkCounter n) (MkCounter (+ n 1))]))
+
+(: counter-value  (-> Counter Integer))
+(define (counter-value c)
+  (match c [(MkCounter n) n]))
+}|
+
+A client module can use @racket[Counter] in signatures and call
+the public API, but cannot construct or pattern-match against the
+ctor:
+
+@codeblock|{
+#lang rackton
+
+(require "phase56-lib-counter.rkt")
+
+(define c (inc-counter (make-counter 7)))
+(define v (counter-value c))           ;; ok
+
+(define bad (MkCounter 0))             ;; rejected: MkCounter unbound
+(match c [(MkCounter n) n])            ;; rejected: MkCounter unbound
+}|
+
+@subsection{Module-level coherence}
+
+When @racket[require]-ing a sidecar @racket[rackton-schemes]
+submodule, each imported class instance's head is checked against
+the instances already in scope.  Two modules that independently
+declare the same instance — say @code{(Eq Color)} — are rejected
+at the importing site:
+
+@verbatim|{
+require: instance coherence: (Eq Color) would conflict with
+         an instance already in scope
+}|
+
+This catches a common library-writer mistake (one canonical
+instance per class+type) at compile time rather than letting
+runtime dispatch silently pick whichever was registered last.
+The same-module duplicate-instance check from Phase 37 still
+operates within a single module.
+
 @section{Not yet supported}
 
 Larger directions still open:
-module-level type-class coherence and sealed abstract types,
 effect tracking in types (row polymorphism over effect signatures),
 performance optimization (codegen inlining and specialization),
 and additional developer tooling (formatter, type-aware

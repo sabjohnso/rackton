@@ -389,7 +389,7 @@
      (with-syntax ([n (datum->syntax stx name stx)]
                    [e (compile-expr expr*)])
        (syntax/loc stx (define n e)))]
-    [(top:data tname tparams ctors stx)
+    [(top:data tname tparams ctors stx _abstract?)
      (with-syntax
       ([(ctor-form ...)
         (for/list ([c (in-list ctors)])

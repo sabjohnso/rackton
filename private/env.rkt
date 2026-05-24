@@ -71,7 +71,10 @@
 
 ;; A type-constructor's kinding information.  `ctors` lists every
 ;; data constructor that produces this type — used for exhaustiveness.
-(struct tcon-info (name arity ctors) #:transparent)
+;; Phase 56: `abstract?` records whether the data type is sealed —
+;; its ctors are not re-exported across module boundaries.  Default
+;; #f keeps existing code untouched.
+(struct tcon-info (name arity ctors abstract?) #:transparent)
 
 ;; A class's static information.
 ;;   name        : symbol — the class name

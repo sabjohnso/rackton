@@ -30,7 +30,7 @@
 
   ;; ----- type-constructor env ---------------------------------------
 
-  (define maybe-info (tcon-info 'Maybe 1 '(None Some)))
+  (define maybe-info (tcon-info 'Maybe 1 '(None Some) #f))
   (define e2 (env-extend-tcon e1 'Maybe maybe-info))
   (check-equal? (env-ref-tcon e2 'Maybe) maybe-info)
 
