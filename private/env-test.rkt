@@ -22,7 +22,8 @@
   (define some-info
     (data-info 'Maybe 'Some 1
                (scheme '(a) (make-arrow (tvar 'a)
-                                        (tapp (tcon 'Maybe) (list (tvar 'a)))))))
+                                        (tapp (tcon 'Maybe) (list (tvar 'a)))))
+               '()))
   (define e1 (env-extend-data e0 'Some some-info))
   (check-equal? (env-ref-data e1 'Some) some-info)
   (check-false  (env-ref-data e1 'None))

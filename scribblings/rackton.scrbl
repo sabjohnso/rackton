@@ -2256,10 +2256,64 @@ Phases 41 / 43.
         tables transparently.}
 ]
 
+@section{Existential types (Phase 45)}
+
+A data constructor can introduce its own quantifier hidden from
+the outer type via @racket[#:forall] and @racket[#:where] clauses:
+
+@codeblock|{
+(define-data ExistsShow
+  (PackShow #:forall (a) #:where (Show a) a))
+
+(: render-list (-> (List ExistsShow) String))
+(define (render-list xs)
+  (match xs
+    [(Nil) ""]
+    [(Cons (PackShow x) rest)
+     (<> (show x) (<> ", " (render-list rest)))]))
+}|
+
+Each @racket[PackShow] value carries an opaque @racket[a] together
+with a @racket[Show] dictionary; the consumer can only call methods
+covered by the existential's constraints.  Mixed-type heterogeneous
+collections become well-typed via this pattern.
+
+@itemlist[
+  @item{Constructor application is ordinary inference — the ctor's
+        scheme is @code{forall a. (Show a) => a -> ExistsShow}, so
+        @racket[(PackShow 42)] sees @code{a = Integer} and discharges
+        @racket[Show Integer] from the global instance set.}
+  @item{Pattern matching skolemizes the @racket[#:forall]-bound
+        tvars (fresh rigid tcons via @racket[gensym]) and treats the
+        @racket[#:where] constraints as proven hypotheses available
+        to the clause body.  Any class-method call on the existential
+        binding (e.g. @racket[(show x)] above) discharges via those
+        hypotheses, not via global instance lookup.}
+  @item{@racket[data-info] gains an @racket[ex-tvars] field listing
+        the existentially-quantified tail of the scheme's quantifier
+        list — @racket[infer-pattern]'s
+        @racket[instantiate-ctor-scheme] consults it to decide which
+        tvars get fresh-tvar instantiation (universals) vs
+        fresh-skolem (existentials).}
+  @item{@racket[infer-pattern] returns a third value (existential
+        hypotheses) that @racket[infer-clause] threads into a
+        @racket[reduce-context] over the clause body's pending
+        preds — discharging matches before they bubble up to the
+        outer top-form's check.}
+]
+
+@bold{Out of scope:}
+@itemlist[
+  @item{Full GADTs (type refinement across match arms).}
+  @item{Existential tvars appearing in arrow positions of the
+        ctor's field types.}
+]
+
 @section{Not yet supported}
 
-Larger directions still open: lenses / optics, GADTs and existential
-types, polymorphic record updates (@code{{ r | f = x }} syntax),
+Larger directions still open: lenses / optics, full GADTs (type
+refinement across match arms),
+polymorphic record updates (curly-brace update syntax),
 module-level type-class coherence and sealed abstract types,
 algebraic effects / handlers, performance optimization (codegen
 inlining and specialization), and developer tooling (REPL,

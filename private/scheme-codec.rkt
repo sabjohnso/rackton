@@ -69,12 +69,19 @@
   (list (data-info-type-name di)
         (data-info-ctor-name di)
         (data-info-arity di)
-        (scheme->sexp (data-info-scheme di))))
+        (scheme->sexp (data-info-scheme di))
+        (data-info-ex-tvars di)))
 
 (define (decode-data-info datum)
   (match datum
     [(list type-name ctor-name arity scheme-sexp)
-     (data-info type-name ctor-name arity (sexp->scheme scheme-sexp))]))
+     ;; Backwards-compatible with pre-Phase-45 sidecars: missing
+     ;; ex-tvars defaults to empty.
+     (data-info type-name ctor-name arity
+                (sexp->scheme scheme-sexp) '())]
+    [(list type-name ctor-name arity scheme-sexp ex-tvars)
+     (data-info type-name ctor-name arity
+                (sexp->scheme scheme-sexp) ex-tvars)]))
 
 (define (encode-tcon-info ti)
   (list (tcon-info-name ti)

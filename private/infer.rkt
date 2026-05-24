@@ -857,7 +857,8 @@
 ;; clause body.  The body type is unified with the running result type
 ;; so every arm yields the same type.
 (define (infer-clause cl scrut-type result-type env)
-  (define-values (bindings pat-type) (infer-pattern (clause-pattern cl) env))
+  (define-values (bindings pat-type ex-hyps)
+    (infer-pattern (clause-pattern cl) env))
   (define s-pat
     (with-handlers
      ([exn:fail:unify?
@@ -895,6 +896,18 @@
       [else (values s-pat env*)]))
   (define-values (s-body t-body) (infer-expr (clause-body cl) env-pre-body))
   (define s-acc (subst-compose s-body s-pre-body))
+  ;; Phase 45: discharge any pending preds that the existential
+  ;; hypotheses prove.  The pattern is the proof; ex-hyps are
+  ;; treated as already-given.  Drop matching preds from the
+  ;; pending box so they don't bubble up to the outer reduce-context.
+  (cond
+    [(not (null? ex-hyps))
+     (apply-subst-to-preds! s-acc)
+     (define current (snapshot-preds))
+     (define ex-hyps* (map (lambda (p) (apply-subst s-acc p)) ex-hyps))
+     (define remaining
+       (reduce-context env ex-hyps* current))
+     (restore-preds! remaining)])
   (define s-u
     (with-handlers
      ([exn:fail:unify?
@@ -910,13 +923,18 @@
           (apply-subst s-u t-body)))
 
 ;; Type a pattern.  Returns (bindings, pattern-type).
+;; Phase 45: infer-pattern returns a third value — the list of
+;; existential hypotheses produced by an existential-ctor pattern.
+;; For non-existential patterns this is '(); the caller threads them
+;; into the clause body's constraint-reduction so the body's class-
+;; method calls on ex-skolems can be discharged.
 (define (infer-pattern pat env)
   (match pat
-    [(p:wild _)   (values '() (fresh-tvar))]
-    [(p:lit v _)  (values '() (literal-type v))]
+    [(p:wild _)   (values '() (fresh-tvar) '())]
+    [(p:lit v _)  (values '() (literal-type v) '())]
     [(p:var x _)
      (define α (fresh-tvar))
-     (values (list (cons x α)) α)]
+     (values (list (cons x α)) α '())]
     [(p:ctor name args stx)
      (define info (env-ref-data env name))
      (cond
@@ -931,20 +949,68 @@
                   name (data-info-arity info) (length args))
           stx)]
        [else
-        (define ctor-type (instantiate (data-info-scheme info)))
+        ;; Phase 45: for an existential ctor, instantiate the
+        ;; universally-quantified data tparams with fresh tvars
+        ;; (so they can unify with the scrutinee) but instantiate
+        ;; the existentially-quantified `ex-tvars` with fresh
+        ;; SKOLEMS (rigid tcons) so the pattern body can't sneak
+        ;; the existential type out.  The ctor's qual context
+        ;; (with skolems substituted) becomes hypotheses available
+        ;; to the surrounding match arm — proven by the pattern.
+        (define-values (ctor-type ex-hyps)
+          (instantiate-ctor-scheme (data-info-scheme info)
+                                   (data-info-ex-tvars info)))
         (define-values (arg-tys result-ty)
           (unfold-arrow ctor-type (length args)))
-        (define-values (all-bindings s-acc)
-          (for/fold ([acc '()] [s empty-subst])
+        (define-values (all-bindings s-acc all-ex-hyps)
+          (for/fold ([acc '()] [s empty-subst] [hyps ex-hyps])
                     ([arg-pat (in-list args)]
                      [exp-ty (in-list arg-tys)])
-            (define-values (bs t) (infer-pattern arg-pat env))
+            (define-values (bs t inner-hyps) (infer-pattern arg-pat env))
             (define s-u (unify (apply-subst s t)
                                (apply-subst s exp-ty)))
-            (values (append acc bs) (subst-compose s-u s))))
+            (values (append acc bs)
+                    (subst-compose s-u s)
+                    (append hyps inner-hyps))))
         (values (for/list ([b (in-list all-bindings)])
                   (cons (car b) (apply-subst s-acc (cdr b))))
-                (apply-subst s-acc result-ty))])]))
+                (apply-subst s-acc result-ty)
+                all-ex-hyps)])]))
+
+;; Phase 45: instantiate a data ctor's scheme for use in a pattern.
+;; Universally-quantified data-tparams become fresh tvars (will
+;; unify with the scrutinee's type).  Existentially-quantified
+;; ex-tvars become fresh SKOLEMS (rigid tcons).  Any qual context
+;; constraints (with the skolem substitution applied) are added to
+;; pending preds, making them hypotheses available to the clause
+;; body — the pattern itself supplies the proof.
+;; Returns two values: the instantiated bare ctor type, and the
+;; list of existential hypotheses (constraints in terms of fresh
+;; ex-skolems) that should be available to the surrounding match
+;; arm as already-proven.
+(define (instantiate-ctor-scheme sch ex-tvars)
+  (cond
+    [(null? ex-tvars)
+     (values (instantiate sch) '())]
+    [else
+     (match sch
+       [(scheme vs body)
+        (define ex-set (list->seteq ex-tvars))
+        (define s
+          (for/fold ([s empty-subst]) ([v (in-list vs)])
+            (cond
+              [(set-member? ex-set v)
+               (subst-extend s v (tcon (gensym
+                                        (format "$ex-skolem.~a." v))))]
+              [else
+               (subst-extend s v (fresh-tvar v))])))
+        (define raw (apply-subst s body))
+        (cond
+          [(qual? raw)
+           (values (qual-body raw)
+                   (qual-constraints raw))]
+          [else
+           (values raw '())])])]))
 
 ;; Compile-time exhaustiveness check for `match`.  Tabular cases:
 ;;   - any wildcard or variable pattern is a universal catchall.
@@ -1142,10 +1208,25 @@
              (resolve-type t)))
          (define ctor-fn-type
            (foldr make-arrow result-type field-tys))
-         (define sch (scheme tparams ctor-fn-type))
+         ;; Phase 45: an existential ctor adds its own tvars and
+         ;; constraints into the scheme.  When matched, the inferer
+         ;; skolemizes the extra-tvars and treats the extra-context
+         ;; as hypotheses for the clause body.
+         (define extra-tvars   (data-ctor-extra-tvars c))
+         (define extra-context (data-ctor-extra-context c))
+         (define qualified-body
+           (cond
+             [(null? extra-context) ctor-fn-type]
+             [else
+              (mqual (for/list ([cs (in-list extra-context)])
+                       (resolve-constraint cs))
+                     ctor-fn-type)]))
+         (define sch
+           (scheme (append tparams extra-tvars) qualified-body))
          (env-extend-data e (data-ctor-name c)
                           (data-info tname (data-ctor-name c)
-                                     (length field-tys) sch))))
+                                     (length field-tys) sch
+                                     extra-tvars))))
      (values env** declared)])))
 
 ;; ----- class / instance elaboration --------------------------------

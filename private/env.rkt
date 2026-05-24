@@ -46,7 +46,13 @@
 ;; A data-constructor's typing information.  `scheme` is the polymorphic
 ;; type assigned to the constructor when used as a value.  `arity` is
 ;; the number of arguments the constructor takes.
-(struct data-info (type-name ctor-name arity scheme) #:transparent)
+;; Phase 45: `ex-tvars` lists the existentially-quantified tvars
+;; introduced by a `#:forall ... #:where ...` ctor.  These are the
+;; tail of `scheme`'s quantifier list — at pattern-match time the
+;; inferer skolemizes only these (the data type's tparams stay as
+;; fresh tvars to unify with the scrutinee).  Empty for ordinary
+;; constructors.
+(struct data-info (type-name ctor-name arity scheme ex-tvars) #:transparent)
 
 ;; A type-constructor's kinding information.  `ctors` lists every
 ;; data constructor that produces this type — used for exhaustiveness.

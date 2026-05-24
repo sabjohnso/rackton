@@ -111,7 +111,17 @@
 (struct top:def      (name expr stx) #:transparent)
 (struct top:dec      (name type stx) #:transparent)
 (struct top:data     (name params ctors stx) #:transparent)
-(struct data-ctor    (name field-types stx) #:transparent)
+;; Phase 45: a data ctor may carry its own existential quantifier
+;; via `#:forall (a) #:where (Cls a) ...` keywords between the ctor
+;; name and the field types.  `extra-tvars` lists the existentially
+;; quantified tvars; `extra-context` lists the constraints over them.
+;; Existing (non-existential) ctors use empty lists for both.
+(struct data-ctor    (name field-types stx extra-tvars extra-context)
+  #:transparent)
+
+;; Helper: build a non-existential data-ctor (most common case).
+(define (data-ctor-plain name field-types stx)
+  (data-ctor name field-types stx '() '()))
 ;; A class declaration carries an explicit list of parameters with kinds
 ;; (defaulting to *), the optional superclass list, the head class name,
 ;; and the body (signatures + defaults).
@@ -1199,7 +1209,7 @@
     (for/list ([fs (in-list field-only-stxs)]) (parse-field-spec fs)))
   (define field-names (map car field-pairs))
   (define field-types (map cdr field-pairs))
-  (define ctor (data-ctor name field-types stx))
+  (define ctor (data-ctor-plain name field-types stx))
   (define data-form (top:data name tparams (list ctor) stx))
   (define accessor-defs
     (for/list ([fname (in-list field-names)]
@@ -1241,14 +1251,27 @@
     [name:id
      #:fail-unless (not (lowercase-id? (syntax->datum #'name)))
      "data constructor name must be a non-lowercase identifier"
-     (data-ctor (syntax->datum #'name) '() stx)]
-    [(name:id ft ...+)
+     (data-ctor-plain (syntax->datum #'name) '() stx)]
+    ;; Phase 45: existential ctor with #:forall and #:where clauses.
+    [(name:id (~datum #:forall) (tv:id ...+)
+              (~datum #:where) ctx ...
+              ft ...+)
      #:fail-unless (not (lowercase-id? (syntax->datum #'name)))
      "data constructor name must be a non-lowercase identifier"
      (data-ctor (syntax->datum #'name)
                 (for/list ([t (in-list (syntax->list #'(ft ...)))])
                   (parse-type t))
-                stx)]))
+                stx
+                (map syntax->datum (syntax->list #'(tv ...)))
+                (for/list ([c (in-list (syntax->list #'(ctx ...)))])
+                  (parse-constraint c)))]
+    [(name:id ft ...+)
+     #:fail-unless (not (lowercase-id? (syntax->datum #'name)))
+     "data constructor name must be a non-lowercase identifier"
+     (data-ctor-plain (syntax->datum #'name)
+                      (for/list ([t (in-list (syntax->list #'(ft ...)))])
+                        (parse-type t))
+                      stx)]))
 
 (define (parse-toplevel-list stx-or-list)
   (define forms
