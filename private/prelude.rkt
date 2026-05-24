@@ -971,6 +971,37 @@
       (define yield-c
         (MkIdentity MkUnit)))
 
+    ;; --- Lens / optics (Phase 46) ----------------------------
+    ;;
+    ;; Simple (getter, setter) pair encoding.  Each `(Lens s a)`
+    ;; packs a function to extract an `a` from `s` and a function
+    ;; to inject a new `a` back into an existing `s`, producing a
+    ;; new `s`.  view / set / over operate on a single lens;
+    ;; lens-compose chains two lenses through a nested structure.
+
+    (define-data (Lens s a)
+      (MkLens (-> s a) (-> s (-> a s))))
+
+    (: view (-> (Lens s a) (-> s a)))
+    (define (view l s)
+      (match l [(MkLens g _) (g s)]))
+
+    (: set (-> (Lens s a) (-> a (-> s s))))
+    (define (set l v s)
+      (match l [(MkLens _ ps) ((ps s) v)]))
+
+    (: over (-> (Lens s a) (-> (-> a a) (-> s s))))
+    (define (over l f s)
+      (match l [(MkLens g ps) ((ps s) (f (g s)))]))
+
+    (: lens-compose
+       (-> (Lens s a) (-> (Lens a b) (Lens s b))))
+    (define (lens-compose outer inner)
+      (MkLens
+       (lambda (s) (view inner (view outer s)))
+       (lambda (s b)
+         (set outer (set inner b (view outer s)) s))))
+
     ;; --- File I/O --------------------------------------------
 
     (: read-file    (-> String (IO String)))

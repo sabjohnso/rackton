@@ -85,7 +85,7 @@
  None Some Nil Cons MkPair Ok Err MkUnit
  MkSum MkProduct
  get-sum get-product
- MkState MkEnv MkStateT MkEnvT MkWriterT MkExceptT MkIdentity
+ MkState MkEnv MkStateT MkEnvT MkWriterT MkExceptT MkIdentity MkLens
  run-state eval-state exec-state get-state put-state modify-state
  run-env ask local
  run-state-t eval-state-t exec-state-t
@@ -223,6 +223,9 @@
  reverse append zip take drop find sort
  fst snd swap
 
+ ;; Lens primitives (Phase 46)
+ view set over lens-compose
+
  ;; Panic
  panic
 
@@ -281,6 +284,8 @@
 (define-data-ctor MkExceptT 1)
 ;; Phase 44: Identity for the Mock Concurrent demo.
 (define-data-ctor MkIdentity 1)
+;; Phase 46: Lens stores a (getter, setter) pair.
+(define-data-ctor MkLens     2)
 
 ;; ----- Class dispatch tables -------------------------------------
 
@@ -1147,6 +1152,23 @@
 (define (fst p)  (match p [(MkPair a _) a]))
 (define (snd p)  (match p [(MkPair _ b) b]))
 (define (swap p) (match p [(MkPair a b) (MkPair b a)]))
+
+;; ----- Lens primitives (Phase 46) ----------------------------
+
+(define/curried (view l s)
+  (match l [(MkLens g _) (g s)]))
+
+(define/curried (set l v s)
+  (match l [(MkLens _ ps) ((ps s) v)]))
+
+(define/curried (over l f s)
+  (match l [(MkLens g ps) ((ps s) (f (g s)))]))
+
+(define/curried (lens-compose outer inner)
+  (MkLens
+   (lambda (s) (view inner (view outer s)))
+   (lambda (s)
+     (lambda (b) (set outer (set inner b (view outer s)) s)))))
 
 ;; ----- panic ---------------------------------------------------
 

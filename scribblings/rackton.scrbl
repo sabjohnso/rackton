@@ -2309,9 +2309,57 @@ collections become well-typed via this pattern.
         ctor's field types.}
 ]
 
+@section{Lenses / optics (Phase 46)}
+
+Phase 46 ships a small lens library using the simple
+(getter, setter) pair encoding:
+
+@codeblock|{
+(define-data (Lens s a)
+  (MkLens (-> s a) (-> s (-> a s))))
+}|
+
+A @racket[Lens s a] focuses on a sub-part @racket[a] of a structure
+@racket[s].  Construct one manually with @racket[MkLens] over a
+getter / setter, or compose two lenses through nested structure.
+
+@codeblock|{
+(define x-lens
+  (MkLens (lambda (p) (Point-x p))
+          (lambda (p v) (Point v (Point-y p)))))
+
+(view x-lens (Point 3 7))         ;; → 3
+(set  x-lens 99 (Point 3 7))      ;; → (Point 99 7)
+(over x-lens (lambda (n) (+ n 1))
+             (Point 3 7))         ;; → (Point 4 7)
+
+(define start-x-lens (lens-compose start-lens x-lens))
+(view start-x-lens
+      (Segment (Point 1 2) (Point 10 20)))  ;; → 1
+}|
+
+@itemlist[
+  @item{@racket[(view lens s)] extracts the focused sub-part.}
+  @item{@racket[(set lens v s)] replaces the focused sub-part,
+        returning a new whole.}
+  @item{@racket[(over lens f s)] applies a function to the focused
+        sub-part.}
+  @item{@racket[(lens-compose outer inner)] yields a new lens that
+        focuses through both — handy for deeply-nested record
+        updates.}
+]
+
+@bold{Out of scope (deferred):}
+@itemlist[
+  @item{Auto-deriving field lenses from @racket[define-struct].}
+  @item{Prisms (for sum types — focus on a specific constructor).}
+  @item{Traversals (multiple foci).}
+  @item{Van Laarhoven encoding (would need higher-rank polymorphism).}
+]
+
 @section{Not yet supported}
 
-Larger directions still open: lenses / optics, full GADTs (type
+Larger directions still open: full GADTs (type
 refinement across match arms),
 polymorphic record updates (curly-brace update syntax),
 module-level type-class coherence and sealed abstract types,
