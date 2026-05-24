@@ -21,7 +21,14 @@
 ;;   top:data _ _ (ctors)   → (begin (define-data-ctor C arity) ...)
 
 (provide compile-expr
-         compile-top)
+         compile-top
+         current-codegen-env)
+
+;; Phase 54: compile-top sets this to the post-inference env so
+;; that compile-expr — which doesn't otherwise take env — can
+;; consult it for things like a record's field-name list during
+;; e:update lowering.
+(define current-codegen-env (make-parameter #f))
 
 (require racket/match
          racket/list
@@ -210,12 +217,66 @@
                (with-syntax ([gd (compile-expr (clause-guard c))])
                  #'[pat #:when gd bd])]
               [else #'[pat bd]])))])
-       (syntax/loc stx (match sc cl ...)))]))
+       (syntax/loc stx (match sc cl ...)))]
+
+    [(e:update record updates stx)
+     ;; Phase 54: lower to Racket's `struct-copy` against the
+     ;; underlying `$ctor:Name` struct.  The Rackton field name is
+     ;; mapped to its positional `fN` slot via the env's
+     ;; struct-fields table.
+     (define env (current-codegen-env))
+     (unless env
+       (error 'compile-expr "no codegen env (Phase 54 e:update)"))
+     (define type-head (e:update-target-type-head record env))
+     (unless type-head
+       (raise-syntax-error 'compile
+         "could not statically determine record type for update" stx))
+     (define field-names (env-ref-struct-fields env type-head))
+     (unless field-names
+       (raise-syntax-error 'compile
+         (format "type ~s is not a record" type-head) stx))
+     (define struct-id
+       (datum->syntax stx
+         (string->symbol (format "$ctor:~a" type-head))
+         stx))
+     (with-syntax ([s     struct-id]
+                   [r-stx (compile-expr record)]
+                   [(field-clause ...)
+                    (for/list ([upd (in-list updates)])
+                      (define idx (index-of field-names (car upd)))
+                      (with-syntax ([f   (datum->syntax stx
+                                           (string->symbol (format "f~a" idx))
+                                           stx)]
+                                    [v   (compile-expr (cdr upd))])
+                        #'[f v]))])
+       (syntax/loc stx (struct-copy s r-stx field-clause ...)))]))
+
+;; Phase 54: derive the struct's type-head name from the record
+;; expression.  We have to re-infer the record's type at codegen
+;; time because expressions don't carry their inferred type on the
+;; AST.  A minimal local re-inference under a fresh-state suffices
+;; — the env we got is the same one inference saw.
+(define (e:update-target-type-head record env)
+  (with-handlers ([exn:fail? (lambda (_) #f)])
+    (define-values (_s t) (infer-expr/fresh record env))
+    (define t*
+      (cond
+        [(tvar? t) t]
+        [else t]))
+    (match t*
+      [(tcon n) n]
+      [(tapp (tcon n) _) n]
+      [_ #f])))
 
 (define (compile-top form env)
+  (parameterize ([current-codegen-env env])
+    (compile-top* form env)))
+
+(define (compile-top* form env)
   (match form
     [(top:dec _ _ _) #f]
     [(top:alias _ _ _ _) #f]
+    [(top:struct-fields _ _ _) #f]   ;; Phase 54: compile-time only
     [(top:def name expr stx)
      ;; Phase 29: a needs-dict-body def has pre-allocated dict-arg
      ;; names recorded under current-needs-dict-defs.  Prepend them

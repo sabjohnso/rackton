@@ -2699,10 +2699,52 @@ A few rules:
         see them too.}
 ]
 
+@section{Functional record update (Phase 54)}
+
+Phase 54 adds @racket[update] — a type-preserving functional
+update for @racket[define-struct] records.  Each
+@code{[field expr]} clause replaces the named field; all other
+fields are preserved.
+
+@codeblock|{
+(define-struct Point [x : Integer] [y : Integer])
+
+(define p  (Point 1 2))
+(define p1 (update p [x 99]))         ;; -> (Point 99 2)
+(define p2 (update p [x 99] [y 88]))  ;; -> (Point 99 88)
+}|
+
+Parametric records work the same way; the type-args are taken
+from the original record's inferred type:
+
+@codeblock|{
+(define-struct (Box a) [value : a] [tag : String])
+
+(define b  (Box 7 "old"))
+(define b1 (update b [value 99]))     ;; (Box Integer): tag preserved
+(define b2 (update b [tag "new"]))    ;; (Box Integer)
+}|
+
+Rejection rules:
+
+@itemlist[
+  @item{Unknown field name → compile-time error listing the
+        struct's available fields.}
+  @item{Update value whose type doesn't match the field's declared
+        type → standard type-mismatch error blamed at the value
+        expression.}
+  @item{Update target whose type isn't a known record → compile-time
+        error.}
+]
+
+Under the hood, @racket[update] lowers to Racket's @racket[struct-copy]
+against the underlying @code{$ctor:Name} struct, using the
+field-name → positional-slot mapping recorded when the struct was
+declared.
+
 @section{Not yet supported}
 
 Larger directions still open:
-polymorphic record updates (curly-brace update syntax),
 module-level type-class coherence and sealed abstract types,
 algebraic effects / handlers, performance optimization (codegen
 inlining and specialization), and additional developer tooling

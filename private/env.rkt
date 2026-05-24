@@ -31,6 +31,8 @@
          env-ref-method-class
          env-extend-alias
          env-ref-alias
+         env-extend-struct-fields
+         env-ref-struct-fields
          env-vars-free-vars
          apply-subst/env
 
@@ -41,7 +43,12 @@
 
 ;; ----- structures ----------------------------------------------------
 
-(struct env (vars data-ctors tcons classes instance-table method-owners aliases)
+;; Phase 54: `struct-fields` maps a struct's type-name to its
+;; ordered list of field-name symbols.  Populated by handling
+;; `top:struct-fields` forms; consumed by inference and codegen
+;; for `e:update`.
+(struct env (vars data-ctors tcons classes instance-table method-owners aliases
+             struct-fields)
   #:transparent)
 
 ;; A data-constructor's typing information.  `scheme` is the polymorphic
@@ -100,7 +107,7 @@
 ;;                          empty for classes with no associated types
 (struct instance-info (head context methods type-family-bindings) #:transparent)
 
-(define empty-env (env (hasheq) (hasheq) (hasheq) (hasheq) (hasheq) (hasheq) (hasheq)))
+(define empty-env (env (hasheq) (hasheq) (hasheq) (hasheq) (hasheq) (hasheq) (hasheq) (hasheq)))
 
 ;; ----- basic accessors ----------------------------------------------
 
@@ -182,6 +189,16 @@
 
 (define (env-ref-alias e name [default #f])
   (hash-ref (env-aliases e) name default))
+
+;; Phase 54: register a struct's ordered field-name list.
+(define (env-extend-struct-fields e struct-name field-names)
+  (struct-copy env e
+               [struct-fields
+                (hash-set (env-struct-fields e) struct-name field-names)]))
+
+;; Phase 54: look up a struct's field-name list, or #f if unknown.
+(define (env-ref-struct-fields e struct-name [default #f])
+  (hash-ref (env-struct-fields e) struct-name default))
 
 ;; Free type variables across every value binding's scheme — needed
 ;; for `generalize` at let bindings.

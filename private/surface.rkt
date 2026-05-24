@@ -22,6 +22,7 @@
          (struct-out e:var)
          (struct-out e:lam)
          (struct-out e:app)
+         (struct-out e:update)
          (struct-out e:let)
          (struct-out e:if)
          (struct-out e:ann)
@@ -55,6 +56,7 @@
          (struct-out inst-type-fam)
          (struct-out top:require)
          (struct-out top:alias)
+         (struct-out top:struct-fields)
          (struct-out k:star)
          (struct-out k:arr)
          parse-kind-stx
@@ -77,6 +79,12 @@
 (struct e:var     (name stx) #:transparent)
 (struct e:lam     (params body stx) #:transparent)
 (struct e:app     (head args stx) #:transparent)
+;; Phase 54: functional record update.  `record-expr` evaluates to a
+;; record value; each `update` element is (cons field-name value-expr),
+;; meaning the resulting record has `field-name` replaced by the
+;; value of `value-expr` and all other fields preserved.  The result
+;; type equals the type of `record-expr`.
+(struct e:update  (record updates stx) #:transparent)
 (struct e:let     (bindings body stx) #:transparent)
 (struct e:if      (test then else stx) #:transparent)
 (struct e:ann     (expr type stx) #:transparent)
@@ -155,6 +163,11 @@
 ;; A type alias.  `params` is a list of symbols (possibly empty); `target`
 ;; is a parsed surface type AST that may mention the params.
 (struct top:alias      (name params target stx) #:transparent)
+;; Phase 54: side-channel record-field-name registration.  Emitted by
+;; parse-struct-form alongside the top:data form so the inference
+;; engine can record the field names on the struct's data-info.
+;; Carrying this as a separate top-form keeps data-ctor untouched.
+(struct top:struct-fields (struct-name field-names stx) #:transparent)
 
 ;; Kinds at the surface level — used to annotate class parameters.
 (struct k:star ()        #:transparent)
@@ -758,7 +771,7 @@
 
 (define (parse-expr stx)
   (syntax-parse stx
-    #:datum-literals (lambda λ let letrec match-let where if cond else ann match racket do <-)
+    #:datum-literals (lambda λ let letrec match-let where if cond else ann match racket do <- update)
     [n:number  (e:literal (syntax->datum #'n) stx)]
     [b:boolean (e:literal (syntax->datum #'b) stx)]
     [s:string  (e:literal (syntax->datum #'s) stx)]
@@ -859,6 +872,18 @@
     ;; computation.
     [(do stmt ...+ body)
      (parse-do (syntax->list #'(stmt ...)) #'body stx)]
+
+    ;; (update RECORD [field val] ...) — functional record update.
+    ;; Each [field val] replaces the named field of the recordrm
+    ;; result; the rest are preserved.  Field names must match the
+    ;; struct's declared fields, checked at inference time.
+    [(update record (~and upd [_ _]) ...+)
+     (e:update (parse-expr #'record)
+               (for/list ([u (in-list (syntax->list #'(upd ...)))])
+                 (syntax-parse u
+                   [[name:id v]
+                    (cons (syntax->datum #'name) (parse-expr #'v))]))
+               stx)]
 
     [x:id  (e:var (syntax->datum #'x) stx)]
 
@@ -1334,7 +1359,9 @@
        (synthesize-deriving other-deriving-classes
                             name tparams (list ctor)
                             tname-stx stx 'define-struct)]))
-  (append (cons data-form accessor-defs) derived lens-defs))
+  (append (list data-form
+                (top:struct-fields name field-names stx))
+          accessor-defs derived lens-defs))
 
 ;; Phase 47: peel a class symbol out of the deriving list.  Returns
 ;; (values present? rest).

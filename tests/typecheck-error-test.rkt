@@ -86,3 +86,13 @@
    ;; No (#:type (Index = ...)) — instance is incomplete.
    (define-instance (Sized (List a))
      (define (size-of xs) (length xs)))))
+
+(test-case "record update: unknown field is rejected"
+  (check-rackton-compile-error
+   (define-struct Point [x : Integer] [y : Integer])
+   (define bad (update (Point 1 2) [z 5]))))
+
+(test-case "record update: type mismatch on field value is rejected"
+  (check-rackton-compile-error
+   (define-struct Point [x : Integer] [y : Integer])
+   (define bad (update (Point 1 2) [x "not-int"]))))
