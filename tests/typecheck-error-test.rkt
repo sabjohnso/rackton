@@ -55,3 +55,9 @@
     (eval #'(rackton (define (f n) (match n [_ 99])))
           (variable-reference->namespace (#%variable-reference))))
   (check-not-exn ok-rackton))
+
+(test-case "type-equality constraint rejects mismatched types"
+  (check-rackton-compile-error
+   (: pair-eq ((~ a b) => (-> a (-> b (Pair a b)))))
+   (define (pair-eq x y) (MkPair x y))
+   (define bad (pair-eq 7 "hi"))))

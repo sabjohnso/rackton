@@ -15,6 +15,7 @@
 ;;     truth.
 
 (provide unify
+         raise-unify!
          (struct-out exn:fail:unify))
 
 (require racket/match

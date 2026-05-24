@@ -2496,10 +2496,78 @@ For each constructor:
 @racket[Prism] deriving rejects @racket[define-struct] (single-ctor
 record); the error message suggests @racket[Lens] instead.
 
+@section{GADTs (Phase 50)}
+
+Phase 50 lifts @racket[define-data] to full generalized algebraic
+data types.  Each constructor may declare its OWN result type via
+@racket[#:returns], pinning some or all of the data-type's parameters
+to concrete types at that constructor.  Pattern matching introduces
+local type-equality assumptions: in each arm the data parameter is
+refined to whatever the ctor's @racket[#:returns] clause states, but
+the refinement is LOCAL to that arm and does not leak to outer
+bindings or to the other arms.
+
+@codeblock|{
+(define-data (Expr a)
+  (Lit  #:returns (Expr Integer) Integer)
+  (BVal #:returns (Expr Boolean) Boolean)
+  (Plus #:returns (Expr Integer) (Expr Integer) (Expr Integer))
+  (If   #:returns (Expr a)       (Expr Boolean) (Expr a) (Expr a)))
+
+(: eval (-> (Expr a) a))
+(define (eval e)
+  (match e
+    [(Lit n)    n]              ;; here `a` is refined to Integer
+    [(BVal b)   b]              ;; here `a` is refined to Boolean
+    [(Plus x y) (+ (eval x) (eval y))]
+    [(If c t e) (if (eval c) (eval t) (eval e))]))
+}|
+
+The key ingredients:
+
+@itemlist[
+  @item{@bold{Surface @racket[#:returns]} on a ctor names that ctor's
+        result type explicitly.  In its absence the ctor returns
+        @racket[(T a ...)] with all of @racket[T]'s parameters free,
+        the pre-Phase-50 default.}
+  @item{@bold{Refinable skolems}.  When a function with a declared
+        signature is checked, every quantified tvar in the signature
+        becomes a rigid skolem in the body.  Pattern matches refine
+        those skolems through @racket[gadt-unify], a soft unifier
+        that treats refinable skolems as bindable rather than rigid.}
+  @item{@bold{Local arm refinement}.  Each arm's refinement is
+        applied ONLY to that arm's expected result type, never
+        composed into the outer running substitution — preventing
+        the first arm's pin from poisoning the next.}
+  @item{@bold{Bidirectional check} of declared function bodies.
+        When a @racket[define] is paired with a @racket[:]
+        declaration and the body is directly a lambda, the lambda's
+        parameter types are taken from the declared arrow type
+        rather than freshly invented.  Without this the body would
+        type its params as plain tvars and the GADT refinement
+        would have nothing to bite on.}
+]
+
+@section{Explicit type-equality constraints (Phase 50.1)}
+
+The @racket[~] predicate names primitive type equality.  Writing
+@racket[(~ a b)] in a qualifying context asserts that the two type
+arguments are the same type.  Equalities between concrete types are
+discharged at use; mismatches surface as a typecheck error.
+
+@codeblock|{
+(: pair-eq ((~ a b) => (-> a (-> b (Pair a b)))))
+(define (pair-eq x y) (MkPair x y))
+
+(pair-eq 7 7)      ;; ok:  a = b = Integer
+(pair-eq 7 "hi")   ;; rejected: type-equality fails Integer ≠ String
+}|
+
 @section{Not yet supported}
 
-Larger directions still open: full GADTs (type
-refinement across match arms),
+Larger directions still open: full higher-rank polymorphism with
+@racket[forall] in nested arrow positions (currently only rank-1
+declarations are honoured),
 polymorphic record updates (curly-brace update syntax),
 module-level type-class coherence and sealed abstract types,
 algebraic effects / handlers, performance optimization (codegen

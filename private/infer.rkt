@@ -74,6 +74,19 @@
 (define current-dict-skolems    (make-parameter (hasheq)))
 (define current-needs-dict-defs (make-parameter #f))
 
+;; Phase 50: when checking a function body against a declared
+;; signature, the body's expected return type is known up front.
+;; The top:def declared-signature branch sets this parameter so
+;; the body's `match` expression seeds its `result-tv` with the
+;; declared codomain — which may be a refinable skolem — instead
+;; of a fresh tvar.  Without this, each match arm's result tvar
+;; would be a free tvar that the first arm pins to its concrete
+;; type, leaking that refinement to later arms.
+;; The parameter is one-shot: e:match consumes it and resets to
+;; #f before recursing into the arm bodies, so nested `match`
+;; expressions don't reuse the outer scope's expected type.
+(define current-expected-type   (make-parameter #f))
+
 (define (fresh-tvar [prefix 'a])
   (define box (current-fresh-state))
   (unless box
@@ -102,13 +115,20 @@
 (define (restore-preds! ps)
   (set-box! (current-pending-preds) ps))
 
-;; Pull every pred whose free type vars share any var with `quantified-set`.
-;; Returns the pulled preds; the remaining preds stay in the box.
+;; Pull every pred whose free type vars share any var with `quantified-set`,
+;; AND every fully-concrete pred (no free tvars at all).  Fully-concrete
+;; preds are unaffected by any further outer-scope substitutions, so the
+;; current generalization is our last chance to discharge them; deferring
+;; would just leak them forever.  Phase 50.1 relies on this so that a
+;; concrete `(~ Integer String)` raised by an ill-typed call site like
+;; `(pair-eq 7 "hi")` actually surfaces as an error.
 (define (take-relevant-preds! quantified-set)
   (define b (current-pending-preds))
   (define-values (taken kept)
     (partition (lambda (p)
-                 (not (set-empty? (set-intersect (type-vars p) quantified-set))))
+                 (define vs (type-vars p))
+                 (or (set-empty? vs)
+                     (not (set-empty? (set-intersect vs quantified-set)))))
                (unbox b)))
   (set-box! b kept)
   taken)
@@ -228,6 +248,82 @@
 ;; type past a polymorphic declaration.  Returns (values body extra-preds);
 ;; `extra-preds` are the skolem-instantiated constraints that callers must
 ;; treat as hypotheses while checking the body.
+;; Phase 50: a tcon name represents a function-scheme skolem
+;; (refinable at GADT pattern matches) iff it begins with
+;; `$skolem.` — see `skolemize` below for the gensym format.
+;; Other skolem flavours (`$ex-skolem.`, `$inst-skolem.`,
+;; `$method-skolem.`) are NOT refinable: they're bound by separate
+;; rules (existentials, instance qual, method qual) and refining
+;; them would unsoundly leak existential or class-scope identity.
+(define (refinable-skolem-tcon? t)
+  (and (tcon? t)
+       (let ([n (symbol->string (tcon-name t))])
+         (and (>= (string-length n) 8)
+              (equal? (substring n 0 8) "$skolem.")))))
+
+;; A GADT-aware soft unification.  Like standard unify, but when
+;; comparing two tcons (or arms of tapps) where one side is a
+;; refinable function-scheme skolem and the other is a concrete
+;; type, bind the skolem.  Returns (values tvar-subst skolem-subst)
+;; where the tvar-subst goes into the global running substitution
+;; and the skolem-subst is applied only to the local arm's expected
+;; result type.  Raises exn:fail:unify on hard mismatch (two
+;; distinct concrete tcons with no skolem to bind).
+(define (gadt-unify σ τ)
+  (let loop ([σ σ] [τ τ] [tvar-s empty-subst] [skol-s empty-subst])
+    (define σ′ (apply-subst tvar-s (apply-skolem-subst skol-s σ)))
+    (define τ′ (apply-subst tvar-s (apply-skolem-subst skol-s τ)))
+    (cond
+      [(equal? σ′ τ′) (values tvar-s skol-s)]
+      [else
+       (match* (σ′ τ′)
+         [((tvar α) _)
+          (when (set-member? (type-vars τ′) α)
+            (raise-unify! 'occurs σ′ τ′))
+          (values (subst-extend tvar-s α τ′) skol-s)]
+         [(_ (tvar α))
+          (when (set-member? (type-vars σ′) α)
+            (raise-unify! 'occurs σ′ τ′))
+          (values (subst-extend tvar-s α σ′) skol-s)]
+         [((? refinable-skolem-tcon?) _)
+          (values tvar-s (hash-set skol-s (tcon-name σ′) τ′))]
+         [(_ (? refinable-skolem-tcon?))
+          (values tvar-s (hash-set skol-s (tcon-name τ′) σ′))]
+         [((tcon c1) (tcon c2)) #:when (eq? c1 c2)
+          (values tvar-s skol-s)]
+         [((tapp h1 args1) (tapp h2 args2))
+          (cond
+            [(= (length args1) (length args2))
+             (define-values (tvar-s1 skol-s1)
+               (loop h1 h2 tvar-s skol-s))
+             (for/fold ([ts tvar-s1] [ss skol-s1])
+                       ([a (in-list args1)] [b (in-list args2)])
+               (loop a b ts ss))]
+            [else (raise-unify! 'arity σ′ τ′)])]
+         [(_ _) (raise-unify! 'mismatch σ′ τ′)])])))
+
+;; Apply a skolem-subst (hash from skolem tcon-name → type) to a
+;; type.  Walks through tvars / tcons / tapps and replaces any tcon
+;; whose name appears in the skolem-subst.
+(define (apply-skolem-subst skol-s t)
+  (cond
+    [(hash-empty? skol-s) t]
+    [else
+     (match t
+       [(tvar _) t]
+       [(tcon n) (hash-ref skol-s n t)]
+       [(tapp h args) (make-tapp (apply-skolem-subst skol-s h)
+                                 (for/list ([a (in-list args)])
+                                   (apply-skolem-subst skol-s a)))]
+       [(pred c args)
+        (pred c (for/list ([a (in-list args)])
+                  (apply-skolem-subst skol-s a)))]
+       [(qual cs body)
+        (mqual (for/list ([c (in-list cs)])
+                 (apply-skolem-subst skol-s c))
+               (apply-skolem-subst skol-s body))]
+       [else t])]))
+
 (define (skolemize sch)
   (match sch
     [(scheme '() body)
@@ -837,7 +933,14 @@
 
     [(e:match scrut clauses irrefutable? stx)
      (define-values (s-scrut t-scrut) (infer-expr scrut env))
-     (define result-tv (fresh-tvar))
+     ;; Phase 50: if we've been handed an expected result type
+     ;; from the surrounding context (typically a checked
+     ;; lambda body), seed result-tv with it so per-arm GADT
+     ;; skolem refinement can resolve each body against the
+     ;; concrete expected type rather than a free tvar.
+     (define expected (current-expected-type))
+     (current-expected-type #f)
+     (define result-tv (or expected (fresh-tvar)))
      (define-values (s-final _)
        (for/fold ([s s-scrut] [_ignored result-tv])
                  ([cl (in-list clauses)])
@@ -859,15 +962,26 @@
 (define (infer-clause cl scrut-type result-type env)
   (define-values (bindings pat-type ex-hyps)
     (infer-pattern (clause-pattern cl) env))
-  (define s-pat
+  ;; Phase 50: try standard unify first; on a hard mismatch (a
+  ;; refinable function-scheme skolem on one side and a concrete
+  ;; type on the other), fall back to gadt-unify which returns
+  ;; (tvar-subst, skolem-subst).  The skolem-subst applies only
+  ;; LOCALLY to this arm's expected result type — never to the
+  ;; outer env, which would unsoundly leak refinement to later
+  ;; arms or to outer bindings.
+  (define-values (s-pat arm-skolem-subst)
     (with-handlers
      ([exn:fail:unify?
-       (lambda (_)
-         (raise-syntax-error 'infer
-           (format "pattern type ~a does not match scrutinee type ~a"
-                   (pretty-type pat-type) (pretty-type scrut-type))
-           (clause-stx cl)))])
-     (unify pat-type scrut-type)))
+       (lambda (e1)
+         (with-handlers
+          ([exn:fail:unify?
+            (lambda (e2)
+              (raise-syntax-error 'infer
+                (format "pattern type ~a does not match scrutinee type ~a"
+                        (pretty-type pat-type) (pretty-type scrut-type))
+                (clause-stx cl)))])
+          (gadt-unify pat-type scrut-type)))])
+     (values (unify pat-type scrut-type) (hash))))
   (define env*
     (for/fold ([e (apply-subst/env s-pat env)])
               ([b (in-list bindings)])
@@ -908,6 +1022,12 @@
      (define remaining
        (reduce-context env ex-hyps* current))
      (restore-preds! remaining)])
+  ;; Phase 50: apply the arm's local skolem refinement to the
+  ;; expected result type before checking body type — without this,
+  ;; a polymorphic GADT eval whose body returns (say) Integer in the
+  ;; Lit arm would fail to match the still-skolemized `a`.
+  (define refined-result-type
+    (apply-skolem-subst arm-skolem-subst (apply-subst s-acc result-type)))
   (define s-u
     (with-handlers
      ([exn:fail:unify?
@@ -915,10 +1035,11 @@
          (raise-syntax-error 'infer
            (format "match clause body has type ~a but earlier arms have ~a"
                    (pretty-type (apply-subst s-acc t-body))
-                   (pretty-type (apply-subst s-acc result-type)))
+                   (pretty-type refined-result-type))
            (clause-stx cl)))])
-     (unify (apply-subst s-acc t-body)
-            (apply-subst s-acc result-type))))
+     (unify (apply-skolem-subst arm-skolem-subst
+                                (apply-subst s-acc t-body))
+            refined-result-type)))
   (values (subst-compose s-u s-acc)
           (apply-subst s-u t-body)))
 
@@ -1054,7 +1175,14 @@
           "non-exhaustive match: needs a wildcard or variable pattern"
           stx)]
        [else
-        (define needed (tcon-info-ctors ti))
+        ;; Phase 50: for GADT scrutinees, only ctors whose declared
+        ;; result type can unify with the actual scrutinee type are
+        ;; *reachable* at this site.  Drop the unreachable ones from
+        ;; the must-cover set.
+        (define needed
+          (for/list ([c (in-list (tcon-info-ctors ti))]
+                     #:when (ctor-reachable-at? c scrut-type env))
+            c))
         (define hit
           (for/fold ([acc '()]) ([c (in-list clauses)] #:unless (clause-guard c))
             (match (clause-pattern c)
@@ -1070,6 +1198,44 @@
      (raise-syntax-error 'infer
        "non-exhaustive match: needs a wildcard or variable pattern"
        stx)]))
+
+;; Phase 50: a GADT constructor `c` is reachable at a scrutinee of
+;; type `scrut-type` only if the ctor's declared result type can
+;; unify with the scrutinee type.  For non-GADT ctors (default
+;; uniform result), reachability is always true.
+(define (ctor-reachable-at? ctor-name scrut-type env)
+  (define info (env-ref-data env ctor-name))
+  (cond
+    [(not info) #t]
+    [else
+     (define sch (data-info-scheme info))
+     (define-values (_ty bare-result)
+       (cond
+         [(scheme? sch)
+          (match sch
+            [(scheme vs body)
+             (define s
+               (for/fold ([s empty-subst]) ([v (in-list vs)])
+                 (subst-extend s v (fresh-tvar v))))
+             (define raw (apply-subst s body))
+             (define stripped (qual-body-deep raw))
+             ;; Walk arrows to find the result type.
+             (let loop ([t stripped])
+               (cond
+                 [(arrow? t) (loop (arrow-cod t))]
+                 [else (values raw t)]))])]))
+     (with-handlers ([exn:fail:unify? (lambda (_) #f)])
+       (unify bare-result scrut-type)
+       #t)]))
+
+;; Phase 50: does `t` have AT LEAST `n` leading arrow constructors?
+;; Used by the top:def declared-signature branch to decide when we
+;; can push skolemized parameter types into a lambda body's env.
+(define (decl-arrow-depth-ge? t n)
+  (cond
+    [(zero? n) #t]
+    [(arrow? t) (decl-arrow-depth-ge? (arrow-cod t) (sub1 n))]
+    [else #f]))
 
 (define (unfold-arrow t n)
   (let loop ([t t] [n n] [acc '()])
@@ -1137,7 +1303,45 @@
         ;; for the whole branch instead of wrapping just infer-expr.
         (define saved-skolems (current-dict-skolems))
         (current-dict-skolems dict-skolems)
-        (define-values (s t) (infer-expr expr env-rec))
+        ;; Phase 50: when the body is a lambda and the declared
+        ;; type has at least that many leading arrows, push the
+        ;; SKOLEMIZED parameter types directly into the env so
+        ;; the body inferences against rigid skolems rather than
+        ;; fresh tvars.  This is what makes GADT pattern-match
+        ;; refinement actually fire — without it, `eval :: (Expr a)
+        ;; -> a` would type its parameter as a fresh tvar, and the
+        ;; first arm's standard unify would pin `a` to that arm's
+        ;; concrete result type, leaking to later arms.
+        (define-values (s t)
+          (cond
+            [(and (e:lam? expr)
+                  (decl-arrow-depth-ge? decl-ty (length (e:lam-params expr))))
+             (define-values (arg-tys cod)
+               (unfold-arrow decl-ty (length (e:lam-params expr))))
+             (define env-lam
+               (for/fold ([e env-rec])
+                         ([p (in-list (e:lam-params expr))]
+                          [ty (in-list arg-tys)])
+                 (env-extend-var e p (scheme '() ty))))
+             ;; Phase 50: only seed the expected-type parameter
+             ;; when the lambda body is DIRECTLY a `match` — that's
+             ;; the GADT-elimination case where pushing the
+             ;; declared codomain into result-tv unlocks local
+             ;; skolem refinement.  For any other body shape, the
+             ;; expected type would propagate too deep (across
+             ;; do-blocks, nested lambdas, etc.) and pin a
+             ;; subexpression's result to the wrong type.
+             (define-values (s-body t-body)
+               (cond
+                 [(e:match? (e:lam-body expr))
+                  (parameterize ([current-expected-type cod])
+                    (infer-expr (e:lam-body expr) env-lam))]
+                 [else (infer-expr (e:lam-body expr) env-lam)]))
+             (values s-body
+                     (foldr make-arrow t-body
+                            (for/list ([ty (in-list arg-tys)])
+                              (apply-subst s-body ty))))]
+            [else (infer-expr expr env-rec)]))
         (define s-u
           (with-handlers
            ([exn:fail:unify?
@@ -1193,7 +1397,7 @@
      (handle-require-form specs stx env declared)]
 
     [(top:data tname tparams ctors stx)
-     (define result-type
+     (define default-result-type
        (make-tapp (tcon tname)
                   (for/list ([p (in-list tparams)]) (tvar p))))
      (define env*
@@ -1206,12 +1410,18 @@
          (define field-tys
            (for/list ([t (in-list (data-ctor-field-types c))])
              (resolve-type t)))
+         ;; Phase 50: GADT ctors can specify their own result type
+         ;; via `#:returns RT`.  Default to the data type's uniform
+         ;; `(T tparams)` shape.
+         (define ctor-result-type
+           (cond
+             [(data-ctor-result-type c)
+              (resolve-type (data-ctor-result-type c))]
+             [else default-result-type]))
          (define ctor-fn-type
-           (foldr make-arrow result-type field-tys))
+           (foldr make-arrow ctor-result-type field-tys))
          ;; Phase 45: an existential ctor adds its own tvars and
-         ;; constraints into the scheme.  When matched, the inferer
-         ;; skolemizes the extra-tvars and treats the extra-context
-         ;; as hypotheses for the clause body.
+         ;; constraints into the scheme.
          (define extra-tvars   (data-ctor-extra-tvars c))
          (define extra-context (data-ctor-extra-context c))
          (define qualified-body
@@ -1221,8 +1431,25 @@
               (mqual (for/list ([cs (in-list extra-context)])
                        (resolve-constraint cs))
                      ctor-fn-type)]))
-         (define sch
-           (scheme (append tparams extra-tvars) qualified-body))
+         ;; Phase 50: for GADT ctors, the scheme's quantifiers are
+         ;; the free type variables appearing in field-tys ++ result
+         ;; (rather than always quantifying over the data type's
+         ;; tparams).  This lets `Lit :: Integer -> Expr Integer`
+         ;; have an empty quantifier list, and `If :: (Expr Bool)
+         ;; -> Expr a -> Expr a -> Expr a` only quantify over `a`.
+         (define quantifier-vars
+           (cond
+             [(data-ctor-result-type c)
+              ;; GADT: union free vars of fields + result.
+              (define ft-vars
+                (apply set-union
+                       (cons (seteq)
+                             (for/list ([t (in-list field-tys)])
+                               (type-vars t)))))
+              (define rt-vars (type-vars ctor-result-type))
+              (sort (set->list (set-union ft-vars rt-vars)) symbol<?)]
+             [else (append tparams extra-tvars)]))
+         (define sch (scheme quantifier-vars qualified-body))
          (env-extend-data e (data-ctor-name c)
                           (data-info tname (data-ctor-name c)
                                      (length field-tys) sch

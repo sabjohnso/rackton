@@ -25,6 +25,7 @@
 
 (require racket/match
          racket/list
+         racket/set
          "types.rkt"
          "env.rkt"
          "unify.rkt")
@@ -105,10 +106,34 @@
 ;; ----- entailment --------------------------------------------------
 
 (define (entail? env hypotheses target)
-  (define hyp-closure (super-closure env hypotheses))
   (cond
-    [(for/or ([h (in-list hyp-closure)]) (equal? h target)) #t]
-    [else (entail-by-inst? env hypotheses target)]))
+    [(equality-pred? target)
+     ;; Phase 50.1: `(~ τ σ)` is a primitive type-equality
+     ;; constraint, not a class predicate.  It's discharged iff
+     ;; its two arguments unify.  When one side is a tvar or a
+     ;; refinable skolem, unify succeeds and binds — but since
+     ;; entail? is asked of an already-substituted predicate, by
+     ;; the time we get here both sides are in their final form.
+     (equality-discharged? target)]
+    [else
+     (define hyp-closure (super-closure env hypotheses))
+     (cond
+       [(for/or ([h (in-list hyp-closure)]) (equal? h target)) #t]
+       [else (entail-by-inst? env hypotheses target)])]))
+
+;; A `~` predicate has class-name `'~` and exactly two args.
+(define (equality-pred? p)
+  (and (eq? (pred-class p) '~)
+       (= (length (pred-args p)) 2)))
+
+;; Discharge a `~` equality: returns #t if the two sides unify
+;; (which for two fully-substituted concrete types just means
+;; they're equal).
+(define (equality-discharged? p)
+  (with-handlers ([exn:fail:unify? (lambda (_) #f)])
+    (define args (pred-args p))
+    (unify (car args) (cadr args))
+    #t))
 
 (define (entail-by-inst? env hypotheses target)
   (define inst (find-matching-instance env (pred-class target) target))
@@ -210,6 +235,30 @@
       [else
        (define p (car ps))
        (cond
+         [(equality-pred? p)
+          ;; Phase 50.1: a `~` constraint at reduce-context time:
+          ;; if the two sides unify it's discharged (drop); if a
+          ;; matching hypothesis is in scope it's also discharged;
+          ;; otherwise keep it residual so the surrounding scope
+          ;; can hand it off as a function-signature constraint.
+          (cond
+            [(equality-discharged? p) (loop (cdr ps) acc)]
+            [(member p hypotheses) (loop (cdr ps) acc)]
+            [else
+             ;; Both sides concrete and disagree — flag now with a
+             ;; clear "type-equality fails" message instead of
+             ;; letting it pass through as an unsolved residual.
+             (define args (pred-args p))
+             (cond
+               [(and (not (has-tvar? (car args)))
+                     (not (has-tvar? (cadr args))))
+                (raise
+                 (exn:fail
+                  (format "type-equality fails: ~s ≠ ~s"
+                          (type->datum (car args))
+                          (type->datum (cadr args)))
+                  (current-continuation-marks)))]
+               [else (loop (cdr ps) (cons p acc))])])]
          [(in-hnf? p)
           ;; Still keep unless redundant against hypotheses.
           (cond
@@ -251,3 +300,7 @@
     [(tvar _)       #t]
     [(tcon _)       #f]
     [(tapp h _)     (hnf-type? h)]))
+
+;; Phase 50.1: does the type still contain any tvars?
+(define (has-tvar? t)
+  (not (set-empty? (type-vars t))))

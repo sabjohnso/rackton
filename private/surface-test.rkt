@@ -61,7 +61,8 @@
                                              (map strip (data-ctor-field-types c))
                                              #f
                                              (data-ctor-extra-tvars c)
-                                             (data-ctor-extra-context c)))
+                                             (data-ctor-extra-context c)
+                                             (data-ctor-result-type c)))
                                 #f)]
       [(top:class? v) (top:class (map strip (top:class-supers v))
                                  (strip (top:class-head v))
@@ -186,16 +187,16 @@
 
   (check-equal? (ptop '(define-data (Maybe a) None (Some a)))
                 (top:data 'Maybe '(a)
-                          (list (data-ctor 'None '() #f '() '())
+                          (list (data-ctor 'None '() #f '() '() #f)
                                 (data-ctor 'Some
                                            (list (ty:var 'a #f))
-                                           #f '() '()))
+                                           #f '() '() #f))
                           #f))
 
   (check-equal? (ptop '(define-data Bool True False))
                 (top:data 'Bool '()
-                          (list (data-ctor 'True '() #f '() '())
-                                (data-ctor 'False '() #f '() '()))
+                          (list (data-ctor 'True '() #f '() '() #f)
+                                (data-ctor 'False '() #f '() '() #f))
                           #f))
 
   ;; ----- qualified types -------------------------------------------

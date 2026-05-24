@@ -116,12 +116,16 @@
 ;; name and the field types.  `extra-tvars` lists the existentially
 ;; quantified tvars; `extra-context` lists the constraints over them.
 ;; Existing (non-existential) ctors use empty lists for both.
-(struct data-ctor    (name field-types stx extra-tvars extra-context)
+;; Phase 50: `result-type` is either #f (default — the data type's
+;; `(T tparams)` shape) or a ty-AST giving the ctor's specific
+;; result type for GADTs (declared via `#:returns RT`).
+(struct data-ctor    (name field-types stx extra-tvars extra-context
+                      result-type)
   #:transparent)
 
 ;; Helper: build a non-existential data-ctor (most common case).
 (define (data-ctor-plain name field-types stx)
-  (data-ctor name field-types stx '() '()))
+  (data-ctor name field-types stx '() '() #f))
 ;; A class declaration carries an explicit list of parameters with kinds
 ;; (defaulting to *), the optional superclass list, the head class name,
 ;; and the body (signatures + defaults).
@@ -1405,7 +1409,21 @@
                 stx
                 (map syntax->datum (syntax->list #'(tv ...)))
                 (for/list ([c (in-list (syntax->list #'(ctx ...)))])
-                  (parse-constraint c)))]
+                  (parse-constraint c))
+                #f)]
+    ;; Phase 50: GADT ctor with `#:returns RT` clause that gives
+    ;; the ctor's specific result type instead of the default
+    ;; `(T tparams)` shape.
+    [(name:id (~datum #:returns) rt ft ...)
+     #:fail-unless (not (lowercase-id? (syntax->datum #'name)))
+     "data constructor name must be a non-lowercase identifier"
+     (data-ctor (syntax->datum #'name)
+                (for/list ([t (in-list (syntax->list #'(ft ...)))])
+                  (parse-type t))
+                stx
+                '()
+                '()
+                (parse-type #'rt))]
     [(name:id ft ...+)
      #:fail-unless (not (lowercase-id? (syntax->datum #'name)))
      "data constructor name must be a non-lowercase identifier"
