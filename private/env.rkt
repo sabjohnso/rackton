@@ -33,6 +33,9 @@
          env-ref-alias
          env-extend-struct-fields
          env-ref-struct-fields
+         env-extend-effect
+         env-ref-effect
+         env-effect-of-op
          env-vars-free-vars
          apply-subst/env
 
@@ -47,8 +50,12 @@
 ;; ordered list of field-name symbols.  Populated by handling
 ;; `top:struct-fields` forms; consumed by inference and codegen
 ;; for `e:update`.
+;; Phase 55: `effects` maps an effect's name to its ordered list
+;; of operation names.  Consumed by inference and codegen for
+;; `(handle ...)` so each op is dispatched on the correct
+;; prompt-tag.
 (struct env (vars data-ctors tcons classes instance-table method-owners aliases
-             struct-fields)
+             struct-fields effects)
   #:transparent)
 
 ;; A data-constructor's typing information.  `scheme` is the polymorphic
@@ -107,7 +114,7 @@
 ;;                          empty for classes with no associated types
 (struct instance-info (head context methods type-family-bindings) #:transparent)
 
-(define empty-env (env (hasheq) (hasheq) (hasheq) (hasheq) (hasheq) (hasheq) (hasheq) (hasheq)))
+(define empty-env (env (hasheq) (hasheq) (hasheq) (hasheq) (hasheq) (hasheq) (hasheq) (hasheq) (hasheq)))
 
 ;; ----- basic accessors ----------------------------------------------
 
@@ -199,6 +206,21 @@
 ;; Phase 54: look up a struct's field-name list, or #f if unknown.
 (define (env-ref-struct-fields e struct-name [default #f])
   (hash-ref (env-struct-fields e) struct-name default))
+
+;; Phase 55: register an effect's operation list under its name.
+(define (env-extend-effect e effect-name op-names)
+  (struct-copy env e
+               [effects (hash-set (env-effects e) effect-name op-names)]))
+
+;; Phase 55: look up an effect's operation list, or #f if unknown.
+(define (env-ref-effect e effect-name [default #f])
+  (hash-ref (env-effects e) effect-name default))
+
+;; Phase 55: which effect declared a given operation name?  Returns
+;; the effect's name on the first match or #f.
+(define (env-effect-of-op e op-name)
+  (for/or ([(ename ops) (in-hash (env-effects e))])
+    (and (memq op-name ops) ename)))
 
 ;; Free type variables across every value binding's scheme — needed
 ;; for `generalize` at let bindings.

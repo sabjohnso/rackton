@@ -2742,10 +2742,75 @@ against the underlying @code{$ctor:Name} struct, using the
 field-name → positional-slot mapping recorded when the struct was
 declared.
 
+@section{Algebraic effects + handlers (Phase 55)}
+
+Phase 55 adds first-class effects.  An effect declares a set of
+operations; a handler interprets those operations by responding to
+each invocation, optionally resuming the computation via the
+captured continuation.
+
+@codeblock|{
+(define-effect Env
+  (ask -> Integer))
+
+(define (run-env val prog)
+  (handle (prog)
+    [ask () k         -> (k val)]
+    [return v         -> v]))
+
+(define (prog-env) (+ (ask) (ask)))
+
+(run-env 7 prog-env)   ;; => 14
+}|
+
+A few notes on the design:
+
+@itemlist[
+  @item{Each effect compiles to a Racket continuation-prompt-tag.
+        Operations capture the current continuation via
+        @racket[call-with-composable-continuation] and abort to
+        the prompt with @code{(list 'op args k)}.}
+  @item{@racket[handle] is a @bold{deep handler}: the prompt is
+        re-installed on every resumption, so a resumed continuation
+        can perform further operations under the same handler.}
+  @item{The @code{[return v -> body]} clause runs only when the
+        body completes without performing an operation.  When the
+        body performs an operation and the handler doesn't resume,
+        the matched clause's body becomes the handle's result
+        directly.}
+  @item{Effects are @bold{not tracked in types}.  An operation
+        invoked outside any handler is a runtime error.  A future
+        phase could add row polymorphism to propagate effect
+        signatures through function types.}
+  @item{A program passed to a handler should be a thunk (a 0-arg
+        function), so operations aren't performed before the
+        prompt is installed.}
+  @item{0-arg operations are typed @code{(-> Unit T)} internally;
+        call sites @code{(op)} get an implicit @racket[MkUnit].}
+]
+
+Three classic effects exercised by the test suite:
+
+@codeblock|{
+;; Counter (state-ish): peek snapshots, bump increments
+(define-effect Counter
+  (peek -> Integer)
+  (bump -> Unit))
+
+;; Reader: ask returns a constant supplied by the handler
+(define-effect Env
+  (ask -> Integer))
+
+;; Exception: raise-e aborts; handler returns a fallback
+(define-effect Exn
+  (raise-e -> Integer))
+}|
+
 @section{Not yet supported}
 
 Larger directions still open:
 module-level type-class coherence and sealed abstract types,
-algebraic effects / handlers, performance optimization (codegen
-inlining and specialization), and additional developer tooling
-(formatter, type-aware highlighting).
+effect tracking in types (row polymorphism over effect signatures),
+performance optimization (codegen inlining and specialization),
+and additional developer tooling (formatter, type-aware
+highlighting).

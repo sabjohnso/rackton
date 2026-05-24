@@ -1037,6 +1037,9 @@
     [(e:update record updates stx)
      (infer-update record updates stx env)]
 
+    [(e:handle expr clauses ret stx)
+     (infer-handle expr clauses ret stx env)]
+
     [(e:match scrut clauses irrefutable? stx)
      (define-values (s-scrut t-scrut) (infer-expr scrut env))
      ;; Phase 50: if we've been handed an expected result type
@@ -1145,6 +1148,103 @@
        (cond
          [(arrow? t) (loop (arrow-cod t) (cons (arrow-dom t) acc))]
          [else (values (reverse acc) t)]))]))
+
+;; Phase 55: infer a (handle EXPR clauses... return) expression.
+;; The return clause's body type becomes the overall type of the
+;; handle.  Each operation clause's body must match that type.
+;; In an op clause, `k` is the resumption — typed as `(-> op-result
+;; handle-type)`.
+(define (infer-handle expr clauses ret stx env)
+  ;; Infer the body's type first; it must equal the type taken by
+  ;; the return clause's bound variable, since the body's normal
+  ;; return value flows into the return clause.
+  (define-values (s-expr t-expr) (infer-expr expr env))
+  (define result-tv (fresh-tvar))
+  ;; Type the return clause: bind `v` to t-expr (its type), infer
+  ;; the body, unify with result-tv.
+  (define env-ret
+    (env-extend-var (apply-subst/env s-expr env)
+                    (handle-return-var ret)
+                    (scheme '() (apply-subst s-expr t-expr))))
+  (define-values (s-ret t-ret)
+    (infer-expr (handle-return-body ret) env-ret))
+  (define s-after-ret (subst-compose s-ret s-expr))
+  (define s-u-ret
+    (with-handlers
+     ([exn:fail:unify?
+       (lambda (_)
+         (raise-syntax-error 'infer
+           (format "handle return clause has type ~a; expected handle's result type"
+                   (pretty-type (apply-subst s-after-ret t-ret)))
+           (handle-return-stx ret)))])
+     (unify (apply-subst s-after-ret t-ret) (apply-subst s-after-ret result-tv))))
+  (define s-acc (subst-compose s-u-ret s-after-ret))
+  ;; Each operation clause: look up the op's type, bind params to
+  ;; arg types and k to (-> op-result handle-result), infer body,
+  ;; unify body type with result-tv.
+  (define s-final
+    (for/fold ([s s-acc]) ([cl (in-list clauses)])
+      (define op-name (handle-clause-op cl))
+      (define eff (env-effect-of-op env op-name))
+      (unless eff
+        (raise-syntax-error 'infer
+          (format "handle clause references unknown effect operation: ~s" op-name)
+          (handle-clause-stx cl)))
+      (define op-sch (env-ref-var env op-name))
+      (define op-type (instantiate op-sch))
+      ;; Split op-type's arrows into arg types and result type.
+      (define-values (raw-arg-types op-result)
+        (split-arrows op-type))
+      ;; Phase 55: a user-declared 0-arg op was internally promoted
+      ;; to `(-> Unit T)` so it could be called as a function.
+      ;; When the clause's parameter list is empty, peel that Unit
+      ;; off here so the user doesn't have to write a dummy param.
+      (define arg-types
+        (cond
+          [(and (null? (handle-clause-params cl))
+                (= (length raw-arg-types) 1)
+                (equal? (car raw-arg-types) (tcon 'Unit)))
+           '()]
+          [else raw-arg-types]))
+      (unless (= (length arg-types) (length (handle-clause-params cl)))
+        (raise-syntax-error 'infer
+          (format "handle clause for ~s expects ~a parameters, got ~a"
+                  op-name (length arg-types) (length (handle-clause-params cl)))
+          (handle-clause-stx cl)))
+      (define k-type
+        (make-arrow op-result (apply-subst s result-tv)))
+      (define env-cl
+        (env-extend-var
+         (for/fold ([e (apply-subst/env s env)])
+                   ([p (in-list (handle-clause-params cl))]
+                    [ty (in-list arg-types)])
+           (env-extend-var e p (scheme '() ty)))
+         (handle-clause-k-name cl)
+         (scheme '() k-type)))
+      (define-values (s-body t-body)
+        (infer-expr (handle-clause-body cl) env-cl))
+      (define s-now (subst-compose s-body s))
+      (define s-u
+        (with-handlers
+         ([exn:fail:unify?
+           (lambda (_)
+             (raise-syntax-error 'infer
+               (format "handle clause for ~s has body type ~a; expected ~a"
+                       op-name
+                       (pretty-type (apply-subst s-now t-body))
+                       (pretty-type (apply-subst s-now result-tv)))
+               (handle-clause-stx cl)))])
+         (unify (apply-subst s-now t-body)
+                (apply-subst s-now result-tv))))
+      (subst-compose s-u s-now)))
+  (values s-final (apply-subst s-final result-tv)))
+
+;; Split an arrow chain into (list-of-arg-types, final-codomain).
+(define (split-arrows t)
+  (let loop ([t t] [acc '()])
+    (cond
+      [(arrow? t) (loop (arrow-cod t) (cons (arrow-dom t) acc))]
+      [else (values (reverse acc) t)])))
 
 (define (infer-clause cl scrut-type result-type env)
   (define-values (bindings pat-type ex-hyps)
@@ -1600,6 +1700,32 @@
      ;; (and codegen) for `e:update` to resolve named fields to
      ;; the underlying Racket struct slots.
      (values (env-extend-struct-fields env struct-name field-names)
+             declared)]
+
+    [(top:effect ename ops stx)
+     ;; Phase 55: an effect declaration registers each operation
+     ;; as a regular value with type `(-> argT ... resultT)`.
+     ;; The effect itself is recorded in env so codegen can emit
+     ;; a per-effect continuation-prompt-tag and so handle clauses
+     ;; can verify the op belongs to a known effect.  A 0-arg op
+     ;; is typed `(-> Unit resultT)` so it can be called as a
+     ;; function — the surface `(op)` form auto-passes MkUnit.
+     (define op-schemes
+       (for/list ([o (in-list ops)])
+         (define arg-tys (map resolve-type (effect-op-arg-types o)))
+         (define res-ty  (resolve-type (effect-op-result-type o)))
+         (define normalized-arg-tys
+           (cond
+             [(null? arg-tys) (list (tcon 'Unit))]
+             [else arg-tys]))
+         (define body (foldr make-arrow res-ty normalized-arg-tys))
+         (cons (effect-op-name o) (scheme '() body))))
+     (define env*
+       (for/fold ([e env]) ([os (in-list op-schemes)])
+         (env-extend-var e (car os) (cdr os))))
+     (values (env-extend-effect env* ename
+                                (for/list ([o (in-list ops)])
+                                  (effect-op-name o)))
              declared)]
 
     [(top:data tname tparams ctors stx)

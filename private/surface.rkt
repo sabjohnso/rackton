@@ -57,6 +57,11 @@
          (struct-out top:require)
          (struct-out top:alias)
          (struct-out top:struct-fields)
+         (struct-out top:effect)
+         (struct-out effect-op)
+         (struct-out e:handle)
+         (struct-out handle-clause)
+         (struct-out handle-return)
          (struct-out k:star)
          (struct-out k:arr)
          parse-kind-stx
@@ -168,6 +173,24 @@
 ;; engine can record the field names on the struct's data-info.
 ;; Carrying this as a separate top-form keeps data-ctor untouched.
 (struct top:struct-fields (struct-name field-names stx) #:transparent)
+
+;; Phase 55: an effect declaration.  `name` is the effect's name;
+;; `ops` is a list of effect-op describing each operation.
+(struct top:effect    (name ops stx) #:transparent)
+;; A single operation inside a `define-effect`.  `arg-types` is a
+;; list of surface type ASTs; `result-type` is the result type AST.
+(struct effect-op     (name arg-types result-type stx) #:transparent)
+
+;; (handle EXPR [op (args ...) k -> body] ... [return v -> body])
+;; `expr` is a 0-arg thunk (or a value that's run/forced inside
+;; handle's compiled form).  `clauses` lists op-clauses; `return`
+;; describes the return-clause.
+(struct e:handle       (expr clauses return stx) #:transparent)
+;; One operation-handling clause: (op (param ...) k -> body).
+(struct handle-clause  (op params k-name body stx) #:transparent)
+;; The single `[return v -> body]` clause that wraps the final
+;; value when the body finishes without performing an op.
+(struct handle-return  (var body stx) #:transparent)
 
 ;; Kinds at the surface level — used to annotate class parameters.
 (struct k:star ()        #:transparent)
@@ -771,7 +794,7 @@
 
 (define (parse-expr stx)
   (syntax-parse stx
-    #:datum-literals (lambda λ let letrec match-let where if cond else ann match racket do <- update)
+    #:datum-literals (lambda λ let letrec match-let where if cond else ann match racket do <- update handle return ->)
     [n:number  (e:literal (syntax->datum #'n) stx)]
     [b:boolean (e:literal (syntax->datum #'b) stx)]
     [s:string  (e:literal (syntax->datum #'s) stx)]
@@ -873,6 +896,16 @@
     [(do stmt ...+ body)
      (parse-do (syntax->list #'(stmt ...)) #'body stx)]
 
+    ;; (handle EXPR [op (args ...) k -> body] ... [return v -> body])
+    ;; Phase 55.  EXPR is run in a context where the named ops
+    ;; are dispatched to the listed clauses; if EXPR finishes
+    ;; normally, its value flows through the return clause.
+    [(handle expr cl ...+)
+     (define cls (syntax->list #'(cl ...)))
+     (define-values (op-clauses ret-clause)
+       (parse-handle-clauses cls stx))
+     (e:handle (parse-expr #'expr) op-clauses ret-clause stx)]
+
     ;; (update RECORD [field val] ...) — functional record update.
     ;; Each [field val] replaces the named field of the recordrm
     ;; result; the rest are preserved.  Field names must match the
@@ -887,6 +920,14 @@
 
     [x:id  (e:var (syntax->datum #'x) stx)]
 
+    ;; Phase 55: also accept zero-arg applications `(f)`.  These
+    ;; are passed an implicit MkUnit so the typing of 0-arg ops
+    ;; as `(-> Unit T)` lines up — saves users from spelling out
+    ;; the dummy at every effect call site.
+    [(head)
+     (e:app (parse-expr #'head)
+            (list (e:var 'MkUnit stx))
+            stx)]
     [(head arg ...+)
      (e:app (parse-expr #'head)
             (for/list ([a (in-list (syntax->list #'(arg ...)))])
@@ -927,6 +968,29 @@
              #f
              (parse-expr #'body)
              stx)]))
+
+(define (parse-handle-clauses cls outer-stx)
+  ;; Split clauses into op-clauses and a single return-clause.  The
+  ;; return clause must be present and must be last (or anywhere —
+  ;; we pick the unique one, regardless of position).
+  (define parsed
+    (for/list ([c (in-list cls)])
+      (syntax-parse c
+        #:datum-literals (return ->)
+        [[return v:id -> body]
+         (handle-return (syntax->datum #'v)
+                        (parse-expr #'body) c)]
+        [[op:id (p:id ...) k:id -> body]
+         (handle-clause (syntax->datum #'op)
+                        (map syntax->datum (syntax->list #'(p ...)))
+                        (syntax->datum #'k)
+                        (parse-expr #'body) c)])))
+  (define-values (rets ops)
+    (partition handle-return? parsed))
+  (unless (= (length rets) 1)
+    (raise-syntax-error 'parse-handle
+      "expected exactly one [return v -> body] clause" outer-stx))
+  (values ops (car rets)))
 
 (define (parse-do stmts body-stx stx)
   (cond
@@ -972,7 +1036,7 @@
 
 (define (parse-type stx)
   (syntax-parse stx
-    #:datum-literals (All =>)
+    #:datum-literals (All => ->)
     [(All (v:id ...) body)
      (ty:forall (map syntax->datum (syntax->list #'(v ...)))
                 (parse-type #'body)
@@ -983,6 +1047,13 @@
                 (parse-constraint cstx))
               (parse-type #'body)
               stx)]
+    ;; Phase 55: `(-> T)` (1-arg arrow form) means "0-arg fn
+    ;; returning T", which we encode as `(-> Unit T)` so it
+    ;; uniformly matches the standard arrow shape.
+    [(-> body)
+     (ty:app (ty:con '-> stx)
+             (list (ty:con 'Unit stx) (parse-type #'body))
+             stx)]
     [x:id
      (define name (syntax->datum #'x))
      (if (lowercase-id? name)
@@ -1036,7 +1107,7 @@
 
 (define (parse-top stx)
   (syntax-parse stx
-    #:datum-literals (define define-data define-newtype define-struct define-class define-instance define-alias require : =>)
+    #:datum-literals (define define-data define-newtype define-struct define-class define-instance define-alias define-effect require : =>)
     [(require spec ...)
      (top:require (syntax->list #'(spec ...)) stx)]
 
@@ -1055,8 +1126,15 @@
      (top:dec (syntax->datum #'name) (parse-type #'ty) stx)]
 
     [(define (f:id arg:id ...) body)
+     ;; Phase 55: a 0-arg define `(define (f) body)` desugars to a
+     ;; lambda with one ignored Unit parameter, matching the 0-arg
+     ;; call-site convention.  Without this `(f)` would call a
+     ;; non-function value.
+     (define args (map syntax->datum (syntax->list #'(arg ...))))
      (top:def (syntax->datum #'f)
-              (e:lam (map syntax->datum (syntax->list #'(arg ...)))
+              (e:lam (cond
+                       [(null? args) '($unit-arg)]
+                       [else args])
                      (parse-expr #'body)
                      stx)
               stx)]
@@ -1166,7 +1244,26 @@
                    (parse-constraint #'head)
                    (for/list ([m (in-list (syntax->list #'(body ...)))])
                      (parse-instance-method m))
-                   stx)]))
+                   stx)]
+
+    ;; Phase 55: (define-effect Name (op argType ... -> resultType) ...)
+    [(define-effect name:id op ...)
+     #:fail-unless (not (lowercase-id? (syntax->datum #'name)))
+     "effect name must be a non-lowercase identifier"
+     (top:effect (syntax->datum #'name)
+                 (for/list ([o (in-list (syntax->list #'(op ...)))])
+                   (parse-effect-op o))
+                 stx)]))
+
+(define (parse-effect-op stx)
+  (syntax-parse stx
+    #:datum-literals (->)
+    [(name:id arg ... -> result)
+     (effect-op (syntax->datum #'name)
+                (for/list ([a (in-list (syntax->list #'(arg ...)))])
+                  (parse-type a))
+                (parse-type #'result)
+                stx)]))
 
 ;; A method form inside `define-class`: either a `(: name type)` signature,
 ;; a `(define ...)` providing a default implementation, or a functional

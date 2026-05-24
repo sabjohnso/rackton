@@ -219,6 +219,62 @@
               [else #'[pat bd]])))])
        (syntax/loc stx (match sc cl ...)))]
 
+    [(e:handle expr clauses ret stx)
+     ;; Phase 55: lower (handle EXPR clauses... return) using
+     ;; Racket's continuation prompts as a deep handler: the prompt
+     ;; is re-installed each time the handler runs, so a resumption
+     ;; inside the handler body can perform another op under a
+     ;; fresh prompt of the same tag.
+     (define env (current-codegen-env))
+     (define eff-name
+       (and (pair? clauses)
+            (env-effect-of-op env (handle-clause-op (car clauses)))))
+     (unless eff-name
+       (raise-syntax-error 'compile
+         "handle has no clauses or operations not from a known effect" stx))
+     (define tag-id
+       (datum->syntax stx
+         (string->symbol (format "$effect-tag:~a" eff-name)) stx))
+     (with-syntax
+      ([tag tag-id]
+       [body (compile-expr expr)]
+       [v   (datum->syntax stx (handle-return-var ret) stx)]
+       [ret-body (compile-expr (handle-return-body ret))]
+       [(clause-form ...)
+        (for/list ([cl (in-list clauses)])
+          (define raw-params (handle-clause-params cl))
+          (define compiled-params
+            (cond [(null? raw-params) (list '_)]
+                  [else raw-params]))
+          (with-syntax ([op-sym (datum->syntax stx
+                                               (handle-clause-op cl) stx)]
+                        [k-name (datum->syntax stx
+                                               (handle-clause-k-name cl) stx)]
+                        [(p ...)
+                         (for/list ([param (in-list compiled-params)])
+                           (datum->syntax stx param stx))]
+                        [cl-body (compile-expr (handle-clause-body cl))])
+            #'[(list (quote op-sym) (list p ...) k-name)
+               cl-body]))])
+       (syntax/loc stx
+         (letrec ([loop-handler
+                   (lambda (thunk)
+                     (call-with-continuation-prompt
+                      thunk
+                      tag
+                      (lambda (msg)
+                        (loop-handler
+                         (lambda ()
+                           (match (msg)
+                             clause-form ...))))))])
+           ;; The return clause is applied ONLY when the body
+           ;; finishes normally; if it aborts via an op, the
+           ;; handler's chosen clause body becomes the result
+           ;; directly (no return wrapping).
+           (loop-handler
+            (lambda ()
+              (let ([v body]) ret-body))))))]
+
     [(e:update record updates stx)
      ;; Phase 54: lower to Racket's `struct-copy` against the
      ;; underlying `$ctor:Name` struct.  The Rackton field name is
@@ -277,6 +333,46 @@
     [(top:dec _ _ _) #f]
     [(top:alias _ _ _ _) #f]
     [(top:struct-fields _ _ _) #f]   ;; Phase 54: compile-time only
+
+    [(top:effect ename ops stx)
+     ;; Phase 55: compile an effect to a Racket prompt-tag + one
+     ;; thunk per operation.  Each op-thunk takes its declared
+     ;; args, captures the current continuation, and aborts to
+     ;; the prompt with `(list 'op-name args k)`.  A 0-arg op was
+     ;; promoted to take Unit; the user-facing call site passes
+     ;; MkUnit and the op's compiled body ignores it.
+     (define tag-id
+       (datum->syntax stx
+         (string->symbol (format "$effect-tag:~a" ename)) stx))
+     (define op-defs
+       (for/list ([o (in-list ops)])
+         (define op-name (effect-op-name o))
+         (define user-arity (length (effect-op-arg-types o)))
+         (define compiled-arity
+           (cond [(zero? user-arity) 1]
+                 [else user-arity]))
+         (define param-names
+           (for/list ([i (in-range compiled-arity)])
+             (string->symbol (format "$a~a" i))))
+         (with-syntax
+          ([op  (datum->syntax stx op-name stx)]
+           [tag tag-id]
+           [(p ...) (for/list ([n (in-list param-names)])
+                      (datum->syntax stx n stx))])
+          #'(define op
+              (lambda (p ...)
+                (call-with-composable-continuation
+                 (lambda (k)
+                   (abort-current-continuation tag
+                     (lambda ()
+                       (list (quote op) (list p ...) k))))
+                 tag))))))
+     (with-syntax ([tag tag-id]
+                   [(op-def ...) op-defs])
+       (syntax/loc stx
+         (begin
+           (define tag (make-continuation-prompt-tag (quote tag)))
+           op-def ...)))]
     [(top:def name expr stx)
      ;; Phase 29: a needs-dict-body def has pre-allocated dict-arg
      ;; names recorded under current-needs-dict-defs.  Prepend them
