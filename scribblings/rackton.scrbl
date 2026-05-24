@@ -2610,11 +2610,51 @@ Soundness is preserved by the check-mode skolemization: passing a
 is rejected because the lambda's body has type @code{Integer},
 incompatible with the skolemized @code{a}.
 
+@section{REPL (Phase 52)}
+
+Phase 52 ships an interactive REPL.  Boot it with
+
+@codeblock|{
+racket -l rackton/repl
+}|
+
+Each input line is parsed as a Rackton form: definitions extend
+the session env, expressions are evaluated and printed alongside
+their inferred types.  Colon-prefixed commands are recognized
+without evaluating their arguments:
+
+@tabular[
+  #:sep @hspace[2]
+  (list (list @tt{:type EXPR} "show EXPR's inferred type")
+        (list @tt{:info NAME} "show what NAME is bound to")
+        (list @tt{:help}      "list commands")
+        (list @tt{:quit}      "exit the REPL"))]
+
+@verbatim|{
+λ> (define x 7)
+x :: Integer
+λ> (+ x 5)
+12 :: Integer
+λ> (:type (lambda (n) (+ n 1)))
+(lambda (n) (+ n 1)) :: (-> Integer Integer)
+λ> (define-data (Box a) (MkBox a))
+λ> (MkBox 5)
+#<ctor:MkBox 5> :: (Box Integer)
+λ> (:quit)
+}|
+
+The kernel exposes a small state-machine API
+(@racket[rackton-repl-init], @racket[rackton-repl-step]) so
+tooling can drive the REPL programmatically — that's how the
+phase-52 tests work without wrangling stdin/stdout.  Errors in
+one form don't crash the session; the kernel catches them and
+moves on.
+
 @section{Not yet supported}
 
 Larger directions still open:
 polymorphic record updates (curly-brace update syntax),
 module-level type-class coherence and sealed abstract types,
 algebraic effects / handlers, performance optimization (codegen
-inlining and specialization), and developer tooling (REPL,
-formatter, type-aware highlighting).
+inlining and specialization), and additional developer tooling
+(formatter, type-aware highlighting).

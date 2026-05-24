@@ -20,8 +20,11 @@
 
 (provide infer-expr/fresh
          infer-program
+         infer-program-step
          generalize
          instantiate
+         current-fresh-state
+         current-pending-preds
          current-method-uses
          current-method-resolutions
          current-method-dict-resolutions
@@ -1356,6 +1359,13 @@
         (define-values (env* declared*)
           (handle-top-form (car forms) env declared))
         (loop (cdr forms) env* declared*)]))))
+
+;; Phase 52: single-form step exposed so the REPL kernel can call
+;; into `handle-top-form` directly without resetting the fresh-state
+;; or pending-preds boxes that the REPL needs to persist across
+;; inputs.  Callers must parameterize those boxes themselves.
+(define (infer-program-step form env declared)
+  (handle-top-form form env declared))
 
 (define (handle-top-form form env declared)
   (parameterize ([current-aliases (env-aliases env)])
