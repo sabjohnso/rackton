@@ -1,7 +1,7 @@
 #lang rackton
 
-;; Phase 56: declares an Eq instance for a concrete type, to be
-;; combined with phase56-lib-eq-b which redeclares it — importing
+;; Declares an Eq instance for a concrete type, to be combined with
+;; sealed-abstract-types-lib-eq-b which redeclares it — importing
 ;; both should be rejected as a coherence violation.
 
 (define-data Color  Red  Green  Blue)

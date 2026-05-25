@@ -2821,7 +2821,7 @@ private to the defining module while still exporting the
 type-name itself:
 
 @codeblock|{
-;; phase56-lib-counter.rkt
+;; counter.rkt
 #lang rackton
 
 (define-data Counter
@@ -2847,7 +2847,7 @@ ctor:
 @codeblock|{
 #lang rackton
 
-(require "phase56-lib-counter.rkt")
+(require "counter.rkt")
 
 (define c (inc-counter (make-counter 7)))
 (define v (counter-value c))           ;; ok

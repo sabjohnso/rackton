@@ -1,7 +1,7 @@
 #lang rackton
 
-;; Phase 56: a library module exporting an abstract `Counter` type.
-;; The constructor `MkCounter` is NOT re-exported because of the
+;; Library module exporting an abstract `Counter` type.  The
+;; constructor `MkCounter` is NOT re-exported because of the
 ;; #:abstract flag.  Clients use the public API (`make-counter`,
 ;; `inc-counter`, `counter-value`) and can't see the ctor.
 
