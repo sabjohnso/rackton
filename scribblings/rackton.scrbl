@@ -2965,6 +2965,46 @@ Inlining rules:
 the most recent @racket[(rackton …)] block's
 @code{(method . impl)} list of inlined call sites.
 
+@section{Better error messages (Phase 59)}
+
+Phase 59 polishes two error-message classes that previously
+left users guessing.
+
+@subsection{Pattern arity for record ctors}
+
+When a @racket[match] clause uses a struct constructor with the
+wrong number of arguments, the error now lists the struct's
+declared field names so the user can see which fields are
+missing or extra:
+
+@verbatim|{
+constructor Point expects 2 arg(s), pattern has 1 (fields: x, y)
+}|
+
+The field names come from the registry that Phase 54 installed
+to support functional record updates; the error path consults
+the same registry.
+
+@subsection{Deriving hint on "no instance"}
+
+When a missing-instance error names a class that's part of the
+auto-deriving menu (@racket[Eq], @racket[Ord], @racket[Show],
+@racket[Functor], @racket[Foldable], @racket[Traversable],
+@racket[Bifunctor], @racket[Semigroup], @racket[Monoid],
+@racket[Prism]) AND the missing-instance type is locally
+defined, the error now suggests adding @racket[#:deriving] to
+the data declaration:
+
+@verbatim|{
+no instance for (Eq Box)
+  available Eq instances: ((Eq Integer) (Eq Boolean) ...)
+  hint: add #:deriving Eq to the data declaration for Box
+}|
+
+The hint fires only when the deriving form is actually possible
+(class in the menu, type locally declared) — it doesn't
+suggest deriving for prelude types or non-derivable classes.
+
 @section{Not yet supported}
 
 Larger directions still open:

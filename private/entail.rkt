@@ -273,6 +273,9 @@
           ;; instances we do have for this class, so the user can see
           ;; whether they hit a typo, a missing instance for their
           ;; specific type, or a class that's missing all instances.
+          ;; Phase 59: also suggest `#:deriving Class` when the
+          ;; class is auto-derivable and the missing-instance type
+          ;; is locally defined (so the user can add the clause).
           (define cls (pred-class p))
           (define available (env-instances env cls))
           (define avail-msg
@@ -284,11 +287,37 @@
                        cls
                        (for/list ([inst (in-list available)])
                          (pred->datum (instance-info-head inst))))]))
+          (define derive-hint
+            (deriving-suggestion env cls (pred-args p)))
           (raise
            (exn:fail
-            (format "no instance for ~s~a"
-                    (pred->datum p) avail-msg)
+            (format "no instance for ~s~a~a"
+                    (pred->datum p) avail-msg derive-hint)
             (current-continuation-marks)))])])))
+
+;; Phase 59: suggest `#:deriving Class` when (a) Class is one of
+;; the auto-derivable classes and (b) the missing-instance type's
+;; head is a known data type.  Returns a formatted hint or "".
+(define derivable-classes
+  '(Eq Ord Show Functor Foldable Traversable Bifunctor
+    Semigroup Monoid Prism))
+
+(define (deriving-suggestion env cls args)
+  (cond
+    [(not (memq cls derivable-classes)) ""]
+    [else
+     (define head-tcon
+       (for/or ([a (in-list args)])
+         (let loop ([t a])
+           (match t
+             [(tcon n) n]
+             [(tapp h _) (loop h)]
+             [_ #f]))))
+     (cond
+       [(and head-tcon (env-ref-tcon env head-tcon))
+        (format "\n  hint: add #:deriving ~s to the data declaration for ~s"
+                cls head-tcon)]
+       [else ""])]))
 
 ;; A predicate is in head-normal form when at least one of its
 ;; arguments has a type-variable head (e.g. `a`, `(Maybe a)` qualifies;

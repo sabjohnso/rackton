@@ -1374,9 +1374,20 @@
                   name (suggest-similar name env))
           stx)]
        [(not (= (length args) (data-info-arity info)))
+        ;; Phase 59: when the ctor is from a `define-struct`, the
+        ;; struct's ordered field-name list is in env; append it
+        ;; to the message so the user sees which fields the
+        ;; pattern is missing.
+        (define fields (env-ref-struct-fields env name))
+        (define field-hint
+          (cond
+            [(and fields (not (null? fields)))
+             (format " (fields: ~a)"
+                     (string-join (map symbol->string fields) ", "))]
+            [else ""]))
         (raise-syntax-error 'infer
-          (format "constructor ~s expects ~a arg(s), pattern has ~a"
-                  name (data-info-arity info) (length args))
+          (format "constructor ~s expects ~a arg(s), pattern has ~a~a"
+                  name (data-info-arity info) (length args) field-hint)
           stx)]
        [else
         ;; Phase 45: for an existential ctor, instantiate the
