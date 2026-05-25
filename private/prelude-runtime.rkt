@@ -86,6 +86,9 @@
  ;; module without dragging in codegen.
  set-rackton-monomorphized-log-snapshot!
  rackton-monomorphized-sites
+ ;; Phase 58: same pattern for inlining.
+ set-rackton-inlined-log-snapshot!
+ rackton-inlined-sites
 
  ;; ADTs (constructors usable as expressions and as match patterns)
  None Some Nil Cons MkPair Ok Err MkUnit
@@ -280,6 +283,17 @@
 
 (define (rackton-monomorphized-sites)
   rackton-monomorphized-log-snapshot-value)
+
+;; Phase 58: inlined-call-site log accessors.  Populated per
+;; elaborate by codegen when it substitutes a small impl body in
+;; place of a monomorphized call.
+(define rackton-inlined-log-snapshot-value '())
+
+(define (set-rackton-inlined-log-snapshot! v)
+  (set! rackton-inlined-log-snapshot-value v))
+
+(define (rackton-inlined-sites)
+  rackton-inlined-log-snapshot-value)
 
 ;; ----- ADTs -------------------------------------------------------
 

@@ -2920,12 +2920,54 @@ returns a list of @code{(method-name . impl-name)} pairs
 recording the most recent @racket[(rackton …)] block's
 monomorphized call sites.  Useful for tooling and testing.
 
+@section{Codegen inlining (Phase 58)}
+
+Phase 58 takes the named globals from Phase 57's monomorphization
+and inlines the small ones at their call sites.  When a user
+instance method has a small body and the call site provides all
+arguments, codegen substitutes the body in place of the call via
+@racket[let]:
+
+@codeblock|{
+(define-class (Tag a)
+  (: tag-of (-> a Integer)))
+
+(define-instance (Tag Integer)
+  (define (tag-of x) (+ x 100)))
+
+(tag-of 7)
+;; was lowered (phase 57) to ($tag-of:Integer 7)
+;; now lowered (phase 58) to (let ([x 7]) (+ x 100))
+}|
+
+Inlining rules:
+
+@itemlist[
+  @item{Only @racket[e:lam] bodies whose internal AST size is
+        below the limit (currently 10 nodes) are registered as
+        inlinable.}
+  @item{Inlining fires only at @bold{full} applications — when
+        the arg count equals the lambda's parameter count.
+        Partial applications continue to indirect through the
+        named impl.}
+  @item{A recursion guard tracks which impls are currently
+        being inlined on the expansion path; an impl will never
+        inline into itself, so a recursive body
+        @code{(define (m x) (m (- x 1)))} stops at one level.}
+  @item{Prelude-defined instances and instances with
+        @code{(racket τ ...)} placeholder bodies are still
+        skipped per phase 57's rules — those have no Rackton
+        body to substitute.}
+]
+
+@racket[rackton-inlined-sites] mirrors
+@racket[rackton-monomorphized-sites]: a runtime accessor returning
+the most recent @racket[(rackton …)] block's
+@code{(method . impl)} list of inlined call sites.
+
 @section{Not yet supported}
 
 Larger directions still open:
 effect tracking in types (row polymorphism over effect signatures),
-codegen inlining of small monomorphized calls (the named globals
-are now in place, so a function-inliner could fire on them
-next),
 and additional developer tooling (formatter, type-aware
 highlighting).

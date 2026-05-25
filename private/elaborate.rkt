@@ -49,7 +49,13 @@
                  [current-needs-dict-defs         (make-hash)]
                  ;; Phase 57: monomorphization log starts empty per
                  ;; elaborate, accumulates each resolved site.
-                 [current-monomorphized-sites     (box '())])
+                 [current-monomorphized-sites     (box '())]
+                 ;; Phase 58: inlinable-bodies is populated by
+                 ;; compile-instance; the inlined-sites log mirrors
+                 ;; the monomorphization log but for actually
+                 ;; substituted call sites.
+                 [current-inlinable-bodies        (make-hasheq)]
+                 [current-inlined-sites           (box '())])
     (define env (infer-program parsed prelude-env))
     (define compiled
       (filter values
@@ -60,12 +66,12 @@
     ;; rackton-monomorphized-sites accessor returns this list so
     ;; tests can verify the optimization fired.
     (define mono-log (unbox (current-monomorphized-sites)))
-    ;; Phase 57: pass the log alongside compiled forms; the rackton
-    ;; macro turns it into a runtime form using a `for-template`
-    ;; binding it has but rackton-elaborate doesn't.
+    (define inline-log (unbox (current-inlined-sites)))
+    ;; Phase 57/58: pass the logs alongside compiled forms; the
+    ;; rackton macro turns them into runtime forms.
     (define-values (final-compiled bs dcs tcs cls insts)
       (elaborate-finish parsed env compiled))
-    (values final-compiled bs dcs tcs cls insts mono-log)))
+    (values final-compiled bs dcs tcs cls insts mono-log inline-log)))
 
 (define-for-syntax (elaborate-finish parsed env compiled)
   (define export-bindings
@@ -110,12 +116,14 @@
 (define-syntax (rackton stx)
   (syntax-parse stx
     [(_ form ...)
-     (define-values (compiled _b _d _t _c _i mono-log)
+     (define-values (compiled _b _d _t _c _i mono-log inline-log)
        (rackton-elaborate #'(form ...)))
      (with-syntax ([(out ...) compiled]
-                   [entries mono-log])
+                   [entries mono-log]
+                   [inline-entries inline-log])
        (syntax/loc stx
          (begin (set-rackton-monomorphized-log-snapshot! 'entries)
+                (set-rackton-inlined-log-snapshot! 'inline-entries)
                 out ...)))]))
 
 ;; `(rackton/main form ...)` — top-of-module form used by `#lang
@@ -124,7 +132,7 @@
 (define-syntax (rackton/main stx)
   (syntax-parse stx
     [(_ form ...)
-     (define-values (compiled bs dcs tcs cls insts _mono)
+     (define-values (compiled bs dcs tcs cls insts _mono _inline)
        (rackton-elaborate #'(form ...)))
      (define at-module-level?
        (memq (syntax-local-context) '(module module-begin)))

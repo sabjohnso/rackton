@@ -167,9 +167,17 @@
      ;; the e:var codegen above (it eta-wraps with the dict args), so
      ;; e:app stays simple here.  Phase 17 auto-currying makes
      ;; `((f dict) arg ...)` and `(f dict arg ...)` behave the same.
-     (with-syntax ([h (compile-expr head)]
-                   [(a ...) (for/list ([x (in-list args)]) (compile-expr x))])
-       (syntax/loc stx (h a ...)))]
+     ;; Phase 58: when the head is a monomorphized class-method
+     ;; reference whose impl was registered as inlinable AND the
+     ;; arg count matches the impl's arity, substitute the body
+     ;; via a `let` and skip the function call entirely.
+     (cond
+       [(try-inline-call head args stx)
+        => (lambda (s) s)]
+       [else
+        (with-syntax ([h (compile-expr head)]
+                      [(a ...) (for/list ([x (in-list args)]) (compile-expr x))])
+          (syntax/loc stx (h a ...)))])]
 
     [(e:let bindings body stx)
      (with-syntax
@@ -306,6 +314,111 @@
                                     [v   (compile-expr (cdr upd))])
                         #'[f v]))])
        (syntax/loc stx (struct-copy s r-stx field-clause ...)))]))
+
+;; Phase 58: attempt to inline a call.  If the head is an e:var
+;; whose syntax was resolved to a monomorphized impl name and that
+;; impl was registered as inlinable AND the arg count matches the
+;; lambda's parameter count AND the same impl isn't already being
+;; inlined on this expansion path, return a syntax object that
+;; emits `(let ([p arg] ...) body)` in place of the call.
+;; Otherwise #f.  The inlining-stack guard prevents an impl from
+;; expanding into itself (recursive impl) — without it inlining
+;; would loop at compile time.
+(define current-inlining-stack (make-parameter (seteq)))
+
+(define (try-inline-call head args stx)
+  (cond
+    [(not (e:var? head)) #f]
+    [else
+     (define resolutions (current-method-resolutions))
+     (define inlinables  (current-inlinable-bodies))
+     (cond
+       [(or (not resolutions) (not inlinables)) #f]
+       [else
+        (define impl-name
+          (hash-ref resolutions (e:var-stx head) #f))
+        (define body
+          (and impl-name (hash-ref inlinables impl-name #f)))
+        (cond
+          [(not body) #f]
+          [(not (e:lam? body)) #f]
+          [(not (= (length (e:lam-params body)) (length args))) #f]
+          [(set-member? (current-inlining-stack) impl-name) #f]
+          [else
+           (define params (e:lam-params body))
+           (define inner  (e:lam-body body))
+           (when (current-inlined-sites)
+             (define b (current-inlined-sites))
+             (set-box! b (cons (cons (e:var-name head) impl-name)
+                               (unbox b))))
+           (parameterize ([current-inlining-stack
+                           (set-add (current-inlining-stack) impl-name)])
+             (with-syntax ([(p ...) (for/list ([n (in-list params)])
+                                      (datum->syntax stx n stx))]
+                           [(a ...) (for/list ([x (in-list args)])
+                                      (compile-expr x))]
+                           [body-stx (compile-expr inner)])
+               (syntax/loc stx
+                 (let ([p a] ...) body-stx))))])])]))
+
+;; Phase 58: is this AST expression simple enough to inline at
+;; concrete call sites?  Two criteria:
+;;   - AST node count below a threshold (10 nodes here);
+;;   - no class-method calls (e:var references whose name is a
+;;     class method) so we don't risk pulling in a method whose
+;;     impl depends on runtime dispatch.
+;; Both rules are conservative — they're enough to catch the
+;; common `(define (m x) (+ x 100))` shape without exploding.
+(define INLINE-SIZE-LIMIT 10)
+
+(define (inlinable-body? e)
+  (< (ast-size e) INLINE-SIZE-LIMIT))
+
+(define (ast-size e)
+  (match e
+    [(e:literal _ _) 1]
+    [(e:var _ _) 1]
+    [(e:lam ps b _) (+ 1 (length ps) (ast-size b))]
+    [(e:app h args _)
+     (+ 1 (ast-size h)
+        (for/sum ([a (in-list args)]) (ast-size a)))]
+    [(e:let bs b _)
+     (+ 1
+        (for/sum ([p (in-list bs)]) (ast-size (cdr p)))
+        (ast-size b))]
+    [(e:if c t e _) (+ 1 (ast-size c) (ast-size t) (ast-size e))]
+    [(e:ann e _ _) (ast-size e)]
+    [(e:match s cs _ _)
+     (+ 1 (ast-size s)
+        (for/sum ([c (in-list cs)])
+          (+ (ast-size (clause-body c))
+             (if (clause-guard c) (ast-size (clause-guard c)) 0))))]
+    [_ 5]))
+
+(define (contains-class-method-call? e)
+  (define env (current-codegen-env))
+  (cond
+    [(not env) #f]
+    [else
+     (let loop ([e e])
+       (match e
+         [(e:literal _ _) #f]
+         [(e:var name _) (and (env-ref-method-class env name) #t)]
+         [(e:lam _ b _) (loop b)]
+         [(e:app h args _)
+          (or (loop h)
+              (for/or ([a (in-list args)]) (loop a)))]
+         [(e:let bs b _)
+          (or (loop b)
+              (for/or ([p (in-list bs)]) (loop (cdr p))))]
+         [(e:if c t e _) (or (loop c) (loop t) (loop e))]
+         [(e:ann e _ _) (loop e)]
+         [(e:match s cs _ _)
+          (or (loop s)
+              (for/or ([c (in-list cs)])
+                (or (loop (clause-body c))
+                    (and (clause-guard c) (loop (clause-guard c))))))]
+         [_ #f]))]))
 
 ;; Phase 54: derive the struct's type-head name from the record
 ;; expression.  We have to re-infer the record's type at codegen
@@ -615,6 +728,16 @@
                  [else body]))
              (define impl-name-sym
                (return-impl-symbol name head-tcon-names))
+             ;; Phase 58: classify the body for inlining.  Only
+             ;; full e:lam bodies whose inner expr is small and
+             ;; calls no class methods get registered; the e:app
+             ;; codegen reads this hash at call sites.
+             (when (and (current-inlinable-bodies)
+                        (e:lam? body*)
+                        (inlinable-body? (e:lam-body body*)))
+               (hash-set! (current-inlinable-bodies)
+                          impl-name-sym
+                          body*))
              (define def-form
                (with-syntax ([impl-name (datum->syntax stx impl-name-sym stx)]
                              [impl      (compile-expr body*)])

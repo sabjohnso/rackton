@@ -31,6 +31,8 @@
          current-dict-skolems
          current-needs-dict-defs
          current-monomorphized-sites
+         current-inlinable-bodies
+         current-inlined-sites
          current-prelude-build?
          resolve-method-uses!)
 
@@ -86,6 +88,18 @@
 ;; elaborate call and is published to runtime via the emit at the
 ;; end of rackton-elaborate.
 (define current-monomorphized-sites (make-parameter #f))
+
+;; Phase 58: registry of inlinable method bodies.  Maps an impl
+;; name symbol (e.g. '$tag-of:Integer) to its lambda AST.  Set by
+;; compile-instance when emitting a small, leaf body; consumed by
+;; the e:app codegen which substitutes args at full-application
+;; monomorphized call sites.
+(define current-inlinable-bodies (make-parameter #f))
+
+;; Phase 58: log of inlined call sites — (method . impl) pairs
+;; accumulated as the codegen substitutes bodies in place of calls.
+;; Same shape as current-monomorphized-sites.
+(define current-inlined-sites (make-parameter #f))
 
 ;; Phase 50: when checking a function body against a declared
 ;; signature, the body's expected return type is known up front.
