@@ -3005,6 +3005,41 @@ The hint fires only when the deriving form is actually possible
 (class in the menu, type locally declared) — it doesn't
 suggest deriving for prelude types or non-derivable classes.
 
+@section{REPL polish (Phase 60)}
+
+Phase 60 extends the Phase-52 REPL with three usability features
+that matter most at the keyboard:
+
+@itemlist[
+  @item{@bold{Multi-line input}.  When a form's parens aren't
+        balanced yet, the prompt continues with @code{..>} and
+        the previous line(s) are buffered until the form closes.
+        Strings and line comments are respected when counting
+        parens.}
+  @item{@bold{readline history}.  Up- and down-arrow recall past
+        entries; standard line editing is available.  Activated
+        when @racket[readline/readline] is installed (always
+        present on a standard Racket distribution).}
+  @item{@bold{Tab completion}.  Pressing TAB at a prefix asks the
+        session env for every variable, data ctor, class, or
+        type-constructor name starting with that prefix.}
+]
+
+@verbatim|{
+λ> (define (factorial n)
+..>   (if (= n 0) 1 (* n (factorial (- n 1)))))
+factorial :: (-> Integer Integer)
+λ> (fac<TAB>
+λ> (factorial 5)
+120 :: Integer
+λ> (:quit)
+}|
+
+The completion function consults the live session env's
+@racket[env-vars], @racket[env-data-ctors], @racket[env-classes],
+and @racket[env-tcons] tables so all four user-extensible
+namespaces are covered.
+
 @section{Not yet supported}
 
 Larger directions still open:

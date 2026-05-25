@@ -17,10 +17,13 @@
          rackton-repl-step
          rackton-repl-state?
          rackton-repl-run
+         rackton-read-form
+         rackton-repl-completions
          (rename-out [rackton-repl-state-quit? rackton-repl-quit?]))
 
 (require racket/match
          racket/format
+         racket/list
          (only-in racket/port with-output-to-string)
          "surface.rkt"
          "infer.rkt"
@@ -224,27 +227,131 @@
   (parameterize ([current-namespace (rackton-repl-state-nsp state)])
     (eval stx)))
 
+;; ----- multi-line input ------------------------------------------
+
+;; Phase 60: read one rackton form from `port`, accumulating lines
+;; until parens balance.  `prompt-cont` is called with the current
+;; depth count (always positive on continuation prompts) and
+;; should return a continuation-prompt string to display; in tests
+;; pass `(lambda (_) "")` to silence.  Returns the parsed form or
+;; eof when the port is exhausted with nothing read.
+(define (rackton-read-form port [prompt-cont (lambda (_) "..> ")])
+  (let loop ([buf ""] [depth 0])
+    (define line (read-line port))
+    (cond
+      [(eof-object? line)
+       (cond
+         [(zero? (string-length buf)) eof]
+         [else
+          ;; Buffer non-empty but parens never closed — let read
+          ;; raise the natural "expected )" error so the caller
+          ;; sees a useful message.
+          (read (open-input-string buf))])]
+      [else
+       (define buf* (string-append buf line " "))
+       (define new-depth (+ depth (line-paren-delta line)))
+       (cond
+         [(<= new-depth 0)
+          ;; Parens balanced (or never opened).  Try to read; if
+          ;; the buffer is purely whitespace, keep looping.
+          (define trimmed-port (open-input-string buf*))
+          (define form
+            (with-handlers ([exn:fail:read? (lambda (_) #f)])
+              (read trimmed-port)))
+          (cond
+            [(eof-object? form) (loop "" 0)]    ;; blank-ish line
+            [form form]
+            [else (loop buf* new-depth)])]
+         [else
+          (display (prompt-cont new-depth))
+          (flush-output)
+          (loop buf* new-depth)])])))
+
+;; Phase 60: net `(` - `)` for one line, ignoring `;` comments and
+;; string contents.  Brackets `[]` and braces `{}` count too —
+;; Racket treats them as parens.
+(define (line-paren-delta line)
+  (define n (string-length line))
+  (let loop ([i 0] [delta 0] [in-string? #f] [in-comment? #f])
+    (cond
+      [(= i n) delta]
+      [in-comment? delta]
+      [in-string?
+       (define c (string-ref line i))
+       (cond
+         [(char=? c #\") (loop (add1 i) delta #f #f)]
+         [(char=? c #\\) (loop (+ i 2) delta #t #f)]
+         [else (loop (add1 i) delta #t #f)])]
+      [else
+       (define c (string-ref line i))
+       (cond
+         [(char=? c #\;) delta]
+         [(char=? c #\") (loop (add1 i) delta #t #f)]
+         [(or (char=? c #\() (char=? c #\[) (char=? c #\{))
+          (loop (add1 i) (add1 delta) #f #f)]
+         [(or (char=? c #\)) (char=? c #\]) (char=? c #\}))
+          (loop (add1 i) (sub1 delta) #f #f)]
+         [else (loop (add1 i) delta #f #f)])])))
+
+;; Phase 60: completion candidates from the session env.  Returns
+;; a list of strings whose names start with `prefix`.  Consults
+;; the four user-extensible namespaces — vars, data ctors,
+;; classes, tcons — so a partial type or class name also
+;; completes.
+(define (rackton-repl-completions state prefix)
+  (define env (rackton-repl-state-env state))
+  (define all-names
+    (append (hash-keys (env-vars env))
+            (hash-keys (env-data-ctors env))
+            (hash-keys (env-classes env))
+            (hash-keys (env-tcons env))))
+  (define candidates
+    (for/list ([n (in-list all-names)]
+               #:when (let ([s (symbol->string n)])
+                        (and (>= (string-length s) (string-length prefix))
+                             (string=? prefix
+                                       (substring s 0 (string-length prefix))))))
+      (symbol->string n)))
+  (sort (remove-duplicates candidates) string<?))
+
 ;; ----- interactive loop -------------------------------------------
 
 ;; Drive the kernel from `current-input-port` / `current-output-port`.
 ;; EOF or `:quit` ends the loop.  Exposed as a single entry that
 ;; user-facing shims can call (e.g. via `racket -l rackton/repl`).
+;; Phase 60: uses readline for history + line editing when stdin
+;; is interactive, plus multi-line input accumulation via
+;; `rackton-read-form`.  Tab completion consults the live session
+;; env for variable / type / class names.
 (define (rackton-repl-run)
   (display "rackton REPL — :help for commands, :quit to exit\n")
-  (let loop ([state (rackton-repl-init)])
-    (display "λ> ")
-    (flush-output)
-    (define form (read))
+  (define current-state (box (rackton-repl-init)))
+  ;; Set up readline tab completion: callbacks consult the
+  ;; current-state box's snapshot of the env.
+  (with-handlers ([exn:fail? (lambda (_) (void))])
+    (dynamic-require 'readline/readline 'set-completion-function!)
+    (define f (dynamic-require 'readline/readline 'set-completion-function!))
+    (f (lambda (text)
+         (rackton-repl-completions (unbox current-state) text))))
+  (let loop ()
+    (define state (unbox current-state))
+    (define port (current-input-port))
+    (display "λ> ") (flush-output)
+    (define form
+      (rackton-read-form port
+                         (lambda (_depth)
+                           (display "..> ")
+                           (flush-output)
+                           "")))
     (cond
-      [(eof-object? form)
-       (newline)
-       (void)]
+      [(eof-object? form) (newline)]
       [else
        (define-values (state* output) (rackton-repl-step state form))
        (display output)
+       (set-box! current-state state*)
        (cond
          [(rackton-repl-state-quit? state*) (void)]
-         [else (loop state*)])])))
+         [else (loop)])])))
 
 ;; ----- value rendering --------------------------------------------
 
