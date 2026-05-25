@@ -1,17 +1,28 @@
 #lang racket/base
 
-;; Rackton — public entry point for the (rackton ...) macro form.
+;; Rackton — public entry point.
 ;;
-;; This module re-exports everything a downstream user needs to embed
-;; Rackton code inside a regular Racket module:
+;; This module serves three usages:
 ;;
+;;   ;; 1. Embed Rackton code inside a regular Racket module via the
+;;   ;;    (rackton ...) macro form:
 ;;   (require rackton)
-;;
 ;;   (rackton
 ;;     (define-data (Maybe a) None (Some a))
 ;;     (: from-just (-> a (-> (Maybe a) a)))
 ;;     (define (from-just d m)
 ;;       (match m [(None) d] [(Some x) x])))
+;;
+;;   ;; 2. Use rackton as a module language with the `module` form.
+;;   ;;    Bodies are auto-wrapped in (rackton/main ...) and every
+;;   ;;    definition is auto-provided:
+;;   (module example rackton
+;;     (: x Integer)
+;;     (define x 3))
+;;
+;;   ;; 3. The same shape as (2), reached via the file-level reader:
+;;   #lang rackton
+;;   (define x 3)
 ;;
 ;; The supported subset covers:
 ;;   literals (Integer / Boolean / String),
@@ -24,7 +35,38 @@
          "private/adt.rkt"
          "private/dict.rkt"
          "private/prelude-runtime.rkt"
-         (except-in racket/match ==))
+         (except-in racket/match ==)
+         (for-syntax racket/base)
+         ;; Explicit re-require of the racket/base names we expose for
+         ;; (racket ...) escape bodies and module-form modules.  The
+         ;; except-in list mirrors lang/runtime.rkt: every name that
+         ;; the Rackton prelude shadows is excluded, so re-exporting
+         ;; (all-from-out racket/base) below can't collide with the
+         ;; (all-from-out "private/prelude-runtime.rkt") line.
+         (except-in racket/base
+                    + - * < > <= >=
+                    not and or
+                    length reverse append sort foldr filter
+                    substring string-length string-append
+                    modulo quotient abs min max
+                    number->string string->number
+                    read-line print println
+                    file-exists? sqrt compose
+                    random getenv path->string
+                    delete-file make-directory directory-list
+                    current-seconds
+                    char-upcase char-downcase
+                    char-alphabetic? char-numeric? char-whitespace?
+                    char->integer integer->char
+                    string-ref string->list
+                    bytes-length bytes-ref bytes-append
+                    bytes->list list->bytes make-bytes
+                    bytes->string/utf-8 string->bytes/utf-8
+                    string
+                    void when unless
+                    exp log sin cos tan
+                    numerator denominator
+                    real-part imag-part magnitude))
 
 (provide rackton
          rackton/main
@@ -35,8 +77,38 @@
          register-instance-method!
          match
 
-         ;; prelude — class methods, ADTs, and combinators
+         ;; module-language essentials so this module can serve as the
+         ;; LANG in `(module name rackton form ...)`.  The custom
+         ;; #%module-begin auto-wraps user bodies in (rackton/main ...)
+         ;; and auto-provides every definition — the same shape that
+         ;; `#lang rackton` produces via the reader.
+         (rename-out [rackton-module-begin #%module-begin])
+
+         ;; non-conflicting parts of racket/base — available inside
+         ;; module-form modules and inside (racket ...) escapes.
+         ;; #%module-begin is excepted because we provide our own
+         ;; (custom-wrapping) version above.
+         (except-out (all-from-out racket/base) #%module-begin)
+
+         ;; prelude — class methods, ADTs, and combinators.
          (all-from-out "private/prelude-runtime.rkt"))
+
+(define-syntax (rackton-module-begin stx)
+  (syntax-case stx ()
+    [(_ form ...)
+     ;; Wrap user forms in (rackton/main ...) so the elaborator runs
+     ;; type-checking and emits the rackton-schemes sidecar.  Append
+     ;; (provide (all-defined-out)) so importers see every binding —
+     ;; same shape that the #lang rackton reader produces.
+     ;;
+     ;; The provide form is relocated to the user's scope via
+     ;; datum->syntax so `all-defined-out` can see the user's
+     ;; definitions; without this, macro hygiene hides them.
+     (with-syntax ([provide-all
+                    (datum->syntax stx '(provide (all-defined-out)))])
+       #'(#%plain-module-begin
+          (rackton/main form ...)
+          provide-all))]))
 
 (module+ test
   (require rackunit)
