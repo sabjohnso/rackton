@@ -19,7 +19,15 @@
 ;; expander needs (`#%module-begin` & friends, `provide`, `all-defined-out`)
 ;; together with the `rackton` macro itself.
 
-(require "../main.rkt"
+(require ;; main.rkt re-exports `#%module-begin` as its custom
+         ;; auto-wrapping `rackton-module-begin`.  We want
+         ;; `#lang rackton` files to use racket/base's plain
+         ;; `#%module-begin` instead — the reader has already
+         ;; wrapped the body in (rackton/main …), so a normal
+         ;; module-begin is what's wanted.  Excluding main.rkt's
+         ;; rename here is what keeps `(require racket/base)` below
+         ;; from raising "identifier already required".
+         (except-in "../main.rkt" #%module-begin)
          ;; Re-export the racket/base bindings that don't conflict with
          ;; Rackton's own prelude.  This lets a host-language escape
          ;; body (`(racket τ (vars) body)`) use common Racket forms
