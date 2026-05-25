@@ -146,6 +146,23 @@
                                    (list (ty:var 'a #f) (ty:var 'a #f)) #f)
                            #f))
 
+  ;; Variadic `->` right-associates: `(-> A B C)` ≡ `(-> A (-> B C))`.
+  ;; The core type AST stays binary; sugar is expanded at parse time.
+  (check-equal? (pt '(-> a b c))
+                (pt '(-> a (-> b c))))
+  (check-equal? (pt '(-> a b c d))
+                (pt '(-> a (-> b (-> c d)))))
+  ;; 0-arg-fn encoding still works: `(-> T)` ≡ `(-> Unit T)`.
+  (check-equal? (pt '(-> Integer))
+                (ty:app (ty:con '-> #f)
+                        (list (ty:con 'Unit #f) (ty:con 'Integer #f)) #f))
+
+  ;; Variadic `->` also applies to kind syntax.
+  (check-equal? (parse-kind-stx (datum->syntax #f '(-> * * *)))
+                (parse-kind-stx (datum->syntax #f '(-> * (-> * *)))))
+  (check-equal? (parse-kind-stx (datum->syntax #f '(-> * * * *)))
+                (parse-kind-stx (datum->syntax #f '(-> * (-> * (-> * *))))))
+
   ;; ----- patterns -------------------------------------------------
 
   (check-equal? (pp '_) (p:wild #f))

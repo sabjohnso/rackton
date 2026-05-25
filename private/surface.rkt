@@ -1056,13 +1056,12 @@
                 (parse-constraint cstx))
               (parse-type #'body)
               stx)]
-    ;; `(-> T)` (1-arg arrow form) means "0-arg fn
-    ;; returning T", which we encode as `(-> Unit T)` so it
-    ;; uniformly matches the standard arrow shape.
-    [(-> body)
-     (ty:app (ty:con '-> stx)
-             (list (ty:con 'Unit stx) (parse-type #'body))
-             stx)]
+    ;; Arrow type — variadic in the surface, binary in the core AST.
+    ;;   `(-> T)`         → `(-> Unit T)` (0-arg fn returning T)
+    ;;   `(-> A B)`       → standard binary arrow
+    ;;   `(-> A B C …)`   → right-associates: `(-> A (-> B (-> C …)))`
+    [(-> arg ...+)
+     (build-arrow-type (syntax->list #'(arg ...)) stx)]
     [x:id
      (define name (syntax->datum #'x))
      (if (lowercase-id? name)
@@ -1072,6 +1071,27 @@
      (ty:app (parse-type #'head)
              (for/list ([a (in-list (syntax->list #'(arg ...)))])
                (parse-type a))
+             stx)]))
+
+;; Right-fold a variadic `->` form into binary arrow applications so the
+;; core type AST stays binary (downstream stages only ever see `(-> A B)`).
+(define (build-arrow-type arg-stxs stx)
+  (cond
+    [(null? (cdr arg-stxs))
+     ;; `(-> T)` — 0-arg fn encoding.
+     (ty:app (ty:con '-> stx)
+             (list (ty:con 'Unit stx) (parse-type (car arg-stxs)))
+             stx)]
+    [(null? (cddr arg-stxs))
+     ;; `(-> A B)` — terminal binary arrow.
+     (ty:app (ty:con '-> stx)
+             (list (parse-type (car arg-stxs)) (parse-type (cadr arg-stxs)))
+             stx)]
+    [else
+     ;; `(-> A B C …)` — right-associate.
+     (ty:app (ty:con '-> stx)
+             (list (parse-type (car arg-stxs))
+                   (build-arrow-type (cdr arg-stxs) stx))
              stx)]))
 
 ;; Parse a constraint expression like `(Eq a)` or `(Foo (Maybe a))`.
@@ -1105,12 +1125,25 @@
      (ty:var (syntax->datum #'v) annotated)]
     [_ (parse-type stx)]))
 
-;; Parse a kind expression: `*` or `(-> k1 k2)`.
+;; Parse a kind expression: `*` or `(-> k1 k2 …)`.  Like the type arrow,
+;; the kind arrow is variadic in surface syntax and right-associates into
+;; binary `k:arr` nodes in the core kind AST.
 (define (parse-kind-stx stx)
   (syntax-parse stx
     #:datum-literals (* ->)
     [* (k:star)]
-    [(-> k1 k2) (k:arr (parse-kind-stx #'k1) (parse-kind-stx #'k2))]))
+    [(-> k1 k2 ks ...)
+     (build-arrow-kind (cons #'k1 (cons #'k2 (syntax->list #'(ks ...)))))]))
+
+;; Right-fold a variadic `->` kind form into binary `k:arr` nodes.  Expects
+;; at least two kind syntax objects (enforced by the caller's pattern).
+(define (build-arrow-kind kind-stxs)
+  (cond
+    [(null? (cdr kind-stxs))
+     (parse-kind-stx (car kind-stxs))]
+    [else
+     (k:arr (parse-kind-stx (car kind-stxs))
+            (build-arrow-kind (cdr kind-stxs)))]))
 
 ;; ----- top-level forms ----------------------------------------------
 
