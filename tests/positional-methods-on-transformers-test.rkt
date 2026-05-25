@@ -1,19 +1,18 @@
 #lang racket/base
 
-;; Phase 34: runtime resolvers for transformer-side positional class
-;; methods.  Phase 33 added pure-via-witness + ExceptT runtime
-;; registrations; Phase 34 finishes the job for catch-e on the
-;; remaining lifted transformers (StateT/EnvT/WriterT), and for
-;; listen / censor / local-en on the transformer ctors.
+;; Runtime resolvers for transformer-side positional class methods —
+;; catch-e on the lifted transformers (StateT/EnvT/WriterT), plus
+;; listen / censor / local-en on the transformer ctors.  Builds on
+;; the pure-via-witness + ExceptT registrations covered elsewhere.
 
 (require rackunit
          "../main.rkt")
 
 (rackton
-  ;; ----- 34.A WriterT do-notation in a polymorphic body --------
+  ;; ----- WriterT do-notation in a polymorphic body --------
   ;; The MonadWriter inferred body's `do` chain runtime-dispatches
-  ;; `>>=` on MkWriterT — already registered (Phase 27).  This is
-  ;; a regression guard.
+  ;; `>>=` on MkWriterT — already registered.  This is a regression
+  ;; guard.
 
   (: log-and-add ((MonadWriter String m) => (-> Integer (m Integer))))
   (define (log-and-add n)
@@ -26,7 +25,7 @@
   (: wt-add-result (IO (Pair String Integer)))
   (define wt-add-result (run-writer-t wt-add))
 
-  ;; ----- 34.B listen / censor in a polymorphic body ------------
+  ;; ----- listen / censor in a polymorphic body ------------
   ;; Calls listen/censor inside a (MonadWriter w m) =>, then runs at
   ;; WriterT String IO.  Both methods must dispatch at runtime on
   ;; MkWriterT.
@@ -55,7 +54,7 @@
   (: censor-result (IO (Pair String Integer)))
   (define censor-result (run-writer-t censored-trace))
 
-  ;; ----- 34.C catch-e through WriterT (ExceptT IO) -------------
+  ;; ----- catch-e through WriterT (ExceptT IO) -------------
   ;; The WriterT-over-ExceptT lifted MonadError instance must catch
   ;; via the runtime catch-e dispatcher on the inner ExceptT value.
 
@@ -76,7 +75,7 @@
   (: caught-wt-result (IO (Result String (Pair String Integer))))
   (define caught-wt-result (run-except-t (run-writer-t caught-wt)))
 
-  ;; ----- 34.D local-en in a polymorphic body over StateT (Env _)
+  ;; ----- local-en in a polymorphic body over StateT (Env _) -----
   ;; Polymorphic `(MonadEnv String m) => ...` body, then run at
   ;; StateT Integer (Env String).  The runtime `local-en` dispatch
   ;; on MkStateT recurses via runtime local-en on the inner Env.

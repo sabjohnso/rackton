@@ -1,6 +1,6 @@
 #lang racket/base
 
-;; Phase 33: runtime resolvers for needs-dict instances.  Make
+;; Runtime resolvers for needs-dict instances.  Make
 ;; `do`-notation and `catch-e` work on transformer stacks where the
 ;; inner monad's instance is itself needs-dict — primarily ExceptT
 ;; over IO, and ExceptT over ExceptT for nested-error code.
@@ -9,10 +9,10 @@
          "../main.rkt")
 
 (rackton
-  ;; ----- 33.A regression: base ExceptT >>= --------------------
-  ;; Phase 32 ran a one-line catch-e on base ExceptT.  This test
-  ;; pulls the >>= path through `do`-notation directly to guard
-  ;; against a regression in the registration.
+  ;; ----- regression: base ExceptT >>= --------------------
+  ;; The base ExceptT case has a one-line catch-e covered elsewhere;
+  ;; this test pulls the >>= path through `do`-notation directly to
+  ;; guard against a regression in the registration.
 
   (: ok-then  (ExceptT String IO Integer))
   (define ok-then
@@ -23,9 +23,10 @@
   (: ok-then-result (IO (Result String Integer)))
   (define ok-then-result (run-except-t ok-then))
 
-  ;; ----- 33.B nested ExceptT >>= ------------------------------
+  ;; ----- nested ExceptT >>= ------------------------------
   ;; The inner monad is ExceptT String IO (itself needs-dict).
-  ;; Without Phase 33's runtime resolver, >>= on MkExceptT fails.
+  ;; Without a runtime resolver for needs-dict instances,
+  ;; >>= on MkExceptT fails here.
 
   (: nested-ok (ExceptT String (ExceptT String IO) Integer))
   (define nested-ok
@@ -35,9 +36,9 @@
   (: nested-ok-result (IO (Result String (Result String Integer))))
   (define nested-ok-result (run-except-t (run-except-t nested-ok)))
 
-  ;; ----- 33.C catch-e through StateT (ExceptT IO) --------------
-  ;; The Phase 32 deferral: lifted catch-e through one transformer
-  ;; over ExceptT.
+  ;; ----- catch-e through StateT (ExceptT IO) --------------
+  ;; Lifted catch-e through one transformer over ExceptT — the case
+  ;; that was deferred when base ExceptT first got its registration.
 
   (: thrower-st (StateT Integer (ExceptT String IO) Integer))
   (define thrower-st
@@ -56,7 +57,7 @@
   (: caught-st-result (IO (Result String (Pair Integer Integer))))
   (define caught-st-result (run-except-t ((run-state-t caught-st) 0)))
 
-  ;; ----- 33.D catch-e on base ExceptT (Phase 32 regression) ----
+  ;; ----- catch-e on base ExceptT (regression guard) ----
 
   (: thrower-base (ExceptT String IO Integer))
   (define thrower-base (throw-e "boom"))
@@ -70,7 +71,7 @@
   (: caught-base-result (IO (Result String Integer)))
   (define caught-base-result (run-except-t caught-base))
 
-  ;; ----- 33.E nested ExceptT catch via runtime resolver --------
+  ;; ----- nested ExceptT catch via runtime resolver --------
   ;; Two layers of ExceptT (with distinct error types) over IO.
   ;; The inner-pure derivation has to walk MkExceptT → MkExceptT →
   ;; $io.  Throw at the OUTER ExceptT's error layer; catch with a

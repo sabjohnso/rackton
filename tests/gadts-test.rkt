@@ -1,6 +1,6 @@
 #lang racket/base
 
-;; Phase 50: full GADTs with per-constructor result types and
+;; Full GADTs with per-constructor result types and
 ;; local skolem refinement at pattern matches.
 
 (require rackunit

@@ -1,6 +1,6 @@
 #lang racket/base
 
-;; Phase-8 end-to-end: refs in IO, file I/O, list helpers, sort, pair
+;; End-to-end: refs in IO, file I/O, list helpers, sort, pair
 ;; helpers, and `#:deriving Functor`.
 
 (require rackunit

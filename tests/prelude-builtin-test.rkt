@@ -1,6 +1,6 @@
 #lang racket/base
 
-;; Exercises the Phase-3 built-in prelude: Num, Eq, Ord, Show, plus
+;; Exercises the built-in prelude: Num, Eq, Ord, Show, plus
 ;; the prelude ADTs (Maybe, List, Pair, Result, Unit) and combinators.
 ;; User code does NOT redeclare any of these — they're inherited.
 

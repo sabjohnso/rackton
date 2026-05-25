@@ -1,6 +1,6 @@
 #lang racket/base
 
-;; Phase 59: better error messages.
+;; Better error messages.
 ;;
 ;; Two targeted improvements:
 ;;   1. Constructor arity errors include the struct's field names,

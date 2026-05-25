@@ -1,6 +1,6 @@
 #lang racket/base
 
-;; Phase 51: full rank-N higher-rank polymorphism.  A function may
+;; Full rank-N higher-rank polymorphism.  A function may
 ;; accept an argument whose declared type is itself polymorphic, and
 ;; call that argument at several distinct concrete types inside the
 ;; same body.  In a rank-1 system the argument's tvar would unify

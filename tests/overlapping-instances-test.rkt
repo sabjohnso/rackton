@@ -1,6 +1,6 @@
 #lang racket/base
 
-;; Phase 37: overlapping/specific instance support.  When multiple
+;; Overlapping/specific instance support.  When multiple
 ;; instances of a class match a target, the most-specific one wins;
 ;; incomparable matches raise an "overlapping instances" error.
 ;; Same-head registrations are rejected at compile time.

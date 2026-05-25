@@ -1,6 +1,6 @@
 #lang racket/base
 
-;; Phase-9 end-to-end: letrec, type aliases, polymorphic recursion,
+;; End-to-end: letrec, type aliases, polymorphic recursion,
 ;; multi-(rackton …)-block support, panic, and "did you mean?"
 ;; suggestions in unbound-identifier errors.
 

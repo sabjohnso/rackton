@@ -1,6 +1,6 @@
 #lang racket/base
 
-;; Phase-23: newtypes + Sum/Product monoids.
+;; Newtypes + Sum/Product monoids.
 
 (require rackunit
          (for-syntax racket/base)

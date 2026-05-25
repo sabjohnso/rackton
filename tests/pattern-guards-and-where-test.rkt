@@ -1,6 +1,6 @@
 #lang racket/base
 
-;; Phase-21: pattern guards, match-let, where.
+;; Pattern guards, match-let, where.
 
 (require rackunit
          (for-syntax racket/base)

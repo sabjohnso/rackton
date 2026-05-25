@@ -24,7 +24,7 @@
          compile-top
          current-codegen-env)
 
-;; Phase 54: compile-top sets this to the post-inference env so
+;; compile-top sets this to the post-inference env so
 ;; that compile-expr — which doesn't otherwise take env — can
 ;; consult it for things like a record's field-name list during
 ;; e:update lowering.
@@ -141,8 +141,8 @@
        [(and dict-impls (not (null? dict-impls)))
         ;; Partial-apply the dict args.  For a 0-user-arg reference
         ;; like `get-state-t` this gives the value directly; for an
-        ;; N-user-arg reference it gives a closure (Phase 17 currying
-        ;; on the hand-written runtime impl handles the rest).
+        ;; N-user-arg reference it gives a closure (auto-currying on
+        ;; the hand-written runtime impl handles the rest).
         (with-syntax ([head final-name]
                       [(d ...) (for/list ([sym (in-list dict-impls)])
                                  (datum->syntax stx sym stx))])
@@ -165,12 +165,12 @@
     [(e:app head args stx)
      ;; The dict-prepending for needs-dict references is handled by
      ;; the e:var codegen above (it eta-wraps with the dict args), so
-     ;; e:app stays simple here.  Phase 17 auto-currying makes
+     ;; e:app stays simple here.  Auto-currying makes
      ;; `((f dict) arg ...)` and `(f dict arg ...)` behave the same.
-     ;; Phase 58: when the head is a monomorphized class-method
-     ;; reference whose impl was registered as inlinable AND the
-     ;; arg count matches the impl's arity, substitute the body
-     ;; via a `let` and skip the function call entirely.
+     ;; When the head is a monomorphized class-method reference
+     ;; whose impl was registered as inlinable AND the arg count
+     ;; matches the impl's arity, substitute the body via a `let`
+     ;; and skip the function call entirely.
      (cond
        [(try-inline-call head args stx)
         => (lambda (s) s)]
@@ -228,7 +228,7 @@
        (syntax/loc stx (match sc cl ...)))]
 
     [(e:handle expr clauses ret stx)
-     ;; Phase 55: lower (handle EXPR clauses... return) using
+     ;; Lower (handle EXPR clauses... return) using
      ;; Racket's continuation prompts as a deep handler: the prompt
      ;; is re-installed each time the handler runs, so a resumption
      ;; inside the handler body can perform another op under a
@@ -284,13 +284,13 @@
               (let ([v body]) ret-body))))))]
 
     [(e:update record updates stx)
-     ;; Phase 54: lower to Racket's `struct-copy` against the
+     ;; Lower to Racket's `struct-copy` against the
      ;; underlying `$ctor:Name` struct.  The Rackton field name is
      ;; mapped to its positional `fN` slot via the env's
      ;; struct-fields table.
      (define env (current-codegen-env))
      (unless env
-       (error 'compile-expr "no codegen env (Phase 54 e:update)"))
+       (error 'compile-expr "no codegen env for e:update"))
      (define type-head (e:update-target-type-head record env))
      (unless type-head
        (raise-syntax-error 'compile
@@ -315,7 +315,7 @@
                         #'[f v]))])
        (syntax/loc stx (struct-copy s r-stx field-clause ...)))]))
 
-;; Phase 58: attempt to inline a call.  If the head is an e:var
+;; Attempt to inline a call.  If the head is an e:var
 ;; whose syntax was resolved to a monomorphized impl name and that
 ;; impl was registered as inlinable AND the arg count matches the
 ;; lambda's parameter count AND the same impl isn't already being
@@ -361,7 +361,7 @@
                (syntax/loc stx
                  (let ([p a] ...) body-stx))))])])]))
 
-;; Phase 58: is this AST expression simple enough to inline at
+;; Is this AST expression simple enough to inline at
 ;; concrete call sites?  Two criteria:
 ;;   - AST node count below a threshold (10 nodes here);
 ;;   - no class-method calls (e:var references whose name is a
@@ -420,7 +420,7 @@
                     (and (clause-guard c) (loop (clause-guard c))))))]
          [_ #f]))]))
 
-;; Phase 54: derive the struct's type-head name from the record
+;; Derive the struct's type-head name from the record
 ;; expression.  We have to re-infer the record's type at codegen
 ;; time because expressions don't carry their inferred type on the
 ;; AST.  A minimal local re-inference under a fresh-state suffices
@@ -445,10 +445,10 @@
   (match form
     [(top:dec _ _ _) #f]
     [(top:alias _ _ _ _) #f]
-    [(top:struct-fields _ _ _) #f]   ;; Phase 54: compile-time only
+    [(top:struct-fields _ _ _) #f]   ;; Compile-time only
 
     [(top:effect ename ops stx)
-     ;; Phase 55: compile an effect to a Racket prompt-tag + one
+     ;; Compile an effect to a Racket prompt-tag + one
      ;; thunk per operation.  Each op-thunk takes its declared
      ;; args, captures the current continuation, and aborts to
      ;; the prompt with `(list 'op-name args k)`.  A 0-arg op was
@@ -487,7 +487,7 @@
            (define tag (make-continuation-prompt-tag (quote tag)))
            op-def ...)))]
     [(top:def name expr stx)
-     ;; Phase 29: a needs-dict-body def has pre-allocated dict-arg
+     ;; A needs-dict-body def has pre-allocated dict-arg
      ;; names recorded under current-needs-dict-defs.  Prepend them
      ;; to the RHS lambda's parameter list so the body's resolved
      ;; references to the locally-bound names actually find them.
@@ -586,7 +586,7 @@
     (for/fold ([acc '()]) ([m (in-list methods)])
       (match m
         [(top:def name expr _) (cons (cons name expr) acc)]
-        ;; Phase 53: #:type bindings are compile-time only — no
+        ;; #:type bindings are compile-time only — no
         ;; runtime code is emitted for an associated-type binding.
         [(inst-type-fam _ _ _) acc])))
   (define all-method-bodies
@@ -640,7 +640,7 @@
           ;; Return-typed methods don't dispatch on a runtime value;
           ;; emit one top-level `(define $method:Tcon impl)` whose
           ;; name matches what `infer.rkt` synthesizes in
-          ;; current-method-resolutions.  Phase 30: if the instance
+          ;; current-method-resolutions.  If the instance
           ;; is needs-dict, prepend dict-arg parameters so the impl
           ;; can accept them (and use them in the body via the
           ;; current-dict-skolems-driven local references).
@@ -664,16 +664,17 @@
                         [impl (compile-expr body*)])
             (list #'(define impl-name impl)))]
          [else
-          ;; Phase 30/39: positional class-method instance impls have
-          ;; two kinds of dict-args, stored as a (inst-args .
-          ;; method-args) pair under current-needs-dict-defs.  Phase 30
-          ;; (instance-qual): the runtime wrapper can't insert these,
-          ;; so we use compile-time inst-dispatch + a named impl.
-          ;; Phase 39 (method-qual ONLY): the runtime wrapper already
-          ;; inserts method-qual dicts at the call site (per class-
-          ;; info-dictreqs at compile-class time), so we can register
-          ;; the impl in the runtime dispatch table with method-qual
-          ;; dicts as leading lambda params.
+          ;; Positional class-method instance impls have two kinds of
+          ;; dict-args, stored as a (inst-args . method-args) pair
+          ;; under current-needs-dict-defs.  Two cases:
+          ;;   - instance-qual: the runtime wrapper can't insert these
+          ;;     dicts, so we use compile-time inst-dispatch + a named
+          ;;     impl.
+          ;;   - method-qual ONLY: the runtime wrapper already inserts
+          ;;     method-qual dicts at the call site (per class-info-
+          ;;     dictreqs at compile-class time), so we can register
+          ;;     the impl in the runtime dispatch table with method-
+          ;;     qual dicts as leading lambda params.
           (define dict-pair
             (and (current-needs-dict-defs)
                  (hash-ref (current-needs-dict-defs)
@@ -685,7 +686,7 @@
           (define method-args (and dict-pair (cdr dict-pair)))
           (cond
             [(and inst-args (not (null? inst-args)))
-             ;; Phase 30: instance-qual dicts present → named impl,
+             ;; Instance-qual dicts present → named impl,
              ;; skip runtime registration.  Method-qual dicts (if
              ;; any) are prepended too so the impl's parameter list
              ;; matches what compile-time inst-dispatch supplies plus
@@ -698,7 +699,7 @@
                                        stx)]
                            [impl (compile-expr expr*)])
                (list #'(define impl-name impl)))]
-            ;; Phase 37: for an overlap-group instance (any class
+            ;; For an overlap-group instance (any class
             ;; whose instance set has at least one pair related by
             ;; "strictly more specific"), emit a deep-fingerprint
             ;; impl name and skip runtime-table registration — two
@@ -714,13 +715,12 @@
                            [impl (compile-expr body)])
                (list #'(define impl-name impl)))]
             [else
-             ;; Phase 39: method-qual dicts (if any) become leading
-             ;; lambda params of the runtime-registered impl.
-             ;; Phase 57: emit a NAMED `(define $method:Tcon impl)`
-             ;; alongside the dispatch-table registration so that
-             ;; compile-time monomorphization at call sites can
-             ;; reference the impl directly without going through
-             ;; the table.
+             ;; Method-qual dicts (if any) become leading lambda
+             ;; params of the runtime-registered impl.  Emit a NAMED
+             ;; `(define $method:Tcon impl)` alongside the dispatch-
+             ;; table registration so that compile-time
+             ;; monomorphization at call sites can reference the impl
+             ;; directly without going through the table.
              (define body*
                (cond
                  [(and method-args (not (null? method-args)))
@@ -728,7 +728,7 @@
                  [else body]))
              (define impl-name-sym
                (return-impl-symbol name head-tcon-names))
-             ;; Phase 58: classify the body for inlining.  Only
+             ;; Classify the body for inlining.  Only
              ;; full e:lam bodies whose inner expr is small and
              ;; calls no class methods get registered; the e:app
              ;; codegen reads this hash at call sites.
@@ -784,7 +784,7 @@
         (remove-duplicates (append own super-methods))])]
     [else '()]))
 
-;; Phase 39: current-needs-dict-defs entries for instance methods are
+;; current-needs-dict-defs entries for instance methods are
 ;; a (inst-args . method-args) cons.  Flatten into a single list for
 ;; consumers that don't care which group an arg came from.
 (define (combined-dict-args entry)
@@ -796,12 +796,12 @@
   (match t
     [(tcon n) n]
     [(tapp h _) (head-tcon-name h)]
-    ;; Phase 31: a tvar at a fundep-determined head-arg position is
+    ;; A tvar at a fundep-determined head-arg position is
     ;; legitimate — return-impl-symbol consults class fundeps and drops
     ;; those positions, so we can safely report #f here.
     [_ #f]))
 
-;; Phase 37: deep fingerprint of a head argument, encoding nested
+;; Deep fingerprint of a head argument, encoding nested
 ;; ctors so e.g. (Box Integer) → "Box_Integer" and (Box a) → "Box_*".
 ;; Used as the impl-name suffix for instances in an overlap group so
 ;; two same-outer-ctor instances don't clobber each other.  Tvars
@@ -819,7 +819,7 @@
                              (string-append "_" (head-fingerprint a)))))]
     [_ "*"]))
 
-;; Phase 37: impl name for an overlap-group instance, using a
+;; Impl name for an overlap-group instance, using a
 ;; deep-fingerprint of each head arg.  Must agree byte-for-byte with
 ;; the resolver path in infer.rkt.
 (define (overlap-impl-symbol method-name head-arg-types)
@@ -907,7 +907,7 @@
     [(ty:qual _ body _)   (ty-ast->type body)]))
 
 ;; Given a list of head-arg core types, return the dispatch tags for the
-;; first one (single-parameter classes only in Phase 2).
+;; first one (single-parameter classes only).
 (define (tags-for-instance-head head-arg-types env)
   (define t (car head-arg-types))
   (define head-tcon

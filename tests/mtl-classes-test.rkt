@@ -1,6 +1,6 @@
 #lang racket/base
 
-;; Phase-31: mtl-style classes — MonadState, MonadEnv, MonadWriter,
+;; Mtl-style classes — MonadState, MonadEnv, MonadWriter,
 ;; MonadError.  Polymorphic effect code runs against multiple
 ;; transformer stacks.
 

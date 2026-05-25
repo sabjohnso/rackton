@@ -46,14 +46,12 @@
 
 ;; ----- structures ----------------------------------------------------
 
-;; Phase 54: `struct-fields` maps a struct's type-name to its
-;; ordered list of field-name symbols.  Populated by handling
-;; `top:struct-fields` forms; consumed by inference and codegen
-;; for `e:update`.
-;; Phase 55: `effects` maps an effect's name to its ordered list
-;; of operation names.  Consumed by inference and codegen for
-;; `(handle ...)` so each op is dispatched on the correct
-;; prompt-tag.
+;; `struct-fields` maps a struct's type-name to its ordered list of
+;; field-name symbols.  Populated by handling `top:struct-fields`
+;; forms; consumed by inference and codegen for `e:update`.
+;; `effects` maps an effect's name to its ordered list of operation
+;; names.  Consumed by inference and codegen for `(handle ...)` so
+;; each op is dispatched on the correct prompt-tag.
 (struct env (vars data-ctors tcons classes instance-table method-owners aliases
              struct-fields effects)
   #:transparent)
@@ -61,7 +59,7 @@
 ;; A data-constructor's typing information.  `scheme` is the polymorphic
 ;; type assigned to the constructor when used as a value.  `arity` is
 ;; the number of arguments the constructor takes.
-;; Phase 45: `ex-tvars` lists the existentially-quantified tvars
+;; `ex-tvars` lists the existentially-quantified tvars
 ;; introduced by a `#:forall ... #:where ...` ctor.  These are the
 ;; tail of `scheme`'s quantifier list — at pattern-match time the
 ;; inferer skolemizes only these (the data type's tparams stay as
@@ -71,7 +69,7 @@
 
 ;; A type-constructor's kinding information.  `ctors` lists every
 ;; data constructor that produces this type — used for exhaustiveness.
-;; Phase 56: `abstract?` records whether the data type is sealed —
+;; `abstract?` records whether the data type is sealed —
 ;; its ctors are not re-exported across module boundaries.  Default
 ;; #f keeps existing code untouched.
 (struct tcon-info (name arity ctors abstract?) #:transparent)
@@ -102,9 +100,9 @@
 ;;                   `Applicative f`), the list of constraint class
 ;;                   names whose return-typed methods need to be
 ;;                   passed as extra leading args at call sites.
-;; Phase 53 added `type-families` (list of associated-type names
-;; declared by the class via `#:type Foo`).  Each instance must
-;; supply concrete bindings for every declared family.
+;; `type-families` is the list of associated-type names declared by
+;; the class via `#:type Foo`.  Each instance must supply concrete
+;; bindings for every declared family.
 (struct class-info (name params kinds supers methods defaults dispatchpos
                     fundeps dictreqs type-families)
   #:transparent)
@@ -113,8 +111,8 @@
 ;;   head    : pred — the instance head, e.g. (Eq Integer) or (Eq (Maybe a))
 ;;   context : (Listof pred) — qualifying preds for this instance
 ;;   methods : (HashEq method-name → surface-expr) — method bodies
-;;   type-family-bindings : (HashEq family-name → type) — Phase 53;
-;;                          empty for classes with no associated types
+;;   type-family-bindings : (HashEq family-name → type) — empty for
+;;                          classes with no associated types
 (struct instance-info (head context methods type-family-bindings) #:transparent)
 
 (define empty-env (env (hasheq) (hasheq) (hasheq) (hasheq) (hasheq) (hasheq) (hasheq) (hasheq) (hasheq)))
@@ -141,7 +139,7 @@
 
 ;; ----- classes & instances ------------------------------------------
 
-;; Phase 37: drop all instances registered for `class-name`.  Called
+;; Drop all instances registered for `class-name`.  Called
 ;; when a class is redeclared so its prior instances (which belonged
 ;; to the old class definition) don't leak into the new one's
 ;; instance set.
@@ -181,7 +179,7 @@
 (define (env-ref-method-class e method [default #f])
   (hash-ref (env-method-owners e) method default))
 
-;; Phase 53: which class declared this associated-type name?
+;; Which class declared this associated-type name?
 ;; Returns the class name on the first match, or #f.
 (define (env-class-owning-family e family-name)
   (for/or ([(cname ci) (in-hash (env-classes e))])
@@ -200,26 +198,26 @@
 (define (env-ref-alias e name [default #f])
   (hash-ref (env-aliases e) name default))
 
-;; Phase 54: register a struct's ordered field-name list.
+;; Register a struct's ordered field-name list.
 (define (env-extend-struct-fields e struct-name field-names)
   (struct-copy env e
                [struct-fields
                 (hash-set (env-struct-fields e) struct-name field-names)]))
 
-;; Phase 54: look up a struct's field-name list, or #f if unknown.
+;; Look up a struct's field-name list, or #f if unknown.
 (define (env-ref-struct-fields e struct-name [default #f])
   (hash-ref (env-struct-fields e) struct-name default))
 
-;; Phase 55: register an effect's operation list under its name.
+;; Register an effect's operation list under its name.
 (define (env-extend-effect e effect-name op-names)
   (struct-copy env e
                [effects (hash-set (env-effects e) effect-name op-names)]))
 
-;; Phase 55: look up an effect's operation list, or #f if unknown.
+;; Look up an effect's operation list, or #f if unknown.
 (define (env-ref-effect e effect-name [default #f])
   (hash-ref (env-effects e) effect-name default))
 
-;; Phase 55: which effect declared a given operation name?  Returns
+;; Which effect declared a given operation name?  Returns
 ;; the effect's name on the first match or #f.
 (define (env-effect-of-op e op-name)
   (for/or ([(ename ops) (in-hash (env-effects e))])
@@ -244,8 +242,8 @@
 
 ;; ----- the initial env ----------------------------------------------
 ;; Built-in primitive operators are available from the very start of
-;; any rackton program.  Each is monomorphic at Phase 1; arithmetic
-;; ops fix Integer because we have no Num class yet.
+;; any rackton program.  Each is monomorphic; arithmetic ops fix
+;; Integer because we have no Num class yet.
 
 (define (mono t) (scheme '() t))
 (define INT->INT->INT  (make-arrow t-int  (make-arrow t-int t-int)))

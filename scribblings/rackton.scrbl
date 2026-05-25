@@ -36,71 +36,65 @@ algebraic data types, and pattern matching — inside Racket, either as an
 @racket[(rackton ...)] form inside an ordinary module or as a whole-file
 @hash-lang[] @racketmodfont{rackton} program.
 
-This documentation describes the @bold{Phase 1 + 2 + 3 + 4 + 5 + 6 + 7
-+ 8 + 9 + 10 + 11 + 12 + 13 + 14 + 15 + 16 + 17 + 18 + 19 + 20 + 21 + 22 + 23 + 24 + 25 + 26 + 27 + 28 + 29 + 30}
-subset.  Phase 30 extends Phase 29's body-rewriting from top-level
-free functions to instance method bodies, so user code can define
-@emph{lifted instances}: an instance whose body uses a polymorphic
-class method bound by the instance's qualifying context.  This is
-the prerequisite for Phase 31's mtl-style classes.
-Phase 29 closes the long-standing Phase 24 limitation —
-user code can now write its own needs-dict function bodies (e.g.
-@racket[(define (my-concat xs) (foldr <> mempty xs))]); the
-elaborator tracks the skolems introduced by the declared qualifying
-context and redirects polymorphic return-typed-method references in
-the body to locally-bound dict-arg parameters.
-Phase 28 added the @racket[Char] and @racket[Bytes]
-primitives — single Unicode codepoints and binary blobs — with
-literal syntax (@code{#\A} / @code{#"hello"}), conversions in both
-directions to @racket[String], and basic per-element accessors.
-Phase 27 extended the elaborator's dict-passing to
-positional class-method calls — when the dispatch arg's inferred type
-identifies a needs-dict instance, the elaborator routes the call to a
-per-instance impl named @tt{$method:TCon} with the resolved dict args
-prepended.  That unblocks @racket[ExceptT] (whose @racket[>>=] Err
-branch needs inner @racket[pure]) and any future class method on a
-needs-dict instance.  Phase 26 added @racket[WriterT w m] — an
-accumulating @racket[Monoid] log over an inner monad — and surfaced an
-honest limit on the then-current class-method dispatch (@racket[ExceptT]
-was deferred and lands now in Phase 27).
-Phase 25 added the @racket[State] and @racket[Env] monads
-plus their transformers @racket[StateT] and @racket[EnvT] over an
-inner monad @racket[m].  The transformer instances required extending
-the elaborator's dict-passing once more — at each return-typed-method
-resolution it now also walks the matching instance's qualifying
-context, so the inner monad's @racket[pure] flows in alongside the
-outer.
-Phase 24 extended Phase 20's dict-passing to free functions
-(not just class methods) so @racket[mconcat] can ship — at every
-call site the elaborator inserts the resolved @racket[mempty] impl.
-Phase 23 added @racket[define-newtype] and the canonical
-@racket[Sum] / @racket[Product] newtype-Monoids over @racket[Integer].
-Phase 22 introduced a real CLI example (a small todo
-manager under @racket[examples/todo.rkt]) and filled the prelude
-gaps it surfaced: @racket[cond], @racket[string-prefix?],
-@racket[string-split], @racket[string-join].  Phase 21 added three
-surface-ergonomic affordances: pattern
-guards in @racket[match] clauses, @racket[match-let] for inline
-destructuring, and @racket[where] for sequential local bindings.
-Phase 20 added @racket[Traversable] (with @racket[traverse]
-for @racket[Maybe] and @racket[List]) using dict-passing for the
-inner @racket[pure] call — the elaborator inserts the resolved
-@racket[pure]-impl as a leading argument at each call site.  Phase
-19 added @racket[Semigroup] (@racket[<>]) and @racket[Monoid]
-(@racket[mempty]) — the latter is the second customer for Phase 18's
-return-typed dispatch and confirms the mechanism handles 0-arity
-class members as well as functions.  Phase 18 added return-typed
-class-method dispatch, so @racket[pure] is now a real class method
-on @racket[Applicative].  Phase 17 turned
-multi-argument functions into auto-currying ones, so partial
-application Just Works.  Phase 16 inserted @racket[Applicative]
-between @racket[Functor] and @racket[Monad] and added
-@racket[Bifunctor] and @racket[Foldable].  Phase 15 added a
-system surface: @racket[random-integer], @racket[random-float],
-@racket[current-time-seconds], @racket[getenv], @racket[argv],
-@racket[list-directory], @racket[make-directory], and
-@racket[delete-file] — all in @racket[IO].  Rackton can now write
-CLI tools that interact with their environment.
+This documentation describes the current Rackton surface and its
+underlying mechanisms.  At a high level Rackton supplies:
+
+@itemlist[
+@item{a Hindley–Milner core with let-polymorphism, polymorphic
+recursion, GADTs and skolem refinement, rank-N polymorphism
+(@racket[All]), existential types, type aliases, and associated
+types (type families);}
+
+@item{algebraic data types, records (@racket[define-struct]) with
+polymorphic functional update, sealed abstract types, pattern
+matching with guards / @racket[match-let] / @racket[where], fatal
+exhaustiveness checking, and @racket[#:deriving] for @racket[Eq],
+@racket[Ord], @racket[Show], @racket[Functor], @racket[Foldable],
+@racket[Traversable], @racket[Bifunctor], @racket[Semigroup],
+@racket[Monoid], @racket[Lens], and @racket[Prism];}
+
+@item{single- and multi-parameter type classes with superclass
+constraints, qualifying contexts, default methods, functional
+dependencies, overlapping instances, explicit-kind higher-kinded
+classes, dict-passing for needs-dict bodies, compile-time
+monomorphization and inlining of small impls, and module-level
+coherence;}
+
+@item{a prelude covering @racket[Eq] / @racket[Ord] / @racket[Num] /
+@racket[Fractional] / @racket[Integral] / @racket[Show],
+@racket[Functor] / @racket[Applicative] / @racket[Monad] /
+@racket[Bifunctor] / @racket[Foldable] / @racket[Traversable],
+@racket[Semigroup] / @racket[Monoid], MTL-style
+@racket[MonadState] / @racket[MonadEnv] / @racket[MonadWriter] /
+@racket[MonadError] with the matching transformers (@racket[StateT],
+@racket[EnvT], @racket[WriterT], @racket[ExceptT], @racket[Identity]),
+@racket[Maybe] / @racket[List] / @racket[Result] / @racket[Pair] /
+@racket[Unit] / @racket[IO] / @racket[Ref], lens / prism / traversal
+combinators, the @racket[Integer] / @racket[Float] / @racket[Rational] /
+@racket[Complex] / @racket[Char] / @racket[Bytes] numeric tower,
+string / list / IO / file / @racket[Map] / @racket[Set] primitives,
+and @racket[panic];}
+
+@item{@racket[do]-notation over any @racket[Monad], structured error
+recovery (@racket[try] / @racket[raise-io]), algebraic effects with
+typed handlers, threads / MVars / channels, STM
+(@racket[TVar] / @racket[atomically] / @racket[retry]), and a
+polymorphic @racket[Concurrent] class;}
+
+@item{two surfaces — an embedded @racket[(rackton ...)] form (multiple
+blocks per Racket module) and a whole-module
+@hash-lang[] @racketmodfont{rackton} — with multi-file imports that
+carry bindings, data types, records, classes, and instances across
+@hash-lang[] @racketmodfont{rackton} files via a sidecar submodule;}
+
+@item{tooling: an interactive REPL (@code{racket -l rackton/repl})
+with multi-line input, history, and tab completion; pretty-printed
+type errors with expected/got blame and did-you-mean suggestions; and
+a host-language @racket[racket] escape for trapdoors back into
+Racket.}
+]
+
+The sections below describe each feature in turn.
 
 @section{Two surfaces, one elaborator}
 
@@ -185,7 +179,7 @@ string literals, and variables.
 
 @section{Built-in identifiers}
 
-Phase 1 ships a small monomorphic prelude:
+The core ships a small monomorphic prelude:
 
 @itemlist[
  @item{Arithmetic: @racket[+], @racket[-], @racket[*] on @racket[Integer].}
@@ -201,7 +195,7 @@ Type errors are raised as @racket[exn:fail:syntax] at compile time, with the
 offending form's source location.  Ill-typed Rackton code never reaches the
 generated Racket runtime.
 
-@section{Type classes (Phase 2)}
+@section{Type classes}
 
 @subsection{Declaring a class}
 
@@ -264,13 +258,13 @@ A function that uses a class method inherits its constraint:
 }|
 
 The inferred scheme is
-@racket[(All (a) ((Eq a) => (-> a (-> (Maybe a) Boolean))))].  Phase 2
+@racket[(All (a) ((Eq a) => (-> a (-> (Maybe a) Boolean))))].  Rackton
 discharges class constraints by dispatching at the runtime call site on
 the type tag of the first argument, so the constraint is fully erased
 from the runtime calling convention — no explicit dictionary is threaded
 through user code.
 
-@section{Host-language escape (Phase 3)}
+@section{Host-language escape}
 
 @codeblock|{
 (: greet (-> String String))
@@ -285,7 +279,7 @@ be in scope inside @racket[body], which is spliced verbatim at codegen
 time.  The escape is the only way for Rackton code to reach Racket's
 standard library (string-manipulation, I/O, …).
 
-@section{Built-in prelude (Phase 3)}
+@section{Built-in prelude}
 
 Every Rackton module — both @racket[(rackton ...)] forms and
 @hash-lang[] @racketmodfont{rackton} files — has the following bindings
@@ -307,14 +301,14 @@ available without any local declaration:
        @racket[Unit] (@racket[MkUnit]).}
  @item{@bold{Combinators}: @racket[id], @racket[const].}]
 
-@section{Exhaustive @racket[match] (Phase 3)}
+@section{Exhaustive @racket[match]}
 
 A @racket[match] is checked at compile time and rejected if it omits a
 constructor of an ADT scrutinee, omits @racket[#t] or @racket[#f] on a
 @racket[Boolean] scrutinee, or lacks a catchall on an unconstrained
 scrutinee.  Add a wildcard (@racket[_]) or variable pattern to opt out.
 
-@section{Higher-kinded type classes (Phase 4)}
+@section{Higher-kinded type classes}
 
 A class parameter can be declared with an explicit kind to permit
 type-constructor abstraction:
@@ -342,7 +336,7 @@ This is computed automatically at class definition.
  @item{@racket[Functor]: @racket[Maybe], @racket[List], @racket[Result e].}
  @item{@racket[Monad]:   @racket[Maybe], @racket[Result e].}]
 
-@section{Multi-file (Phase 4)}
+@section{Multi-file}
 
 A @hash-lang[] @racketmodfont{rackton} module emits a sidecar
 @racketmodfont{rackton-schemes} submodule containing the type schemes
@@ -373,7 +367,7 @@ must redeclare those if needed.  Plain Racket modules (no
 @racketmodfont{rackton-schemes} submodule) can still be required, but
 their bindings will be invisible to the type checker.
 
-@section{do-notation (Phase 5)}
+@section{do-notation}
 
 Any class that provides @racket[>>=] (i.e. any @racket[Monad]) can be
 sequenced with @racket[do]:
@@ -391,7 +385,7 @@ must be a monad of the same shape.  Short-circuiting (e.g.
 @racket[None] in a Maybe chain) propagates per the underlying
 @racket[>>=] instance.
 
-@section{deriving (Phase 5)}
+@section{deriving}
 
 @racket[#:deriving Eq Show] at the end of a @racket[define-data] form
 synthesises the matching instances:
@@ -411,7 +405,7 @@ parameterised types, the derived instance adds a corresponding
 context (so deriving @racket[Eq] on @racket[(Tree a)] gives
 @racket[(Eq a) => (Eq (Tree a))]).
 
-@section{Cross-file classes and instances (Phase 5)}
+@section{Cross-file classes and instances}
 
 A @hash-lang[] @racketmodfont{rackton} module now also exports the
 class and instance information it introduces.  An importing module
@@ -439,14 +433,14 @@ module's lexical scope; when an importing module uses a default, the
 identifiers in the default body are re-anchored to the instance site
 so they resolve via that module's imports.
 
-@section{Small stdlib (Phase 5)}
+@section{Small stdlib}
 
 @itemlist[
  @item{Boolean: @racket[not], @racket[and], @racket[or].}
  @item{List: @racket[length], @racket[foldr], @racket[filter] (operating
        on the prelude @racket[List] ADT).}]
 
-@section{Records (Phase 6)}
+@section{Records}
 
 @racket[define-struct] introduces a single-constructor data type with
 typed named fields and auto-generated accessors:
@@ -464,7 +458,7 @@ typed named fields and auto-generated accessors:
 The parameterised form @racket[(define-struct (Box a) [v : a] [tag : String])]
 generates the same accessors with the appropriate polymorphic schemes.
 
-@section{Multi-parameter classes (Phase 6)}
+@section{Multi-parameter classes}
 
 A class declaration may carry more than one type parameter:
 
@@ -487,7 +481,7 @@ the result type.  This is enough for the common "input determines
 output" pattern but does not implement functional dependencies in
 general.
 
-@section{Deriving Ord (Phase 6)}
+@section{Deriving Ord}
 
 @racket[#:deriving Ord] synthesises a strictly-less-than (@racket[<])
 method that:
@@ -502,7 +496,7 @@ method that:
 Since Ord superclasses Eq, the synthesiser auto-derives Eq as well, so
 @racket[#:deriving Ord] is enough to use both.
 
-@section{String and numeric stdlib (Phase 7)}
+@section{String and numeric stdlib}
 
 The prelude now ships:
 
@@ -518,7 +512,7 @@ All are typed in the prelude's own elaboration step and implemented as
 thin wrappers over the corresponding Racket primitives via the
 host-language escape.
 
-@section{IO monad (Phase 7)}
+@section{IO monad}
 
 @codeblock|{
 (: greet (-> String (IO Unit)))
@@ -555,7 +549,7 @@ explicitly:
 (define _    (run-io main))
 }|
 
-@section{Mutable refs and file I/O (Phase 8)}
+@section{Mutable refs and file I/O}
 
 A @racket[(Ref a)] is an opaque mutable cell.  All operations are IO
 actions:
@@ -580,7 +574,7 @@ File I/O is similarly IO-typed:
  @item{@racket[write-file]   — @racket[(-> String (-> String (IO Unit)))]}
  @item{@racket[file-exists?] — @racket[(-> String (IO Boolean))]}]
 
-@section{List and pair stdlib growth (Phase 8)}
+@section{List and pair stdlib growth}
 
 @itemlist[
  @item{@bold{List}: @racket[reverse], @racket[append] (binary),
@@ -589,7 +583,7 @@ File I/O is similarly IO-typed:
        requiring @racket[Ord]).}
  @item{@bold{Pair}: @racket[fst], @racket[snd], @racket[swap].}]
 
-@section{Deriving Functor (Phase 8)}
+@section{Deriving Functor}
 
 @racket[#:deriving Functor] synthesises an @racket[fmap]
 implementation for any ADT whose last type parameter is the one being
@@ -610,7 +604,7 @@ mapped over.  For each field of each constructor:
   #:deriving Functor)
 }|
 
-@section{letrec (Phase 9)}
+@section{letrec}
 
 @codeblock|{
 (letrec ([even? (lambda (n) (if (== n 0) #t (odd?  (- n 1))))]
@@ -622,7 +616,7 @@ Bindings are mutually recursive: every right-hand side has all the
 names in scope.  Each binding is generalised independently against
 the surrounding environment after inference.
 
-@section{Type aliases (Phase 9)}
+@section{Type aliases}
 
 @codeblock|{
 (define-alias Name           String)
@@ -633,7 +627,7 @@ the surrounding environment after inference.
 Aliases expand inline during type resolution; they introduce no
 runtime cost.  Recursive aliases are rejected with a clear error.
 
-@section{Polymorphic recursion (Phase 9)}
+@section{Polymorphic recursion}
 
 A function with a declared polymorphic scheme can call itself at a
 different instantiation than the enclosing call:
@@ -648,7 +642,7 @@ Without an explicit declaration, recursive calls are still
 monomorphic — only the declaration's scheme licenses fresh
 instantiations.
 
-@section{panic (Phase 9)}
+@section{panic}
 
 @racket[panic : (-> String a)] terminates the program with an error
 message.  Its return type is universally quantified, so it can appear
@@ -660,7 +654,7 @@ in any branch:
   (if (< n 0) (panic "negative not allowed") n))
 }|
 
-@section{Multi-block support (Phase 9)}
+@section{Multi-block support}
 
 A single Racket module may now contain any number of @racket[(rackton
 ...)] invocations.  Each block elaborates independently against the
@@ -669,7 +663,7 @@ prelude.  Cross-file imports (@racket[require]) still see only
 embedded @racket[(rackton …)] blocks are visible only at the runtime
 level, not via the typing channel.
 
-@section{"did you mean?" diagnostics (Phase 9)}
+@section{"did you mean?" diagnostics}
 
 An unbound-identifier error now searches the surrounding environment
 for a near-match (Levenshtein distance ≤ 2) and suggests it:
@@ -679,7 +673,7 @@ for a near-match (Levenshtein distance ≤ 2) and suggests it:
 ;; infer: unbound identifier: legnth (did you mean `length`?)
 }|
 
-@section{Immutable Map and Set (Phase 10)}
+@section{Immutable Map and Set}
 
 @racket[(Map k v)] is an opaque immutable mapping; every operation
 returns a new map without modifying its input.
@@ -721,7 +715,7 @@ Both are backed by Racket's immutable @racket[hash] (with
 @racket[equal?] keys).  Order of @racket[map-keys] and
 @racket[set-to-list] is unspecified.
 
-@section{List helpers, ctd. (Phase 10)}
+@section{List helpers, ctd.}
 
 @racket[concat-map] flattens by composition:
 
@@ -740,7 +734,7 @@ function:
 ;; ⇒ A (Map Integer (List Integer)) with 0 → [2,4] and 1 → [1,3,5]
 }|
 
-@section{Float arithmetic (Phase 11)}
+@section{Float arithmetic}
 
 @racket[Float] is a primitive type representing inexact reals.  A
 numeric literal with a fractional part or exponent (e.g.
@@ -766,9 +760,9 @@ truncates toward zero.
 
 @racket[(sqrt : (-> Float Float))] wraps Racket's @racket[sqrt].
 
-@section{Structured error recovery (Phase 11)}
+@section{Structured error recovery}
 
-@racket[panic] (Phase 9) raises an unrecoverable error.
+@racket[panic] raises an unrecoverable error.
 @racket[try : (-> (IO a) (IO (Result String a)))] catches it and
 delivers the result as a @racket[(Result String a)]:
 
@@ -786,7 +780,7 @@ delivers the result as a @racket[(Result String a)]:
 fails an @racket[IO] action with a message; it pairs naturally with
 @racket[try].
 
-@section{Example program (Phase 12)}
+@section{Example program}
 
 @filepath{examples/calc.rkt} is a small expression-language interpreter
 written entirely in Rackton.  It exercises ADTs (@racket[Sexpr],
@@ -809,21 +803,21 @@ calc> (let x 3 (let y 4 (+ x (* y y))))
 19
 }|
 
-@section{Top-level forward references (Phase 12)}
+@section{Top-level forward references}
 
 A @racket[(: name type)] declaration now also pre-registers the name
 in the typing environment, so later top-level forms can call mutually
 recursive functions whose definitions appear after.  Declare all the
 signatures first, then the bodies.
 
-@section{Multi-form escapes (Phase 12)}
+@section{Multi-form escapes}
 
 @racket[(racket τ (vars) body ...)] now accepts any number of body
 forms; they're wrapped in a @racket[begin] automatically.  This lets
 the escape host inner @racket[(define ...)] and @racket[(let …)]
 forms naturally.
 
-@section{Functional dependencies (Phase 13)}
+@section{Functional dependencies}
 
 A multi-parameter class may declare a functional dependency stating
 that one (or more) parameters are uniquely determined by others:
@@ -850,13 +844,13 @@ The dependency is written as @racket[(#:fundep lhs ... -> rhs ...)] —
 multiple parameters may appear on each side and a class may carry
 multiple @racket[#:fundep] clauses.
 
-@section{Merge sort (Phase 13)}
+@section{Merge sort}
 
 The prelude's @racket[sort] is now an @italic{O(n log n)} stable
 merge sort instead of the previous insertion sort.  Same surface:
 @racket[((Ord a) => (-> (List a) (List a)))].
 
-@section{Diagnostics (Phase 14)}
+@section{Diagnostics}
 
 Every type-mismatch error now reports a two-row breakdown:
 
@@ -880,14 +874,14 @@ argument is highlighted rather than the whole call form:
 ;;   in: "two"
 }|
 
-Unbound-identifier diagnostics (Phase 9) extend in Phase 14 to:
+Unbound-identifier diagnostics also extend to:
 
 @itemlist[
  @item{class-name look-ups (@racket[Eqq] → suggests @racket[Eq])}
  @item{constructor look-ups in patterns (@racket[Nul] → suggests
        @racket[Nil])}]
 
-@section{System surface (Phase 15)}
+@section{System surface}
 
 Everything is IO-typed so randomness, the wall clock, and the
 filesystem don't leak into pure code:
@@ -910,7 +904,7 @@ filesystem don't leak into pure code:
 (define _main (run-io greeting))
 }|
 
-@section{Applicative, Bifunctor, Foldable (Phase 16)}
+@section{Applicative, Bifunctor, Foldable}
 
 The higher-kinded class hierarchy gains @racket[Applicative] between
 @racket[Functor] and @racket[Monad].  @racket[Applicative] provides
@@ -947,9 +941,9 @@ top-level convenience for @racket[(Foldable t) => (-> (t Integer) Integer)].
 ;; total : Integer — evaluates to 6
 }|
 
-@racket[pure] is on @racket[Applicative].  See @secref{Return-typed_dispatch_(Phase_18)} for how the elaborator resolves it at each call site.
+@racket[pure] is on @racket[Applicative].  See @secref{Return-typed_dispatch} for how the elaborator resolves it at each call site.
 
-@section{Partial application (Phase 17)}
+@section{Partial application}
 
 Functions of more than one parameter compile to a
 @racket[case-lambda] that accepts either the full arity at once
@@ -979,12 +973,12 @@ hand-written prelude functions in @racket[private/prelude-runtime.rkt]).
 the method's total arity so the wrapper knows when to stop collecting
 arguments and fire the dispatch.
 
-@section{Return-typed dispatch (Phase 18)}
+@section{Return-typed dispatch}
 
 A class method whose type carries the class parameter only in the
 @emph{return} position — the canonical example is
 @racket[pure :: a -> f a] — has no value at the call site whose tag
-could select an instance.  Phase 18 resolves these at compile time
+could select an instance.  Rackton resolves these at compile time
 instead.  At inference, each reference to such a method is recorded
 along with the fresh type variables that stand in for the class
 parameters; once the enclosing definition's constraints have been
@@ -1018,7 +1012,7 @@ The plumbing lives in @racket[private/infer.rkt]
 Both phases share their hashtables via a single
 @racket[parameterize] in @racket[private/elaborate.rkt].
 
-@section{Semigroup + Monoid (Phase 19)}
+@section{Semigroup + Monoid}
 
 @racket[Semigroup] carries the associative @racket[<>] (sappend);
 @racket[Monoid] refines it with a left-and-right identity
@@ -1050,18 +1044,18 @@ compile time with @tt{ambiguous use of mempty: cannot determine
 target type at this call site} — the elaborator surfaces a clear
 error rather than letting an unsolved constraint propagate.
 
-@section{Traversable (Phase 20)}
+@section{Traversable}
 
 @racket[traverse] walks a container of type @racket[(t a)] calling an
 @racket[Applicative]-effectful function on each element and rebuilds
-the container inside that applicative.  Phase 16 deferred this class
-because its instance bodies call @racket[pure] while @racket[f] is
-still polymorphic; Phase 18 unblocked it for concrete call sites by
-adding return-typed dispatch, and Phase 20 closes the loop with
-@emph{dict-passing}: at each concrete use of @racket[traverse], the
-elaborator resolves the @racket[Applicative f] constraint to a
-specific @racket[$pure:f] impl and inserts it as the leading
-argument to the dispatch wrapper.
+the container inside that applicative.  Its instance bodies call
+@racket[pure] while @racket[f] is still polymorphic, which requires
+two cooperating mechanisms: return-typed dispatch resolves the
+@racket[pure] calls at compile time once the instance is known, and
+@emph{dict-passing} closes the loop at each concrete use of
+@racket[traverse] — the elaborator resolves the @racket[Applicative f]
+constraint to a specific @racket[$pure:f] impl and inserts it as the
+leading argument to the dispatch wrapper.
 
 @codeblock|{
 (: parse-positive (-> Integer (Maybe Integer)))
@@ -1097,7 +1091,7 @@ A bare @racket[e:var] reference to a needs-dict method (e.g.
 @racket[e:app] for the elaborator to attach the dict insertion to.
 Use the method at a call position.
 
-@section{Pattern guards, @racket[match-let], @racket[where] (Phase 21)}
+@section{Pattern guards, @racket[match-let], @racket[where]}
 
 @bold{Pattern guards.}  A @racket[match] clause may carry a
 @racket[#:when guard] between its pattern and body; the clause fires
@@ -1144,7 +1138,7 @@ natural Rackton spelling of Haskell's @racket[where] clauses.
     (+ sum doubled)))
 }|
 
-@section{Example: a todo CLI (Phase 22)}
+@section{Example: a todo CLI}
 
 @racket[examples/todo.rkt] is a small but complete command-line todo
 manager written in @hash-lang[] @racketmodfont{rackton}.  It exists
@@ -1174,12 +1168,12 @@ demo-driver test in @racket[tests/todo-demo-test.rkt] subprocesses
 the example for each scenario, exercising end-to-end behaviour
 against a fresh temp file.
 
-Building this example surfaced four prelude gaps which Phase 22 also
-filled: a @racket[cond] surface form (desugars to nested @racket[if]),
-and three string helpers — @racket[string-prefix?], @racket[string-split],
-and @racket[string-join].
+Building this example surfaced four prelude additions: a
+@racket[cond] surface form (desugars to nested @racket[if]), and three
+string helpers — @racket[string-prefix?], @racket[string-split], and
+@racket[string-join].
 
-@section{Newtypes (Phase 23)}
+@section{Newtypes}
 
 @racket[define-newtype] is sugar over @racket[define-data] for the
 common shape "one constructor, one field" — a nominal wrapper around
@@ -1215,20 +1209,20 @@ a straight @racket[foldr] with an ascribed @racket[mempty]:
 }|
 
 @racket[mconcat] is now a real prelude function (see
-@secref{Free-function_dict-passing_(Phase_24)} just below).
+@secref{Free-function_dict-passing} just below).
 
 At runtime a newtype is identical to a single-constructor
 @racket[define-data] — the "zero-cost" of a true newtype (eliding the
 struct wrap) is documentary, not yet a perf optimization.
 
-@section{Free-function dict-passing (Phase 24)}
+@section{Free-function dict-passing}
 
-Phase 20 introduced dict-passing for class methods like
-@racket[traverse], where the elaborator resolves an outer class
-constraint at the call site and prepends the resolved impl name to
-the arguments.  Phase 24 extends the same machinery to @emph{free
-functions} whose own qualifying context constrains a class with
-return-typed methods.  The canonical use is @racket[mconcat]:
+Class methods like @racket[traverse] are handled by dict-passing —
+the elaborator resolves an outer class constraint at the call site
+and prepends the resolved impl name to the arguments.  The same
+machinery extends to @emph{free functions} whose own qualifying
+context constrains a class with return-typed methods.  The canonical
+use is @racket[mconcat]:
 
 @codeblock|{
 (: mconcat ((Monoid a) => (-> (List a) a)))
@@ -1257,11 +1251,11 @@ The user-facing code reads naturally:
 (mconcat (ann Nil (List Sum)))                  ;; ⇒ (MkSum 0)
 }|
 
-Phase 29 closes this loop: user code can now write needs-dict
-function bodies that use polymorphic @racket[mempty] / @racket[pure]
-calls.  See @secref{User_needs-dict_bodies_(Phase_29)} below.
+User code can also write needs-dict function bodies that use
+polymorphic @racket[mempty] / @racket[pure] calls.  See
+@secref{User_needs-dict_bodies} below.
 
-@section{State, Env, and their transformers (Phase 25)}
+@section{State, Env, and their transformers}
 
 @bold{State.}  @racket[State s a] is the canonical state-passing
 monad — internally a function @racket[s -> (Pair s a)].
@@ -1348,7 +1342,7 @@ would collide with the Scheme reader vocabulary
 Racket-hosted language.  @racket[ask] and @racket[local] are kept as
 the generic verbs.
 
-@section{WriterT (Phase 26)}
+@section{WriterT}
 
 @racket[WriterT w m a] threads an accumulating @racket[Monoid w] log
 through an inner monad @racket[m].  Internally it wraps
@@ -1370,8 +1364,8 @@ transformer with an @racket[mempty] starting log.
 The Applicative instance qual context lists @bold{two}
 return-typed-bearing constraints: @racket[(Monad m)] (for inner
 @racket[pure]) and @racket[(Monoid w)] (for @racket[mempty]).  This
-is the first instance in the prelude that exercises Phase 25's
-resolver with multiple dict args — the elaborator inserts both
+is the first instance in the prelude that exercises the
+multi-dict-arg resolver path — the elaborator inserts both
 @racket[$pure:m] and @racket[$mempty:w] at every call site of
 @racket[pure] on a @racket[WriterT] value.
 
@@ -1382,9 +1376,9 @@ value's tag), so the impls receive no dict args.  This is what
 allows @racket[WriterT] to ship cleanly while @racket[ExceptT] is
 deferred — see below.
 
-@racket[ExceptT] ships in Phase 27 — see the next section.
+@racket[ExceptT] is covered in the next section.
 
-@section{ExceptT (Phase 27)}
+@section{ExceptT}
 
 @racket[ExceptT e m a] layers typed exceptions over an inner monad
 @racket[m].  Internally it wraps @racket[(m (Result e a))]; the
@@ -1415,40 +1409,39 @@ and @racket[catch-error] lets a handler recover.
 
 The runtime body of @racket[>>=] for @racket[ExceptT] genuinely
 needs the inner monad's @racket[pure] to lift @racket[(Err e)] back
-into @racket[m].  Phase 27 supports this by extending the elaborator's
+into @racket[m].  The elaborator supports this by extending
 dict-passing one more notch: at every class-method call on a value of
-type @racket[(ExceptT e m a)], the elaborator (1) routes the call
-directly to a per-instance impl named @tt{$method:ExceptT} and
-(2) prepends the resolved @racket[$pure:m] as a leading dict arg.
+type @racket[(ExceptT e m a)] it (1) routes the call directly to a
+per-instance impl named @tt{$method:ExceptT} and (2) prepends the
+resolved @racket[$pure:m] as a leading dict arg.
 
 @bold{Mechanism, end-to-end.}  Three resolver paths now coexist:
 
 @itemlist[
- @item{@emph{Return-typed dispatch} (Phase 18): a method like
-       @racket[pure] resolves to a per-instance impl name from the
-       expected return type alone.}
- @item{@emph{Method-qual dict-passing} (Phase 20/24/25): when the
-       method's own qualifying context, or a free function's qualifying
-       context, names a return-typed-bearing class, dict args are
-       inserted at the call site (e.g.
-       @racket[traverse] for @racket[Traversable] instances,
-       @racket[mconcat] for @racket[Monoid] instances).}
- @item{@emph{Instance-qual dispatch} (Phase 27): a positional
-       class-method call on a value whose inferred type identifies a
-       needs-dict instance.  The dispatch arg's type is enough to pick
-       the matching instance via @racket[match-pred]; the instance's
-       qual context yields the dict-args list.}]
+ @item{@emph{Return-typed dispatch}: a method like @racket[pure]
+       resolves to a per-instance impl name from the expected return
+       type alone.}
+ @item{@emph{Method-qual dict-passing}: when the method's own
+       qualifying context, or a free function's qualifying context,
+       names a return-typed-bearing class, dict args are inserted at
+       the call site (e.g. @racket[traverse] for @racket[Traversable]
+       instances, @racket[mconcat] for @racket[Monoid] instances).}
+ @item{@emph{Instance-qual dispatch}: a positional class-method call
+       on a value whose inferred type identifies a needs-dict
+       instance.  The dispatch arg's type is enough to pick the
+       matching instance via @racket[match-pred]; the instance's qual
+       context yields the dict-args list.}]
 
-@bold{Skipped on polymorphic call sites.}  Phase 27 only fires when
-the dispatch arg's class-param tvars resolve to concrete type
-constructors.  When they're still polymorphic at resolve time the
-elaborator leaves the call alone and the runtime dispatcher handles
-it — fine for non-needs-dict instances, raises a clear arity error
-at runtime if a polymorphic call actually reaches a needs-dict
-instance.  A future phase can add a dispatcher shim that surfaces a
-friendlier error.
+@bold{Skipped on polymorphic call sites.}  Instance-qual dispatch
+only fires when the dispatch arg's class-param tvars resolve to
+concrete type constructors.  When they're still polymorphic at
+resolve time the elaborator leaves the call alone and the runtime
+dispatcher handles it — fine for non-needs-dict instances, raises a
+clear arity error at runtime if a polymorphic call actually reaches a
+needs-dict instance.  A dispatcher shim that surfaces a friendlier
+error could be added later.
 
-@section{Char and Bytes (Phase 28)}
+@section{Char and Bytes}
 
 Two new primitive types backed by Racket's native @racket[char?] and
 @racket[bytes?] values.  Literal syntax passes through the reader
@@ -1483,19 +1476,18 @@ Partial operations like @racket[integer->char],
 return @racket[(Maybe …)] so the caller decides what to do on
 failure.  @racket[string->bytes] uses UTF-8.
 
-@section{User needs-dict bodies (Phase 29)}
+@section{User needs-dict bodies}
 
-Phase 24 added the call-site half of dict-passing: a function declared
-with a return-typed-bearing qualifying context (like @racket[Monoid a]
-or @racket[Applicative f]) had the resolved impl inserted at every
-call.  But until Phase 29 the elaborator wouldn't accept the
-@emph{body} of such a function if it used the polymorphic class method
-itself — @tt{ambiguous use of mempty / pure} would fire because the
-class param is still abstract.  Users were limited to declared-only
-prelude wrappers.
+The call-site half of dict-passing inserts the resolved impl at
+every call to a function declared with a return-typed-bearing
+qualifying context (like @racket[Monoid a] or @racket[Applicative f]).
+For the @emph{body} of such a function to also use the polymorphic
+class method, the elaborator has to bind the class param to a tracked
+skolem and route in-body references through a local dict-arg —
+otherwise @tt{ambiguous use of mempty / pure} would fire.
 
-Phase 29 lifts that.  When a top-level definition declares a needs-dict
-qualifying context, the elaborator:
+When a top-level definition declares a needs-dict qualifying context
+the elaborator therefore:
 
 @itemlist[
  @item{pre-allocates a fresh local dict-arg name for each
@@ -1538,12 +1530,12 @@ parallel local args.  Mutually recursive needs-dict definitions are
 not handled — each def is independently tracked but cross-references
 would need a forward-declaration pass to align the dict-arg names.
 
-@section{Lifted instance bodies (Phase 30)}
+@section{Lifted instance bodies}
 
-Phase 29 made user-defined needs-dict @emph{free functions} work.
-Phase 30 does the same for instance method bodies — required for
-the canonical pattern where a transformer's class instance is
-@emph{lifted} from an inner monad's instance:
+The previous section covered user-defined needs-dict @emph{free
+functions}.  The same body-rewriting also applies to instance method
+bodies — required for the canonical pattern where a transformer's
+class instance is @emph{lifted} from an inner monad's instance:
 
 @codeblock|{
 (define-class (HasUnit (m :: (-> * *)))
@@ -1577,14 +1569,13 @@ The instance is still stored in the env under its @emph{original}
 (un-skolemized) head and qual so other code that asks "is there an
 @racket[(HasUnit (EnvT String Maybe))] instance?" finds it normally.
 
-Phase 31 builds on this to ship the mtl-style classes
-(@racket[MonadState], @racket[MonadEnv], @racket[MonadWriter],
-@racket[MonadError]) with full instance matrices including the
-lifted cases.
+The mtl-style classes (@racket[MonadState], @racket[MonadEnv],
+@racket[MonadWriter], @racket[MonadError]) build on this with full
+instance matrices including the lifted cases.
 
-@section{mtl-style classes (Phase 31)}
+@section{mtl-style classes}
 
-Phase 31 ships four polymorphic effect classes — @racket[MonadState],
+Rackton ships four polymorphic effect classes — @racket[MonadState],
 @racket[MonadEnv], @racket[MonadWriter], @racket[MonadError] — each
 parameterized by an effect payload and a monad with a functional
 dependency from the monad to the payload (@code{m -> s} etc.) so type
@@ -1654,10 +1645,10 @@ return-typed dicts as leading curried args in alphabetical method
 order followed by superclass-closure dicts — matching what the call
 site emits.
 
-@section{MTL polish (Phase 32)}
+@section{MTL polish}
 
-Phase 32 sands off the rough edges Phase 31 left behind and grows the
-combinator surface for everyday MTL code.
+Rackton sands off some rough edges left by the initial mtl-class
+ship and grows the combinator surface for everyday MTL code.
 
 @itemlist[
   @item{@bold{Lifted @racket[local-en] now actually rewrites the env}
@@ -1706,24 +1697,23 @@ the per-instance impl name (so @code{$local-en:EnvT} matches
 @racket[compile-instance]'s emission instead of the previous
 @code{$local-en:String-EnvT}).
 
-@section{Runtime resolvers for needs-dict instances (Phase 33)}
+@section{Runtime resolvers for needs-dict instances}
 
-Phase 27 / 30 wired up compile-time @emph{inst-dispatch} so a call to
-a class method whose target instance is needs-dict
-(e.g. @racket[(MonadError e (ExceptT e m))]) gets routed at the call
-site with its qual dicts pre-applied.  That only works when the call
-site's type is concrete: a polymorphic monad body like
-@code{(MonadError e m) =>} reaches the call with @racket[m] still a
-tvar, falls through to the runtime dispatcher, and crashes — no
-runtime registration ever existed for @racket[(>>= ea f)] on a
-@racket[MkExceptT] value.
+Compile-time @emph{inst-dispatch} routes a call to a class method
+whose target instance is needs-dict (e.g.
+@racket[(MonadError e (ExceptT e m))]) at the call site with its
+qual dicts pre-applied — but only when the call site's type is
+concrete.  A polymorphic monad body like @code{(MonadError e m) =>}
+reaches the call with @racket[m] still a tvar, falls through to the
+runtime dispatcher, and crashes — no runtime registration ever
+existed for @racket[(>>= ea f)] on a @racket[MkExceptT] value.
 
-The same trap bit @racket[do]-notation chains over @racket[ExceptT]:
+The same trap hits @racket[do]-notation chains over @racket[ExceptT]:
 each desugared @racket[>>=] dispatches by the runtime tag of its
 first arg, and that tag is @racket[$ctor:MkExceptT] with no entry
 in the @racket[>>=] table.
 
-Phase 33 closes the loop:
+Two cooperating runtime mechanisms close the loop:
 
 @itemlist[
   @item{@bold{@racket[pure-via-witness]} resolves @racket[pure] from
@@ -1754,10 +1744,10 @@ Phase 33 closes the loop:
         is registered for the inner value.}
 ]
 
-@section{Transformer-side runtime registrations (Phase 34)}
+@section{Transformer-side runtime registrations}
 
-Phase 33 wired the @code{$ctor:MkExceptT} side of the runtime
-dispatcher.  Phase 34 finishes the same treatment for the rest of the
+The previous section wired the @code{$ctor:MkExceptT} side of the
+runtime dispatcher.  The same treatment also covers the rest of the
 transformer ctors:
 
 @itemlist[
@@ -1775,24 +1765,23 @@ transformer ctors:
         recursion-via-inner pattern.}
 ]
 
-Each registered closure has the same body as Phase 31's curried
-@code{$method:T} impl with the unused dict slots dropped — Phase 33's
-refactor stopped consuming them, leaving the dicts purely as a
-layout match for the compile-time inst-dispatch path.  Polymorphic-
+Each registered closure has the same body as the mtl-classes' curried
+@code{$method:T} impl with the unused dict slots dropped — the
+runtime resolver stopped consuming them, leaving the dicts purely as
+a layout match for the compile-time inst-dispatch path.  Polymorphic-
 monad bodies (e.g. @code{(MonadWriter String m) => …} run at
 @racket[WriterT String IO]) now resolve every call site through one
 of these two paths.
 
 No @racket[mempty-via-witness] is needed: nothing in the runtime path
 actually consumes @racket[inner-mempty].  Only @racket[pure] (return-
-typed, compile-time-resolved) and @racket[lift-writer-t] (Phase 31
+typed, compile-time-resolved) and @racket[lift-writer-t] (also
 compile-time-resolved) do, and both routes already supply the dict.
 
-@section{Deriving for records and Foldable (Phase 35)}
+@section{Deriving for records and Foldable}
 
-@racket[define-data] has shipped @racket[#:deriving Eq Show Ord Functor]
-since Phase 11.  Phase 35 extends the same mechanism to two more
-surfaces and one more class.
+@racket[define-data] supports @racket[#:deriving Eq Show Ord Functor].
+The same mechanism extends to two more surfaces and one more class.
 
 @itemlist[
   @item{@bold{@racket[define-struct] accepts @racket[#:deriving]}
@@ -1806,9 +1795,9 @@ surfaces and one more class.
         for @racket[define-data].}
   @item{@bold{@racket[define-newtype] accepts @racket[#:deriving]} —
         already routed through @racket[parse-data-form], so this is
-        mostly a documentation + regression-test reach.  Phase 35
-        also tightens the rest-args validator so a malformed newtype
-        body (multiple ctors) still raises the proper error.}
+        mostly a documentation + regression-test reach.  The rest-
+        args validator is also tightened so a malformed newtype body
+        (multiple ctors) still raises the proper error.}
   @item{@bold{@racket[Foldable] joins the deriving menu.}  Synthesizes
         @racket[foldr] for an ADT whose last type parameter is the
         fold element: walk each ctor's fields right-to-left, calling
@@ -1827,7 +1816,7 @@ also derives @racket[Eq] (the synthesized @racket[<] calls
 @racket[==]), and the deriving menu's error message lists every
 supported class.
 
-@section{Concurrency primitives (Phase 36)}
+@section{Concurrency primitives}
 
 Three opaque types — @racket[ThreadId], @racket[(MVar a)],
 @racket[(Chan a)] — plus a small surface of IO-returning primitives,
@@ -1864,7 +1853,7 @@ user constructs, which the runtime can't catch.  No polymorphic
 @code{(Concurrent m)} class — yet; concurrency is anchored to IO for
 now.
 
-@section{Overlapping instances (Phase 37)}
+@section{Overlapping instances}
 
 Earlier phases dispatched every positional class method through a
 runtime hash table keyed by the value's outer ctor.  That worked
@@ -1874,8 +1863,8 @@ clobbered if two instances shared the same outer ctor — a specific
 @racket[(Show (Box a))] would overwrite the generic in the table,
 making @racket[(show (MkBox "hi"))] return the wrong answer.
 
-Phase 37 introduces compile-time specificity-based dispatch for
-classes that have overlapping instances:
+Rackton uses compile-time specificity-based dispatch for classes
+that have overlapping instances:
 
 @codeblock|{
 (define-data (Box a) (MkBox a))
@@ -1925,10 +1914,10 @@ over an overlap-group class needs the class constraint in its qual
 context so dict resolution can pin the specific impl at the call
 site.  Less-common cases may need explicit type annotations.
 
-@section{Bifunctor / Semigroup / Monoid deriving (Phase 38)}
+@section{Bifunctor / Semigroup / Monoid deriving}
 
-Phase 38 extends the @racket[#:deriving] menu with three more
-classes (Traversable deferred — see Not Yet Supported).
+The @racket[#:deriving] menu extends to three more classes
+(Traversable deferred — see Not Yet Supported).
 
 @itemlist[
   @item{@bold{@racket[Bifunctor]} for ADTs with at least two type
@@ -1969,11 +1958,11 @@ Two infrastructure fixes shipped alongside:
         passing dicts to them at the call site would arity-mismatch.}
 ]
 
-@section{Method-qual dict-threading + user-defined Traversable (Phase 39)}
+@section{Method-qual dict-threading + user-defined Traversable}
 
-Phase 30 set up dict-skolems for an instance's qual context
-(@code{(MonadState s m) =>} on a lifted instance).  Phase 39 extends
-the same mechanism to a method's own qual context: every method
+The lifted-instance mechanism sets up dict-skolems for an instance's
+qual context (@code{(MonadState s m) =>} on a lifted instance).  The
+same mechanism extends to a method's own qual context: every method
 scheme can carry its own @code{=>} clause introducing method-local
 quantifiers, and references inside the body to dict-needing methods
 on those quantifiers need to flow through dict args.
@@ -1988,9 +1977,9 @@ The canonical case is @racket[traverse]:
 
 A user-written @racket[(Traversable Tree)] instance body uses
 @racket[pure] / @racket[<*>] / @racket[liftA2] on the method-local
-@racket[f].  Before Phase 39, these references couldn't be resolved
-(no concrete @racket[f] yet; no skolem-dict mapping).  Phase 39 fixes
-this with:
+@racket[f].  Without method-qual dict-threading these references
+couldn't be resolved (no concrete @racket[f] yet; no skolem-dict
+mapping).  The fix is threefold:
 
 @itemlist[
   @item{Skolemize the method-local tvars in the method-qual
@@ -2013,7 +2002,7 @@ this with:
           @item{Instance-qual dicts present → named impl
                 (@code{$method:Tcon}) + skip runtime-table
                 registration.  Compile-time inst-dispatch routes
-                the call (Phase 30).}
+                the call.}
           @item{Method-qual dicts only → register in the runtime
                 dispatch table with method-qual dicts as leading
                 lambda params.  The existing class-method wrapper
@@ -2027,13 +2016,13 @@ this with:
         this, method-qual @code{=>} clauses hid the method's arrow
         type and any method with a qual context was misclassified as
         @code{'return}-dispatched.}
-  @item{Traversable rejoins the @racket[#:deriving] menu (deferred
-        in Phase 38).}
+  @item{Traversable joins the @racket[#:deriving] menu, since the
+        synthesized instance now type-checks.}
 ]
 
-@section{Numeric tower (Phase 40)}
+@section{Numeric tower}
 
-Phase 40 adds @racket[Rational] and @racket[Complex] types and the
+Rackton supplies @racket[Rational] and @racket[Complex] types and a
 Haskell-style class hierarchy on top of @racket[Num] / @racket[Fractional]:
 
 @itemlist[
@@ -2075,10 +2064,10 @@ Existing arithmetic call sites (@racket[+], @racket[-], @racket[*])
 work on the new types without modification — the @racket[Num]
 instances register through the same dispatch tables.
 
-@section{Software transactional memory (Phase 41)}
+@section{Software transactional memory}
 
-Phase 41 adds optimistic-concurrency STM on top of Racket's threads
-and semaphores.  Two new opaque types:
+Rackton supplies optimistic-concurrency STM on top of Racket's
+threads and semaphores.  Two opaque types:
 
 @itemlist[
   @item{@racket[(TVar a)] — a versioned transactional variable.}
@@ -2130,9 +2119,9 @@ disjoint TVars; contended TVars cause retries.
   @item{Nested @racket[atomically] — flatten manually for now.}
 ]
 
-@section{Error message polish (Phase 42)}
+@section{Error message polish}
 
-Phase 42 sharpens three commonly-hit error paths:
+Three commonly-hit error paths are sharpened:
 
 @itemlist[
   @item{@bold{``no instance for X'' lists what's available.}  When
@@ -2149,8 +2138,8 @@ no instance for (Showable String)
   @item{@bold{Type-mismatch errors pin to the bad argument.}  The
         @racket[e:app] inferer already blames the specific argument's
         @racket[stx] when its type doesn't match the head's expected
-        domain; Phase 42 documents this behavior alongside the
-        ``expected/got'' format produced by @racket[raise-type-mismatch!].}
+        domain; the resulting error uses the same ``expected/got''
+        format produced by @racket[raise-type-mismatch!].}
   @item{@bold{Did-you-mean works for class methods.}  Misspelled
         class method names (e.g. @racket[pyre] for @racket[pure])
         now surface a ``did you mean'' suggestion via the existing
@@ -2159,12 +2148,12 @@ no instance for (Showable String)
         the search candidates.}
 ]
 
-@section{Polymorphic Concurrent class (Phase 43)}
+@section{Polymorphic Concurrent class}
 
-Phase 36's @racket[fork-io] and friends are anchored to IO.  Phase 43
-introduces a polymorphic @racket[Concurrent] class so the same
-concurrency idiom (fork two computations, await both) can be written
-once and run against any monad with a Concurrent instance:
+The @racket[fork-io] family is anchored to IO.  A polymorphic
+@racket[Concurrent] class lets the same concurrency idiom (fork two
+computations, await both) be written once and run against any monad
+with a Concurrent instance:
 
 @codeblock|{
 (: par-pair ((Concurrent m) => (-> (m a) (-> (m b) (m (Pair a b))))))
@@ -2210,53 +2199,47 @@ inst-dispatch routing — the existing return-typed
         nice but unrelated to the polymorphism win.}
 ]
 
-@section{Deferred items resolved (Phase 44)}
+@section{Blocking retry, Identity monad, Num/Ord refactor}
 
-Phase 44 cleared the deferred-items backlog accumulated across
-Phases 41 / 43.
+A handful of follow-ups that round out the concurrency story and
+clean up the numeric hierarchy:
 
 @itemlist[
-  @item{@bold{Blocking @racket[retry] (44.1).}  Each @racket[TVar]
-        now carries a wake-signal semaphore that's posted on every
-        commit involving that TVar.  When @racket[retry] fires inside
-        @racket[atomically], the runtime collects the read-logged
-        TVars from the failed transaction and @racket[sync]s on the
-        union of their wake-signals before restarting.  No more
-        busy-loop — a transaction blocked on @racket[retry] sleeps
-        until at least one of its watched TVars changes.}
-  @item{@bold{Nested @racket[atomically] (44.2): not applicable.}
-        In our typed model @racket[STM] and @racket[IO] are distinct
-        monads; @racket[atomically :: (STM a) -> (IO a)] cannot be
-        called inside an @racket[STM] block because that would mix
-        the two monads.  The ``nested atomically'' concern only
-        arises in untyped models like Haskell where the type system
-        doesn't separate IO from STM (Haskell explicitly errors at
-        runtime in that case).  Resolved by design.}
-  @item{@bold{STM @racket[Concurrent] instance (44.3): not applicable.}
-        @racket[fork-c :: m a -> m (Future a)] has no meaningful
-        semantics inside a transaction — transactions can't spawn
-        sub-transactions without breaking atomicity.  Resolved by
-        design; concurrent transactions are sequenced at the IO
-        level by fork-c-ing separate @racket[atomically] calls.}
-  @item{@bold{Mock @racket[Concurrent] instance (44.4).}  Added an
-        @racket[Identity a] monad and a trivial @racket[Concurrent
+  @item{@bold{Blocking @racket[retry].}  Each @racket[TVar] carries a
+        wake-signal semaphore that's posted on every commit involving
+        that TVar.  When @racket[retry] fires inside @racket[atomically],
+        the runtime collects the read-logged TVars from the failed
+        transaction and @racket[sync]s on the union of their wake-
+        signals before restarting — a transaction blocked on
+        @racket[retry] sleeps until at least one of its watched TVars
+        changes.}
+  @item{@bold{@racket[Identity] monad + Concurrent instance.}  The
+        @racket[Identity a] monad has a trivial @racket[Concurrent
         Identity] instance where @racket[fork-c] runs the computation
         immediately and @racket[await-c] retrieves the result.  Lets
         users smoke-test polymorphic-Concurrent code deterministically:
         a @code{(Concurrent m) =>} function run at @racket[Identity]
         executes synchronously with no threads.}
-  @item{@bold{@racket[Num] / @racket[Ord] hierarchy refactor (44.5).}
-        @racket[abs] and @racket[negate] migrated from free Integer-
-        only functions to @racket[Num] class methods (instances for
-        Integer / Float / Rational / Complex).  @racket[min] and
-        @racket[max] migrated to @racket[Ord] class methods with
-        default implementations in terms of @racket[<] (instances
-        for Integer / Float / Rational / String).  All existing call
-        sites are direct applications and dispatch through the new
-        tables transparently.}
+  @item{@bold{@racket[Num] / @racket[Ord] hierarchy.}  @racket[abs] and
+        @racket[negate] are @racket[Num] class methods with instances
+        for Integer / Float / Rational / Complex.  @racket[min] and
+        @racket[max] are @racket[Ord] class methods with default
+        implementations in terms of @racket[<] and instances for
+        Integer / Float / Rational / String.  All call sites are
+        direct applications that dispatch through the class tables
+        transparently.}
 ]
 
-@section{Existential types (Phase 45)}
+Two related items are resolved by design rather than by code:
+@racket[atomically] can't be called inside an @racket[STM] block
+because @racket[STM] and @racket[IO] are distinct monads (so
+``nested atomically'' isn't a hazard the way it is in Haskell), and
+there is no @racket[Concurrent] instance for @racket[STM] because
+@racket[fork-c] inside a transaction has no atomicity-preserving
+semantics — concurrent transactions are sequenced at the IO level by
+@racket[fork-io]-ing separate @racket[atomically] calls.
+
+@section{Existential types}
 
 A data constructor can introduce its own quantifier hidden from
 the outer type via @racket[#:forall] and @racket[#:where] clauses:
@@ -2309,9 +2292,9 @@ collections become well-typed via this pattern.
         ctor's field types.}
 ]
 
-@section{Lenses / optics (Phase 46)}
+@section{Lenses / optics}
 
-Phase 46 ships a small lens library using the simple
+Rackton ships a small lens library using the simple
 (getter, setter) pair encoding:
 
 @codeblock|{
@@ -2356,7 +2339,7 @@ getter / setter, or compose two lenses through nested structure.
   @item{Van Laarhoven encoding (would need higher-rank polymorphism).}
 ]
 
-@section{Auto-derived field lenses (Phase 47)}
+@section{Auto-derived field lenses}
 
 @racket[define-struct] gains @racket[#:deriving Lens] support.
 Each field @code{f} of struct @code{T} produces a named lens
@@ -2400,7 +2383,7 @@ Lens-deriving is only valid for @racket[define-struct] (single
 constructor with named fields).  For multi-constructor
 @racket[define-data], use prisms instead.
 
-@section{Prisms and traversals (Phase 48)}
+@section{Prisms and traversals}
 
 Two more optic kinds, both using the simple (non-van-Laarhoven)
 encoding:
@@ -2448,10 +2431,8 @@ each one.
         compose with traversal-based code.}
 ]
 
-@bold{Out of scope (rolled in by Phase 49 or still deferred):}
+@bold{Out of scope (still deferred):}
 @itemlist[
-  @item{Auto-deriving prisms for @racket[define-data] constructors —
-        Phase 49.}
   @item{Indexed traversals.}
   @item{@code{Fold s a} / @racket[foldMapOf]-style folds — could be
         a separate type.}
@@ -2459,7 +2440,10 @@ each one.
         unified ``Optic'' abstraction.}
 ]
 
-@section{Auto-derived prisms (Phase 49)}
+Auto-deriving prisms for @racket[define-data] constructors is
+covered in the next section.
+
+@section{Auto-derived prisms}
 
 @racket[define-data] gains @racket[#:deriving Prism] support.  Each
 0-arg or 1-arg constructor produces a named prism @code{T-Ctor-prism}.
@@ -2487,7 +2471,7 @@ For each constructor:
         ignores its @racket[Unit] argument and produces @code{Foo}.}
   @item{@bold{1-arg ctor @code{Foo}} → @code{T-Foo-prism :: (Prism T fieldT)}.
         @racket[preview] extracts the field; @racket[review] is the
-        constructor itself (Phase 17 auto-curry covers the partial
+        constructor itself (auto-curry covers the partial
         application).}
   @item{@bold{N≥2-arg ctors} are silently skipped — a tuple-focused
         prism would need product encoding we don't offer here.}
@@ -2496,10 +2480,9 @@ For each constructor:
 @racket[Prism] deriving rejects @racket[define-struct] (single-ctor
 record); the error message suggests @racket[Lens] instead.
 
-@section{GADTs (Phase 50)}
+@section{GADTs}
 
-Phase 50 lifts @racket[define-data] to full generalized algebraic
-data types.  Each constructor may declare its OWN result type via
+@racket[define-data] supports full generalized algebraic data types.  Each constructor may declare its OWN result type via
 @racket[#:returns], pinning some or all of the data-type's parameters
 to concrete types at that constructor.  Pattern matching introduces
 local type-equality assumptions: in each arm the data parameter is
@@ -2529,7 +2512,7 @@ The key ingredients:
   @item{@bold{Surface @racket[#:returns]} on a ctor names that ctor's
         result type explicitly.  In its absence the ctor returns
         @racket[(T a ...)] with all of @racket[T]'s parameters free,
-        the pre-Phase-50 default.}
+        the pre-refinement default.}
   @item{@bold{Refinable skolems}.  When a function with a declared
         signature is checked, every quantified tvar in the signature
         becomes a rigid skolem in the body.  Pattern matches refine
@@ -2548,7 +2531,7 @@ The key ingredients:
         would have nothing to bite on.}
 ]
 
-@section{Explicit type-equality constraints (Phase 50.1)}
+@section{Explicit type-equality constraints}
 
 The @racket[~] predicate names primitive type equality.  Writing
 @racket[(~ a b)] in a qualifying context asserts that the two type
@@ -2563,12 +2546,11 @@ discharged at use; mismatches surface as a typecheck error.
 (pair-eq 7 "hi")   ;; rejected: type-equality fails Integer ≠ String
 }|
 
-@section{Higher-rank polymorphism (Phase 51)}
+@section{Higher-rank polymorphism}
 
-Phase 51 lifts the type system to full rank-N: a function may
-declare a parameter whose type is itself polymorphic, and call
-that parameter at several distinct concrete types inside the
-same body.  The classic rank-2 idiom is a function that takes a
+The type system supports full rank-N: a function may declare a
+parameter whose type is itself polymorphic, and call that parameter
+at several distinct concrete types inside the same body.  The classic rank-2 idiom is a function that takes a
 polymorphic identity and uses it at two unrelated types:
 
 @codeblock|{
@@ -2610,9 +2592,9 @@ Soundness is preserved by the check-mode skolemization: passing a
 is rejected because the lambda's body has type @code{Integer},
 incompatible with the skolemized @code{a}.
 
-@section{REPL (Phase 52)}
+@section{REPL}
 
-Phase 52 ships an interactive REPL.  Boot it with
+Rackton ships an interactive REPL.  Boot it with
 
 @codeblock|{
 racket -l rackton/repl
@@ -2646,13 +2628,13 @@ x :: Integer
 The kernel exposes a small state-machine API
 (@racket[rackton-repl-init], @racket[rackton-repl-step]) so
 tooling can drive the REPL programmatically — that's how the
-phase-52 tests work without wrangling stdin/stdout.  Errors in
+REPL tests work without wrangling stdin/stdout.  Errors in
 one form don't crash the session; the kernel catches them and
 moves on.
 
-@section{Associated types (Phase 53)}
+@section{Associated types}
 
-Phase 53 introduces associated types — class-level type-level
+Rackton supports associated types — class-level type-level
 functions whose concrete rhs is supplied per instance.  A class
 declares an associated type with @racket[(#:type FamilyName)];
 each instance supplies its concrete value with
@@ -2699,10 +2681,10 @@ A few rules:
         see them too.}
 ]
 
-@section{Functional record update (Phase 54)}
+@section{Functional record update}
 
-Phase 54 adds @racket[update] — a type-preserving functional
-update for @racket[define-struct] records.  Each
+@racket[update] is a type-preserving functional update for
+@racket[define-struct] records.  Each
 @code{[field expr]} clause replaces the named field; all other
 fields are preserved.
 
@@ -2742,9 +2724,9 @@ against the underlying @code{$ctor:Name} struct, using the
 field-name → positional-slot mapping recorded when the struct was
 declared.
 
-@section{Algebraic effects + handlers (Phase 55)}
+@section{Algebraic effects + handlers}
 
-Phase 55 adds first-class effects.  An effect declares a set of
+Rackton supports first-class algebraic effects.  An effect declares a set of
 operations; a handler interprets those operations by responding to
 each invocation, optionally resuming the computation via the
 captured continuation.
@@ -2779,9 +2761,9 @@ A few notes on the design:
         the matched clause's body becomes the handle's result
         directly.}
   @item{Effects are @bold{not tracked in types}.  An operation
-        invoked outside any handler is a runtime error.  A future
-        phase could add row polymorphism to propagate effect
-        signatures through function types.}
+        invoked outside any handler is a runtime error.  Row
+        polymorphism to propagate effect signatures through function
+        types is a possible future extension.}
   @item{A program passed to a handler should be a thunk (a 0-arg
         function), so operations aren't performed before the
         prompt is installed.}
@@ -2806,12 +2788,11 @@ Three classic effects exercised by the test suite:
   (raise-e -> Integer))
 }|
 
-@section{Sealed abstract types + module coherence (Phase 56)}
+@section{Sealed abstract types + module coherence}
 
-Phase 56 lands two paired features library writers care about:
-@bold{abstract types} (hide constructors at the module boundary)
-and @bold{module-level coherence} (reject overlapping class
-instances that span modules).
+Two paired features for library writers: @bold{abstract types}
+(hide constructors at the module boundary) and @bold{module-level
+coherence} (reject overlapping class instances that span modules).
 
 @subsection{Abstract types}
 
@@ -2872,12 +2853,13 @@ require: instance coherence: (Eq Color) would conflict with
 This catches a common library-writer mistake (one canonical
 instance per class+type) at compile time rather than letting
 runtime dispatch silently pick whichever was registered last.
-The same-module duplicate-instance check from Phase 37 still
-operates within a single module.
+The same-module duplicate-instance check (covered earlier under
+overlapping instances) continues to operate within a single
+module.
 
-@section{Compile-time monomorphization (Phase 57)}
+@section{Compile-time monomorphization}
 
-Phase 57 specializes positional class-method call sites whose
+The elaborator specializes positional class-method call sites whose
 dispatch type is concretely known at compile time.  Rather than
 indirecting through a per-class hash table at runtime, the call
 is rewritten to invoke the per-instance impl directly.
@@ -2920,9 +2902,9 @@ returns a list of @code{(method-name . impl-name)} pairs
 recording the most recent @racket[(rackton …)] block's
 monomorphized call sites.  Useful for tooling and testing.
 
-@section{Codegen inlining (Phase 58)}
+@section{Codegen inlining}
 
-Phase 58 takes the named globals from Phase 57's monomorphization
+Codegen takes the named globals produced by monomorphization
 and inlines the small ones at their call sites.  When a user
 instance method has a small body and the call site provides all
 arguments, codegen substitutes the body in place of the call via
@@ -2936,8 +2918,8 @@ arguments, codegen substitutes the body in place of the call via
   (define (tag-of x) (+ x 100)))
 
 (tag-of 7)
-;; was lowered (phase 57) to ($tag-of:Integer 7)
-;; now lowered (phase 58) to (let ([x 7]) (+ x 100))
+;; monomorphized to ($tag-of:Integer 7)
+;; with inlining, lowered to (let ([x 7]) (+ x 100))
 }|
 
 Inlining rules:
@@ -2955,9 +2937,9 @@ Inlining rules:
         inline into itself, so a recursive body
         @code{(define (m x) (m (- x 1)))} stops at one level.}
   @item{Prelude-defined instances and instances with
-        @code{(racket τ ...)} placeholder bodies are still
-        skipped per phase 57's rules — those have no Rackton
-        body to substitute.}
+        @code{(racket τ ...)} placeholder bodies are skipped at the
+        monomorphization stage already — those have no Rackton body
+        to substitute, so inlining can't reach them.}
 ]
 
 @racket[rackton-inlined-sites] mirrors
@@ -2965,10 +2947,10 @@ Inlining rules:
 the most recent @racket[(rackton …)] block's
 @code{(method . impl)} list of inlined call sites.
 
-@section{Better error messages (Phase 59)}
+@section{Better error messages}
 
-Phase 59 polishes two error-message classes that previously
-left users guessing.
+Two error-message classes get extra context where the bare
+diagnostic previously left users guessing.
 
 @subsection{Pattern arity for record ctors}
 
@@ -2981,9 +2963,8 @@ missing or extra:
 constructor Point expects 2 arg(s), pattern has 1 (fields: x, y)
 }|
 
-The field names come from the registry that Phase 54 installed
-to support functional record updates; the error path consults
-the same registry.
+The field names come from the same registry used to support
+functional record updates; the error path consults it directly.
 
 @subsection{Deriving hint on "no instance"}
 
@@ -3005,10 +2986,9 @@ The hint fires only when the deriving form is actually possible
 (class in the menu, type locally declared) — it doesn't
 suggest deriving for prelude types or non-derivable classes.
 
-@section{REPL polish (Phase 60)}
+@section{REPL polish}
 
-Phase 60 extends the Phase-52 REPL with three usability features
-that matter most at the keyboard:
+Three REPL usability features that matter most at the keyboard:
 
 @itemlist[
   @item{@bold{Multi-line input}.  When a form's parens aren't

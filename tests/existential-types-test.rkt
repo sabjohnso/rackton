@@ -1,13 +1,13 @@
 #lang racket/base
 
-;; Phase 45: existential types — ctor fields with their own
+;; Existential types — ctor fields with their own
 ;; quantifier and constraints, hidden from the outer type.
 
 (require rackunit
          "../main.rkt")
 
 (rackton
-  ;; ----- 45.A heterogeneous Show ------------------------------
+  ;; ----- heterogeneous Show ------------------------------
 
   (define-data ExistsShow
     (PackShow #:forall (a) #:where (Show a) a))
@@ -31,7 +31,7 @@
   (: rendered (List String))
   (define rendered (render-each heterogeneous))
 
-  ;; ----- 45.B existential Eq ----------------------------------
+  ;; ----- existential Eq ----------------------------------
   ;; Pack a value with its own Eq witness; compare against itself.
 
   (define-data ExistsEq

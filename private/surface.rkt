@@ -84,7 +84,7 @@
 (struct e:var     (name stx) #:transparent)
 (struct e:lam     (params body stx) #:transparent)
 (struct e:app     (head args stx) #:transparent)
-;; Phase 54: functional record update.  `record-expr` evaluates to a
+;; Functional record update.  `record-expr` evaluates to a
 ;; record value; each `update` element is (cons field-name value-expr),
 ;; meaning the resulting record has `field-name` replaced by the
 ;; value of `value-expr` and all other fields preserved.  The result
@@ -125,15 +125,15 @@
 
 (struct top:def      (name expr stx) #:transparent)
 (struct top:dec      (name type stx) #:transparent)
-;; Phase 56: `abstract?` flag — when #t, the data type's ctors are
+;; `abstract?` flag — when #t, the data type's ctors are
 ;; NOT re-exported to importing modules.  The type-name itself is.
 (struct top:data     (name params ctors stx abstract?) #:transparent)
-;; Phase 45: a data ctor may carry its own existential quantifier
+;; A data ctor may carry its own existential quantifier
 ;; via `#:forall (a) #:where (Cls a) ...` keywords between the ctor
 ;; name and the field types.  `extra-tvars` lists the existentially
 ;; quantified tvars; `extra-context` lists the constraints over them.
 ;; Existing (non-existential) ctors use empty lists for both.
-;; Phase 50: `result-type` is either #f (default — the data type's
+;; `result-type` is either #f (default — the data type's
 ;; `(T tparams)` shape) or a ty-AST giving the ctor's specific
 ;; result type for GADTs (declared via `#:returns RT`).
 (struct data-ctor    (name field-types stx extra-tvars extra-context
@@ -156,11 +156,11 @@
 ;; rhs-positioned types are uniquely determined by the lhs-positioned
 ;; ones.  `lhs` and `rhs` are lists of parameter-name symbols.
 (struct class-fundep   (lhs rhs stx) #:transparent)
-;; Phase 53: a `#:type FamilyName` declaration inside a class body.
+;; A `#:type FamilyName` declaration inside a class body.
 ;; The family is a one-parameter type-level function whose argument
 ;; is the class's parameter; each instance supplies a concrete rhs.
 (struct class-type-fam  (name stx) #:transparent)
-;; Phase 53: a `#:type (FamilyName = Type)` clause inside an instance
+;; A `#:type (FamilyName = Type)` clause inside an instance
 ;; body, binding the named family to a concrete type for this
 ;; instance.
 (struct inst-type-fam   (name type stx) #:transparent)
@@ -170,13 +170,13 @@
 ;; A type alias.  `params` is a list of symbols (possibly empty); `target`
 ;; is a parsed surface type AST that may mention the params.
 (struct top:alias      (name params target stx) #:transparent)
-;; Phase 54: side-channel record-field-name registration.  Emitted by
+;; Side-channel record-field-name registration.  Emitted by
 ;; parse-struct-form alongside the top:data form so the inference
 ;; engine can record the field names on the struct's data-info.
 ;; Carrying this as a separate top-form keeps data-ctor untouched.
 (struct top:struct-fields (struct-name field-names stx) #:transparent)
 
-;; Phase 55: an effect declaration.  `name` is the effect's name;
+;; An effect declaration.  `name` is the effect's name;
 ;; `ops` is a list of effect-op describing each operation.
 (struct top:effect    (name ops stx) #:transparent)
 ;; A single operation inside a `define-effect`.  `arg-types` is a
@@ -212,7 +212,7 @@
 (define (a-name i) (string->symbol (format "a~a" i)))
 (define (b-name i) (string->symbol (format "b~a" i)))
 
-;; Phase 38: fresh-stx creates a new syntax object sharing `base`'s
+;; fresh-stx creates a new syntax object sharing `base`'s
 ;; lexical context but distinct as a struct.  Synthesizers that emit
 ;; multiple references to the same class method (Semigroup `<>`,
 ;; Monoid `mempty`) need each reference to have a unique stx, since
@@ -456,7 +456,7 @@
       ;; otherwise the field carries no `a`, skip.
       [else acc])))
 
-;; ----- Traversable deriving (Phase 38) --------------------------
+;; ----- Traversable deriving --------------------------
 ;; For an ADT `(T a … b)` whose LAST tparam `b` is the traversed
 ;; element, emit `(define (traverse f x) (match x ctors…))` where each
 ;; ctor clause rebuilds the ctor via Applicative composition over
@@ -536,7 +536,7 @@
     [else
      (e:app (e:var 'pure stx) (list arg) stx)]))
 
-;; ----- Bifunctor deriving (Phase 38) ----------------------------
+;; ----- Bifunctor deriving ----------------------------
 ;; For an ADT with at least TWO tparams.  The penultimate is the
 ;; first bifunctor param, the last is the second.  For each ctor's
 ;; fields:
@@ -602,7 +602,7 @@
      (e:app (e:var 'bimap stx) (list (e:var 'f stx) (e:var 'g stx) arg) stx)]
     [else arg]))
 
-;; ----- Semigroup deriving (Phase 38) ----------------------------
+;; ----- Semigroup deriving ----------------------------
 ;; Single-ctor ADTs only.  Combine fields pairwise via `<>`.  Qual
 ;; context carries `(Semigroup ft)` for each unique field type.
 ;; Concrete field types (e.g. `String`) get discharged immediately
@@ -645,7 +645,7 @@
                 (list (top:def '<> (e:lam '(x y) body stx) stx))
                 stx))
 
-;; ----- Monoid deriving (Phase 38) -------------------------------
+;; ----- Monoid deriving -------------------------------
 ;; Single-ctor ADTs only.  `mempty` is the ctor applied to per-field
 ;; `mempty`s.  Qual context carries `(Monoid a)` per tparam.
 (define (synthesize-monoid-instance tname tparams ctors stx)
@@ -672,7 +672,7 @@
                 (list (top:def 'mempty empty-body stx))
                 stx))
 
-;; ----- Prism deriving (Phase 49) --------------------------------
+;; ----- Prism deriving --------------------------------
 ;; For each constructor of a multi-ctor ADT, emit a top-level prism
 ;; definition.  Arity-0 ctors get a `(Prism T Unit)`; arity-1 ctors
 ;; get a `(Prism T fieldT)`.  Arity ≥ 2 ctors are silently skipped
@@ -899,7 +899,7 @@
      (parse-do (syntax->list #'(stmt ...)) #'body stx)]
 
     ;; (handle EXPR [op (args ...) k -> body] ... [return v -> body])
-    ;; Phase 55.  EXPR is run in a context where the named ops
+    ;; EXPR is run in a context where the named ops
     ;; are dispatched to the listed clauses; if EXPR finishes
     ;; normally, its value flows through the return clause.
     [(handle expr cl ...+)
@@ -922,7 +922,7 @@
 
     [x:id  (e:var (syntax->datum #'x) stx)]
 
-    ;; Phase 55: also accept zero-arg applications `(f)`.  These
+    ;; Also accept zero-arg applications `(f)`.  These
     ;; are passed an implicit MkUnit so the typing of 0-arg ops
     ;; as `(-> Unit T)` lines up — saves users from spelling out
     ;; the dummy at every effect call site.
@@ -1049,7 +1049,7 @@
                 (parse-constraint cstx))
               (parse-type #'body)
               stx)]
-    ;; Phase 55: `(-> T)` (1-arg arrow form) means "0-arg fn
+    ;; `(-> T)` (1-arg arrow form) means "0-arg fn
     ;; returning T", which we encode as `(-> Unit T)` so it
     ;; uniformly matches the standard arrow shape.
     [(-> body)
@@ -1128,7 +1128,7 @@
      (top:dec (syntax->datum #'name) (parse-type #'ty) stx)]
 
     [(define (f:id arg:id ...) body)
-     ;; Phase 55: a 0-arg define `(define (f) body)` desugars to a
+     ;; A 0-arg define `(define (f) body)` desugars to a
      ;; lambda with one ignored Unit parameter, matching the 0-arg
      ;; call-site convention.  Without this `(f)` would call a
      ;; non-function value.
@@ -1165,7 +1165,7 @@
     ;; Sugar over define-data for the common "one ctor, one field"
     ;; case.  A nominal wrapper around an existing type.  At runtime
     ;; the wrapper is a plain ADT — the "zero-cost" of a newtype is
-    ;; documentary, not a perf optimization.  Phase 35: trailing
+    ;; documentary, not a perf optimization.  A trailing
     ;; `#:deriving Cls ...` flows through to parse-data-form.
     [(define-newtype (tname:id tparam:id ...) (ctor:id ftype) rest ...)
      #:fail-unless (not (lowercase-id? (syntax->datum #'tname)))
@@ -1248,7 +1248,7 @@
                      (parse-instance-method m))
                    stx)]
 
-    ;; Phase 55: (define-effect Name (op argType ... -> resultType) ...)
+    ;; (define-effect Name (op argType ... -> resultType) ...)
     [(define-effect name:id op ...)
      #:fail-unless (not (lowercase-id? (syntax->datum #'name)))
      "effect name must be a non-lowercase identifier"
@@ -1320,7 +1320,7 @@
 ;; syntax instead leaves the synthesised identifiers missing scopes
 ;; that show up only on individual identifier-leaf syntax objects.
 (define (parse-data-form tname tparams items stx [tname-stx #f])
-  ;; Phase 56: peel off the `#:abstract` flag (it may appear
+  ;; Peel off the `#:abstract` flag (it may appear
   ;; alongside `#:deriving` in any order before the ctor list ends).
   (define-values (items-1 abstract?) (split-abstract items))
   (define-values (ctor-stxs deriving-classes)
@@ -1349,7 +1349,7 @@
   (or (null? rest)
       (eq? (syntax->datum (car rest)) '#:deriving)))
 
-;; Phase 56: peel off a `#:abstract` flag anywhere it appears in a
+;; Peel off a `#:abstract` flag anywhere it appears in a
 ;; data/struct body items list.  Returns (values rest abstract?)
 ;; where abstract? is #t iff the keyword was found.
 (define (split-abstract items)
@@ -1361,9 +1361,9 @@
       [else (loop (cdr rem) (cons (car rem) acc) abs?)])))
 
 ;; Split the trailing `#:deriving Cls ...` clause off a list of body
-;; items.  Returns (values items-before deriving-classes).  Phase 35:
-;; shared by define-data, define-newtype, and define-struct so all
-;; three honor the same deriving menu.
+;; items.  Returns (values items-before deriving-classes).  Shared
+;; by define-data, define-newtype, and define-struct so all three
+;; honor the same deriving menu.
 (define (split-deriving items)
   (let loop ([rem items] [acc '()])
     (cond
@@ -1386,7 +1386,7 @@
       [(and (member 'Ord classes) (not (member 'Eq classes)))
        (cons 'Eq classes)]
       [else classes]))
-  ;; Phase 38: deriving Monoid implies deriving Semigroup since
+  ;; Deriving Monoid implies deriving Semigroup since
   ;; Monoid's class declaration lists Semigroup as a superclass.
   (define classes-needing-semigroup
     (cond
@@ -1440,10 +1440,10 @@
 ;; ----- records: define-struct ---------------------------------------
 
 (define (parse-struct-form name tparams field-stxs stx tname-stx)
-  ;; Phase 35: split off a trailing `#:deriving Cls ...` clause before
+  ;; Split off a trailing `#:deriving Cls ...` clause before
   ;; parsing field specs — the deriving classes are routed through the
   ;; shared synthesize-deriving helper.
-  ;; Phase 56: also peel off `#:abstract` from anywhere in the body.
+  ;; Also peel off `#:abstract` from anywhere in the body.
   (define-values (field-stxs-1 abstract?) (split-abstract field-stxs))
   (define-values (field-only-stxs deriving-classes)
     (split-deriving field-stxs-1))
@@ -1457,7 +1457,7 @@
     (for/list ([fname (in-list field-names)]
                [i (in-naturals)])
       (synthesize-accessor name (length field-names) fname i tname-stx)))
-  ;; Phase 47: Lens-deriving needs field-NAMES (to name the lenses
+  ;; Lens-deriving needs field-NAMES (to name the lenses
   ;; and generate the accessor / re-builder), which the generic
   ;; synthesize-deriving doesn't have.  Peel `Lens` out and handle
   ;; it here; pass the rest through to synthesize-deriving normally.
@@ -1478,14 +1478,14 @@
                 (top:struct-fields name field-names stx))
           accessor-defs derived lens-defs))
 
-;; Phase 47: peel a class symbol out of the deriving list.  Returns
+;; Peel a class symbol out of the deriving list.  Returns
 ;; (values present? rest).
 (define (partition-by-eq sym xs)
   (cond
     [(member sym xs) (values #t (filter (lambda (x) (not (eq? x sym))) xs))]
     [else            (values #f xs)]))
 
-;; Phase 47: emit per-field lens defs `Tname-fname-lens` for a
+;; Emit per-field lens defs `Tname-fname-lens` for a
 ;; single-ctor define-struct.  Each lens reuses the existing
 ;; accessor `Tname-fname` as the getter and rebuilds the struct
 ;; with `(Tname ...)` for the setter.
@@ -1558,7 +1558,7 @@
      #:fail-unless (not (lowercase-id? (syntax->datum #'name)))
      "data constructor name must be a non-lowercase identifier"
      (data-ctor-plain (syntax->datum #'name) '() stx)]
-    ;; Phase 45: existential ctor with #:forall and #:where clauses.
+    ;; Existential ctor with #:forall and #:where clauses.
     [(name:id (~datum #:forall) (tv:id ...+)
               (~datum #:where) ctx ...
               ft ...+)
@@ -1572,7 +1572,7 @@
                 (for/list ([c (in-list (syntax->list #'(ctx ...)))])
                   (parse-constraint c))
                 #f)]
-    ;; Phase 50: GADT ctor with `#:returns RT` clause that gives
+    ;; GADT ctor with `#:returns RT` clause that gives
     ;; the ctor's specific result type instead of the default
     ;; `(T tparams)` shape.
     [(name:id (~datum #:returns) rt ft ...)

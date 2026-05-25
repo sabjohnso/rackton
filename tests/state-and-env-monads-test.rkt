@@ -1,6 +1,6 @@
 #lang racket/base
 
-;; Phase-25: State, Env, StateT, EnvT.
+;; State, Env, StateT, EnvT.
 
 (require rackunit
          "../main.rkt")

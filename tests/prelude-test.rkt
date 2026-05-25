@@ -1,6 +1,6 @@
 #lang racket/base
 
-;; Phase-2 prelude exercise: Eq with a default neq, Ord as a subclass of Eq,
+;; Prelude exercise: Eq with a default neq, Ord as a subclass of Eq,
 ;; instances over Integer and Maybe.  Class methods use distinct names
 ;; (`eq`, `neq`, `lt`, `gt`) so they don't shadow the builtin operators
 ;; the instances need to call.

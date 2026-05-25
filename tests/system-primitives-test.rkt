@@ -1,6 +1,6 @@
 #lang racket/base
 
-;; Phase-15 system surface: random, time, env vars, argv, filesystem.
+;; System surface: random, time, env vars, argv, filesystem.
 
 (require rackunit
          racket/file

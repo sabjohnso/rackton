@@ -1,6 +1,6 @@
 #lang racket/base
 
-;; Phase-14 diagnostics: structured expected/got errors, per-arg blame
+;; Diagnostics: structured expected/got errors, per-arg blame
 ;; in applications, did-you-mean? extended to classes and constructors.
 
 (require rackunit

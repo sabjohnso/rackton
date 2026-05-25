@@ -1,6 +1,6 @@
 #lang racket/base
 
-;; Phase 55: algebraic effects + handlers.
+;; Algebraic effects + handlers.
 ;;
 ;; (define-effect E (op argTypes... -> resultType) ...) declares an
 ;; effect E with named operations.  Calling an operation suspends

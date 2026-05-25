@@ -51,7 +51,7 @@
     [((tapp h1 args1) (tapp h2 args2))
      (unify-tapp h1 args1 h2 args2 σ τ)]
     [((tforall vs1 b1) (tforall vs2 b2))
-     ;; Phase 51: alpha-equivalent unification of two polymorphic
+     ;; Alpha-equivalent unification of two polymorphic
      ;; types.  Same arity required; rename one side's bound vars
      ;; to fresh names, then unify the bodies.  The result subst
      ;; must not mention either side's bound vars — if it does,

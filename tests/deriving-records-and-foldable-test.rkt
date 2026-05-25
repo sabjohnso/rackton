@@ -1,8 +1,8 @@
 #lang racket/base
 
-;; Phase 35: `#:deriving` extended to records (via define-struct) and
-;; new Foldable derivation.  Also exercises newtype and parametric-ADT
-;; deriving as regression coverage.
+;; `#:deriving` extended to records (via define-struct) and Foldable
+;; derivation.  Also exercises newtype and parametric-ADT deriving as
+;; regression coverage.
 
 (require rackunit
          "../main.rkt")

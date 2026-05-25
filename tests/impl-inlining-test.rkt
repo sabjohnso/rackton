@@ -1,13 +1,12 @@
 #lang racket/base
 
-;; Phase 58: codegen inlining of small monomorphized impls.
+;; Codegen inlining of small monomorphized impls.
 ;;
-;; Phase 57 made each user-defined positional instance method
-;; available as a named $method:Tcon global and pointed concrete
-;; call sites at it.  Phase 58 takes the next step: when the impl's
-;; body is small and contains no class-method calls, codegen
-;; substitutes the args into the body at the call site instead of
-;; emitting a function call.
+;; Monomorphization makes each user-defined positional instance method
+;; available as a named $method:Tcon global and points concrete call
+;; sites at it.  When the impl's body is also small and contains no
+;; class-method calls, codegen substitutes the args into the body at
+;; the call site instead of emitting a function call.
 ;;
 ;; The optimization is invisible to behavior; the elaborator
 ;; exposes a parameter listing the inlined call sites so this test

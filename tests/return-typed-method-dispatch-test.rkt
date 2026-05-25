@@ -1,6 +1,6 @@
 #lang racket/base
 
-;; Phase-18: return-typed dispatch for `pure`.
+;; Return-typed dispatch for `pure`.
 
 (require rackunit
          "../main.rkt")

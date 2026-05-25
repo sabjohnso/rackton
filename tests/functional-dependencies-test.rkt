@@ -1,6 +1,6 @@
 #lang racket/base
 
-;; Phase 13 end-to-end: functional dependencies + merge sort.
+;; End-to-end: functional dependencies + merge sort.
 
 (require rackunit
          "../main.rkt")
@@ -30,7 +30,7 @@
   (define (bool->int b) (convert b))
 
   ;; Merge sort over polymorphic Ord (just verify correctness on a
-  ;; longer list than Phase 8's tests used).
+  ;; longer list than earlier tests used).
   (define many
     (Cons 5 (Cons 12 (Cons 3 (Cons 8 (Cons 1 (Cons 11
       (Cons 7 (Cons 2 (Cons 9 (Cons 4 (Cons 10 (Cons 6 Nil)))))))))))))

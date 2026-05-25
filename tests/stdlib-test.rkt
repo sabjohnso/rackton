@@ -1,6 +1,6 @@
 #lang racket/base
 
-;; Sanity check on the Phase-5 small stdlib: not, and, or, length,
+;; Sanity check on the small stdlib: not, and, or, length,
 ;; foldr, filter.
 
 (require rackunit

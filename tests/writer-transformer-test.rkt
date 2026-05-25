@@ -1,6 +1,6 @@
 #lang racket/base
 
-;; Phase-26: WriterT transformer.
+;; WriterT transformer.
 ;;
 ;; (ExceptT was originally bundled but dropped after surfacing that
 ;; its `>>=` Err branch needs an inner `pure` that the class-method

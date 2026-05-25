@@ -1,6 +1,6 @@
 #lang racket/base
 
-;; Phase 36: concurrency primitives — threads, MVars, channels.
+;; Concurrency primitives — threads, MVars, channels.
 ;; Every test uses wait-thread / take-mvar to synchronize so the
 ;; assertions don't race the spawned thread.
 

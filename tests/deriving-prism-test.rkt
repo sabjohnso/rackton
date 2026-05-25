@@ -1,12 +1,12 @@
 #lang racket/base
 
-;; Phase 49: auto-derive prisms for define-data sum types.
+;; Auto-derive prisms for define-data sum types.
 
 (require rackunit
          "../main.rkt")
 
 (rackton
-  ;; ----- 49.A Maybe-ish type with Prism deriving --------------
+  ;; ----- Maybe-ish type with Prism deriving --------------
   ;; Use a local copy (`Opt`) so we don't clash with the prelude
   ;; Maybe — the test only verifies that Prism deriving emits
   ;; one prism per ctor.
@@ -36,7 +36,7 @@
   (: rev-present (Opt Integer))
   (define rev-present (review Opt-Present-prism 99))
 
-  ;; ----- 49.B Result-like (two unary ctors) -------------------
+  ;; ----- Result-like (two unary ctors) -------------------
 
   (define-data (Either2 e a)
     (Lft e)
@@ -52,9 +52,9 @@
   (: rev-lft (Either2 String Integer))
   (define rev-lft (review Either2-Lft-prism "boom"))
 
-  ;; ----- 49.C mixed-arity skipping ----------------------------
+  ;; ----- mixed-arity skipping ----------------------------
   ;; ADT with one 0-arg ctor, one 1-arg ctor, one 2-arg ctor.
-  ;; Phase 49 emits prisms for the 0/1-arg ones and silently
+  ;; Prism deriving emits prisms for the 0/1-arg ones and silently
   ;; skips the 2-arg one.  Test verifies the 0/1-arg prisms exist
   ;; and work; the 2-arg ctor still works as a value but has no
   ;; prism.

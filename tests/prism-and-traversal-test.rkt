@@ -1,6 +1,6 @@
 #lang racket/base
 
-;; Phase 48: prisms and traversals.
+;; Prisms and traversals.
 
 (require rackunit
          "../main.rkt")

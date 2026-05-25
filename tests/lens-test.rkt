@@ -1,6 +1,6 @@
 #lang racket/base
 
-;; Phase 46: lenses / optics library.  Simple (getter, setter)
+;; Lenses / optics library.  Simple (getter, setter)
 ;; encoding — `Lens s a` packs the projection and re-injection
 ;; needed to focus on a sub-part of a structure.
 

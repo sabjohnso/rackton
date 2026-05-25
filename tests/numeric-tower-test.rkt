@@ -1,6 +1,6 @@
 #lang racket/base
 
-;; Phase 40: numeric tower — Rational + Complex types plus the
+;; Numeric tower — Rational + Complex types plus the
 ;; Integral / Real / Floating / RealFrac / RealFloat class hierarchy.
 
 (require rackunit

@@ -1,6 +1,6 @@
 #lang racket/base
 
-;; Phase 52: REPL for #lang rackton.
+;; REPL for #lang rackton.
 ;;
 ;; The REPL kernel exposes a step function `rackton-repl-step` that
 ;; takes a session state and one input s-expr, and returns a new

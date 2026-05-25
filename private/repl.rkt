@@ -229,7 +229,7 @@
 
 ;; ----- multi-line input ------------------------------------------
 
-;; Phase 60: read one rackton form from `port`, accumulating lines
+;; Read one rackton form from `port`, accumulating lines
 ;; until parens balance.  `prompt-cont` is called with the current
 ;; depth count (always positive on continuation prompts) and
 ;; should return a continuation-prompt string to display; in tests
@@ -267,7 +267,7 @@
           (flush-output)
           (loop buf* new-depth)])])))
 
-;; Phase 60: net `(` - `)` for one line, ignoring `;` comments and
+;; Net `(` - `)` for one line, ignoring `;` comments and
 ;; string contents.  Brackets `[]` and braces `{}` count too —
 ;; Racket treats them as parens.
 (define (line-paren-delta line)
@@ -293,7 +293,7 @@
           (loop (add1 i) (sub1 delta) #f #f)]
          [else (loop (add1 i) delta #f #f)])])))
 
-;; Phase 60: completion candidates from the session env.  Returns
+;; Completion candidates from the session env.  Returns
 ;; a list of strings whose names start with `prefix`.  Consults
 ;; the four user-extensible namespaces — vars, data ctors,
 ;; classes, tcons — so a partial type or class name also
@@ -319,7 +319,7 @@
 ;; Drive the kernel from `current-input-port` / `current-output-port`.
 ;; EOF or `:quit` ends the loop.  Exposed as a single entry that
 ;; user-facing shims can call (e.g. via `racket -l rackton/repl`).
-;; Phase 60: uses readline for history + line editing when stdin
+;; Uses readline for history + line editing when stdin
 ;; is interactive, plus multi-line input accumulation via
 ;; `rackton-read-form`.  Tab completion consults the live session
 ;; env for variable / type / class names.

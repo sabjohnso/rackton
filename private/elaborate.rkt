@@ -22,7 +22,7 @@
                      "prelude.rkt"
                      "scheme-codec.rkt"
                      "env.rkt")
-         ;; Phase 57: runtime require so that the macro templates
+         ;; Runtime require so that the macro templates
          ;; below can reference set-rackton-monomorphized-log-
          ;; snapshot! (and rackton-monomorphized-sites) — Racket's
          ;; hygiene then makes the spliced identifier resolve to
@@ -44,13 +44,13 @@
                  [current-method-resolutions      (make-hasheq)]
                  [current-method-dict-resolutions (make-hasheq)]
                  ;; equal?-keyed so we can use composite list keys
-                 ;; for instance method lookups (Phase 30).  Symbol-
+                 ;; for instance method lookups.  Symbol-
                  ;; keyed top-def names compare equal? fine too.
                  [current-needs-dict-defs         (make-hash)]
-                 ;; Phase 57: monomorphization log starts empty per
-                 ;; elaborate, accumulates each resolved site.
+                 ;; Monomorphization log starts empty per elaborate,
+                 ;; accumulates each resolved site.
                  [current-monomorphized-sites     (box '())]
-                 ;; Phase 58: inlinable-bodies is populated by
+                 ;; inlinable-bodies is populated by
                  ;; compile-instance; the inlined-sites log mirrors
                  ;; the monomorphization log but for actually
                  ;; substituted call sites.
@@ -61,13 +61,13 @@
       (filter values
               (for/list ([f (in-list parsed)])
                 (compile-top f env))))
-    ;; Phase 57: emit a runtime form that publishes this elaborate's
+    ;; Emit a runtime form that publishes this elaborate's
     ;; monomorphization log via the codegen-exposed setter.  The
     ;; rackton-monomorphized-sites accessor returns this list so
     ;; tests can verify the optimization fired.
     (define mono-log (unbox (current-monomorphized-sites)))
     (define inline-log (unbox (current-inlined-sites)))
-    ;; Phase 57/58: pass the logs alongside compiled forms; the
+    ;; Pass the logs alongside compiled forms; the
     ;; rackton macro turns them into runtime forms.
     (define-values (final-compiled bs dcs tcs cls insts)
       (elaborate-finish parsed env compiled))
@@ -78,7 +78,7 @@
     (for/list ([(name sch) (in-hash (env-vars env))]
                #:unless (env-ref-var prelude-env name #f))
       (cons name (scheme->sexp sch))))
-  ;; Phase 56: omit ctors whose owning type was declared with the
+  ;; Omit ctors whose owning type was declared with the
   ;; #:abstract flag — importers can still mention the TYPE in
   ;; signatures (it's exported via the tcons table) but they
   ;; can't construct or pattern-match.

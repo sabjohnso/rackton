@@ -1,6 +1,6 @@
 #lang racket/base
 
-;; Phase 32: MTL polish + combinators.  Covers the previously-stubbed
+;; MTL polish + combinators.  Covers the previously-stubbed
 ;; lifted `local-en` / `catch-e` impls, the new MonadWriter `listen`
 ;; and `censor` methods, and the derived combinators `asks` / `gets` /
 ;; `void` / `when` / `unless`.
@@ -14,7 +14,7 @@
   (: prefix-x (-> String String))
   (define (prefix-x s) (<> "X-" s))
 
-  ;; ----- 32.1 local-en lifted -----------------------------------
+  ;; ----- local-en lifted -----------------------------------
 
   ;; EnvT String IO: local-en should rewrite the env seen by the inner
   ;; action.  Base EnvT case.
@@ -42,11 +42,11 @@
   (define stacked-local-result
     ((run-env-t ((run-state-t stacked-local) 0)) "abc"))
 
-  ;; ----- 32.2 catch-e on the base ExceptT -----------------------
+  ;; ----- catch-e on the base ExceptT -----------------------
   ;; Lifted catch-e through a transformer stack needs access to the
   ;; innermost monad's `pure` to re-inject Ok values, which the
   ;; current dict-passing mechanism only resolves down one layer.
-  ;; Phase 32 lands the base ExceptT regression; a fuller lifted
+  ;; This test covers the base ExceptT regression; a fuller lifted
   ;; impl is tracked under "deeper qual chains" in Not Yet Supported.
 
   (: thrower (ExceptT String IO Integer))

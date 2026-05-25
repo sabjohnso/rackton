@@ -1,6 +1,6 @@
 #lang racket/base
 
-;; Phase-27: class-method dict-passing + ExceptT.
+;; Class-method dict-passing + ExceptT.
 
 (require rackunit
          "../main.rkt")

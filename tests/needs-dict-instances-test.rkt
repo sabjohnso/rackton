@@ -1,7 +1,7 @@
 #lang racket/base
 
-;; Phase-30: user-defined needs-dict instance bodies (the lifted-
-;; instance pattern, ahead of Phase 31's mtl-style classes).
+;; User-defined needs-dict instance bodies (the lifted-instance
+;; pattern, ahead of mtl-style classes).
 
 (require rackunit
          "../main.rkt")

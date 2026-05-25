@@ -1,6 +1,6 @@
 #lang racket/base
 
-;; Phase 47: auto-derive field lenses for define-struct via
+;; Auto-derive field lenses for define-struct via
 ;; `#:deriving Lens`.  Each field `f` of struct `T` gets a named
 ;; `T-f-lens` definition.
 

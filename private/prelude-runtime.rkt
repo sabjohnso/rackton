@@ -1,6 +1,6 @@
 #lang racket/base
 
-;; Rackton — runtime side of the Phase-3 prelude.
+;; Rackton — runtime side of the prelude.
 ;;
 ;; Defines the ADT structs that ship with the language, the per-method
 ;; dispatch tables for every prelude class, the generic-method functions,
@@ -81,12 +81,12 @@
          "dict.rkt")
 
 (provide
- ;; Phase 57: monomorphization log accessors — exported so the
+ ;; Monomorphization log accessors — exported so the
  ;; rackton macro's emitted code can call the setter from a user
  ;; module without dragging in codegen.
  set-rackton-monomorphized-log-snapshot!
  rackton-monomorphized-sites
- ;; Phase 58: same pattern for inlining.
+ ;; Same pattern for inlining.
  set-rackton-inlined-log-snapshot!
  rackton-inlined-sites
 
@@ -125,7 +125,7 @@
  |$pure:StateT| |$pure:EnvT|
  |$pure:WriterT| |$pure:ExceptT|
  ;; Per-instance class-method impls for compile-time direct
- ;; dispatch (Phase 27).  Receive instance-qual dict args as
+ ;; dispatch.  Receive instance-qual dict args as
  ;; leading parameters; the elaborator inserts them at each call
  ;; site where the dispatch arg's inferred type matches the
  ;; instance.
@@ -134,7 +134,7 @@
  |$>>=:StateT|  |$<*>:StateT|  |$liftA2:StateT|
  |$>>=:EnvT|    |$<*>:EnvT|    |$liftA2:EnvT|
  |$mempty:String| |$mempty:List| |$mempty:Sum| |$mempty:Product|
- ;; Phase 31: mtl-style class impls.  Base instances are 0-dict; lifted
+ ;; Mtl-style class impls.  Base instances are 0-dict; lifted
  ;; instances over a transformer take per-method dict args from the
  ;; inner monad's instance (order matches the class's return-typed
  ;; method declaration order — see build-dict-skolems in infer.rkt).
@@ -154,10 +154,10 @@
  |$throw-e:StateT|  |$catch-e:StateT|
  |$throw-e:EnvT|    |$catch-e:EnvT|
  |$throw-e:WriterT| |$catch-e:WriterT|
- ;; Phase 32: runtime dispatchers for the positional class methods
+ ;; Runtime dispatchers for the positional class methods
  ;; introduced by mtl polish (local-en already covered above).
  local-en listen censor
- ;; Phase 32: mtl-style combinators (derived from class methods).
+ ;; Mtl-style combinators (derived from class methods).
  asks gets void when unless
 
  ;; Dispatch tables — exposed so user modules that declare new
@@ -194,7 +194,7 @@
  ;; codegen-only helper for derived Show
  $show-concat
 
- ;; Char and Bytes (Phase 28)
+ ;; Char and Bytes
  char->integer integer->char
  char-upcase char-downcase
  char-alphabetic? char-numeric? char-whitespace?
@@ -213,30 +213,30 @@
  make-ref read-ref write-ref
  read-file write-file file-exists?
 
- ;; Concurrency (Phase 36)
+ ;; Concurrency
  fork-io wait-thread
  new-mvar new-empty-mvar take-mvar put-mvar read-mvar modify-mvar
  new-chan send-chan recv-chan
 
- ;; STM (Phase 41)
+ ;; STM
  new-tvar read-tvar write-tvar
  retry or-else atomically
  |$pure:STM|
 
- ;; Concurrent (Phase 43)
+ ;; Concurrent
  fork-c |$await-c:IO| |$yield-c:IO|
 
- ;; Identity + Concurrent Identity (Phase 44)
+ ;; Identity + Concurrent Identity
  run-identity |$await-c:Identity| |$yield-c:Identity| |$pure:Identity|
 
  ;; List + Pair helpers
  reverse append zip take drop find sort
  fst snd swap
 
- ;; Lens primitives (Phase 46)
+ ;; Lens primitives
  view set over lens-compose
 
- ;; Prisms and traversals (Phase 48)
+ ;; Prisms and traversals
  preview review to-list-of over-of list-traversal lens-as-traversal
 
  ;; Panic
@@ -252,7 +252,7 @@
  ;; Float
  float-div integer->float float->integer abs-float
 
- ;; Phase 40: numeric tower
+ ;; Numeric tower
  make-rational numerator denominator
  make-complex real-part imag-part magnitude
  div mod quot rem
@@ -269,7 +269,7 @@
  random-integer random-float current-time-seconds
  list-directory getenv argv delete-file make-directory)
 
-;; ----- Phase 57: monomorphization log -----------------------------
+;; ----- monomorphization log -----------------------------
 
 ;; The rackton macro emits one call to `set-rackton-monomorphized-
 ;; log-snapshot!` at the end of each elaborate, passing the list of
@@ -284,7 +284,7 @@
 (define (rackton-monomorphized-sites)
   rackton-monomorphized-log-snapshot-value)
 
-;; Phase 58: inlined-call-site log accessors.  Populated per
+;; Inlined-call-site log accessors.  Populated per
 ;; elaborate by codegen when it substitutes a small impl body in
 ;; place of a monomorphized call.
 (define rackton-inlined-log-snapshot-value '())
@@ -321,11 +321,11 @@
 
 (define-data-ctor MkWriterT 1)
 (define-data-ctor MkExceptT 1)
-;; Phase 44: Identity for the Mock Concurrent demo.
+;; Identity for the Mock Concurrent demo.
 (define-data-ctor MkIdentity 1)
-;; Phase 46: Lens stores a (getter, setter) pair.
+;; Lens stores a (getter, setter) pair.
 (define-data-ctor MkLens     2)
-;; Phase 48: prisms and traversals.
+;; Prisms and traversals.
 (define-data-ctor MkPrism    2)
 (define-data-ctor MkTraversal 2)
 
@@ -337,7 +337,7 @@
 (define $dispatch:+  (make-hasheq))  (define-class-method +  $dispatch:+  0 2)
 (define $dispatch:-  (make-hasheq))  (define-class-method -  $dispatch:-  0 2)
 (define $dispatch:*  (make-hasheq))  (define-class-method *  $dispatch:*  0 2)
-;; Phase 44: abs / negate as Num methods, min / max as Ord methods.
+;; abs / negate as Num methods, min / max as Ord methods.
 (define $dispatch:abs    (make-hasheq))(define-class-method abs    $dispatch:abs    0 1)
 (define $dispatch:negate (make-hasheq))(define-class-method negate $dispatch:negate 0 1)
 (define $dispatch:min    (make-hasheq))(define-class-method min    $dispatch:min    0 2)
@@ -376,30 +376,29 @@
 ;; to 2 and total arity to 3.
 (define $dispatch:traverse (make-hasheq))
 (define-class-method traverse $dispatch:traverse 2 3)
-;; Phase 32: MonadEnv's `local-en` dispatcher.  It's positional on the
-;; second argument (the `(m a)`); the first argument is `(-> r r)`.
+;; MonadEnv's `local-en` dispatcher.  It's positional on the second
+;; argument (the `(m a)`); the first argument is `(-> r r)`.
 ;; Only base instances (Env / EnvT) get registered through this
 ;; dispatcher — lifted needs-dict instances are routed at compile
-;; time by Phase 27 / 30 with their inner-pure dicts attached.
+;; time with their inner-pure dicts attached.
 (define $dispatch:local-en (make-hasheq))
 (define-class-method local-en $dispatch:local-en 1 2)
 ;; MonadWriter's `listen` (arity 1, pos 0) and `censor` (arity 2,
-;; pos 1).  Same caveat — Phase 27 handles needs-dict instances at
+;; pos 1).  Same caveat — needs-dict instances are handled at
 ;; compile time; only base instances reach this dispatcher.
 (define $dispatch:listen (make-hasheq))
 (define-class-method listen $dispatch:listen 0 1)
 (define $dispatch:censor (make-hasheq))
 (define-class-method censor $dispatch:censor 1 2)
 
-;; Phase 33: runtime catch-e dispatcher.  Phase 27/30 routed `catch-e`
-;; through compile-time inst-dispatch when call sites had concrete
-;; types, but polymorphic-monad bodies (e.g. `(MonadError e m) =>`)
-;; reach call sites whose types are tvars.  At runtime we look up
-;; catch-e by the (m a) value's outer ctor tag.
+;; Runtime catch-e dispatcher.  Compile-time inst-dispatch handles
+;; concrete call sites, but polymorphic-monad bodies (e.g.
+;; `(MonadError e m) =>`) reach call sites whose types are tvars.
+;; At runtime we look up catch-e by the (m a) value's outer ctor tag.
 (define $dispatch:catch-e (make-hasheq))
 (define-class-method catch-e $dispatch:catch-e 0 2)
 
-;; Phase 33: pure-via-witness resolves `pure :: a -> m a` from any
+;; pure-via-witness resolves `pure :: a -> m a` from any
 ;; m-value at runtime by walking the ctor chain.  Used by needs-dict
 ;; instance method closures (ExceptT's >>=, catch-e, ...) which need
 ;; the inner monad's `pure` to lift / rewrap values.  Bottoms out at
@@ -489,7 +488,7 @@
 (register-instance-method! $dispatch:min 'Integer (lambda (x y) (rkt:min x y)))
 (register-instance-method! $dispatch:max 'Integer (lambda (x y) (rkt:max x y)))
 
-;; Phase 44: Ord String (lex order).
+;; Ord String (lex order).
 (register-instance-method! $dispatch:<  'String (lambda (x y) (string<? x y)))
 (register-instance-method! $dispatch:>  'String (lambda (x y) (string>? x y)))
 (register-instance-method! $dispatch:<= 'String (lambda (x y) (string<=? x y)))
@@ -529,10 +528,10 @@
 (define (flip f) (lambda (x y) (f y x)))
 (define (const x) (lambda (_y) x))
 
-;; Phase 32: mtl-flavoured combinators.  Each needs-dict body's
-;; dict-args appear as leading params in the same order Phase 31's
-;; build-dict-skolems produces (own return-typed methods sorted +
-;; superclass closure appended).
+;; Mtl-flavoured combinators.  Each needs-dict body's dict-args
+;; appear as leading params in the same order build-dict-skolems
+;; produces (own return-typed methods sorted + superclass closure
+;; appended).
 
 ;; asks :: (MonadEnv r m) => (-> r a) -> m a
 ;; MonadEnv's return-typed own methods sorted = (ask-en); Monad's
@@ -598,10 +597,10 @@
   (lambda strs (apply rkt:string-append strs)))
 
 ;; ----- Numeric helpers -----------------------------------------
-;; mod / div migrated to the Integral class in Phase 40.
-;; abs / negate migrated to Num and min / max to Ord in Phase 44 —
-;; runtime impls registered against the per-instance dispatch
-;; tables below.
+;; mod / div migrated to the Integral class.
+;; abs / negate migrated to Num and min / max to Ord — runtime
+;; impls registered against the per-instance dispatch tables
+;; below.
 
 (define (integer->string n) (rkt:number->string n))
 (define (string->integer s)
@@ -688,7 +687,7 @@
 (define (|$pure:Result| x) (Ok x))
 (define (|$pure:IO|     x) ($io (lambda () x)))
 
-;; Phase 33: register the non-needs-dict pures with their witness
+;; Register the non-needs-dict pures with their witness
 ;; ctor tags so pure-via-witness can find them at runtime.  Lists
 ;; have two ctors (Nil, Cons); register both.  Result has two too.
 (register-pure-impl! '$ctor:None  |$pure:Maybe|)
@@ -775,7 +774,7 @@
 (define (read-ref r) ($io (lambda () (unbox r))))
 (define/curried (write-ref r v) ($io (lambda () (set-box! r v) MkUnit)))
 
-;; ----- Concurrency (Phase 36) ---------------------------------
+;; ----- Concurrency ---------------------------------
 ;;
 ;; ThreadId wraps a Racket thread; MVar is a box guarded by two
 ;; semaphores so put/take block on full/empty respectively; Chan is
@@ -845,7 +844,7 @@
 (define (recv-chan ch)
   ($io (lambda () (async-channel-get ch))))
 
-;; ----- STM (Phase 41) -----------------------------------------
+;; ----- STM -----------------------------------------
 ;;
 ;; TVar is a box + a version counter.  STM is a thunk taking a
 ;; transaction log; the log is an equal?-hash from TVar to
@@ -856,7 +855,7 @@
 ;; versions), and returns the result.  Mismatch → retry the whole
 ;; transaction.
 
-;; Phase 44: each TVar also carries a `wake-signal` semaphore.  On
+;; Each TVar also carries a `wake-signal` semaphore.  On
 ;; commit, every WRITTEN TVar's wake-signal is posted so retrying
 ;; transactions watching that TVar can resume.  `retry` now waits
 ;; (via `sync`) on the union of the read-logged TVars' wake-signals,
@@ -895,7 +894,7 @@
 
 (define (new-tvar v)
   ($stm (lambda (_log)
-          ;; Phase 44: each TVar's wake-signal starts unposted; commits
+          ;; Each TVar's wake-signal starts unposted; commits
           ;; that write to it post it so retrying watchers can advance.
           ($tvar (box v) (box 0) (make-semaphore 0)))))
 
@@ -927,7 +926,7 @@
                #f))
            (cond
              [retried?
-              ;; Phase 44: block on the wake-signals of every TVar
+              ;; Block on the wake-signals of every TVar
               ;; the transaction read before retrying.  When any
               ;; writer commits to one of these TVars, its
               ;; wake-signal is posted and `sync` returns.  Then we
@@ -967,15 +966,15 @@
                    (define mode (car entry))
                    (define v    (cadr entry))
                    ;; NOTE: this looks like Racket's `when` but our
-                   ;; Phase 32 `define/curried (when …)` shadows
-                   ;; the macro in this module — so we use `cond`
+                   ;; `define/curried (when …)` above shadows the
+                   ;; macro in this module — so we use `cond`
                    ;; explicitly to avoid an arity error.
                    (cond
                      [(eq? mode 'write)
                       (set-box! ($tvar-cell tv) v)
                       (set-box! ($tvar-version-box tv)
                                 (+ 1 (unbox ($tvar-version-box tv))))
-                      ;; Phase 44: wake all watchers of this TVar.
+                      ;; Wake all watchers of this TVar.
                       ;; Each retry-waiter consumes one post via sync.
                       (semaphore-post ($tvar-wake-signal tv))]))
                  (semaphore-post $atomically-lock)
@@ -1015,7 +1014,7 @@
 (register-instance-method! $dispatch:liftA2 '$stm stm-liftA2)
 (register-instance-method! $dispatch:>>=    '$stm stm-bind)
 
-;; ----- Concurrent class + Future (Phase 43) -----------------
+;; ----- Concurrent class + Future -----------------
 ;;
 ;; Future a is a thin wrapper around an MVar a; the Concurrent IO
 ;; instance spawns a thread that runs the IO action and puts its
@@ -1055,7 +1054,7 @@
 (define |$await-c:IO| await-c-io)
 (define |$yield-c:IO| ($io (lambda () (sleep 0) MkUnit)))
 
-;; ----- Identity monad + Concurrent Identity (Phase 44) -------
+;; ----- Identity monad + Concurrent Identity -------
 
 (define (run-identity i)
   (match i [(MkIdentity x) x]))
@@ -1195,7 +1194,7 @@
 (define (snd p)  (match p [(MkPair _ b) b]))
 (define (swap p) (match p [(MkPair a b) (MkPair b a)]))
 
-;; ----- Lens primitives (Phase 46) ----------------------------
+;; ----- Lens primitives ----------------------------
 
 (define/curried (view l s)
   (match l [(MkLens g _) (g s)]))
@@ -1212,7 +1211,7 @@
    (lambda (s)
      (lambda (b) (set outer (set inner b (view outer s)) s)))))
 
-;; ----- Prism primitives (Phase 48) ---------------------------
+;; ----- Prism primitives ---------------------------
 
 (define/curried (preview p s)
   (match p [(MkPrism extract _) (extract s)]))
@@ -1220,7 +1219,7 @@
 (define/curried (review p a)
   (match p [(MkPrism _ build) (build a)]))
 
-;; ----- Traversal primitives (Phase 48) -----------------------
+;; ----- Traversal primitives -----------------------
 
 (define/curried (to-list-of t s)
   (match t [(MkTraversal get-all _) (get-all s)]))
@@ -1302,7 +1301,7 @@
 (define (float->integer x) (rkt:inexact->exact (rkt:truncate x)))
 (define (abs-float x) (rkt:abs x))
 
-;; ----- Phase 40: numeric tower ------------------------------
+;; ----- Numeric tower ------------------------------
 ;;
 ;; All four new numeric types build on Racket's built-in numbers:
 ;; Rational = exact non-integer rationals, Complex = numbers with
@@ -1651,7 +1650,7 @@
 ;; ----- StateT s m runtime ----------------------------------------
 ;; Each method whose semantics need the inner monad's `pure` takes
 ;; the resolved inner pure-impl as a LEADING argument — the elaborator
-;; (Phase 25.3) inserts it from the matching instance's qual context.
+;; inserts it from the matching instance's qual context.
 
 (define (run-state-t st)
   (match st [(MkStateT f) f]))
@@ -1879,8 +1878,8 @@
 
 ;; ----- mconcat (free function with needs-dict signature) ----------
 ;; Receives the resolved `mempty` for `a` as a leading argument (the
-;; elaborator inserts it at every call site based on Phase 24's
-;; free-function detection in var-dict-requirements).  Inner `<>`
+;; elaborator inserts it at every call site based on the free-
+;; function detection in var-dict-requirements).  Inner `<>`
 ;; calls dispatch on the running accumulator's tag and remain
 ;; generic.
 (define/curried (mconcat mempty-impl xs)
@@ -1966,7 +1965,7 @@
                    (run-writer-t (f a)))])))))
 (register-instance-method! $dispatch:>>= '$ctor:MkWriterT writer-t->>=)
 
-;; ----- Per-instance compile-time-direct impls (Phase 27) ---------
+;; ----- Per-instance compile-time-direct impls ---------
 ;;
 ;; The elaborator routes a class-method call at a concrete needs-
 ;; dict instance directly to one of these by name, bypassing the
@@ -1986,10 +1985,11 @@
   (writer-t-liftA2 g wa wb))
 
 ;; StateT / EnvT class-method impls also become reachable through
-;; the Phase 27 path because their instances carry `(Monad m) =>`.
-;; The runtime bodies don't actually need the dict args (Phase 25
-;; built them using only inner fmap/>>=), but the named impls accept
-;; them to match the elaborator's uniform insertion rule.
+;; the compile-time-direct dispatch path because their instances
+;; carry `(Monad m) =>`.  The runtime bodies don't actually need
+;; the dict args (built using only inner fmap/>>=), but the named
+;; impls accept them to match the elaborator's uniform insertion
+;; rule.
 
 (define/curried (|$>>=:StateT|   inner-pure st f)     (state-t->>= st f))
 (define/curried (|$<*>:StateT|   inner-pure sf sa)    (state-t-ap sf sa))
@@ -2065,7 +2065,7 @@
             [(Err x) (inner-pure (Err x))]
             [(Ok  a) (run-except-t (f a))])))))
 
-;; Phase 33: register ExceptT's needs-dict methods at runtime,
+;; Register ExceptT's needs-dict methods at runtime,
 ;; deriving the inner-pure dict via pure-via-witness on the
 ;; passed-in m-value's tag.  This lets polymorphic-monad code that
 ;; reaches MkExceptT values at runtime work without the call site
@@ -2083,7 +2083,7 @@
 (register-instance-method! $dispatch:liftA2 '$ctor:MkExceptT
   (lambda (g ea eb)
     (|$liftA2:ExceptT| (pure-via-witness (run-except-t ea)) g ea eb)))
-;; Phase 33: register catch-e on MkExceptT.  The base impl is
+;; Register catch-e on MkExceptT.  The base impl is
 ;; `catch-error`; we wrap it with pure-via-witness so callers that
 ;; reach the runtime dispatcher (e.g. lifted $catch-e:StateT calling
 ;; `catch-e` on the inner value) don't have to thread inner-pure.
@@ -2091,7 +2091,7 @@
   (lambda (ea handler)
     (catch-error (pure-via-witness (run-except-t ea)) ea handler)))
 
-;; ----- Phase 31: mtl-style class instance impls ------------------
+;; ----- mtl-style class instance impls ------------------
 ;; Naming: `$<method>:<head-tcon>`.  Lifted instances over a
 ;; transformer take one dict per return-typed method of the inner
 ;; class as leading args, in method-declaration order (see
@@ -2152,7 +2152,7 @@
 (define |$ask-en:Env|       ask)
 (define |$local-en:Env|     local)
 (define |$ask-en:EnvT|      ask-t)
-;; Phase 32: $local-en:EnvT accepts the inner-pure dict (from the
+;; $local-en:EnvT accepts the inner-pure dict (from the
 ;; EnvT MonadEnv instance's `(Monad m)` qual) as a leading arg, even
 ;; though local-t itself doesn't use it.  Without this slot the dict
 ;; layout would mis-shift the user args.
@@ -2163,7 +2163,7 @@
 ;; return-typed sorted (ask-en) + Monad super closure (pure).
 (define/curried (|$ask-en:StateT| inner-ask inner-pure)
   (lift-state-t inner-ask))
-;; Phase 32: lifted local-en routes through the local-en runtime
+;; Lifted local-en routes through the local-en runtime
 ;; dispatcher to find the base instance for the inner monad value.
 (define/curried (|$local-en:StateT| inner-ask inner-pure f sm)
   (MkStateT (lambda (s) (local-en f ((run-state-t sm) s)))))
@@ -2222,11 +2222,11 @@
 
 ;; MonadError: catch-e is positional (drops out of dict-args). Order:
 ;; own return-typed (throw-e), then Monad super closure (pure).
-;; Phase 33: lifted catch-e impls now call the runtime-dispatched
-;; `catch-e` on the inner monad value rather than hard-coding
-;; `catch-error`.  That lets deeper qual chains (e.g. ExceptT-over-
-;; ExceptT-over-IO) resolve correctly — the inner catch is whatever
-;; instance is registered for the inner value's ctor.
+;; Lifted catch-e impls call the runtime-dispatched `catch-e` on
+;; the inner monad value rather than hard-coding `catch-error`.
+;; That lets deeper qual chains (e.g. ExceptT-over-ExceptT-over-IO)
+;; resolve correctly — the inner catch is whatever instance is
+;; registered for the inner value's ctor.
 (define/curried (|$throw-e:StateT| inner-throw inner-pure ev)
   (lift-state-t (inner-throw ev)))
 (define/curried (|$catch-e:StateT| inner-throw inner-pure sm h)
@@ -2250,12 +2250,12 @@
    (catch-e (run-writer-t wm)
             (lambda (e) (run-writer-t (h e))))))
 
-;; ----- Phase 34: runtime registrations for transformer-side -----
+;; ----- runtime registrations for transformer-side -----
 ;;
-;; Phase 31's `$method:T` impls accept dict args to match the
-;; call-site layout when the elaborator resolves needs-dict instances
-;; at compile time.  Phase 33's lifted catch-e refactor stopped using
-;; those dict args inside the bodies — the recursion happens via
+;; The mtl-style `$method:T` impls accept dict args to match the
+;; call-site layout when the elaborator resolves needs-dict
+;; instances at compile time.  The lifted catch-e impls don't use
+;; those dict args inside their bodies — the recursion happens via
 ;; runtime-dispatched `catch-e` / `local-en` on the inner value.
 ;;
 ;; That means we can register the bodies as plain runtime closures

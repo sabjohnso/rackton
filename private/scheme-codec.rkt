@@ -75,7 +75,7 @@
 (define (decode-data-info datum)
   (match datum
     [(list type-name ctor-name arity scheme-sexp)
-     ;; Backwards-compatible with pre-Phase-45 sidecars: missing
+     ;; Backwards-compatible with older sidecars: missing
      ;; ex-tvars defaults to empty.
      (data-info type-name ctor-name arity
                 (sexp->scheme scheme-sexp) '())]
@@ -87,8 +87,8 @@
   (list (tcon-info-name ti)
         (tcon-info-arity ti)
         (tcon-info-ctors ti)
-        ;; Phase 56: abstract? flag, present for newly-emitted
-        ;; sidecars; old sidecars decode with #f.
+        ;; Abstract? flag, present for newly-emitted sidecars;
+        ;; old sidecars decode with #f.
         (tcon-info-abstract? ti)))
 
 (define (decode-tcon-info datum)
@@ -128,12 +128,12 @@
           (list (car fd) (cdr fd)))
         (for/list ([(m cs) (in-hash (class-info-dictreqs ci))])
           (list m cs))
-        ;; Phase 53: list of associated-type names.
+        ;; List of associated-type names.
         (class-info-type-families ci)))
 
 (define (decode-class-info datum)
   (match datum
-    ;; Phase 53 shape: trailing type-families list.
+    ;; Current shape: trailing type-families list.
     [(list name params kinds-list supers-list methods-list dispatchpos-list
            fundeps-list dictreqs-list type-families-list)
      (class-info name
@@ -207,7 +207,7 @@
   (list class-name
         (pred->sexp (instance-info-head ii))
         (map pred->sexp (instance-info-context ii))
-        ;; Phase 53: emit the type-family bindings as (name . type)
+        ;; Emit the type-family bindings as (name . type)
         ;; sexps so the importer can normalize associated types
         ;; against this instance.
         (for/list ([(name ty) (in-hash (instance-info-type-family-bindings ii))])

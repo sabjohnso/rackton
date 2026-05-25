@@ -1,6 +1,6 @@
 #lang racket/base
 
-;; Phase-16: Applicative tier, Bifunctor, Foldable.
+;; Applicative tier, Bifunctor, Foldable.
 
 (require rackunit
          "../main.rkt")

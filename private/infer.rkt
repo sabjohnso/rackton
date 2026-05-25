@@ -69,9 +69,9 @@
 (define current-method-resolutions (make-parameter #f))
 ;; Resolved dict-method calls.  A hashtable from stx → (Listof
 ;; impl-name-symbol) — the codegen prepends these to the e:app args
-;; when compiling the call site (Phase 20).
+;; when compiling the call site.
 (define current-method-dict-resolutions (make-parameter #f))
-;; Phase 29: per-needs-dict-def skolem map and dict-arg name table.
+;; Per-needs-dict-def skolem map and dict-arg name table.
 ;;   current-dict-skolems    : hasheq from skolem-tcon-name → local
 ;;                              dict-arg-name; set during body
 ;;                              inference of a needs-dict-body def.
@@ -81,7 +81,7 @@
 (define current-dict-skolems    (make-parameter (hasheq)))
 (define current-needs-dict-defs (make-parameter #f))
 
-;; Phase 57: log of compile-time monomorphizations.  When a
+;; Log of compile-time monomorphizations.  When a
 ;; positional class-method call site's dispatch type resolves to a
 ;; concrete tcon, the inst-dispatch resolver records the
 ;; (method-name . impl-name) pair here.  The list survives the
@@ -89,19 +89,19 @@
 ;; end of rackton-elaborate.
 (define current-monomorphized-sites (make-parameter #f))
 
-;; Phase 58: registry of inlinable method bodies.  Maps an impl
+;; Registry of inlinable method bodies.  Maps an impl
 ;; name symbol (e.g. '$tag-of:Integer) to its lambda AST.  Set by
 ;; compile-instance when emitting a small, leaf body; consumed by
 ;; the e:app codegen which substitutes args at full-application
 ;; monomorphized call sites.
 (define current-inlinable-bodies (make-parameter #f))
 
-;; Phase 58: log of inlined call sites — (method . impl) pairs
+;; Log of inlined call sites — (method . impl) pairs
 ;; accumulated as the codegen substitutes bodies in place of calls.
 ;; Same shape as current-monomorphized-sites.
 (define current-inlined-sites (make-parameter #f))
 
-;; Phase 50: when checking a function body against a declared
+;; When checking a function body against a declared
 ;; signature, the body's expected return type is known up front.
 ;; The top:def declared-signature branch sets this parameter so
 ;; the body's `match` expression seeds its `result-tv` with the
@@ -146,9 +146,10 @@
 ;; AND every fully-concrete pred (no free tvars at all).  Fully-concrete
 ;; preds are unaffected by any further outer-scope substitutions, so the
 ;; current generalization is our last chance to discharge them; deferring
-;; would just leak them forever.  Phase 50.1 relies on this so that a
-;; concrete `(~ Integer String)` raised by an ill-typed call site like
-;; `(pair-eq 7 "hi")` actually surfaces as an error.
+;; would just leak them forever.  GADT equality-constraint surfacing
+;; relies on this so that a concrete `(~ Integer String)` raised by an
+;; ill-typed call site like `(pair-eq 7 "hi")` actually surfaces as an
+;; error.
 (define (take-relevant-preds! quantified-set)
   (define b (current-pending-preds))
   (define-values (taken kept)
@@ -164,7 +165,7 @@
 
 ;; Instantiate a scheme.  If the body is a qualified type, the constraints
 ;; are added to the running pred-box and the bare type is returned.
-;; Phase 51: also strips a top-level `tforall` from the body — the
+;; Also strips a top-level `tforall` from the body — the
 ;; quantified vars become fresh tvars, the same way scheme-bound vars
 ;; do.  This lets `(f 7)` typecheck when `f` was bound at a tforall
 ;; type by some outer rank-N declaration.
@@ -184,7 +185,7 @@
      (instantiate-tforall (qual-body unforalled))]
     [else unforalled]))
 
-;; Phase 51: strip any leading `tforall` from a type, replacing each
+;; Strip any leading `tforall` from a type, replacing each
 ;; bound var with a fresh tvar.  Non-`tforall` types pass through.
 ;; Only the OUTERMOST tforall is unwrapped — nested tforalls (e.g.
 ;; the argument of a rank-2 function) stay intact so they can carry
@@ -198,7 +199,7 @@
      (instantiate-tforall (apply-subst s body))]
     [_ t]))
 
-;; Phase 51: bidirectional check companion to `infer-expr`.
+;; Bidirectional check companion to `infer-expr`.
 ;; Checks that `expr` has type `expected-ty` under `env`, returning
 ;; the same shape `(values subst type)` that `infer-expr` does.
 ;; Three cases steer the work:
@@ -212,7 +213,8 @@
 ;;     at the wrong site).
 ;;   - expected is an arrow AND expr is a lambda: push the declared
 ;;     argument types into env and check the body against the
-;;     codomain.  Generalizes the phase-50 trick for top-level def.
+;;     codomain.  This generalizes the bidirectional-push used at
+;;     top-level def to refinable lambdas inside any expression.
 ;;   - otherwise: fall back to `infer-expr` and unify the result
 ;;     with `expected-ty`.
 (define (check-expr expr env expected-ty)
@@ -262,7 +264,7 @@
 ;; Like `instantiate` but also returns the substitution it built so
 ;; callers can recover the fresh tvar that replaced any specific
 ;; scheme-bound variable.  Used to record both return-typed-method
-;; sites (Phase 18) and dict-requiring-method sites (Phase 20).  The
+;; sites and dict-requiring-method sites.  The
 ;; scheme body may carry nested quals when a method declared its own
 ;; qualifying context on top of the class head — both layers of
 ;; constraints are pulled out into the pending-preds box.
@@ -280,7 +282,7 @@
   (cond [(qual? t) (qual-body-deep (qual-body t))]
         [else t]))
 
-;; Phase 29 helper: given a list of `(class-name . param-name-list)`
+;; Helper: given a list of `(class-name . param-name-list)`
 ;; dict requirements and the substitution produced by
 ;; `skolemize/tracked`, produce (values skolem-map arg-names) where
 ;;   skolem-map : hasheq from skolem-tcon-name → arg-name
@@ -293,8 +295,8 @@
   ;;               compiled lambda will accept as leading params.
   ;;
   ;; `reqs` may be either shape:
-  ;;   (cons class-name (list tvar-name ...))     — Phase 29/30 legacy
-  ;;   (cons class-name (list pred-arg-type ...)) — Phase 31, multi-param
+  ;;   (cons class-name (list tvar-name ...))     — legacy single-param shape
+  ;;   (cons class-name (list pred-arg-type ...)) — multi-param shape
   ;; Walks superclass closures so inherited return-typed methods (e.g.
   ;; `pure` via Monad super of MonadState) get their own dict slot.
   (define (resolve-arg p)
@@ -355,7 +357,7 @@
 ;; type past a polymorphic declaration.  Returns (values body extra-preds);
 ;; `extra-preds` are the skolem-instantiated constraints that callers must
 ;; treat as hypotheses while checking the body.
-;; Phase 50: a tcon name represents a function-scheme skolem
+;; A tcon name represents a function-scheme skolem
 ;; (refinable at GADT pattern matches) iff it begins with
 ;; `$skolem.` — see `skolemize` below for the gensym format.
 ;; Other skolem flavours (`$ex-skolem.`, `$inst-skolem.`,
@@ -448,7 +450,7 @@
 
 ;; Like `skolemize`, but also returns the substitution it used.  The
 ;; caller can read out which skolem-tcon replaced which scheme-bound
-;; var — needed by Phase 29 to map return-typed-method references in
+;; var — needed to map return-typed-method references in
 ;; a needs-dict-body back to local dict-arg names instead of looking
 ;; up the (nonexistent) per-skolem-tcon impl.
 (define (skolemize/tracked sch)
@@ -731,7 +733,7 @@
      (make-tapp (resolve-type h)
                 (for/list ([a (in-list args)]) (resolve-type a)))]
     [(ty:forall vs body _)
-     ;; Phase 51: preserve nested `(All ...)` quantifiers as
+     ;; Preserve nested `(All ...)` quantifiers as
      ;; `tforall` so the type can carry embedded polymorphism
      ;; into argument positions for rank-N.  Top-level schemes
      ;; come through `resolve-scheme` instead.
@@ -842,14 +844,13 @@
                   (hash-ref sub p)))
               (record-method-use! x stx env class-param-tvars)]
              [(integer? dispatchpos)
-              ;; Phase 27: positional class-method call on a class
-              ;; that has at least one needs-dict instance — resolver
-              ;; routes to per-instance impl after the dispatch arg's
-              ;; type settles.  Phase 37 covers overlapping
-              ;; instances similarly.  Phase 57 generalizes the
-              ;; recording to ALL positional method calls so any
-              ;; concrete-type call site can be monomorphized
-              ;; (direct impl call instead of runtime dispatch).
+              ;; Positional class-method call.  The resolver routes
+              ;; to a per-instance impl after the dispatch arg's
+              ;; type settles.  Overlapping instances are handled
+              ;; the same way.  Recording fires for ALL positional
+              ;; method calls so any concrete-type call site can be
+              ;; monomorphized (direct impl call instead of runtime
+              ;; dispatch).
               (define class-param-tvars
                 (for/list ([p (in-list (class-info-params cinfo))])
                   (hash-ref sub p)))
@@ -864,7 +865,7 @@
            ;; qual context includes a constraint over a class with
            ;; return-typed methods (e.g. `mconcat :: (Monoid a) => …`),
            ;; the elaborator inserts the resolved impls at the call
-           ;; site, mirroring Phase 20's path for class methods.
+           ;; site, mirroring the path for class methods.
            (define free-reqs (var-dict-requirements env sch))
            (cond
              [(null? free-reqs)
@@ -898,7 +899,7 @@
      ;; arg's type.  On failure, blame the SPECIFIC arg so the error
      ;; points at the bad token, not the whole call form.
      ;;
-     ;; Phase 51: if the head's arrow domain at this position is a
+     ;; If the head's arrow domain at this position is a
      ;; `tforall`, switch to bidirectional check-mode — the arg
      ;; must be type-checked against the polymorphic type, not
      ;; inferred and unified.  Inferring would just specialize to
@@ -1064,7 +1065,7 @@
 
     [(e:match scrut clauses irrefutable? stx)
      (define-values (s-scrut t-scrut) (infer-expr scrut env))
-     ;; Phase 50: if we've been handed an expected result type
+     ;; If we've been handed an expected result type
      ;; from the surrounding context (typically a checked
      ;; lambda body), seed result-tv with it so per-arm GADT
      ;; skolem refinement can resolve each body against the
@@ -1090,7 +1091,7 @@
 ;; Type a single match clause.  Pattern bindings extend the env for the
 ;; clause body.  The body type is unified with the running result type
 ;; so every arm yields the same type.
-;; Phase 54: infer a functional record update.  The record's type
+;; Infer a functional record update.  The record's type
 ;; must be a known struct type (or applied struct type); each named
 ;; field must exist; each value-expression must match the field's
 ;; declared type after substituting the record's tparam args.
@@ -1171,7 +1172,7 @@
          [(arrow? t) (loop (arrow-cod t) (cons (arrow-dom t) acc))]
          [else (values (reverse acc) t)]))]))
 
-;; Phase 55: infer a (handle EXPR clauses... return) expression.
+;; Infer a (handle EXPR clauses... return) expression.
 ;; The return clause's body type becomes the overall type of the
 ;; handle.  Each operation clause's body must match that type.
 ;; In an op clause, `k` is the resumption — typed as `(-> op-result
@@ -1217,7 +1218,7 @@
       ;; Split op-type's arrows into arg types and result type.
       (define-values (raw-arg-types op-result)
         (split-arrows op-type))
-      ;; Phase 55: a user-declared 0-arg op was internally promoted
+      ;; A user-declared 0-arg op was internally promoted
       ;; to `(-> Unit T)` so it could be called as a function.
       ;; When the clause's parameter list is empty, peel that Unit
       ;; off here so the user doesn't have to write a dummy param.
@@ -1271,7 +1272,7 @@
 (define (infer-clause cl scrut-type result-type env)
   (define-values (bindings pat-type ex-hyps)
     (infer-pattern (clause-pattern cl) env))
-  ;; Phase 50: try standard unify first; on a hard mismatch (a
+  ;; Try standard unify first; on a hard mismatch (a
   ;; refinable function-scheme skolem on one side and a concrete
   ;; type on the other), fall back to gadt-unify which returns
   ;; (tvar-subst, skolem-subst).  The skolem-subst applies only
@@ -1319,7 +1320,7 @@
       [else (values s-pat env*)]))
   (define-values (s-body t-body) (infer-expr (clause-body cl) env-pre-body))
   (define s-acc (subst-compose s-body s-pre-body))
-  ;; Phase 45: discharge any pending preds that the existential
+  ;; Discharge any pending preds that the existential
   ;; hypotheses prove.  The pattern is the proof; ex-hyps are
   ;; treated as already-given.  Drop matching preds from the
   ;; pending box so they don't bubble up to the outer reduce-context.
@@ -1331,7 +1332,7 @@
      (define remaining
        (reduce-context env ex-hyps* current))
      (restore-preds! remaining)])
-  ;; Phase 50: apply the arm's local skolem refinement to the
+  ;; Apply the arm's local skolem refinement to the
   ;; expected result type before checking body type — without this,
   ;; a polymorphic GADT eval whose body returns (say) Integer in the
   ;; Lit arm would fail to match the still-skolemized `a`.
@@ -1353,7 +1354,7 @@
           (apply-subst s-u t-body)))
 
 ;; Type a pattern.  Returns (bindings, pattern-type).
-;; Phase 45: infer-pattern returns a third value — the list of
+;; infer-pattern returns a third value — the list of
 ;; existential hypotheses produced by an existential-ctor pattern.
 ;; For non-existential patterns this is '(); the caller threads them
 ;; into the clause body's constraint-reduction so the body's class-
@@ -1374,7 +1375,7 @@
                   name (suggest-similar name env))
           stx)]
        [(not (= (length args) (data-info-arity info)))
-        ;; Phase 59: when the ctor is from a `define-struct`, the
+        ;; When the ctor is from a `define-struct`, the
         ;; struct's ordered field-name list is in env; append it
         ;; to the message so the user sees which fields the
         ;; pattern is missing.
@@ -1390,7 +1391,7 @@
                   name (data-info-arity info) (length args) field-hint)
           stx)]
        [else
-        ;; Phase 45: for an existential ctor, instantiate the
+        ;; For an existential ctor, instantiate the
         ;; universally-quantified data tparams with fresh tvars
         ;; (so they can unify with the scrutinee) but instantiate
         ;; the existentially-quantified `ex-tvars` with fresh
@@ -1418,7 +1419,7 @@
                 (apply-subst s-acc result-ty)
                 all-ex-hyps)])]))
 
-;; Phase 45: instantiate a data ctor's scheme for use in a pattern.
+;; Instantiate a data ctor's scheme for use in a pattern.
 ;; Universally-quantified data-tparams become fresh tvars (will
 ;; unify with the scrutinee's type).  Existentially-quantified
 ;; ex-tvars become fresh SKOLEMS (rigid tcons).  Any qual context
@@ -1495,7 +1496,7 @@
           "non-exhaustive match: needs a wildcard or variable pattern"
           stx)]
        [else
-        ;; Phase 50: for GADT scrutinees, only ctors whose declared
+        ;; For GADT scrutinees, only ctors whose declared
         ;; result type can unify with the actual scrutinee type are
         ;; *reachable* at this site.  Drop the unreachable ones from
         ;; the must-cover set.
@@ -1519,7 +1520,7 @@
        "non-exhaustive match: needs a wildcard or variable pattern"
        stx)]))
 
-;; Phase 50: a GADT constructor `c` is reachable at a scrutinee of
+;; A GADT constructor `c` is reachable at a scrutinee of
 ;; type `scrut-type` only if the ctor's declared result type can
 ;; unify with the scrutinee type.  For non-GADT ctors (default
 ;; uniform result), reachability is always true.
@@ -1548,7 +1549,7 @@
        (unify bare-result scrut-type)
        #t)]))
 
-;; Phase 50: does `t` have AT LEAST `n` leading arrow constructors?
+;; Does `t` have AT LEAST `n` leading arrow constructors?
 ;; Used by the top:def declared-signature branch to decide when we
 ;; can push skolemized parameter types into a lambda body's env.
 (define (decl-arrow-depth-ge? t n)
@@ -1577,7 +1578,7 @@
           (handle-top-form (car forms) env declared))
         (loop (cdr forms) env* declared*)]))))
 
-;; Phase 52: single-form step exposed so the REPL kernel can call
+;; Single-form step exposed so the REPL kernel can call
 ;; into `handle-top-form` directly without resetting the fresh-state
 ;; or pending-preds boxes that the REPL needs to persist across
 ;; inputs.  Callers must parameterize those boxes themselves.
@@ -1603,7 +1604,7 @@
      (cond
        [(hash-has-key? declared name)
         (define decl-scheme (hash-ref declared name))
-        ;; Phase 29: detect needs-dict-body — a def whose qual context
+        ;; Detect needs-dict-body — a def whose qual context
         ;; introduces a return-typed-bearing constraint over a tvar.
         ;; Pre-allocate the dict-arg local names and a skolem map so
         ;; the body's polymorphic mempty/pure refs resolve to the
@@ -1630,7 +1631,7 @@
         ;; for the whole branch instead of wrapping just infer-expr.
         (define saved-skolems (current-dict-skolems))
         (current-dict-skolems dict-skolems)
-        ;; Phase 50: when the body is a lambda and the declared
+        ;; When the body is a lambda and the declared
         ;; type has at least that many leading arrows, push the
         ;; SKOLEMIZED parameter types directly into the env so
         ;; the body inferences against rigid skolems rather than
@@ -1650,7 +1651,7 @@
                          ([p (in-list (e:lam-params expr))]
                           [ty (in-list arg-tys)])
                  (env-extend-var e p (scheme '() ty))))
-             ;; Phase 50: only seed the expected-type parameter
+             ;; Only seed the expected-type parameter
              ;; when the lambda body is DIRECTLY a `match` — that's
              ;; the GADT-elimination case where pushing the
              ;; declared codomain into result-tv unlocks local
@@ -1669,7 +1670,7 @@
                             (for/list ([ty (in-list arg-tys)])
                               (apply-subst s-body ty))))]
             [else (infer-expr expr env-rec)]))
-        ;; Phase 53: normalize the inferred body type so any
+        ;; Normalize the inferred body type so any
         ;; associated-type applications resolve against the env's
         ;; registered instances before comparing to the declared
         ;; type.
@@ -1728,7 +1729,7 @@
      (handle-require-form specs stx env declared)]
 
     [(top:struct-fields struct-name field-names _)
-     ;; Phase 54: register the struct's ordered field-name list.
+     ;; Register the struct's ordered field-name list.
      ;; No code is emitted; the entry is consulted by inference
      ;; (and codegen) for `e:update` to resolve named fields to
      ;; the underlying Racket struct slots.
@@ -1736,7 +1737,7 @@
              declared)]
 
     [(top:effect ename ops stx)
-     ;; Phase 55: an effect declaration registers each operation
+     ;; An effect declaration registers each operation
      ;; as a regular value with type `(-> argT ... resultT)`.
      ;; The effect itself is recorded in env so codegen can emit
      ;; a per-effect continuation-prompt-tag and so handle clauses
@@ -1776,7 +1777,7 @@
          (define field-tys
            (for/list ([t (in-list (data-ctor-field-types c))])
              (resolve-type t)))
-         ;; Phase 50: GADT ctors can specify their own result type
+         ;; GADT ctors can specify their own result type
          ;; via `#:returns RT`.  Default to the data type's uniform
          ;; `(T tparams)` shape.
          (define ctor-result-type
@@ -1786,7 +1787,7 @@
              [else default-result-type]))
          (define ctor-fn-type
            (foldr make-arrow ctor-result-type field-tys))
-         ;; Phase 45: an existential ctor adds its own tvars and
+         ;; An existential ctor adds its own tvars and
          ;; constraints into the scheme.
          (define extra-tvars   (data-ctor-extra-tvars c))
          (define extra-context (data-ctor-extra-context c))
@@ -1797,7 +1798,7 @@
               (mqual (for/list ([cs (in-list extra-context)])
                        (resolve-constraint cs))
                      ctor-fn-type)]))
-         ;; Phase 50: for GADT ctors, the scheme's quantifiers are
+         ;; For GADT ctors, the scheme's quantifiers are
          ;; the free type variables appearing in field-tys ++ result
          ;; (rather than always quantifying over the data type's
          ;; tparams).  This lets `Lit :: Integer -> Expr Integer`
@@ -1892,7 +1893,7 @@
   (define dispatchpos
     (for/fold ([acc (hasheq)])
               ([(method-name sch) (in-hash method-schemes)])
-      ;; Phase 39: peel ALL qual layers from the body type so methods
+      ;; Peel ALL qual layers from the body type so methods
       ;; with their own qual context (e.g. `traverse :: (Applicative
       ;; f) => ...`) still get their arrow examined for positional
       ;; dispatch.  Previously qual-body-type peeled only one layer
@@ -1913,7 +1914,7 @@
   ;; Compute per-method dict requirements — for each method, the list
   ;; of (class-name . param-names) entries whose return-typed methods
   ;; must be inserted as extra leading arguments at call sites.  See
-  ;; the docstring on class-info in env.rkt and Phase 20's plan.
+  ;; the docstring on class-info in env.rkt.
   (define dictreqs
     (for/fold ([acc (hasheq)])
               ([(method-name sch) (in-hash method-schemes)])
@@ -1921,7 +1922,7 @@
       (cond
         [(null? reqs) acc]
         [else (hash-set acc method-name reqs)])))
-  ;; Phase 53: collect declared associated-type names so each
+  ;; Collect declared associated-type names so each
   ;; instance can be checked for matching #:type bindings.
   (define type-families
     (for/list ([m (in-list methods)] #:when (class-type-fam? m))
@@ -1930,7 +1931,7 @@
                            super-preds method-schemes defaults
                            dispatchpos fundeps dictreqs
                            type-families))
-  ;; Phase 37: when a class is redeclared, its previously-registered
+  ;; When a class is redeclared, its previously-registered
   ;; instances belong to a now-superseded class.  Clear them out so
   ;; the new declaration starts fresh — without this the duplicate-
   ;; instance check would fire for `(== Eq Integer)` re-registrations,
@@ -1956,7 +1957,7 @@
       (cond
         [(not submod-spec) e]
         [else
-         ;; Phase 56: the catch-all `with-handlers` around the
+         ;; The catch-all `with-handlers` around the
          ;; dynamic-requires must NOT swallow coherence errors —
          ;; only the "this isn't a rackton module" case where the
          ;; sidecar's rackton-bindings binding isn't found.  Scope
@@ -2001,7 +2002,7 @@
              (define decoded (decode-instance-info entry))
              (define class-name (car decoded))
              (define new-inst (cdr decoded))
-             ;; Phase 56: module-level coherence — reject when an
+             ;; Module-level coherence — reject when an
              ;; imported instance's head is alpha-equivalent to one
              ;; already in scope.  This catches the same instance
              ;; declared in two independent modules.
@@ -2151,7 +2152,7 @@
      (define cinfo (env-ref-class env owner))
      (eq? (hash-ref (class-info-dispatchpos cinfo) name #f) 'return)]))
 
-;; Stash a Phase-18 return-typed-method entry under `stx`.  The
+;; Stash a return-typed-method entry under `stx`.  The
 ;; entry shape is `(list 'return method-name class-param-tvars)`.
 (define (record-method-use! method-name stx env class-param-tvars)
   (define table (current-method-uses))
@@ -2160,7 +2161,7 @@
                                method-name
                                class-param-tvars))))
 
-;; Phase 27: a positional class-method call on a class that has at
+;; A positional class-method call on a class that has at
 ;; least one needs-dict instance.  Entry shape:
 ;;   (list 'inst-dispatch method-name class-param-tvars)
 ;; After the enclosing def's constraints reduce, the resolver applies
@@ -2175,13 +2176,13 @@
 
 ;; Does this class have at least one instance whose qual context
 ;; mentions a return-typed-bearing class?  Used to decide whether to
-;; record positional class-method call sites for Phase 27 dispatch.
+;; record positional class-method call sites for inst-dispatch.
 (define (class-has-needs-dict-instances? env class-name)
   (for/or ([inst (in-list (env-instances env class-name))])
     (instance-needs-dict? env inst)))
 
 (define (instance-needs-dict? env inst)
-  ;; Phase 43: an instance is genuinely needs-dict (in the sense
+  ;; An instance is genuinely needs-dict (in the sense
   ;; that compile-instance emits a `(define $method:Tcon impl)`
   ;; with dict-arg lambda params) only when the qual context's
   ;; return-typed-bearing constraints involve tvars.  If the qual
@@ -2193,7 +2194,7 @@
          (for/or ([a (in-list (pred-args c))])
            (not (set-empty? (type-vars a)))))))
 
-;; Stash a Phase-20 dict-requiring-method entry under `stx`.  The
+;; Stash a dict-requiring-method entry under `stx`.  The
 ;; entry shape is `(list 'dict method-name dict-entries)` where each
 ;; dict-entry is `(cons class-name tvars)` — the class to look up and
 ;; the fresh tvars whose final resolution names the impl.
@@ -2227,7 +2228,7 @@
          (define impl (resolve-return-impl method-name class-param-tvars
                                            final-subst stx env))
          (hash-set! resolutions stx impl)
-         ;; Phase 25.3: when the matching instance carries a qual
+         ;; When the matching instance carries a qual
          ;; context with return-typed-method-bearing constraints, the
          ;; impl needs those impls as dict args.  Compute and store
          ;; alongside (codegen prepends them at e:app).
@@ -2241,7 +2242,7 @@
          ;; following the class's superclass hierarchy so inherited
          ;; methods (e.g. `pure` reached from MonadState via Monad) see
          ;; only their own class's arg slots.  Each impl is wrapped with
-         ;; its instance-qual dicts (Phase 31) so needs-dict transformer
+         ;; its instance-qual dicts so needs-dict transformer
          ;; instances pre-apply their inner-monad dicts at the call site.
          ;; Pairs are deduped across constraints (e.g. MonadState +
          ;; MonadEnv both reaching Monad.pure) — matches
@@ -2275,7 +2276,7 @@
                                       final-subst stx env)))
          (hash-set! dict-resolutions stx impls)]
         [(list 'inst-dispatch method-name class-param-tvars)
-         ;; Phase 27: route a class-method call to a per-instance
+         ;; Route a class-method call to a per-instance
          ;; impl if the matching instance is needs-dict; otherwise
          ;; fall through silently to the runtime dispatch wrapper.
          (define resolved-types
@@ -2295,7 +2296,7 @@
                   (cons matching-inst
                         (match-pred (instance-info-head matching-inst)
                                     target-pred))))
-           ;; Phase 32: filter tcon-names by fundep-determined params
+           ;; Filter tcon-names by fundep-determined params
            ;; — matches the impl name compile-instance emits and what
            ;; the 'return-typed resolver uses.
            (define keep-tcon-names
@@ -2325,7 +2326,7 @@
                                             class-param-tvars final-subst stx))
               (unless (null? inst-dict-impls)
                 (hash-set! dict-resolutions stx inst-dict-impls))]
-             ;; Phase 37: for overlap-group classes, emit a deep-
+             ;; For overlap-group classes, emit a deep-
              ;; fingerprint impl name from the MATCHED instance's
              ;; head (not the call site's type) so a generic
              ;; instance `(Show (Box a))` resolves to `$show:Box_*`
@@ -2337,7 +2338,7 @@
               (define impl
                 (overlap-impl-symbol method-name inst-head-args))
               (hash-set! resolutions stx impl)]
-             ;; Phase 57: regular positional method call whose
+             ;; Regular positional method call whose
              ;; dispatch type is now concrete — emit a direct call
              ;; to the named per-instance impl that compile-instance
              ;; emits.  Same naming scheme as the needs-dict path so
@@ -2360,7 +2361,7 @@
                 (set-box! b (cons (cons method-name impl) (unbox b))))]))]))
     (hash-clear! uses)))
 
-;; Phase 57: does this instance have a real, named compile-emitted
+;; Does this instance have a real, named compile-emitted
 ;; impl for the given method?  Two signals say "no":
 ;;   - the body is a `(racket τ (vars) ...)` escape with no real
 ;;     Rackton-level definition (prelude placeholder convention);
@@ -2378,7 +2379,7 @@
     [(prelude-instance? inst) #f]
     [else #t]))
 
-;; Phase 57: an instance that was registered during prelude-env
+;; An instance that was registered during prelude-env
 ;; construction is "prelude" — no compile-instance ran for it.
 ;; The runtime-only flag is recorded on the instance-info struct;
 ;; handle-instance-form sets it based on `current-prelude-build?`.
@@ -2396,7 +2397,7 @@
 ;; `current-prelude-build?` is true.
 (define prelude-instances-table (make-weak-hash))
 
-;; Phase 37: must agree byte-for-byte with overlap-impl-symbol in
+;; Must agree byte-for-byte with overlap-impl-symbol in
 ;; codegen.rkt — encodes nested ctors deeply so two same-outer-ctor
 ;; overlap-group instances get distinct impl names.
 (define (overlap-impl-symbol method-name head-arg-types)
@@ -2422,7 +2423,7 @@
                              (string-append "_" (head-fingerprint a)))))]
     [_ "*"]))
 
-;; Phase 32: predicate matching build-dict-skolems' filter-skolems —
+;; Predicate matching build-dict-skolems' filter-skolems —
 ;; a `(method . arg-types)` pair contributes a dict slot only when
 ;; at least one arg at a non-fundep-determined position is a tvar.
 ;; Class-params fully concrete in the scheme's qual (e.g. the `String`
@@ -2453,7 +2454,7 @@
               #:unless (set-member? determined p))
        (or (tvar? a) (symbol? a)))]))
 
-;; Phase 31: resolve a method-name + arg-types to either a bare impl
+;; Resolve a method-name + arg-types to either a bare impl
 ;; symbol or an s-expression `(impl-name dict-args...)` that the
 ;; codegen splices into the dict-prepend.  Used by the 'dict
 ;; resolution path, where each impl passed to a needs-dict function
@@ -2494,7 +2495,7 @@
        [else
         (define inst (car matching))
         (define σ   (cdr matching))
-        ;; Phase 38: an instance whose qual context is fully concrete
+        ;; An instance whose qual context is fully concrete
         ;; (no tvar-bearing constraints) gets compiled WITHOUT a
         ;; dict-arg lambda — its body resolved all class-method refs
         ;; to global impl names directly.  Passing dict-impls to such
@@ -2549,7 +2550,7 @@
             tn)])]))
   (cond
     [(andmap values keep-tcon-names)
-     ;; Phase 29: if a class-param resolves to a tracked skolem,
+     ;; If a class-param resolves to a tracked skolem,
      ;; the call is inside a needs-dict-body — emit a reference to
      ;; the locally-bound dict-arg instead of the per-tcon impl.
      (define skol-map (current-dict-skolems))
@@ -2675,7 +2676,7 @@
     [(tapp h _) (type-head-tcon h)]
     [_ #f]))
 
-;; Phase 37: a pre-existing instance is a "true duplicate" only if
+;; A pre-existing instance is a "true duplicate" only if
 ;; its methods (per the elaboration that recorded it) align with the
 ;; currently-known class shape.  Conservative impl: compare the keys
 ;; of `instance-info-methods` against the class's method names — if
@@ -2700,7 +2701,7 @@
       (format "unknown class: ~s~a"
               class-name (suggest-similar class-name env 'class))
       stx))
-  ;; Phase 37: reject duplicate instance registrations (heads
+  ;; Reject duplicate instance registrations (heads
   ;; α-equivalent to an existing one) at compile time.  A test
   ;; corpus that re-declares a prelude class (e.g. classes-test.rkt
   ;; defining its own `Eq`) re-establishes instances against the
@@ -2725,7 +2726,7 @@
           stx))))
   (define inst-args-raw (pred-args head-pred-raw))
   (define ctx-preds-raw (for/list ([c (in-list ctx)]) (resolve-constraint c)))
-  ;; Phase 30: if the qual context introduces tvars that pin a
+  ;; If the qual context introduces tvars that pin a
   ;; return-typed-bearing class (e.g. `(HasUnit m) =>` on a lifted
   ;; instance), skolemize those tvars and build a map from each
   ;; skolem to a local dict-arg name.  The instance body's polymorphic
@@ -2755,7 +2756,7 @@
   (define inst-args-sk (map (lambda (a) (apply-subst sk-subst a)) inst-args-raw))
   (define head-pred-sk (apply-subst sk-subst head-pred-raw))
   (define ctx-preds-sk (map (lambda (p) (apply-subst sk-subst p)) ctx-preds-raw))
-  ;; Phase 39: dict-arg names are saved per-method (combined
+  ;; Dict-arg names are saved per-method (combined
   ;; instance-qual + method-qual), inside the method loop below.
   (define head-tcon (type-head-tcon (car inst-args-raw)))
   (define user-impls
@@ -2763,7 +2764,7 @@
       (match m
         [(top:def name expr _) (hash-set acc name expr)]
         [(inst-type-fam _ _ _) acc])))
-  ;; Phase 53: collect this instance's type-family bindings and
+  ;; Collect this instance's type-family bindings and
   ;; check that every family the class declared is supplied.
   (define type-family-bindings
     (for/fold ([acc (hasheq)]) ([m (in-list methods)]
@@ -2777,7 +2778,7 @@
         (format "instance ~s missing #:type binding for associated type ~s"
                 (pred->datum head-pred-raw) fam)
         stx)))
-  ;; Phase 53: register the instance (with empty method bodies, full
+  ;; Register the instance (with empty method bodies, full
   ;; type-family bindings) into a working env BEFORE checking method
   ;; bodies so normalize-type can resolve `(Family arg)` references
   ;; inside the method types against this instance's bindings.
@@ -2812,13 +2813,13 @@
                    [a (in-list inst-args-sk)])
           (subst-extend s p a)))
       (define inst-method-qual (apply-subst σ (scheme-body method-sch)))
-      ;; Phase 39: skolemize method-local tvars that appear in this
-      ;; method's qual context (e.g. `(Applicative f) =>` on traverse).
+      ;; Skolemize method-local tvars that appear in this method's
+      ;; qual context (e.g. `(Applicative f) =>` on traverse).
       ;; Without this, the body's polymorphic class-method references
       ;; (pure, <*>, …) can't resolve — the f tvar isn't a concrete
       ;; tcon nor an instance-qual skolem.  Make it a fresh tcon so
-      ;; the same dict-skolem mechanism that Phase 30 uses for
-      ;; instance-qual tvars resolves them to local dict-arg names.
+      ;; the same dict-skolem mechanism used for instance-qual tvars
+      ;; resolves them to local dict-arg names.
       (define raw-method-qual-preds
         (filter (lambda (p) (not (equal? p head-pred-sk)))
                 (qual-constraints-of inst-method-qual)))
@@ -2845,7 +2846,7 @@
           (hash-set acc k v)))
       (define combined-arg-names
         (append dict-arg-names method-arg-names))
-      ;; Phase 39: store the two arg-name groups separately so
+      ;; Store the two arg-name groups separately so
       ;; compile-instance can decide which dispatch path to use.
       ;; Instance-qual dicts require compile-time inst-dispatch
       ;; (the runtime wrapper doesn't insert them).  Method-qual
@@ -2860,7 +2861,7 @@
                    (cons dict-arg-names method-arg-names)))
       ;; Apply method-skolem subst to the expected type and method-
       ;; extra-preds so the tvars become rigid for body inference.
-      ;; Phase 53: normalize-type rewrites any associated-type
+      ;; normalize-type rewrites any associated-type
       ;; references (e.g. `(Index (List a))`) to their concrete rhs
       ;; for this instance before unify.
       (define expected-type
@@ -2908,7 +2909,7 @@
       (hash-set acc method-name body)))
   (define info (instance-info head-pred-raw ctx-preds-raw checked-bodies
                               type-family-bindings))
-  ;; Phase 57: mark instances added during prelude-env construction
+  ;; Mark instances added during prelude-env construction
   ;; so the monomorphization resolver knows not to redirect calls
   ;; to a non-existent named impl.
   (when (current-prelude-build?)

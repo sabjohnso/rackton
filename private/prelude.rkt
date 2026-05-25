@@ -1,6 +1,6 @@
 #lang racket/base
 
-;; Rackton — compile-time side of the Phase-3 prelude.
+;; Rackton — compile-time side of the prelude.
 ;;
 ;; The prelude is itself a Rackton program: a list of class declarations,
 ;; instance declarations, ADT definitions, and combinators.  We parse and
@@ -32,7 +32,7 @@
       (: >  (-> a (-> a Boolean)))
       (: <= (-> a (-> a Boolean)))
       (: >= (-> a (-> a Boolean)))
-      ;; Phase 44: min and max as Ord methods (comparison-based,
+      ;; Min and max as Ord methods (comparison-based,
       ;; doesn't need numeric ops) with default impls in terms of <.
       (: min (-> a (-> a a)))
       (: max (-> a (-> a a)))
@@ -48,7 +48,7 @@
       (: +      (-> a (-> a a)))
       (: -      (-> a (-> a a)))
       (: *      (-> a (-> a a)))
-      ;; Phase 44: abs and negate as Num methods, polymorphic over
+      ;; Abs and negate as Num methods, polymorphic over
       ;; the numeric tower (Integer / Float / Rational / Complex).
       (: abs    (-> a a))
       (: negate (-> a a)))
@@ -91,7 +91,7 @@
     (define-instance (Show String)
       (define (show x) x))
 
-    ;; Phase 44: Ord String (lex order) so min/max work on strings.
+    ;; Ord String (lex order) so min/max work on strings.
     (define-instance (Ord String)
       (define (< x y) (racket Boolean (x y) #f)))
 
@@ -335,7 +335,7 @@
     ;; inside that applicative.  At each concrete call site the
     ;; elaborator resolves the `Applicative f` constraint and inserts
     ;; the corresponding `pure-impl` as the leading argument (the
-    ;; dict-passing path described in Phase 20).
+    ;; dict-passing path).
 
     (define-class (Traversable (t :: (-> * *)))
       (: traverse ((Applicative f) =>
@@ -423,7 +423,7 @@
     ;; elaborator prepends the resolved `$mempty:T` impl as a leading
     ;; argument; the runtime implementation lives in prelude-runtime.
     ;; A polymorphic body is not provided here because Rackton can't
-    ;; yet rewrite user-written needs-dict bodies — see Phase 24 docs.
+    ;; yet rewrite user-written needs-dict bodies.
     (: mconcat ((Monoid a) => (-> (List a) a)))
 
     ;; --- State monad ----------------------------------------
@@ -520,7 +520,7 @@
 
     ;; Bodies are hand-written in prelude-runtime.rkt so we can use
     ;; inner-monad pure/fmap impls directly, avoiding the body-
-    ;; rewriting limitation the prelude inherits from Phase 24.
+    ;; rewriting limitation the prelude inherits.
 
     (define-instance ((Monad m) => (Functor (StateT s m)))
       (define (fmap f st) (racket (StateT s m b) (f st) #f)))
@@ -599,7 +599,7 @@
     (define-instance ((Monad m) => (Monad (ExceptT e m)))
       (define (>>= ea f) (racket (ExceptT e m b) (ea f) #f)))
 
-    ;; --- mtl-style classes (Phase 31) ---------------------------
+    ;; --- mtl-style classes ---------------------------
     ;;
     ;; Polymorphic effect interfaces.  Code can ask for "any monad
     ;; with state / env / log / errors" via these classes; the
@@ -726,7 +726,7 @@
       (define (catch-e wm h)
         (racket (WriterT w m a) (wm h) #f)))
 
-    ;; ----- mtl-style combinators (Phase 32) ---------------------
+    ;; ----- mtl-style combinators ---------------------
     ;;
     ;; `asks` / `gets` thread a pure transformation through the
     ;; reader / state effect.  `void`, `when`, `unless` are basic
@@ -778,8 +778,8 @@
     (define (string-join sep ss) (racket String (sep ss) ""))
 
     ;; --- Numeric helpers --------------------------------------
-    ;; `mod` and `div` migrated to the Integral class (Phase 40).
-    ;; `abs` / `negate` migrated to Num; `min` / `max` to Ord (Phase 44).
+    ;; `mod` and `div` migrated to the Integral class.
+    ;; `abs` / `negate` migrated to Num; `min` / `max` to Ord.
 
     (: integer->string (-> Integer String))
     (define (integer->string n) (racket String (n) ""))
@@ -829,11 +829,11 @@
     (: write-ref (-> (Ref a) (-> a (IO Unit))))
     (define (write-ref r v) (racket (IO Unit) (r v) #f))
 
-    ;; --- Concurrency (Phase 36) ------------------------------
+    ;; --- Concurrency ------------------------------
     ;;
     ;; Thin wrappers over Racket's threads + semaphores + async
     ;; channels.  All operations live in IO.  See "Concurrency
-    ;; primitives (Phase 36)" in the docs for usage patterns.
+    ;; primitives" in the docs for usage patterns.
 
     (define-data ThreadId)
     (define-data (MVar a))
@@ -872,7 +872,7 @@
     (: recv-chan (-> (Chan a) (IO a)))
     (define (recv-chan ch) (racket (IO a) (ch) #f))
 
-    ;; --- STM (Phase 41) --------------------------------------
+    ;; --- STM --------------------------------------
     ;;
     ;; Optimistic-concurrency software transactional memory.  An
     ;; STM action is composed monadically; `atomically` runs it
@@ -911,13 +911,13 @@
     (: atomically (-> (STM a) (IO a)))
     (define (atomically s) (racket (IO a) (s) #f))
 
-    ;; --- Concurrent class (Phase 43) -------------------------
+    ;; --- Concurrent class -------------------------
     ;;
     ;; `Future a` is a handle to a forked computation's result.
     ;; `Concurrent m` abstracts fork/await/yield across monads.
     ;; The Concurrent IO instance is the only one provided here;
-    ;; future phases may add STM (transactional) or Mock (pure-
-    ;; time-step) instances.
+    ;; later additions may include STM (transactional) or Mock
+    ;; (pure-time-step) instances.
 
     (define-data (Future a))
 
@@ -934,7 +934,7 @@
       (define yield-c
         (racket (IO Unit)       ()      #f)))
 
-    ;; --- Identity monad + Concurrent Identity (Phase 44) -----
+    ;; --- Identity monad + Concurrent Identity -----
     ;;
     ;; A trivial Mock for polymorphic-Concurrent code: fork-c runs
     ;; the computation immediately and stuffs its result into a
@@ -971,7 +971,7 @@
       (define yield-c
         (MkIdentity MkUnit)))
 
-    ;; --- Lens / optics (Phase 46) ----------------------------
+    ;; --- Lens / optics ----------------------------
     ;;
     ;; Simple (getter, setter) pair encoding.  Each `(Lens s a)`
     ;; packs a function to extract an `a` from `s` and a function
@@ -1002,7 +1002,7 @@
        (lambda (s b)
          (set outer (set inner b (view outer s)) s))))
 
-    ;; --- Prisms (Phase 48) -----------------------------------
+    ;; --- Prisms -----------------------------------
     ;;
     ;; A prism focuses on a single sum-type constructor.  preview
     ;; returns Some when the target ctor matches, None otherwise.
@@ -1019,7 +1019,7 @@
     (define (review p a)
       (match p [(MkPrism _ build) (build a)]))
 
-    ;; --- Traversals (Phase 48) -------------------------------
+    ;; --- Traversals -------------------------------
     ;;
     ;; A traversal focuses on zero-or-more sub-parts.  to-list-of
     ;; gathers them; over-of transforms all of them.
@@ -1142,10 +1142,10 @@
       (let ([n (length xs)])
         (if (< n 2)
             xs
-            ;; Phase 40: was `(div n 2)` when div was a free Integer
-            ;; helper; div is now an Integral class method declared
-            ;; later in the prelude, so we host-escape the quotient
-            ;; here to keep sort's definition order-independent.
+            ;; Was `(div n 2)` when div was a free Integer helper;
+            ;; div is now an Integral class method declared later
+            ;; in the prelude, so we host-escape the quotient here
+            ;; to keep sort's definition order-independent.
             (let ([halves (split-at (racket Integer (n) 0) xs)])
               (merge-lists (sort (fst halves))
                            (sort (snd halves)))))))
@@ -1251,7 +1251,7 @@
     (: abs-float (-> Float Float))
     (define (abs-float x) (racket Float (x) 0.0))
 
-    ;; --- Phase 40: Rational + Complex types -----------------
+    ;; --- Rational + Complex types -----------------
 
     (define-data Rational)
     (define-data Complex)
@@ -1310,7 +1310,7 @@
     (define-instance (Fractional Complex)
       (define (float-div x y) (racket Complex (x y) #f)))
 
-    ;; --- Phase 40: Integral class ----------------------------
+    ;; --- Integral class ----------------------------
 
     (define-class ((Num a) => (Integral a))
       (: div  (-> a (-> a a)))
@@ -1324,7 +1324,7 @@
       (define (quot a b) (racket Integer (a b) 0))
       (define (rem  a b) (racket Integer (a b) 0)))
 
-    ;; --- Phase 40: Real class --------------------------------
+    ;; --- Real class --------------------------------
 
     (define-class ((Num a) (Ord a) => (Real a))
       (: to-rational (-> a Rational)))
@@ -1336,7 +1336,7 @@
     (define-instance (Real Rational)
       (define (to-rational x) (racket Rational (x) #f)))
 
-    ;; --- Phase 40: Floating class ----------------------------
+    ;; --- Floating class ----------------------------
 
     (define-class ((Fractional a) => (Floating a))
       (: pi   a)
@@ -1368,7 +1368,7 @@
       (define (tan  x)   (racket Complex (x)   #f))
       (define (**   x y) (racket Complex (x y) #f)))
 
-    ;; --- Phase 40: RealFrac class ----------------------------
+    ;; --- RealFrac class ----------------------------
     ;;
     ;; Methods are named `*-real` to avoid clashing with potential
     ;; future Racket-side helpers; the rounding operations all
@@ -1391,7 +1391,7 @@
       (define (round-real    x) (racket Integer (x) 0))
       (define (truncate-real x) (racket Integer (x) 0)))
 
-    ;; --- Phase 40: RealFloat class ---------------------------
+    ;; --- RealFloat class ---------------------------
 
     (define-class ((RealFrac a) (Floating a) => (RealFloat a))
       (: is-nan?      (-> a Boolean))

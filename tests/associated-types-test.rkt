@@ -1,6 +1,6 @@
 #lang racket/base
 
-;; Phase 53: associated types (type families).
+;; Associated types (type families).
 ;;
 ;; A class may declare a `#:type FamilyName`; each instance supplies
 ;; a concrete rhs via `#:type (FamilyName = T)`.  Type applications

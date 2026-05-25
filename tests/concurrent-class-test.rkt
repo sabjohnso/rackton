@@ -1,6 +1,6 @@
 #lang racket/base
 
-;; Phase 43: Concurrent class.  Polymorphic fork/await/yield over
+;; Concurrent class.  Polymorphic fork/await/yield over
 ;; arbitrary monads; one Concurrent IO instance.
 
 (require rackunit

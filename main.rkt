@@ -13,7 +13,7 @@
 ;;     (define (from-just d m)
 ;;       (match m [(None) d] [(Some x) x])))
 ;;
-;; The supported subset (Phase 1) covers:
+;; The supported subset covers:
 ;;   literals (Integer / Boolean / String),
 ;;   lambda / application, let, if, ascription, match,
 ;;   define / declare (:) / define-data,

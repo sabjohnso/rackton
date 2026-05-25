@@ -1,6 +1,6 @@
 #lang racket/base
 
-;; Phase 54: polymorphic record updates.
+;; Polymorphic record updates.
 ;;
 ;; `(update RECORD [field expr] ...)` returns a new record with the
 ;; named fields replaced by the corresponding expressions.  The type

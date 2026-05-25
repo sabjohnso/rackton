@@ -1,6 +1,6 @@
 #lang racket/base
 
-;; Exercises the Phase-4 multi-file feature: a Rackton client module
+;; Exercises the multi-file feature: a Rackton client module
 ;; requires another Rackton module by path; the imported schemes survive
 ;; the boundary so the client can type-check uses of the imported
 ;; bindings without redeclaring them.

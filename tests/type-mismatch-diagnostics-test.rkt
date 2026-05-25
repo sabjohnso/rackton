@@ -1,6 +1,6 @@
 #lang racket/base
 
-;; Phase 42: better error messages.  Each test compiles a Rackton
+;; Better error messages.  Each test compiles a Rackton
 ;; snippet that should error, and asserts the error message contains
 ;; a useful phrase.
 
@@ -51,5 +51,5 @@
      (: oops (Maybe Integer))
      (define oops (pyre 1))))
   (check-true (regexp-match? #rx"unbound" msg) msg)
-  ;; "did you mean `pure`?" — phase 42 adds methods to the search.
+  ;; "did you mean `pure`?" — the search includes class methods.
   (check-true (regexp-match? #rx"pure" msg) msg))

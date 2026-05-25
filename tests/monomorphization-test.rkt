@@ -1,6 +1,6 @@
 #lang racket/base
 
-;; Phase 57: codegen monomorphization for positional class-method
+;; Codegen monomorphization for positional class-method
 ;; calls.  When the dispatch type resolves to a concrete tcon at
 ;; compile time, the call site is rewritten to invoke the
 ;; per-instance impl directly instead of going through the

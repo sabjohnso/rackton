@@ -1,13 +1,13 @@
 #lang racket/base
 
-;; Phase 38: deriving menu rounded out with Traversable, Bifunctor,
-;; Semigroup, and Monoid.
+;; Deriving menu rounded out with Traversable, Bifunctor, Semigroup,
+;; and Monoid.
 
 (require rackunit
          "../main.rkt")
 
 (rackton
-  ;; ----- 38.B Bifunctor on a custom two-tparam ADT -------------
+  ;; ----- Bifunctor on a custom two-tparam ADT -------------
 
   (define-data (Either2 a b) (Lft a) (Rgt b)
     #:deriving Bifunctor)
@@ -18,7 +18,7 @@
   (: mapped-right (Either2 Integer String))
   (define mapped-right (bimap (lambda (n) (+ n 1)) (lambda (s) (<> s "!")) (Rgt "ok")))
 
-  ;; ----- 38.C Semigroup on a single-ctor record ----------------
+  ;; ----- Semigroup on a single-ctor record ----------------
 
   (define-struct (Log a)
     [entries : (List a)]
@@ -30,7 +30,7 @@
     (<> (Log (Cons 1 (Cons 2 Nil)) "left:")
         (Log (Cons 3 Nil)           "right")))
 
-  ;; ----- 38.D Monoid on a single-ctor record -------------------
+  ;; ----- Monoid on a single-ctor record -------------------
 
   (define-struct Counter
     [hits   : (List Integer)]

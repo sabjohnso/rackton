@@ -1,6 +1,6 @@
 #lang racket/base
 
-;; Phase-17: partial application via case-lambda compilation.
+;; Partial application via case-lambda compilation.
 
 (require rackunit
          "../main.rkt")

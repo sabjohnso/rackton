@@ -1,6 +1,6 @@
 #lang racket/base
 
-;; Phase-20: Traversable via dict-passing.
+;; Traversable via dict-passing.
 
 (require rackunit
          "../main.rkt")

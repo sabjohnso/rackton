@@ -1,6 +1,6 @@
 #lang racket/base
 
-;; Phase 41: software transactional memory.  TVar/STM/atomically/
+;; Software transactional memory.  TVar/STM/atomically/
 ;; retry/or-else with optimistic concurrency control.
 
 (require rackunit

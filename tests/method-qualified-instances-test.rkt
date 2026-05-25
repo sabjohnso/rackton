@@ -1,23 +1,23 @@
 #lang racket/base
 
-;; Phase 39: method-qual dict-threading.  Extends Phase 30's
-;; instance-qual skolem mechanism to method-local quantifiers like
-;; `(Applicative f) =>` on `traverse`.  Unblocks user-defined and
-;; derived Traversable instances.
+;; Method-qual dict-threading.  Extends the instance-qual skolem
+;; mechanism (which handles instance-level `=>` contexts) to
+;; method-local quantifiers like `(Applicative f) =>` on `traverse`.
+;; Unblocks user-defined and derived Traversable instances.
 
 (require rackunit
          "../main.rkt")
 
 (rackton
-  ;; ----- 39.A user-written Traversable instance --------------
+  ;; ----- user-written Traversable instance --------------
 
   (define-data (Tree a)
     Leaf
     (Branch (Tree a) a (Tree a)))
 
-  ;; A small curried helper that re-builds Branch — Phase 17's
-  ;; auto-curry would help if we called `Branch` directly, but
-  ;; passing it through liftA2 / <*> needs the curried form.
+  ;; A small curried helper that re-builds Branch — auto-curry
+  ;; would help if we called `Branch` directly, but passing it
+  ;; through liftA2 / <*> needs the curried form.
   (: branchC (-> (Tree a) (-> a (-> (Tree a) (Tree a)))))
   (define (branchC l) (lambda (v) (lambda (r) (Branch l v r))))
 

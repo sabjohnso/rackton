@@ -1,6 +1,6 @@
 #lang racket/base
 
-;; End-to-end tests for Phase 2 type-class support.
+;; End-to-end tests for type-class support.
 
 (require rackunit
          "../main.rkt")

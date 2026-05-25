@@ -1,6 +1,6 @@
 #lang racket/base
 
-;; Phase-28: Char and Bytes primitives.
+;; Char and Bytes primitives.
 
 (require rackunit
          "../main.rkt")

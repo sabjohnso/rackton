@@ -1,6 +1,6 @@
 #lang racket/base
 
-;; Phase-24: free-function compile-time resolution + mconcat.
+;; Free-function compile-time resolution + mconcat.
 
 (require rackunit
          (for-syntax racket/base)

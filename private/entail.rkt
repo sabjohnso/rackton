@@ -109,7 +109,7 @@
 (define (entail? env hypotheses target)
   (cond
     [(equality-pred? target)
-     ;; Phase 50.1: `(~ τ σ)` is a primitive type-equality
+     ;; `(~ τ σ)` is a primitive type-equality
      ;; constraint, not a class predicate.  It's discharged iff
      ;; its two arguments unify.  When one side is a tvar or a
      ;; refinable skolem, unify succeeds and binds — but since
@@ -145,7 +145,7 @@
      (for/and ([cp (in-list (instance-info-context inst))])
        (entail? env hypotheses (apply-subst σ cp)))]))
 
-;; Phase 37: pick the most-specific matching instance of `class-name`
+;; Pick the most-specific matching instance of `class-name`
 ;; for the given `target` predicate.  Returns #f when nothing matches;
 ;; raises `exn:fail` with an overlap-explanation when the maximal-
 ;; specific set has more than one element (the matches are
@@ -197,7 +197,7 @@
 (define (instance-heads-equivalent? h1 h2)
   (and (match-pred h1 h2) (match-pred h2 h1)))
 
-;; Phase 37: a class has overlap when two of its instances' heads
+;; A class has overlap when two of its instances' heads
 ;; unify — meaning some concrete target matches both.  This covers
 ;; both strictly-more-specific pairs (e.g. (Box a) vs (Box Integer))
 ;; and incomparable pairs (e.g. (P2 Integer b) vs (P2 a Integer)).
@@ -237,7 +237,7 @@
        (define p (car ps))
        (cond
          [(equality-pred? p)
-          ;; Phase 50.1: a `~` constraint at reduce-context time:
+          ;; A `~` constraint at reduce-context time:
           ;; if the two sides unify it's discharged (drop); if a
           ;; matching hypothesis is in scope it's also discharged;
           ;; otherwise keep it residual so the surrounding scope
@@ -269,13 +269,13 @@
          [(entail? env hypotheses p)
           (loop (cdr ps) acc)]
          [else
-          ;; Phase 42: enrich the "no instance" error with the list of
+          ;; Enrich the "no instance" error with the list of
           ;; instances we do have for this class, so the user can see
           ;; whether they hit a typo, a missing instance for their
           ;; specific type, or a class that's missing all instances.
-          ;; Phase 59: also suggest `#:deriving Class` when the
-          ;; class is auto-derivable and the missing-instance type
-          ;; is locally defined (so the user can add the clause).
+          ;; Also suggest `#:deriving Class` when the class is
+          ;; auto-derivable and the missing-instance type is locally
+          ;; defined (so the user can add the clause).
           (define cls (pred-class p))
           (define available (env-instances env cls))
           (define avail-msg
@@ -295,7 +295,7 @@
                     (pred->datum p) avail-msg derive-hint)
             (current-continuation-marks)))])])))
 
-;; Phase 59: suggest `#:deriving Class` when (a) Class is one of
+;; Suggest `#:deriving Class` when (a) Class is one of
 ;; the auto-derivable classes and (b) the missing-instance type's
 ;; head is a known data type.  Returns a formatted hint or "".
 (define derivable-classes
@@ -331,11 +331,11 @@
     [(tcon _)       #f]
     [(tapp h _)     (hnf-type? h)]))
 
-;; Phase 50.1: does the type still contain any tvars?
+;; Does the type still contain any tvars?
 (define (has-tvar? t)
   (not (set-empty? (type-vars t))))
 
-;; ----- Phase 53: type-family normalization -----------------------
+;; ----- type-family normalization -----------------------
 
 ;; Walk a type, eagerly rewriting type-family applications.  A type
 ;; application `(Foo τ ...)` is normalized when `Foo` is a registered

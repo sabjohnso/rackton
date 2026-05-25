@@ -1,7 +1,6 @@
 #lang racket/base
 
-;; Phase-19: Semigroup + Monoid (the second customer for return-typed
-;; dispatch from Phase 18).
+;; Semigroup + Monoid (the second customer for return-typed dispatch).
 
 (require rackunit
          (for-syntax racket/base)

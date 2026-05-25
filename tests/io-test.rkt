@@ -1,6 +1,6 @@
 #lang racket/base
 
-;; End-to-end exercise of the Phase-7 IO monad and string / numeric
+;; End-to-end exercise of the IO monad and string / numeric
 ;; stdlib.  IO values built with `do` are executed by `run-io`.
 
 (require rackunit

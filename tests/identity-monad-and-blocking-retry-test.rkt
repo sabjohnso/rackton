@@ -1,9 +1,9 @@
 #lang racket/base
 
-;; Phase 44: resolve deferred items.
-;;   - Blocking retry (44.1)
-;;   - Identity monad + Concurrent Identity (44.4)
-;;   - Num/Ord refactor: abs/negate as Num; min/max as Ord (44.5)
+;; Resolve deferred items.
+;;   - Blocking retry
+;;   - Identity monad + Concurrent Identity
+;;   - Num/Ord refactor: abs/negate as Num; min/max as Ord
 
 (require rackunit
          "../main.rkt")

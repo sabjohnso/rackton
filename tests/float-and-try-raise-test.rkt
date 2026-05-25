@@ -1,6 +1,6 @@
 #lang racket/base
 
-;; Phase-11 end-to-end: Float arithmetic, conversions, sqrt;
+;; End-to-end: Float arithmetic, conversions, sqrt;
 ;; try / raise-io for structured error recovery.
 
 (require rackunit

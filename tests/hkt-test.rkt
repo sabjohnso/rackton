@@ -1,6 +1,6 @@
 #lang racket/base
 
-;; End-to-end tests for Phase-4 higher-kinded type classes:
+;; End-to-end tests for higher-kinded type classes:
 ;; Functor and Monad with instances for Maybe, List, and Result e.
 
 (require rackunit

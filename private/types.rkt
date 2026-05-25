@@ -73,7 +73,7 @@
 (struct tcon   (name)       #:transparent)
 (struct tapp   (head args)  #:transparent)
 (struct scheme (vars body)  #:transparent)
-;; Phase 51: a polymorphic type embedded inside a larger type.
+;; A polymorphic type embedded inside a larger type.
 ;; `(tforall vars body)` reads "∀vars. body" and may appear in any
 ;; type-level position (most usefully a function's argument type for
 ;; rank-N).  This is distinct from `scheme`, which only lives at the
@@ -167,7 +167,7 @@
     [(qual cs body)  (for/fold ([acc (type-vars body)]) ([c (in-list cs)])
                        (set-union acc (type-vars c)))]
     [(tforall vs body)
-     ;; Phase 51: a tforall's quantified vars are bound there and
+     ;; A tforall's quantified vars are bound there and
      ;; don't count as free in the surrounding type.
      (set-subtract (type-vars body) (list->seteq vs))]))
 
@@ -218,7 +218,7 @@
         (mqual (for/list ([c (in-list cs)]) (apply-subst s c))
                (apply-subst s body))]
        [(tforall vs body)
-        ;; Phase 51: a tforall's bound vars shadow `s`.  Drop the
+        ;; A tforall's bound vars shadow `s`.  Drop the
         ;; bound vars from `s` before recursing, matching the way
         ;; `scheme` handles substitution.
         (define s*

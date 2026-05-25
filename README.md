@@ -7,29 +7,43 @@ Racket.
 
 ## Status
 
-**Phase 1 + 2 + 3 + 4 + 5 + 6 + 7 + 8 + 9 + 10 + 11 + 12 + 13 + 14 +
-15 + 16 + 17 + 18 + 19 + 20 + 21 + 22 + 23 + 24 + 25 + 26 + 27 + 28 + 29 + 30 + 31 + 32 + 33 + 34 + 35 + 36 + 37 + 38 + 39 + 40 + 41 + 42 + 43 + 44 + 45 + 46 + 47 + 48 + 49 + 50 + 51 + 52 + 53 + 54 + 55 + 56 + 57 + 58 + 59 + 60** — typed lambda
-calculus, ADTs, records (`define-struct`), pattern matching, `letrec`,
-type aliases (`define-alias`), immutable `(Map k v)` and `(Set a)`
-containers, `Float` with real arithmetic and `Fractional` class,
-structured error recovery (`try` / `raise-io`), two surfaces
-(`(rackton ...)` macro and `#lang rackton`), single- and multi-parameter
-type classes (superclass constraints, qualifying contexts, default
-methods, explicit-kind higher-kinded classes, first-arg runtime
-dispatch), host-language `racket` escape, a built-in prelude
-(`Eq`/`Ord`/`Num`/`Show`/`Functor`/`Applicative`/`Monad`/`Bifunctor`/`Foldable` + `Maybe`/`List`/`Result`/
-`Pair`/`Unit`/`IO`/`Ref` + `id`/`const`/`compose`/`flip` +
-`not`/`and`/`or` + `length`/`foldr`/`filter`/`reverse`/`append`/
-`zip`/`take`/`drop`/`find`/`sort`/`concat-map`/`group-by` +
-`fst`/`snd`/`swap` + string ops + numeric helpers +
-IO/file/ref/Map/Set primitives + `panic`), fatal
-exhaustiveness checking, pretty-printed error messages with
-"did-you-mean?" suggestions for unbound identifiers, polymorphic
-recursion via declared schemes, `#:deriving Eq Ord Show Functor` on
-ADTs, do-notation for any Monad, multiple `(rackton ...)` blocks per
-Racket module, and multi-file imports that carry bindings, data types,
-records, classes, and instances across `#lang rackton` files via a
-sidecar submodule.
+Rackton is usable as a small typed functional language embedded in
+Racket.  Highlights:
+
+- **Type system** — Hindley–Milner with let-polymorphism, polymorphic
+  recursion via declared schemes, full GADTs with skolem refinement,
+  rank-N polymorphism (`All`), existential types, type aliases, and
+  associated types (type families).
+- **Data** — ADTs, records (`define-struct`) with polymorphic field
+  update, sealed abstract types, pattern matching with guards and
+  `match-let`, fatal exhaustiveness checking, `#:deriving` for `Eq`,
+  `Ord`, `Show`, `Functor`, `Foldable`, `Traversable`, `Bifunctor`,
+  `Semigroup`, `Monoid`, `Lens`, and `Prism`.
+- **Type classes** — single- and multi-parameter classes, superclass
+  constraints, qualifying contexts, default methods, functional
+  dependencies, overlapping instances, explicit-kind HKTs, first-arg
+  runtime dispatch with compile-time monomorphization plus inlining
+  of small impls, module-level coherence.
+- **Prelude** — `Eq`/`Ord`/`Num`/`Fractional`/`Integral`/`Show`,
+  `Functor`/`Applicative`/`Monad`/`Bifunctor`/`Foldable`/`Traversable`,
+  `Semigroup`/`Monoid`, MTL-style `MonadState`/`MonadEnv`/`MonadWriter`/
+  `MonadError`, the corresponding transformers (`StateT`, `EnvT`,
+  `WriterT`, `ExceptT`, `Identity`), `Maybe`/`List`/`Result`/`Pair`/
+  `Unit`/`IO`/`Ref`, lens/prism/traversal combinators, a full numeric
+  tower (`Integer`/`Float`/`Rational`/`Complex`/`Char`/`Bytes`),
+  string/list/IO/file/Map/Set primitives, and `panic`.
+- **Effects & concurrency** — `do`-notation for any `Monad`, structured
+  error recovery (`try` / `raise-io`), algebraic effects + handlers,
+  threads/MVars/channels, STM (`TVar`/`atomically`/`retry`), and a
+  polymorphic `Concurrent` class.
+- **Surfaces** — embedded `(rackton ...)` macro (multiple blocks per
+  Racket module) and whole-module `#lang rackton`, with multi-file
+  imports that carry bindings, data types, records, classes, and
+  instances across `#lang rackton` files via a sidecar submodule.
+- **Tooling** — interactive REPL (`racket -l rackton/repl`) with
+  multi-line input, history, and tab completion; pretty-printed type
+  errors with expected/got blame and did-you-mean suggestions; a
+  host-language `racket` escape for trapdoors back into Racket.
 
 ## Quick start
 

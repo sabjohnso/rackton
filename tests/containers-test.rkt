@@ -1,6 +1,6 @@
 #lang racket/base
 
-;; Phase-10 end-to-end: immutable Map and Set, plus list helpers
+;; End-to-end: immutable Map and Set, plus list helpers
 ;; (concat-map, group-by).
 
 (require rackunit

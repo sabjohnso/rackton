@@ -1,6 +1,6 @@
 #lang racket/base
 
-;; Phase 60: REPL polish — multi-line input + history + tab
+;; REPL polish — multi-line input + history + tab
 ;; completion.  The user-visible loop wraps stdin with readline,
 ;; but the testable surface is small: a `rackton-read-form` that
 ;; accumulates lines until the parens balance, plus a

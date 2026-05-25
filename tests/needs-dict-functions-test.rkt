@@ -1,6 +1,6 @@
 #lang racket/base
 
-;; Phase-29: body-rewriting for user-defined needs-dict functions.
+;; Body-rewriting for user-defined needs-dict functions.
 
 (require rackunit
          "../main.rkt")
