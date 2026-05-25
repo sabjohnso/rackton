@@ -4,6 +4,8 @@
 ;; sealed-abstract-types-lib-eq-a and sealed-abstract-types-lib-eq-b
 ;; should be a compile-time coherence error.
 
+(provide (all-defined-out))
+
 (define-data Color  Red  Green  Blue)
 
 (define-instance (Eq Color)

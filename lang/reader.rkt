@@ -21,10 +21,9 @@ rackton/lang/runtime
   (cond
     [(null? forms) '()]
     [else
-     ;; Wrap every user form in a single (rackton form ...) invocation
-     ;; and auto-provide everything the program defines.
+     ;; Wrap every user form in a single (rackton/main ...) invocation.
+     ;; Exports are driven by the user's (provide ...) forms inside the
+     ;; block — with no provide form, nothing escapes.
      (list (datum->syntax #f
                           (cons 'rackton/main forms)
-                          (car forms))
-           (datum->syntax #f
-                          '(provide (all-defined-out))))]))
+                          (car forms)))]))

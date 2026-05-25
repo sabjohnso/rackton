@@ -2,6 +2,8 @@
 
 ;; A Rackton library module — defines a Tree ADT and helper functions.
 
+(provide (all-defined-out))
+
 (define-data (Tree a) Leaf (Node (Tree a) a (Tree a)))
 
 (: max-int (-> Integer (-> Integer Integer)))

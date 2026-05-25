@@ -3,6 +3,8 @@
 ;; A Rackton library that defines a Container class and an instance for
 ;; a user-declared Stack type.
 
+(provide (all-defined-out))
+
 (define-data (Stack a) Empty (Push a (Stack a)))
 
 (define-class (Container (f :: (-> * *)))

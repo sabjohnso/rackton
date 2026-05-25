@@ -1728,6 +1728,13 @@
     [(top:require specs stx)
      (handle-require-form specs stx env declared)]
 
+    [(top:provide specs stx)
+     ;; `provide` is a packaging concern, not a typing concern: it
+     ;; doesn't introduce any constraints or change the env.  The
+     ;; elaborator resolves the spec list against the final env
+     ;; after inference completes.
+     (values env declared)]
+
     [(top:struct-fields struct-name field-names _)
      ;; Register the struct's ordered field-name list.
      ;; No code is emitted; the entry is consulted by inference

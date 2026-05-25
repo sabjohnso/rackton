@@ -4,6 +4,8 @@
 ;; sealed-abstract-types-lib-eq-b which redeclares it — importing
 ;; both should be rejected as a coherence violation.
 
+(provide (all-defined-out))
+
 (define-data Color  Red  Green  Blue)
 
 (define-instance (Eq Color)

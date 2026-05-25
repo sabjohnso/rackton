@@ -9,6 +9,7 @@
 ;; ----- basic case: a typed definition -----
 
 (module mod-x rackton
+  (provide (all-defined-out))
   (: x Integer)
   (define x 3))
 
@@ -20,6 +21,7 @@
 ;; ----- ADT + pattern-matching function -----
 
 (module mod-maybe rackton
+  (provide (all-defined-out))
   (define-data (Maybe a) None (Some a))
 
   (: from-maybe (-> a (-> (Maybe a) a)))
@@ -37,6 +39,7 @@
 ;; ----- class method + instance, called from inside the module -----
 
 (module mod-class rackton
+  (provide (all-defined-out))
   (define-data Color  Red  Green  Blue)
 
   (define-instance (Eq Color)

@@ -23,7 +23,8 @@
                                void when unless
                                exp log sin cos tan
                                numerator denominator
-                               real-part imag-part magnitude)]]
+                               real-part imag-part magnitude
+                               #%module-begin)]]
 
 @title{Rackton}
 @author{sbj}
@@ -349,6 +350,7 @@ of the imported bindings without redeclaring their types.
 @codeblock|{
 ;; lib.rkt
 #lang rackton
+(provide (all-defined-out))
 (define-data (Tree a) Leaf (Node (Tree a) a (Tree a)))
 (: tree-sum (-> (Tree Integer) Integer))
 (define (tree-sum t)
@@ -362,10 +364,76 @@ of the imported bindings without redeclaring their types.
 (define result (tree-sum (Node Leaf 1 (Node Leaf 2 Leaf))))
 }|
 
-Classes and instances do not yet travel across module boundaries; users
-must redeclare those if needed.  Plain Racket modules (no
-@racketmodfont{rackton-schemes} submodule) can still be required, but
-their bindings will be invisible to the type checker.
+Plain Racket modules (no @racketmodfont{rackton-schemes} submodule)
+can still be required, but their bindings will be invisible to the
+type checker.
+
+@subsection{Controlling exports with @racket[provide]}
+
+A Rackton module exports nothing by default — every binding,
+constructor, type, class, and class method is module-private unless
+explicitly exported with a @racket[(provide …)] form.  This matches
+@hash-lang[] @racketmodfont{racket}'s default and replaces the prior
+implicit @racket[(all-defined-out)].
+
+The supported @racket[provide] specs are:
+
+@itemlist[
+ @item{@racket[name] — export the named value binding, data
+       constructor, type constructor, or class.  Data constructors
+       are exported both as a runtime value and (when their owning
+       type is not @racket[#:abstract]) as a type-checker entry.}
+ @item{@racket[(all-defined-out)] — export every locally-defined
+       binding, data constructor, type, and class.  Imported and
+       prelude names are not re-exported.}
+ @item{@racket[(data-out T)] — export the @racket[define-data] type
+       @racket[T] together with every constructor of @racket[T].}
+ @item{@racket[(struct-out S)] — analogue of Racket's
+       @racket[struct-out] for @racket[define-struct]: export the
+       struct type @racket[S], its constructor, and every field
+       accessor @racket[S-fname].}
+ @item{@racket[(class-out C)] — export the class @racket[C] together
+       with every method declared by @racket[C].}
+ @item{@racket[(rename-out [old new] …)] — export @racket[old] under
+       the external name @racket[new].}
+ @item{@racket[(except-out spec name …)] — resolve @racket[spec],
+       then drop each @racket[name] from the resulting export set.}]
+
+Multiple @racket[(provide …)] forms in the same module are unioned.
+
+A binding excluded from the @racket[provide] list is invisible to
+importers @italic{both} at runtime and to the type checker — its
+scheme is omitted from the @racketmodfont{rackton-schemes} sidecar.
+
+Instances are an exception: they always escape, regardless of the
+@racket[provide] list, because instance coherence is a module-level
+property in the Haskell tradition Rackton inherits.
+
+@codeblock|{
+;; tree.rkt — public API plus the Tree type with its ctors.
+#lang rackton
+(provide tree-sum
+         tree-depth
+         (data-out Tree))
+(define-data (Tree a) Leaf (Node (Tree a) a (Tree a)))
+(: tree-sum (-> (Tree Integer) Integer))
+(define (tree-sum t)
+  (match t [(Leaf) 0] [(Node l x r) (+ x (+ (tree-sum l) (tree-sum r)))]))
+(: tree-depth (-> (Tree a) Integer))
+(define (tree-depth t)
+  (match t [(Leaf) 0] [(Node l _ r) (+ 1 (max-int (tree-depth l)
+                                                  (tree-depth r)))]))
+;; `max-int` is a private helper — without an explicit provide it is
+;; invisible to importers, at runtime and to the type checker.
+(: max-int (-> Integer (-> Integer Integer)))
+(define (max-int a b) (if (< a b) b a))
+}|
+
+The orthogonal @racket[#:abstract] flag on @racket[define-data]
+continues to gate type-checker visibility independently of
+@racket[provide]: an abstract type's constructors are never
+exported via the @racketmodfont{rackton-schemes} sidecar even when
+listed in a @racket[(provide …)] form.
 
 @section{do-notation}
 
@@ -416,6 +484,7 @@ without any local redeclaration.
 @codeblock|{
 ;; lib.rkt
 #lang rackton
+(provide (class-out Container) (data-out Stack))
 (define-class (Container (f :: (-> * *)))
   (: empty? (-> (f a) Boolean)))
 (define-data (Stack a) Empty (Push a (Stack a)))
@@ -2804,6 +2873,8 @@ type-name itself:
 @codeblock|{
 ;; counter.rkt
 #lang rackton
+
+(provide (all-defined-out))
 
 (define-data Counter
   (MkCounter Integer)

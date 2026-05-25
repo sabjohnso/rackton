@@ -1,5 +1,7 @@
 #lang rackton
 
+(provide (all-defined-out))
+
 (define (id x) x)
 
 (define (fact n)

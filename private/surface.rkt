@@ -55,6 +55,7 @@
          (struct-out class-type-fam)
          (struct-out inst-type-fam)
          (struct-out top:require)
+         (struct-out top:provide)
          (struct-out top:alias)
          (struct-out top:struct-fields)
          (struct-out top:effect)
@@ -167,6 +168,12 @@
 ;; A multi-file import: `(require "file.rkt" ...)` inside a rackton form.
 ;; Specs are the raw require specs (passed verbatim to Racket's require).
 (struct top:require    (specs stx) #:transparent)
+;; A user-level export declaration: `(provide spec ...)` inside a
+;; rackton block.  `specs` is the raw list of syntax objects — the
+;; elaborator resolves each spec against the final env into four
+;; export sets (vars, data-ctors, tcons, classes), so we keep specs
+;; literal here rather than parsing into a Rackton-specific AST.
+(struct top:provide    (specs stx) #:transparent)
 ;; A type alias.  `params` is a list of symbols (possibly empty); `target`
 ;; is a parsed surface type AST that may mention the params.
 (struct top:alias      (name params target stx) #:transparent)
@@ -1109,9 +1116,12 @@
 
 (define (parse-top stx)
   (syntax-parse stx
-    #:datum-literals (define define-data define-newtype define-struct define-class define-instance define-alias define-effect require : =>)
+    #:datum-literals (define define-data define-newtype define-struct define-class define-instance define-alias define-effect require provide : =>)
     [(require spec ...)
      (top:require (syntax->list #'(spec ...)) stx)]
+
+    [(provide spec ...)
+     (top:provide (syntax->list #'(spec ...)) stx)]
 
     [(define-alias (aname:id aparam:id ...) target)
      #:fail-unless (not (lowercase-id? (syntax->datum #'aname)))

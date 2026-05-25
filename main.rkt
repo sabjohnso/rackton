@@ -97,18 +97,12 @@
   (syntax-case stx ()
     [(_ form ...)
      ;; Wrap user forms in (rackton/main ...) so the elaborator runs
-     ;; type-checking and emits the rackton-schemes sidecar.  Append
-     ;; (provide (all-defined-out)) so importers see every binding —
-     ;; same shape that the #lang rackton reader produces.
-     ;;
-     ;; The provide form is relocated to the user's scope via
-     ;; datum->syntax so `all-defined-out` can see the user's
-     ;; definitions; without this, macro hygiene hides them.
-     (with-syntax ([provide-all
-                    (datum->syntax stx '(provide (all-defined-out)))])
-       #'(#%plain-module-begin
-          (rackton/main form ...)
-          provide-all))]))
+     ;; type-checking and emits the rackton-schemes sidecar.  Exports
+     ;; are driven by the user's (provide ...) forms inside the body —
+     ;; with no provide form, nothing escapes.  Same shape that
+     ;; `#lang rackton` produces via the reader.
+     #'(#%plain-module-begin
+        (rackton/main form ...))]))
 
 (module+ test
   (require rackunit)

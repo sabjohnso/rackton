@@ -516,7 +516,12 @@
      (compile-instance head methods stx env)]
     [(top:require specs stx)
      (with-syntax ([(s ...) specs])
-       (syntax/loc stx (require s ...)))]))
+       (syntax/loc stx (require s ...)))]
+    [(top:provide _ _)
+     ;; The elaborator resolves the union of all provide-specs and
+     ;; emits a single Racket-level (provide …) form afterwards, so
+     ;; nothing to emit per-form.
+     #f]))
 
 ;; ----- class & instance codegen ------------------------------------
 

@@ -5,6 +5,8 @@
 ;; #:abstract flag.  Clients use the public API (`make-counter`,
 ;; `inc-counter`, `counter-value`) and can't see the ctor.
 
+(provide (all-defined-out))
+
 (define-data Counter
   (MkCounter Integer)
   #:abstract)
