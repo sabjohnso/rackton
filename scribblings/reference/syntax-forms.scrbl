@@ -1,0 +1,350 @@
+#lang scribble/manual
+@require[scribble/manual
+         (for-label rackton)]
+
+@title[#:tag "syntax-forms"]{Syntax forms}
+The forms in this chapter are recognised by the Rackton surface parser
+and may appear inside any @racket[(rackton …)] block, inside a
+@racket[(module @#,racketidfont{name} rackton …)] body, or inside a
+@hash-lang[] @racketmodfont{rackton} file.  Forms are grouped by role:
+@seclink["sf-top"]{top-level declarations}, @seclink["sf-exprs"]{expressions},
+and @seclink["sf-patterns"]{patterns}.
+
+@section[#:tag "sf-top"]{Top-level declarations}
+
+@defform*[[(define name expr)
+           (define (name p ...) body)]
+          #:contracts ([name id?] [p id?])]{
+
+Binds @racket[name] at module scope.  The first form binds
+@racket[name] to the value of @racket[expr]; the second is shorthand
+for @racket[(define name (lambda (p ...) body))].  Top-level
+@racket[define] is recursive: @racket[expr] may refer to
+@racket[name].  When a matching @racket[(: name type)] declaration is
+in scope, the declared type is skolem-checked against the body.}
+
+@defform[#:literals (:)
+         (: name type)
+         #:contracts ([name id?])]{
+
+Declares a polymorphic or monomorphic type signature for the
+subsequent @racket[(define name …)].  Free type variables in
+@racket[type] are implicitly universally quantified, or an explicit
+@racket[(All (a ...) type)] form may be used.  A @racket[:] declaration
+also pre-registers @racket[name] in the typing environment, so later
+top-level forms can refer to mutually recursive functions whose
+definitions appear after.
+
+@racketblock[
+(: fact (-> Integer Integer))
+(define (fact n) (if (= n 0) 1 (* n (fact (- n 1)))))]}
+
+@defform[
+         (define-data (Name a ...) ctor-spec ... maybe-deriving)
+         #:grammar
+         [(ctor-spec       bare-ctor (Ctor type ...))
+          (bare-ctor       id)
+          (maybe-deriving  code:blank (code:line #:deriving class ...))]]{
+
+Declares an algebraic data type @racket[Name] parameterised by
+@racket[a ...], with one or more constructors.  Each constructor is
+either a bare identifier (nullary) or a parenthesised form naming the
+constructor and its field types.
+
+The optional @racket[#:deriving] clause synthesises instances of the
+named classes; see @racket[Eq], @racket[Ord], @racket[Show],
+@racket[Functor], @racket[Foldable], @racket[Traversable],
+@racket[Bifunctor], @racket[Semigroup], @racket[Monoid], and the
+auto-derived lens and prism families.
+
+A type may also be marked @racket[#:abstract] (before the constructors),
+which hides its constructors from the type checker in importing
+modules even when listed in a @racket[(provide …)] form.
+
+A constructor may carry its own existential context via the
+@racket[#:exists] / @racket[#:context] clauses (see
+@seclink["existentials" #:doc '(lib "rackton/scribblings/guide/rackton-guide.scrbl")]{the guide}),
+and may use @racket[#:returns] to assert a refined return type
+(GADT-style).}
+
+@defform[
+         (define-newtype Name (MkName Type))]{
+
+Declares a single-field, single-constructor wrapper type with no
+runtime overhead beyond a struct tag.  Equivalent to
+@racket[(define-data Name (MkName Type))] but documents intent.}
+
+@defform*[
+          [(define-struct Name [field : type] ... maybe-deriving)
+           (define-struct (Name a ...) [field : type] ... maybe-deriving)]
+          #:grammar
+          ([maybe-deriving  code:blank (code:line #:deriving class ...)])]{
+
+Declares a single-constructor product type with typed named fields and
+auto-generated field accessors @racketidfont{Name}@racketidfont{-}@racket[_field].
+The parameterised form supports polymorphic structs whose accessors
+have the appropriate polymorphic schemes.
+
+@racketblock[
+(define-struct Point [x : Integer] [y : Integer])
+(define p (Point 3 4))
+(define px (Point-x p))]
+
+@racket[#:deriving] honours the same classes as
+@racket[define-data], including @racket[Foldable] and the auto-derived
+field-lens family.}
+
+@defform*[
+          [(define-class class-head method ...)
+           (define-class (super-class ... => class-head) method ...)]
+          #:grammar
+          ([class-head    (ClassName param ...)]
+           [param         id (id :: kind)]
+           [super-class   (ClassName var ...)]
+           [method        (code:line (: method-name type))
+                          (code:line (define (method-name p ...) body))
+                          (code:line #:fundep var ... -> var ...)])]{
+
+Declares a type class.  Each method signature
+(@racket[(: name type)]) is added to the value environment with a
+qualified scheme @racket[(All (param ...) ((C param ...) => τ))], so a
+polymorphic use of the method automatically carries the class
+constraint.  Default method bodies (@racket[(define …)]) are used by
+instances that omit the corresponding method.
+
+Class parameters may carry an explicit kind annotation
+(@racket[(param :: kind)]); without one the kind defaults to
+@racket[*].  Kinds are written as @racket[*] for ordinary types or
+@racket[(-> k1 k2)] for type-constructor kinds.
+
+A class may declare one or more functional dependencies via
+@racket[#:fundep] clauses inside the body.}
+
+@defform*[
+          [(define-instance head method ...)
+           (define-instance (qual ... => head) method ...)]
+          #:grammar
+          ([head    (ClassName type ...)]
+           [qual    (ClassName var ...)]
+           [method  (define (name p ...) body)])]{
+
+Provides an implementation of @racket[ClassName] for the given
+type(s).  The optional context @racket[(qual ... => head)] introduces
+hypothesis constraints that become available to the body and that
+must be discharged at each use site.
+
+Omitted methods fall back to the class's default implementations.
+
+Instances always escape regardless of @racket[provide]; coherence is a
+module-level property.}
+
+@defform*[
+          [(define-alias Name type)
+           (define-alias (Name a ...) type)]]{
+
+Declares a type alias.  Aliases expand inline during type resolution;
+they introduce no runtime cost.  Recursive aliases are rejected with
+a clear error.
+
+@racketblock[
+(define-alias Name           String)
+(define-alias (Endo a)       (-> a a))
+(define-alias (Pair3 a b c)  (Pair a (Pair b c)))]}
+
+@defform[
+         (define-effect Name op ...)
+         #:grammar
+         ([op  (op-name arg-type ... -> result-type)])]{
+
+Declares an algebraic effect.  Each operation @racket[op-name] becomes
+a callable that, when invoked under a matching @racket[handle], aborts
+to the handler.  Effects are not tracked in types; an operation
+invoked outside any handler is a runtime error.}
+
+@defform[
+         (define-associated-type (Family a ...))]{
+
+Declares an associated type family inside a @racket[define-class]
+body.  Each instance must supply a concrete type for the family via a
+corresponding @racket[(define-associated-type (Family conc-args) type)]
+clause inside the @racket[define-instance].}
+
+@section[#:tag "sf-exprs"]{Expressions}
+
+@deftogether[(
+  @defform[(lambda (p ...) body)]
+  @defform[(λ (p ...) body)])]{
+
+Anonymous function with parameters @racket[p ...] and result
+@racket[body].  Currying is implicit: @racket[(lambda (x y) e)] has
+type @racket[(-> a (-> b c))], not a tupled domain.}
+
+@defform[(let ([var expr] ...) body)]{
+
+Parallel binding.  Each @racket[expr] is evaluated in the surrounding
+scope; the resulting values bind @racket[var ...] in @racket[body].
+Each binding is generalised independently against the surrounding
+environment after inference, giving Rackton its let-polymorphism.}
+
+@defform[(letrec ([var expr] ...) body)]{
+
+Mutually recursive binding: every right-hand side sees all the names
+in scope.  Each binding is generalised independently against the
+surrounding environment after inference.
+
+@racketblock[
+(letrec ([even? (lambda (n) (if (== n 0) #t (odd?  (- n 1))))]
+         [odd?  (lambda (n) (if (== n 0) #f (even? (- n 1))))])
+  (even? 8))]}
+
+@defform[(match-let ([pattern expr] ...) body)]{
+
+Destructuring binding.  Each @racket[pattern] is matched against the
+value of @racket[expr]; the bound pattern variables are in scope in
+@racket[body].  Failure to match raises a panic.}
+
+@defform[(where ([var expr] ...) body)]{
+
+Sequential local-binding form modelled on the Haskell @tt{where}
+clause: each @racket[expr] is type-checked in the scope of all the
+preceding @racket[var]s.  Equivalent to nested @racket[let]s.}
+
+@defform[(if test then else)]{
+
+Three-armed conditional.  @racket[test] must have type @racket[Boolean];
+@racket[then] and @racket[else] must have the same type, which becomes
+the type of the @racket[if].}
+
+@defform[(cond [test expr] ... [else expr])]{
+
+Multi-way conditional.  Equivalent to nested @racket[if]s with an
+@racket[else] catch-all.  Each @racket[test] must have type
+@racket[Boolean] and each @racket[expr] must have the same type.}
+
+@defform[(match scrutinee clause ...)
+         #:grammar
+         [(clause  [pattern body]
+                   [pattern (=> guard) body]
+                   [pattern #:when guard body])]]{
+
+Pattern-matches @racket[scrutinee] against each @racket[pattern] in
+order, evaluating the first matching @racket[body].  Patterns may
+guard their match with an arbitrary @racket[Boolean]-typed
+@racket[guard] expression.
+
+@racket[match] is checked at compile time and rejected if it omits a
+constructor of an ADT scrutinee, omits @racket[#t] or @racket[#f] on a
+@racket[Boolean] scrutinee, or lacks a catchall on an unconstrained
+scrutinee.  Add a wildcard (@racket[_]) or variable pattern to opt
+out.}
+
+@defform[(do clause ... body)
+         #:grammar
+         [(clause  [var <- expr]
+                   [_   <- expr]
+                   expr)]]{
+
+Monadic do-notation.  Each @racket[[var <- expr]] clause desugars to a
+nested @racket[>>=] call; a bare-expression clause sequences without
+binding.  The trailing @racket[body] is the final computation; its
+type is a monad of the same shape as the preceding clauses.
+
+@racketblock[
+(do [x <- (Some 3)]
+    [y <- (Some 4)]
+  (Some (+ x y)))]}
+
+@defform[(ann expr type)]{
+
+Type ascription.  Asserts that @racket[expr] has type @racket[type];
+the inferred type must unify with the annotation.  Useful for
+disambiguating return-typed methods such as @racket[pure] or
+@racket[mempty] at concrete return types.}
+
+@defform[(update record [field value] ...)
+         #:contracts ([field id?])]{
+
+Functional record update.  Returns a new struct of the same type as
+@racket[record], replacing the named fields with the supplied values.
+Untouched fields are copied verbatim.
+
+@racketblock[
+(define-struct Point [x : Integer] [y : Integer])
+(define p1 (Point 3 4))
+(define p2 (update p1 [x 99]))     (code:comment "Point with x=99, y=4")]}
+
+@defform[(escape expr)]{
+
+Internal form used by some derived-instance bodies.  User code should
+prefer @racket[racket] (see below) for host-language interop.}
+
+@defform[(racket type (var ...) body ...)
+         #:contracts ([type type?] [var id?])]{
+
+Drops into raw Racket, returning a value typed as @racket[type].  The
+named Rackton bindings @racket[var ...] are spliced into @racket[body]
+unmodified.  Multiple @racket[body] forms are wrapped in an implicit
+@racket[begin].
+
+@racketblock[
+(: greet (-> String String))
+(define (greet name)
+  (racket String (name)
+    (string-append "hello " name)))]
+
+The escape is the only way for Rackton code to reach Racket's standard
+library beyond what the prelude exposes.  No type-checking is performed
+on @racket[body]; the type assertion is taken on faith.}
+
+@defform[(handle expr op-clause ... return-clause)
+         #:grammar
+         ([op-clause     [op-name (param ...) k-name -> body]]
+          [return-clause [return result-var -> body]])]{
+
+Handles algebraic effects raised inside @racket[expr].  Each
+@racket[op-clause] names an operation @racket[op-name], binds its
+parameters @racket[param ...] and the captured continuation
+@racket[k-name], and evaluates @racket[body] in their scope.  The
+@racket[return] clause runs on the result of @racket[expr] when it
+completes without performing an unhandled operation.
+
+The handler is @italic{deep}: the prompt is re-installed on every
+resumption, so a resumed continuation can perform further operations
+under the same handler.  See @secref["effects" #:doc '(lib "rackton/scribblings/guide/rackton-guide.scrbl")]
+for the full story.}
+
+@section[#:tag "sf-patterns"]{Patterns}
+
+A @racket[match]/@racket[match-let] pattern is one of:
+
+@itemlist[
+@item{@racket[_] — wildcard; matches any value, binds nothing.}
+@item{a lowercase identifier — variable binding; matches any value
+      and binds the given name to it.}
+@item{a numeric, boolean, string, character, or bytes literal — matches
+      only equal values.}
+@item{@racket[Ctor] — nullary constructor pattern; matches only values
+      built with @racket[Ctor].}
+@item{@racket[(Ctor sub-pat ...)] — n-ary constructor pattern; matches
+      only values built with @racket[Ctor] whose corresponding fields
+      match the sub-patterns.}]
+
+@section{Module forms}
+
+@defform[(require spec ...)
+         #:grammar
+         [(spec  module-path
+                 (only-in module-path name ...))]]{
+
+Imports bindings from another Rackton or Racket module.  When the
+target is a @hash-lang[] @racketmodfont{rackton} module (or any
+module that emits a @racketmodfont{rackton-schemes} submodule), the
+type checker also recovers its schemes, data constructors, type
+constructors, classes, and instances.  Plain Racket modules are
+imported at runtime only; their bindings are invisible to the type
+checker.}
+
+@defform[(provide spec ...)]{
+
+Declares export specifications for the current module.  See
+@secref["provide-specs"] for the supported spec forms.}

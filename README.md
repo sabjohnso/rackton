@@ -77,8 +77,27 @@ Inside a regular Racket module:
 ```bash
 raco pkg install --link --auto       # install once
 raco test -p rackton                  # run the full test suite
-raco scribble --html scribblings/rackton.scrbl    # build docs
+raco setup --check-pkg-deps rackton   # compile + dep check + build docs
 ```
+
+## Documentation
+
+The documentation is split into three documents, each addressing a
+different audience:
+
+- **Guide** (`scribblings/guide/`) — narrative introduction, organised
+  from quickstart to advanced features.  Start here if you're new to
+  Rackton.
+- **Reference** (`scribblings/reference/`) — exhaustive API
+  reference.  Every prelude binding, every surface form, every type
+  class.  100% coverage is enforced by
+  `tests/doc-coverage-test.rkt`.
+- **Developer** (`scribblings/developer/`) — architecture, the
+  compilation pipeline, theoretical foundations, bibliography.  For
+  maintainers.
+
+Read them online at the Racket package docs server, or build locally
+with `raco setup rackton`.
 
 ## Layout
 
@@ -87,11 +106,11 @@ private/      type AST, unifier, env, surface parser,
               inference, ADT runtime, pattern compiler,
               codegen, elaborator
 lang/         #lang rackton reader & lang module
-tests/        end-to-end / typecheck-error / #lang rackton sample
-examples/     calc.rkt — a small expression interpreter
-              demonstrating ADTs, Map, Result, IO, mutual
-              recursion
-scribblings/  reference docs
+tests/        per-feature tests + cross-cutting end-to-end
+              + doc-coverage-test.rkt
+examples/     calc.rkt (typed interpreter), todo.rkt (CLI)
+scribblings/  rackton.scrbl (landing) + guide/ + reference/
+              + developer/
 ```
 
 Run the calc REPL:
