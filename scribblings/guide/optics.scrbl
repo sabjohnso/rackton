@@ -12,36 +12,35 @@ positions.
 @section{Lenses}
 
 A @racket[(Lens s a)] is a getter/setter pair for an @racket[a]
-inside an @racket[s].
+inside an @racket[s].  Add @racket[#:deriving Lens] to a
+@racket[define-struct] to synthesise one lens per field, named
+@racketidfont{T}@racketidfont{-}@racket[_field]@racketidfont{-lens}:
 
 @codeblock|{
 (define-struct Point [x : Integer] [y : Integer]
-  #:deriving)
-}|
+  #:deriving Lens)
 
-When you derive nothing explicitly, @racket[define-struct] still
-generates per-field lenses named @racketidfont{Name}@racketidfont{._}@racket[_field]
-(note the underscore):
-
-@codeblock|{
 (define p (Point 3 4))
 
-(view  Point._x p)        ;; ⇒ 3
-(set   Point._x 99 p)     ;; ⇒ (Point 99 4)
-(over  Point._x (lambda (n) (+ n 1)) p)   ;; ⇒ (Point 4 4)
+(view Point-x-lens p)        ;; ⇒ 3
+(set  Point-x-lens 99 p)     ;; ⇒ (Point 99 4)
+(over Point-x-lens (lambda (n) (+ n 1)) p)   ;; ⇒ (Point 4 4)
 }|
+
+Without @racket[#:deriving Lens] no lenses are generated — you can
+still write them by hand with @racket[MkLens] (see below).
 
 Compose lenses with @racket[lens-compose] to drill into nested
 structure:
 
 @codeblock|{
-(define-struct Address [city : String] [zip : Integer] #:deriving)
-(define-struct Person  [name : String] [addr : Address] #:deriving)
+(define-struct Address [city : String] [zip : Integer] #:deriving Lens)
+(define-struct Person  [name : String] [addr : Address] #:deriving Lens)
 
 (define alice (Person "Alice" (Address "NYC" 10001)))
 
-(define addr-city (lens-compose Person._addr Address._city))
-(view addr-city alice)              ;; ⇒ "NYC"
+(define addr-city (lens-compose Person-addr-lens Address-city-lens))
+(view addr-city alice)                       ;; ⇒ "NYC"
 (over addr-city (lambda (_) "LA") alice)
 ;; ⇒ Person { name="Alice", addr=Address { city="LA", zip=10001 } }
 }|
@@ -58,25 +57,30 @@ You can also construct a lens directly with @racket[MkLens]:
 @section{Prisms}
 
 A @racket[(Prism s a)] is a pattern: either it extracts an @racket[a]
-from an @racket[s] or it doesn't.
+from an @racket[s] or it doesn't.  Add @racket[#:deriving Prism] to a
+@racket[define-data] to synthesise one prism per constructor.
 
 @codeblock|{
-;; Derived for free for every ADT constructor
-(define-data (Result e a) (Err e) (Ok a) #:deriving Prism)
+(define-data Opt
+  Absent
+  (Present Integer)
+  #:deriving Prism)
 }|
 
 @racket[#:deriving Prism] generates a prism for each constructor,
-named @racketidfont{Name}@racketidfont{._}@racket[_Ctor]:
+named @racketidfont{T}@racketidfont{-}@racket[_Ctor]@racketidfont{-prism}:
 
 @codeblock|{
-(preview Result._Ok  (Ok 7))   ;; ⇒ (Some 7)
-(preview Result._Ok  (Err "bad"))   ;; ⇒ None
+(preview Opt-Present-prism (Present 7))   ;; ⇒ (Some 7)
+(preview Opt-Present-prism Absent)         ;; ⇒ None
 
-(review  Result._Ok  42)        ;; ⇒ (Ok 42)
+(review  Opt-Present-prism 42)             ;; ⇒ (Present 42)
 }|
 
 @racket[preview] tries to focus; @racket[review] builds a value at the
-focused position.
+focused position.  (Prism deriving is unavailable on
+@racket[define-struct] — a single-constructor record has nothing to
+discriminate; use @racket[Lens] instead.)
 
 @section{Traversals}
 
@@ -96,7 +100,7 @@ Convert a lens to a single-element traversal with
 @racket[lens-as-traversal]:
 
 @codeblock|{
-(define point-x-traversal (lens-as-traversal Point._x))
+(define point-x-traversal (lens-as-traversal Point-x-lens))
 (to-list-of point-x-traversal (Point 3 4))   ;; ⇒ (Cons 3 Nil)
 }|
 

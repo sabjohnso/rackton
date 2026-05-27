@@ -63,7 +63,6 @@ A bare expression clause discards its result (via
 
 @itemlist[
 @item{@racket[Maybe]   — short-circuiting on @racket[None].}
-@item{@racket[List]    — non-determinism / cartesian product.}
 @item{@racket[Result e] — short-circuiting on @racket[Err].}
 @item{@racket[IO]      — sequential side-effects (see @secref["io-and-mutation"]).}
 @item{@racket[State s], @racket[Env r] — pure threaded effects.}
@@ -74,10 +73,16 @@ A bare expression clause discards its result (via
 @item{@racket[Identity] — the trivial monad, useful as a base for
       transformer stacks.}]
 
+@racket[List] is a @racket[Functor] and an @racket[Applicative] but
+@italic{not} a @racket[Monad] in the prelude.  Use @racket[concat-map]
+for non-deterministic sequencing.
+
 @section{Return-typed methods: @racket[pure] and @racket[mempty]}
 
-@racket[pure] (in @racket[Applicative]) has no value-typed argument —
-its result type alone determines which instance to dispatch to:
+@racket[pure] (in @racket[Applicative]) has type @racket[(-> a (f a))]:
+its single argument fixes @racket[a], but the outer constructor
+@racket[f] — the instance — is determined only by the call's expected
+return type:
 
 @codeblock|{
 (: greet (IO Unit))

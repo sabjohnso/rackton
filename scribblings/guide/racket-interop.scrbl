@@ -26,9 +26,19 @@ are wrapped in an implicit @racket[begin].
 }|
 
 Inside @racket[body], @racket[name] resolves to the string the caller
-passed.  The Racket-side @racket[string-append] is whatever
-@filepath{lang/runtime.rkt} exposes — typically the unshadowed
-@racketmodname[racket/base] version.
+passed.  Identifier resolution inside an escape follows
+@filepath{lang/runtime.rkt}'s import list: names the Rackton prelude
+shadows (including @racket[string-append], @racket[length],
+@racket[+], @racket[map], @racket[filter], @racket[reverse], and many
+others — see the @racket[except-in racket/base …] clause in
+@filepath{lang/runtime.rkt}) resolve to the prelude's
+@italic{binary curried} version, not @racketmodname[racket/base]'s
+variadic one.  The example above happens to pass exactly two
+arguments, so the curried form's full application succeeds.  If you
+need @racketmodname[racket/base]'s variadic
+@racket[string-append], reach for @racket[(require racket/base)] in
+the surrounding module and use a renamed import inside the escape, or
+chain binary calls.
 
 @section{Type assertions are unchecked}
 

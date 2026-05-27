@@ -180,6 +180,13 @@ An unbounded asynchronous channel.  Sends never block; receives block
 until a value is available.  See @racket[new-chan], @racket[send-chan],
 @racket[recv-chan].}
 
+@defidform[#:kind "type" ThreadId]{
+
+The handle returned by @racket[fork-io]: an opaque token identifying
+a running OS-level thread.  @racket[wait-thread] joins on the
+underlying thread.  See also @racket[Future] (a sibling abstraction
+used by the @racket[Concurrent] class).}
+
 @defidform[#:kind "type" Future]{
 
 The result of a concurrent computation spawned with @racket[fork-c].

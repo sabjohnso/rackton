@@ -63,9 +63,9 @@ launcher in @filepath{repl.rkt} wires this into Racket's
 
 @racket[rackton-read-form] reads a single Rackton form from a port.
 When a partial form is parsed but more input is needed (the
-parenthesis balance is non-zero), the reader prompts with @tt{…} and
-continues reading from the next line.  This is what lets the REPL
-accept multi-line @racket[(define (f x) …)] forms naturally.
+parenthesis balance is non-zero), the reader prompts with @tt{..>}
+and continues reading from the next line.  This is what lets the
+REPL accept multi-line @racket[(define (f x) …)] forms naturally.
 
 @section{Error handling}
 

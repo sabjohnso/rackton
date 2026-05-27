@@ -16,18 +16,18 @@ either a substitution @racket[σ] such that
 recursive rules:
 
 @itemlist[
-@item{@bold{Variable vs.\ anything.}  If @racket[τ₁] is a non-skolem
-      @racket[ty:var] @racket[α], bind @racket[α] to @racket[τ₂]
+@item{@bold{Variable vs.\ anything.}  If @racket[τ₁] is a
+      @racket[tvar] @racket[α], bind @racket[α] to @racket[τ₂]
       after an occurs check.}
 @item{@bold{Anything vs.\ variable.}  Symmetric.}
-@item{@bold{Constructor vs.\ constructor.}  If both are @racket[ty:con]
+@item{@bold{Constructor vs.\ constructor.}  If both are @racket[tcon]
       with the same name, success with the empty substitution.
-      Different names: error.}
+      Different names: error.  Skolems are @racket[tcon]s with
+      synthetic names, so the same rule rejects unifying a skolem
+      with anything other than itself.}
 @item{@bold{Application vs.\ application.}  Unify the heads; apply the
       resulting substitution to both argument lists; unify
-      element-wise.}
-@item{@bold{Skolem vs.\ anything else.}  Error — skolems unify only
-      with themselves.}]
+      element-wise.}]
 
 @section{The occurs check}
 
@@ -54,7 +54,7 @@ exactly the cost of avoiding higher-order unification.
 
 @section{What about constraints?}
 
-@racket[ty:qual] constraints are NOT unified by this module.  The
+@racket[qual] constraints are NOT unified by this module.  The
 inferer strips constraints off before calling the unifier; the
 constraints are accumulated separately in the pending-pred bag and
 resolved against the instance table (see @secref["class-entailment"]).

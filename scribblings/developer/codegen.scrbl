@@ -26,20 +26,33 @@ The type checker has already done that work.
 
 A @racket[define-data] form expands to a series of
 @racketidfont{define-data-ctor} calls in @filepath{private/adt.rkt}.
-@racketidfont{define-data-ctor} is a macro that:
+@racketidfont{define-data-ctor} is a macro that, for a constructor
+@racket[name] of arity @racket[N]:
 
 @itemlist[#:style 'ordered
-@item{Declares a Racket @racket[struct] with the appropriate
-      arity.}
-@item{Binds the constructor name to either the struct value (for
-      nullary constructors) or a curried function that applies the
-      struct constructor (for n-ary).}
-@item{Registers a @racket[dispatch-tag] for the struct so the class
-      dispatchers can index off it.}]
+@item{Declares a transparent Racket @racket[struct] @racketidfont{$ctor:}@racket[_name]
+      with @racket[N] fields.}
+@item{Binds @racketidfont{$val:}@racket[_name] to either the
+      singleton struct instance (for @racket[N=0]) or the raw struct
+      constructor procedure (for @racket[N>0]).}
+@item{Defines @racket[_name] as a @racket[match-expander] whose
+      expression transformer rewrites a bare reference to
+      @racketidfont{$val:}@racket[_name] and an application
+      @racket[(_name _arg ...)] to a direct
+      @racketidfont{$ctor:}@racket[_name] struct call.}]
 
-This makes constructors first-class: @racket[Cons] is an ordinary
-Racket procedure, not a macro, so it can be passed to higher-order
-functions and stored in data structures.
+Constructors are therefore bound to bare n-ary struct procedures, not
+curried functions; the auto-currying that supports partial
+application of ordinary Rackton lambdas (in
+@racket[build-curried-lambda]) does not apply.  Partial applications
+of constructors are rejected at compile time by the same mechanism
+that requires every call to match the procedure's arity.
+
+No per-struct dispatch-tag registry exists.  At runtime, when a class
+dispatcher needs the tag for a value, it calls
+@racket[dispatch-tag] (in @filepath{private/dict.rkt}), which reads
+the struct's type info via @racket[struct-type-info] on demand; the
+struct's name @racketidfont{$ctor:}@racket[_name] is the tag.
 
 @section{Class method lowering}
 

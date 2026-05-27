@@ -26,30 +26,32 @@ recognises a handful of meta-commands, each starting with a colon.
 @deftogether[(@defidform[#:kind "REPL command" :type]
               @defidform[#:kind "REPL command" :t])]{
 
-@racket[:type @#,racket[_expr]] (or @racket[:t @#,racket[_expr]]) shows
-the inferred type of @racket[_expr] without evaluating it.
+@racket[(:type @#,racket[_expr])] (or @racket[(:t @#,racket[_expr])])
+shows the inferred type of @racket[_expr] without evaluating it.
+REPL commands are written as parenthesised forms so they can flow
+through the same reader as ordinary input.
 
 @verbatim|{
-rackton> :type (lambda (x) (Cons x Nil))
-(lambda (x) (Cons x Nil)) :: (∀ a) (-> a (List a))
+λ> (:type (lambda (x) (Cons x Nil)))
+(lambda (x) (Cons x Nil)) :: (All (a) (-> a (List a)))
 }|}
 
 @deftogether[(@defidform[#:kind "REPL command" :info]
               @defidform[#:kind "REPL command" :i])]{
 
-@racket[:info @#,racket[_name]] (or @racket[:i @#,racket[_name]])
+@racket[(:info @#,racket[_name])] (or @racket[(:i @#,racket[_name])])
 prints what @racket[_name] is bound to in the current environment: a
 value scheme, a data constructor, a type constructor, or a class.}
 
 @deftogether[(@defidform[#:kind "REPL command" :quit]
               @defidform[#:kind "REPL command" :q])]{
 
-Exits the REPL.}
+@racket[(:quit)] (or @racket[(:q)]) exits the REPL.}
 
 @deftogether[(@defidform[#:kind "REPL command" :help]
               @defidform[#:kind "REPL command" :h])]{
 
-Prints the command list.}
+@racket[(:help)] (or @racket[(:h)]) prints the command list.}
 
 @section{Programmatic interface}
 

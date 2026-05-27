@@ -53,10 +53,10 @@
 (define surface-forms
   '(define : define-data define-newtype define-struct
      define-class define-instance define-alias define-effect
-     define-associated-type
      lambda λ let letrec match-let where
      if cond match do ann update escape racket handle
-     require provide))
+     require provide
+     All))
 
 ;; Provide-spec heads recognised in (provide ...) bodies.
 (define provide-specs

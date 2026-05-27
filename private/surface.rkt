@@ -8,11 +8,16 @@
 ;;
 ;; Lexical convention
 ;;   - Identifiers whose first character is a lowercase letter are
-;;     "lowercase" — they denote type variables in type positions and
-;;     pattern variables in pattern positions.
+;;     "lowercase".  In type position they introduce a fresh type
+;;     variable; in pattern position they introduce a fresh pattern
+;;     variable; in expression position they are an ordinary
+;;     reference to a value binding.
 ;;   - Every other identifier (uppercase letters, symbols like ->,
-;;     punctuation) is a "non-lowercase" identifier and denotes a type
-;;     constructor or value constructor depending on position.
+;;     punctuation) is "non-lowercase".  It is always a reference to
+;;     an already-bound name, never a fresh binding: a type
+;;     constructor / class name in a type, a data constructor as a
+;;     pattern head, and a value / function / class method / data
+;;     constructor in an expression.
 ;;
 ;; The AST exported below carries the originating syntax object in a
 ;; trailing `stx` slot so that downstream stages can produce sourcemap-
@@ -1015,10 +1020,18 @@
                             (parse-do (cdr stmts) body-stx stx)
                             stx))
                stx)]
-       [_
-        (raise-syntax-error 'parse-do
-          "expected a binding `[var <- expr]` inside (do …)"
-          s)])]))
+       [expr
+        ;; Bare-expression clause: sequence `expr` for its monadic
+        ;; effect, discard the result, then continue.  Desugars to the
+        ;; same shape as `[_fresh <- expr]` but with a fresh
+        ;; identifier so the wildcard isn't a binder.
+        (define fresh (gensym '_do))
+        (e:app (e:var '>>= stx)
+               (list (parse-expr #'expr)
+                     (e:lam (list fresh)
+                            (parse-do (cdr stmts) body-stx stx)
+                            stx))
+               stx)])]))
 
 ;; ----- patterns -----------------------------------------------------
 

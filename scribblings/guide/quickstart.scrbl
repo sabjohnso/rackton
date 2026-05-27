@@ -43,9 +43,12 @@ executes the action in the surrounding Racket runtime.
 }|
 
 The @racket[:] form is the type signature.  The @racket[define] is
-checked against it.  Drop the signature and Rackton infers
-@racket[(All (a) (-> Integer Integer))] from the body — the integer
-literals and arithmetic fix the parameter and result.
+checked against it.  Drop the signature and Rackton still infers
+@racket[(-> Integer Integer)] from the body — the integer literal
+@racket[1] and the arithmetic on @racket[n] each fix one end of the
+arrow.  For a body with free type variables (e.g.
+@racket[(define (id x) x)]), the inferred scheme is generalised:
+@racket[(All (a) (-> a a))].
 
 @section{The REPL}
 
@@ -54,12 +57,16 @@ Launch the REPL with:
 @commandline{racket -l rackton/repl}
 
 @verbatim|{
-rackton> (+ 1 2)
+λ> (+ 1 2)
 3 :: Integer
-rackton> :type (lambda (x) (Cons x Nil))
-(lambda (x) (Cons x Nil)) :: (∀ a) (-> a (List a))
-rackton> :quit
+λ> (:type (lambda (x) (Cons x Nil)))
+(lambda (x) (Cons x Nil)) :: (All (a) (-> a (List a)))
+λ> (:quit)
 }|
+
+REPL commands are parenthesised forms — @racket[(:type _expr)],
+@racket[(:info _name)], @racket[(:quit)], @racket[(:help)] — so the
+reader treats them the same as ordinary input.
 
 Tab completion, multi-line input, and history are all supported.  See
 @secref["repl" #:doc '(lib "rackton/scribblings/reference/rackton-reference.scrbl")]

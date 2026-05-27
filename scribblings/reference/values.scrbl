@@ -294,19 +294,27 @@ Fails an @racket[IO] action with @racket[msg].  Paired naturally with
 
 @section[#:tag "concurrency"]{Concurrency}
 
-These primitives back the @racket[Concurrent] class's @racket[IO]
-instance and are also usable directly.
+These primitives provide direct, non-polymorphic concurrency control
+for code that is fixed to @racket[IO].  They live alongside — not
+under — the @racket[Concurrent] class: a @racket[ThreadId] from
+@racket[fork-io] is just a join handle, while a @racket[Future] from
+the @racket[Concurrent] class's @racket[fork-c] carries a result
+value.  Reach for the @racket[Concurrent] methods when a piece of
+code must run polymorphically over any forkable monad; reach for
+these primitives when @racket[IO] is the only target.
 
 @subsection{Threads}
 
-@defproc[(fork-io    [k (IO a)]) (IO (Future a))]{
+@defproc[(fork-io    [k (IO a)]) (IO ThreadId)]{
 
-Spawns a thread running @racket[k]; returns a @racket[Future] that
-yields the result.}
+Spawns an OS-level thread running @racket[k]; returns a
+@racket[ThreadId] for joining.  The thread's result value is
+discarded; use the @racket[Concurrent] class's @racket[fork-c] /
+@racket[await-c] if you need to recover it.}
 
-@defproc[(wait-thread [t (Future a)]) (IO Unit)]{
+@defproc[(wait-thread [t ThreadId]) (IO Unit)]{
 
-Blocks until @racket[t] completes.}
+Blocks until @racket[t] terminates.}
 
 @subsection{MVars}
 
@@ -371,34 +379,50 @@ These complement (but do not replace) the polymorphic class methods.
 
 @subsection{StateT}
 
+These accessors require @racket[(Applicative m)] (for
+@racket[get-state-t] / @racket[put-state-t] / @racket[modify-state-t])
+or @racket[(Monad m)] (for @racket[lift-state-t]); the elaborator
+inserts the dictionary at each call site, so user code sees the
+signatures shown below.
+
 @defproc[(run-state-t    [k (StateT s m a)]) (-> s (m (Pair s a)))]{Unwrap.}
 @defproc[(eval-state-t   [k (StateT s m a)] [s s]) (m a)]{Run; project the result.}
 @defproc[(exec-state-t   [k (StateT s m a)] [s s]) (m s)]{Run; project the final state.}
-@defproc[(get-state-t    [inner-pure (-> a (m a))]) (StateT s m s)]{Constructor for the StateT version of @racket[get-st].  The dict arg is inserted automatically at use sites.}
-@defproc[(put-state-t    [inner-pure (-> a (m a))] [v s]) (StateT s m Unit)]{Same for @racket[put-st].}
-@defproc[(modify-state-t [inner-pure (-> a (m a))] [f (-> s s)]) (StateT s m Unit)]{Same for @racket[modify-st].}
+@defthing[get-state-t    (StateT s m s)]{StateT version of @racket[get-st].}
+@defproc[(put-state-t    [v s]) (StateT s m Unit)]{StateT version of @racket[put-st].}
+@defproc[(modify-state-t [f (-> s s)]) (StateT s m Unit)]{StateT version of @racket[modify-st].}
 @defproc[(lift-state-t   [ma (m a)]) (StateT s m a)]{Lift an inner action.}
 
 @subsection{EnvT}
 
+@racket[ask-t] requires @racket[(Applicative m)]; @racket[local-t]
+and @racket[lift-env-t] require @racket[(Functor m)].
+
 @defproc[(run-env-t  [k (EnvT r m a)]) (-> r (m a))]{Unwrap.}
-@defproc[(ask-t      [inner-pure (-> a (m a))]) (EnvT r m r)]{EnvT @racket[ask-en].}
-@defproc[(local-t    [f (-> r r)] [k (EnvT r m a)]) (EnvT r m a)]{EnvT @racket[local-en].}
+@defthing[ask-t      (EnvT r m r)]{EnvT version of @racket[ask-en].}
+@defproc[(local-t    [f (-> r r)] [k (EnvT r m a)]) (EnvT r m a)]{EnvT version of @racket[local-en].}
 @defproc[(lift-env-t [ma (m a)]) (EnvT r m a)]{Lift an inner action.}
 
 @subsection{WriterT}
 
+@racket[tell] requires @racket[(Applicative m)]; @racket[lift-writer-t]
+requires both @racket[(Functor m)] and @racket[(Monoid w)].
+
 @defproc[(run-writer-t   [k (WriterT w m a)]) (m (Pair w a))]{Unwrap.}
 @defproc[(eval-writer-t  [k (WriterT w m a)]) (m a)]{Project the result.}
 @defproc[(exec-writer-t  [k (WriterT w m a)]) (m w)]{Project the log.}
-@defproc[(tell           [inner-pure (-> a (m a))] [w w]) (WriterT w m Unit)]{WriterT-specific @racket[tell-w].}
-@defproc[(lift-writer-t  [inner-mempty w] [ma (m a)]) (WriterT w m a)]{Lift an inner action.}
+@defproc[(tell           [w w]) (WriterT w m Unit)]{WriterT version of @racket[tell-w].}
+@defproc[(lift-writer-t  [ma (m a)]) (WriterT w m a)]{Lift an inner action.}
 
 @subsection{ExceptT}
 
+@racket[throw-error] requires @racket[(Applicative m)];
+@racket[catch-error] requires @racket[(Monad m)]; @racket[lift-except-t]
+requires @racket[(Functor m)].
+
 @defproc[(run-except-t   [k (ExceptT e m a)]) (m (Result e a))]{Unwrap.}
-@defproc[(throw-error    [inner-pure (-> a (m a))] [e e]) (ExceptT e m a)]{ExceptT-specific @racket[throw-e].}
-@defproc[(catch-error    [inner-pure (-> a (m a))] [k (ExceptT e m a)] [h (-> e (ExceptT e m a))]) (ExceptT e m a)]{ExceptT-specific @racket[catch-e].}
+@defproc[(throw-error    [e e]) (ExceptT e m a)]{ExceptT version of @racket[throw-e].}
+@defproc[(catch-error    [k (ExceptT e m a)] [h (-> e (ExceptT e m a))]) (ExceptT e m a)]{ExceptT version of @racket[catch-e].}
 @defproc[(lift-except-t  [ma (m a)]) (ExceptT e m a)]{Lift an inner action.}
 
 @subsection{Identity}

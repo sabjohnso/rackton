@@ -24,7 +24,23 @@
     (do [v <- (if (== y 0)
                   (Err "divide by zero")
                   (Ok (racket Integer (x y) (quotient x y))))]
-      (Ok v))))
+      (Ok v)))
+
+  ;; Bare-expression clauses: sequenced without binding the result.
+  ;; (do (Some 1) [x <- (Some 2)] (Some (+ x 10))) ≡
+  ;; (do [_ <- (Some 1)] [x <- (Some 2)] (Some (+ x 10)))
+  (: bare-clause-seq (Maybe Integer))
+  (define bare-clause-seq
+    (do (Some 1)
+        [x <- (Some 2)]
+      (Some (+ x 10))))
+
+  ;; A bare clause that short-circuits.
+  (: bare-clause-short (Maybe Integer))
+  (define bare-clause-short
+    (do (Some 1)
+        None
+      (Some 99))))
 
 ;; ----- checks ------
 
@@ -38,3 +54,7 @@
 (test-case "do over Result propagates Err"
   (check-equal? (divide-or-fail 10 2) (Ok 5))
   (check-equal? (divide-or-fail 10 0) (Err "divide by zero")))
+
+(test-case "bare-expression do clauses sequence without binding"
+  (check-equal? bare-clause-seq (Some 12))
+  (check-equal? bare-clause-short None))

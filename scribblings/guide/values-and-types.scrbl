@@ -6,20 +6,33 @@
 
 @section{Lexical conventions}
 
-Rackton's lexical rules are simple but rigid:
+The first character of an identifier decides whether the identifier
+introduces a fresh binding or refers to an existing one:
 
 @itemlist[
-@item{An identifier beginning with a @bold{lowercase letter} is a
-      @italic{type variable} in type position and a @italic{pattern
-      variable} in pattern position.}
-@item{Every other identifier — including operator-shaped names like
-      @racket[->] and @racket[<*>] — is a @italic{type constructor} or
-      @italic{data constructor}, depending on context.}
+@item{An identifier beginning with a @bold{lowercase letter}
+      @italic{introduces a fresh binding} in type and pattern
+      positions: a @italic{type variable} in a type, and a
+      @italic{pattern variable} in a pattern.  In expression position
+      it is an ordinary @italic{reference} to a value binding
+      (function parameter, @racket[let]-bound name, top-level
+      @racket[define], or prelude function).}
+@item{Every other identifier — uppercase initial, or operator-shaped
+      names like @racket[->], @racket[<*>], @racket[+], @racket[==] —
+      is always a @italic{reference} to an already-bound name, never
+      a fresh binding.  What it refers to depends on position: a
+      @italic{type constructor} or @italic{class name} in a type, a
+      @italic{data constructor} as a pattern head, and a
+      @italic{value}, @italic{function}, @italic{class method}, or
+      @italic{data constructor} in an expression.}
 @item{The underscore @racket[_] is the wildcard pattern.}]
 
 These rules are consistent across the language.  In particular, you
-cannot define a top-level value named @racket[a] or @racket[xs] — the
-parser would treat them as variables.
+cannot define a top-level value named @racket[a] or @racket[xs] in a
+type signature's parameter position — the parser would treat it as a
+type variable.  But you @italic{can} bind a lowercase value at the
+module level with @racket[(define xs …)] and reference it from
+expression position.
 
 @section{Primitive types}
 

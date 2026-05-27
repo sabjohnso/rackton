@@ -47,10 +47,23 @@ type-checked Rackton:
 }|
 
 Multiple @racket[(rackton …)] blocks may coexist in one Racket module.
-Each elaborates independently against the prelude.  Bindings from one
-block are visible at runtime to a later block, but their typing
-information does not propagate — declare a fresh @racket[:] signature
-inside each block when you need cross-block type-checking.
+Each elaborates independently against the prelude.  At runtime,
+bindings from one block are visible to a later block via Racket's
+normal scoping; but at elaboration time each block sees @italic{only}
+the prelude, so a later block that references a binding defined in
+an earlier block fails with @racket[infer: unbound identifier].  The
+workaround is to redeclare the binding with a fresh @racket[:]
+signature at the top of the later block:
+
+@codeblock|{
+(rackton
+  (: greet (-> String String))
+  (define (greet name) (string-append "hi " name)))
+
+(rackton
+  (: greet (-> String String))   (code:comment "redeclare so inference can see it")
+  (define hello (greet "world")))
+}|
 
 @section{The @racket[(module @#,racketidfont{name} rackton …)] form}
 

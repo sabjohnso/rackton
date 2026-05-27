@@ -39,6 +39,19 @@ definitions appear after.
 (: fact (-> Integer Integer))
 (define (fact n) (if (= n 0) 1 (* n (fact (- n 1)))))]}
 
+@defform[#:literals (All)
+         (All (a ...) type)]{
+
+Universal quantifier for type signatures.  Binds the type variables
+@racket[a ...] in @racket[type].  Equivalent to leaving the variables
+free in a top-level @racket[:] declaration, except that an explicit
+@racket[All] in a parameter position introduces a rank-N quantifier
+that is not generalised at the surrounding @racket[define].
+
+@racketblock[
+(: apply-twice (All (a) (-> (-> a a) (-> a a))))
+(define (apply-twice f) (lambda (x) (f (f x))))]}
+
 @defform[
          (define-data (Name a ...) ctor-spec ... maybe-deriving)
          #:grammar
@@ -61,11 +74,16 @@ A type may also be marked @racket[#:abstract] (before the constructors),
 which hides its constructors from the type checker in importing
 modules even when listed in a @racket[(provide …)] form.
 
-A constructor may carry its own existential context via the
-@racket[#:exists] / @racket[#:context] clauses (see
+A constructor may carry its own existential quantifier and constraint
+context via per-constructor @racket[#:forall] / @racket[#:where]
+clauses (see
 @seclink["existentials" #:doc '(lib "rackton/scribblings/guide/rackton-guide.scrbl")]{the guide}),
 and may use @racket[#:returns] to assert a refined return type
-(GADT-style).}
+(GADT-style).
+
+@racketblock[
+(define-data ExistsShow
+  (PackShow #:forall (a) #:where (Show a) a))]}
 
 @defform[
          (define-newtype Name (MkName Type))]{
@@ -161,13 +179,28 @@ a callable that, when invoked under a matching @racket[handle], aborts
 to the handler.  Effects are not tracked in types; an operation
 invoked outside any handler is a runtime error.}
 
-@defform[
-         (define-associated-type (Family a ...))]{
+@defform*[#:literals (=)
+          [(code:line #:type Family)
+           (code:line #:type (Family = T))]]{
 
-Declares an associated type family inside a @racket[define-class]
-body.  Each instance must supply a concrete type for the family via a
-corresponding @racket[(define-associated-type (Family conc-args) type)]
-clause inside the @racket[define-instance].}
+Associated type family declaration and definition.
+
+A @racket[(#:type Family)] clause inside a @racket[define-class] body
+declares the family.  Each instance must supply a concrete type with a
+matching @racket[(#:type (Family = T))] clause inside its
+@racket[define-instance] body, where @racket[T] is the type that the
+family resolves to for that instance head.
+
+@racketblock[
+(define-class (Container c)
+  (#:type Elem)
+  (: empty? (-> c Boolean))
+  (: head   (-> c (Maybe (Elem c)))))
+
+(define-instance (Container (List a))
+  (#:type (Elem = a))
+  (define (empty? xs) (match xs [(Nil) #t] [(Cons _ _) #f]))
+  (define (head   xs) (match xs [(Nil) None] [(Cons h _) (Some h)])))]}
 
 @section[#:tag "sf-exprs"]{Expressions}
 

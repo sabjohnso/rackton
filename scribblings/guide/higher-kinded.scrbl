@@ -94,9 +94,10 @@ definition.
 @section{Built-in instances}
 
 The prelude ships @racket[Functor], @racket[Applicative], and
-@racket[Monad] instances for @racket[Maybe], @racket[List],
-@racket[Result e], @racket[IO], @racket[State s], @racket[Env r],
-@racket[Identity], @racket[STM], and the four transformers
-@racket[StateT], @racket[EnvT], @racket[WriterT], @racket[ExceptT].
-The transformer instances are themselves qualified — a
-@racket[StateT s m] is a @racket[Monad] only when @racket[m] is.
+@racket[Monad] instances for @racket[Maybe], @racket[Result e],
+@racket[IO], @racket[State s], @racket[Env r], @racket[Identity],
+@racket[STM], and the four transformers @racket[StateT],
+@racket[EnvT], @racket[WriterT], @racket[ExceptT].  @racket[List] is
+shipped as @racket[Functor] and @racket[Applicative] only.  The
+transformer instances are themselves qualified — a @racket[StateT s m]
+is a @racket[Monad] only when @racket[m] is.

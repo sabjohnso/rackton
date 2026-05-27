@@ -91,18 +91,27 @@ It will not synthesise it for you.
 @section{Existential types}
 
 Existentials appear on @italic{constructor} signatures, not function
-signatures:
+signatures, using a per-constructor @racket[#:forall] / @racket[#:where]
+clause:
 
 @codeblock|{
 (define-data Anything
-  #:exists (a)
-  (Wrap a (-> a String)))
+  (Wrap #:forall (a) a (-> a String)))
 }|
 
 @racket[Wrap] takes a value of any type and a printer for that type;
-the type variable @racket[a] is hidden from the outside.  Pattern
-matching on @racket[Wrap] introduces a fresh skolem inside the
-clause:
+the type variable @racket[a] is hidden from the outside.  Add
+@racket[#:where] to require the existential to satisfy one or more
+class constraints — those constraints become hypotheses available
+inside any clause that matches the constructor:
+
+@codeblock|{
+(define-data ExistsShow
+  (PackShow #:forall (a) #:where (Show a) a))
+}|
+
+Pattern matching on an existential constructor introduces a fresh
+skolem inside the clause:
 
 @codeblock|{
 (: describe (-> Anything String))

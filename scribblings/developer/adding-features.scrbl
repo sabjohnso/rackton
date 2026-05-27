@@ -42,9 +42,9 @@ For a feature that adds a new surface form:
       enclosing parser.}
 @item{@bold{Inference rule.}  Extend @filepath{private/infer.rkt}
       with a new case in @racket[infer-expr] /
-      @racket[infer-top-form] / @racket[infer-pattern].  Decide what
-      constraints the rule generates, what bindings it introduces,
-      and whether it consults the env for context.}
+      @racket[infer-program-step] / @racket[infer-pattern].  Decide
+      what constraints the rule generates, what bindings it
+      introduces, and whether it consults the env for context.}
 @item{@bold{Codegen rule.}  Extend @filepath{private/codegen.rkt}
       with the lowering for the new node.}
 @item{@bold{Prelude (maybe).}  If the feature introduces a new

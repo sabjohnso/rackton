@@ -525,7 +525,7 @@
 
 (define (id x) x)
 (define/curried (compose f g) (lambda (x) (f (g x))))
-(define (flip f) (lambda (x y) (f y x)))
+(define/curried (flip f x y) ((f y) x))
 (define (const x) (lambda (_y) x))
 
 ;; Mtl-flavoured combinators.  Each needs-dict body's dict-args

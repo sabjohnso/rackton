@@ -35,7 +35,18 @@
          "private/adt.rkt"
          "private/dict.rkt"
          "private/prelude-runtime.rkt"
-         (except-in racket/match ==)
+         ;; Identifier stubs for surface forms, type constructors,
+         ;; classes, and return-typed methods that have no other
+         ;; Racket-level binding.  Re-exported below so Scribble's
+         ;; (for-label rackton) can resolve cross-references to their
+         ;; reference-doc entries.
+         "private/lang-bindings.rkt"
+         ;; match-let is excluded because Rackton's surface form of the
+         ;; same name has its own desugaring (see private/surface.rkt)
+         ;; and its own @defform entry in the reference; the stub in
+         ;; lang-bindings.rkt is what (for-label rackton) should pick
+         ;; up for cross-references.
+         (except-in racket/match == match-let)
          (for-syntax racket/base)
          ;; Explicit re-require of the racket/base names we expose for
          ;; (racket ...) escape bodies and module-form modules.  The
@@ -91,7 +102,13 @@
          (except-out (all-from-out racket/base) #%module-begin)
 
          ;; prelude — class methods, ADTs, and combinators.
-         (all-from-out "private/prelude-runtime.rkt"))
+         (all-from-out "private/prelude-runtime.rkt")
+
+         ;; Surface-form / type-ctor / class / return-typed-method
+         ;; stubs.  Bound so (for-label rackton) in scribble docs can
+         ;; resolve @racket[define-class], @racket[Maybe], @racket[Eq],
+         ;; @racket[pure], etc. to their reference entries.
+         (all-from-out "private/lang-bindings.rkt"))
 
 (define-syntax (rackton-module-begin stx)
   (syntax-case stx ()

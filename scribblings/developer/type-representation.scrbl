@@ -11,17 +11,29 @@ Everything else operates on these.
 @section{The type ADT}
 
 @itemlist[
-@item{@racket[ty:var] — a type variable, identified by its name
-      (symbol) and an optional skolem flag.}
-@item{@racket[ty:con] — a type constructor (e.g., @racket[Integer],
+@item{@racket[tvar] — a type variable, identified by its name
+      (symbol).  Skolemness is tracked separately via the
+      @racket[scheme-vars] / inference-time skolem set, not on the
+      struct itself.}
+@item{@racket[tcon] — a type constructor (e.g., @racket[Integer],
       @racket[Maybe]).  Constructors are first-class; their kinds
       come from the environment's @racket[tcons] table.}
-@item{@racket[ty:app] — type application (e.g., @racket[(Maybe a)]
-      is @racket[(ty:app (ty:con 'Maybe) (list (ty:var 'a)))]).}
-@item{@racket[ty:forall] — explicit universal quantification.  Body
-      is a @racket[ty:qual] or an ordinary type.}
-@item{@racket[ty:qual] — qualified type: a list of constraints
-      followed by a body.  The Haskell @racket[(C a) => τ] shape.}]
+@item{@racket[tapp] — type application (e.g., @racket[(Maybe a)]
+      is @racket[(tapp (tcon 'Maybe) (list (tvar 'a)))]).}
+@item{@racket[tforall] — explicit universal quantification.  Body
+      is a @racket[qual] or an ordinary type.}
+@item{@racket[qual] — qualified type: a list of @racket[pred]
+      constraints followed by a body.  The Haskell @racket[(C a) => τ]
+      shape.}
+@item{@racket[pred] — a single class constraint @racket[(C τ ...)],
+      with the class name and argument types.}]
+
+The names without the @racket[ty:] prefix are the internal type
+representation in @filepath{private/types.rkt}.  The
+@racketidfont{ty:}-prefixed structs in @filepath{private/surface.rkt}
+are the @italic{source-level} AST nodes built by the surface parser
+before inference begins; they are converted into @racket[tvar] /
+@racket[tcon] / @racket[tapp] during elaboration.
 
 @section{Schemes}
 
@@ -52,10 +64,10 @@ first applies @racket[σ₂], then @racket[σ₁] to the result.
 The two key operations:
 
 @itemlist[
-@item{@racket[apply-sub] — replaces every @racket[ty:var] in a type
+@item{@racket[apply-sub] — replaces every @racket[tvar] in a type
       with its image under the substitution.  Recurses through
-      @racket[ty:app] and chases through @racket[ty:qual] and
-      @racket[ty:forall] (with care for binding).}
+      @racket[tapp] and chases through @racket[qual] and
+      @racket[tforall] (with care for binding).}
 @item{@racket[free-vars] — the set of type-variable names occurring
       in a type, scheme, or environment.}]
 
@@ -81,19 +93,21 @@ distinct, opaque constant.  Skolems appear in two contexts:
       a parameter to a concrete type.  The bound parameter behaves as
       a skolem within the clause.}]
 
-The skolem flag on @racket[ty:var] discriminates the two purposes; the
-unifier treats skolems as rigid (unifiable only with themselves).
+Skolems are represented as @racket[tcon]s with synthetic, freshly-generated
+names rather than as a flag on @racket[tvar].  The unifier treats them as
+ordinary constructors, so they unify only with themselves — which is exactly
+the rigidity skolemisation requires.
 
 @section{Kinds}
 
 Kinds classify types.  Two constructors:
 
 @itemlist[
-@item{@racket[k:star] — the kind of ordinary types (@racket[Integer],
+@item{@racket[kind-star] — the kind of ordinary types (@racket[Integer],
       @racket[(Maybe Integer)], etc.).}
-@item{@racket[k:arr] — type-constructor kinds.  Written
+@item{@racket[kind-arr] — type-constructor kinds.  Written
       @racket[(-> k1 k2)] in source.}]
 
 Kind checking happens during class declaration (every parameter has
-a kind, defaulting to @racket[k:star]) and during type-constructor
+a kind, defaulting to @racket[kind-star]) and during type-constructor
 application (the head's kind must accept the argument's kind).

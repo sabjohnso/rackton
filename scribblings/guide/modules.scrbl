@@ -118,5 +118,8 @@ prelude:
 }|
 
 Cross-block imports go via Racket's normal binding system at runtime
-only; the type checker does not propagate schemes between blocks in
-the same module.
+only.  At elaboration time, each @racket[(rackton …)] block sees only
+the prelude — so a reference from a later block to a binding defined
+in an earlier block fails with @racket[infer: unbound identifier].
+Redeclare the binding's @racket[:] signature at the top of the later
+block to make inference see it.

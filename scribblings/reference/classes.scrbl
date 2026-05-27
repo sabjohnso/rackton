@@ -188,9 +188,10 @@ context-wrapped functions.  Superclass: @racket[Functor].
 
 @racket[pure] is return-typed (the inferer resolves the @racket[f]
 from the call's expected type); use @racket[ann] when ambiguous.
-@racket[liftA2] is per-instance, not derived from @racket[<*>] /
-@racket[fmap], so that user-supplied multi-arg lambdas apply with both
-arguments at once.}
+@racket[liftA2] has a default implementation in terms of @racket[<*>]
+and @racket[fmap] (@racket[(liftA2 g x y)] = @racket[(<*> (fmap g x) y)]);
+an instance may override it to apply both arguments at once when that
+matters for the instance's semantics.}
 
 Built-in instances: all the @racket[Functor] instances above.}
 
@@ -203,8 +204,9 @@ Computations that sequence with binding.  Superclass:
 
 Monadic bind.  Sugared via @racket[do].}
 
-Built-in instances: all the @racket[Applicative] instances above
-except @racket[STM] (which has its own) — see @racket[atomically].}
+Built-in instances: all the @racket[Applicative] instances above.
+For @racket[STM], compose actions monadically and then run the result
+under @racket[atomically].}
 
 @section{Folding and traversal}
 

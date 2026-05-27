@@ -103,11 +103,12 @@ Listing @racket[#:deriving] at the end of a @racket[define-data] or
 Available classes for deriving include @racket[Eq], @racket[Ord]
 (which auto-derives @racket[Eq] as well), @racket[Show],
 @racket[Functor], @racket[Foldable], @racket[Traversable],
-@racket[Bifunctor], @racket[Semigroup], @racket[Monoid], and — on
-@racket[define-struct] — per-field @racket[Lens] and @racket[Prism]
-families.  Each derived instance picks up the appropriate context (so
-@racket[#:deriving Eq] on @racket[(Tree a)] yields the qualified
-instance @racket[((Eq a) => (Eq (Tree a)))]).
+@racket[Bifunctor], @racket[Semigroup], @racket[Monoid], plus the
+optics families: per-field @racket[Lens] on @racket[define-struct] and
+per-constructor @racket[Prism] on @racket[define-data].  Each derived
+instance picks up the appropriate context (so @racket[#:deriving Eq]
+on @racket[(Tree a)] yields the qualified instance
+@racket[((Eq a) => (Eq (Tree a)))]).
 
 @section{Abstract types}
 

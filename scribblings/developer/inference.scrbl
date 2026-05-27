@@ -5,8 +5,8 @@
 @title[#:tag "inference"]{Type inference}
 
 @filepath{private/infer.rkt} is the largest file in the codebase
-(~130 KLoC).  It implements Algorithm W with skolemization, GADT
-refinement, class-constraint collection, and the bookkeeping for
+(~3 KLoC / ~130 KB).  It implements Algorithm W with skolemization,
+GADT refinement, class-constraint collection, and the bookkeeping for
 monomorphization and inlining.
 
 @section{Algorithm W in one paragraph}

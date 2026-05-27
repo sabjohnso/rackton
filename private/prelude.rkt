@@ -178,6 +178,12 @@
     (: const (-> a (-> b a)))
     (define (const x) (lambda (_y) x))
 
+    (: flip (-> (-> a (-> b c)) (-> b (-> a c))))
+    (define (flip f) (lambda (x) (lambda (y) ((f y) x))))
+
+    (: compose (-> (-> b c) (-> (-> a b) (-> a c))))
+    (define (compose f) (lambda (g) (lambda (x) (f (g x)))))
+
     ;; --- Functor / Applicative / Monad (higher-kinded) --------
     ;;
     ;; The hierarchy is Functor → Applicative → Monad.  `pure` is a
