@@ -20,7 +20,9 @@
 
 (provide infer-expr/fresh
          infer-program
+         infer-program/phases
          infer-program-step
+         def-scc-order
          generalize
          instantiate
          current-fresh-state
@@ -1568,20 +1570,557 @@
 
 ;; ----- top-level forms ----------------------------------------------
 
+;; Four-phase order-invariant pipeline.  Within a single rackton
+;; module, top-level forms may reference each other in any order:
+;; mutually recursive value definitions, mutually recursive data
+;; types, classes used before they're declared, instances that
+;; mention later types.
+;;
+;;   Phase A — type infrastructure: process requires; pre-register
+;;     tcon shells (name + arity, empty ctor list) so mutually
+;;     recursive data types resolve; register aliases lazily (just
+;;     stores the AST target); register struct-fields; resolve effect
+;;     op signatures; process every class form fully (resolves method
+;;     schemes); resolve every data type's ctor schemes (now tcons
+;;     and classes are visible); resolve every top:dec into a shared
+;;     `declared` table.  Order within Phase A is fixed so that each
+;;     sub-step's inputs are already in env.
+;;
+;;   Phase B — def pre-registration: for each top:def, install the
+;;     name in env with its declared scheme if present, else a fresh
+;;     tvar.  This lets later phases see every top-level name.
+;;
+;;   Phase C — instance registration: run handle-instance-form on
+;;     each top:instance in source order.  Method bodies are inferred
+;;     here; def names from Phase B are visible.  Instance dispatch
+;;     tables register at codegen time (source order) so runtime
+;;     resolution still sees everything before user code runs.
+;;
+;;   Phase D — body inference: build a dependency graph over the
+;;     top:def list (edges: f → g iff f's body free-references g),
+;;     compute SCCs in topological order via Tarjan, infer each SCC
+;;     monomorphically together, then generalize every binding in the
+;;     SCC against the env enriched with the SCC's bindings.  Forward
+;;     non-recursive references see the polymorphic scheme of the
+;;     target; mutually recursive bindings share a monomorphic shape
+;;     within their SCC.
 (define (infer-program forms [env initial-env])
   (with-fresh
-   (let loop ([forms forms] [env env] [declared (hasheq)])
-     (cond
-       [(null? forms) env]
-       [else
-        (define-values (env* declared*)
-          (handle-top-form (car forms) env declared))
-        (loop (cdr forms) env* declared*)]))))
+   (define-values (env* _) (infer-program/phases forms env (hasheq)))
+   env*))
 
-;; Single-form step exposed so the REPL kernel can call
-;; into `handle-top-form` directly without resetting the fresh-state
-;; or pending-preds boxes that the REPL needs to persist across
-;; inputs.  Callers must parameterize those boxes themselves.
+;; `prior-declared` carries forward `top:dec` schemes registered in
+;; previous REPL inputs.  A fresh `(infer-program)` call always
+;; supplies an empty map; the REPL's `elaborate-form` passes its
+;; persisted declared so a `(: foo …)` declared in one input still
+;; applies to a `(define foo …)` in a later one.
+(define (infer-program/phases forms env prior-declared)
+  ;; ---- Phase A: type infrastructure ----
+  (define-values (env-after-A declared)
+    (run-phase-A env forms prior-declared))
+  ;; ---- Phase B: pre-register def names ----
+  (define-values (env-after-B def-tvars)
+    (run-phase-B env-after-A declared forms))
+  ;; ---- Phase C: instance registration (+ method body inference) ----
+  (define env-after-C (run-phase-C env-after-B declared forms))
+  ;; ---- Phase D: SCC-based body inference for top:defs ----
+  (define env-after-D (run-phase-D env-after-C declared def-tvars forms))
+  (values env-after-D
+          (for/fold ([d prior-declared]) ([f (in-list forms)] #:when (top:def? f))
+            (hash-remove d (top:def-name f)))))
+
+;; Phase A — process forms that build the type-level env, in the
+;; order described above.  Returns the post-A env and the `declared`
+;; table mapping each top:dec'd name to its resolved scheme,
+;; combined with any declarations carried over from prior REPL inputs.
+(define (run-phase-A env forms prior-declared)
+  ;; A1: requires bring tcons/classes/instances from other modules
+  ;; into env; must run before any local type resolution.
+  (define env-A1
+    (for/fold ([e env]) ([f (in-list forms)] #:when (top:require? f))
+      (parameterize ([current-aliases (env-aliases e)])
+        (define-values (e* _) (handle-top-form f e (hasheq)))
+        e*)))
+  ;; A2-A4: pre-register tcon shells, aliases (lazy), struct-fields.
+  ;; None of these resolve types, so order among them is irrelevant —
+  ;; just hash inserts.
+  (define env-A2 (pre-register-tcon-shells env-A1 forms))
+  (define env-A3
+    (for/fold ([e env-A2]) ([f (in-list forms)] #:when (top:alias? f))
+      (env-extend-alias e (top:alias-name f) (top:alias-params f)
+                        (top:alias-target f))))
+  (define env-A4
+    (for/fold ([e env-A3]) ([f (in-list forms)] #:when (top:struct-fields? f))
+      (env-extend-struct-fields e (top:struct-fields-struct-name f)
+                                (top:struct-fields-field-names f))))
+  ;; A5: effects (resolve op types against the tcon-complete env).
+  (define env-A5
+    (for/fold ([e env-A4]) ([f (in-list forms)] #:when (top:effect? f))
+      (parameterize ([current-aliases (env-aliases e)])
+        (define-values (e* _) (handle-top-form f e (hasheq)))
+        e*)))
+  ;; A6: classes (handle-class-form resolves method schemes and
+  ;; registers each method as a polymorphic var).
+  (define env-A6
+    (for/fold ([e env-A5]) ([f (in-list forms)] #:when (top:class? f))
+      (parameterize ([current-aliases (env-aliases e)])
+        (define-values (e* _) (handle-top-form f e (hasheq)))
+        e*)))
+  ;; A7: data ctors (now classes are in env, so ctor types with
+  ;; class constraints in extra-context resolve correctly).
+  (define env-A7
+    (parameterize ([current-aliases (env-aliases env-A6)])
+      (resolve-data-ctors env-A6 forms)))
+  ;; A8: resolve every top:dec into the shared declared table; mirror
+  ;; the entry into env so the rest of the pipeline can env-ref-var
+  ;; before the def's body has been inferred.
+  (define declared
+    (parameterize ([current-aliases (env-aliases env-A7)])
+      (for/fold ([d prior-declared]) ([f (in-list forms)] #:when (top:dec? f))
+        (hash-set d (top:dec-name f) (resolve-scheme (top:dec-type f))))))
+  (define env-A8
+    (for/fold ([e env-A7]) ([(name sch) (in-hash declared)])
+      (env-extend-var e name sch)))
+  (values env-A8 declared))
+
+;; Pre-register every top:data's tcon header in env: name + arity +
+;; full ctor-name list + abstract flag.  Ctor schemes are resolved
+;; separately in `resolve-data-ctors` after every tcon (and class) is
+;; in env.  Pre-registering the ctor name list (not just the count)
+;; matches what `env-extend-tcon`'s final state would look like, so
+;; `env-ref-tcon` answers correctly during type resolution of other
+;; forms' bodies.
+(define (pre-register-tcon-shells env forms)
+  (for/fold ([e env]) ([f (in-list forms)] #:when (top:data? f))
+    (define tname    (top:data-name f))
+    (define tparams  (top:data-params f))
+    (define ctors    (top:data-ctors f))
+    (define abstract? (top:data-abstract? f))
+    (env-extend-tcon e tname
+                     (tcon-info tname (length tparams)
+                                (for/list ([c (in-list ctors)])
+                                  (data-ctor-name c))
+                                abstract?))))
+
+;; Resolve every top:data form's ctor field types against the
+;; type-level-complete env, registering each ctor as a data binding.
+;; Mirrors the existing `handle-top-form` top:data branch's ctor loop.
+(define (resolve-data-ctors env forms)
+  (for/fold ([env env]) ([f (in-list forms)] #:when (top:data? f))
+    (match-define (top:data tname tparams ctors stx _abstract?) f)
+    (define default-result-type
+      (make-tapp (tcon tname)
+                 (for/list ([p (in-list tparams)]) (tvar p))))
+    (for/fold ([e env]) ([c (in-list ctors)])
+      (define field-tys
+        (for/list ([t (in-list (data-ctor-field-types c))])
+          (resolve-type t)))
+      (define ctor-result-type
+        (cond
+          [(data-ctor-result-type c)
+           (resolve-type (data-ctor-result-type c))]
+          [else default-result-type]))
+      (define ctor-fn-type
+        (foldr make-arrow ctor-result-type field-tys))
+      (define extra-tvars   (data-ctor-extra-tvars c))
+      (define extra-context (data-ctor-extra-context c))
+      (define qualified-body
+        (cond
+          [(null? extra-context) ctor-fn-type]
+          [else
+           (mqual (for/list ([cs (in-list extra-context)])
+                    (resolve-constraint cs))
+                  ctor-fn-type)]))
+      (define quantifier-vars
+        (cond
+          [(data-ctor-result-type c)
+           (define ft-vars
+             (apply set-union
+                    (cons (seteq)
+                          (for/list ([t (in-list field-tys)])
+                            (type-vars t)))))
+           (define rt-vars (type-vars ctor-result-type))
+           (sort (set->list (set-union ft-vars rt-vars)) symbol<?)]
+          [else (append tparams extra-tvars)]))
+      (define sch (scheme quantifier-vars qualified-body))
+      (env-extend-data e (data-ctor-name c)
+                       (data-info tname (data-ctor-name c)
+                                  (length field-tys) sch
+                                  extra-tvars)))))
+
+;; Phase B — pre-register every top:def's name in env so later
+;; phases (instances, def-body inference) see all top-level names.
+;; Names with a matching top:dec take that scheme; the rest get a
+;; fresh tvar inside a degenerate `(scheme '() α)`.  Returns the
+;; post-B env and a hasheq mapping each non-declared def name to its
+;; placeholder tvar (used in Phase D to unify the inferred body type
+;; with its slot).
+(define (run-phase-B env declared forms)
+  (for/fold ([env env] [tvars (hasheq)])
+            ([f (in-list forms)] #:when (top:def? f))
+    (define name (top:def-name f))
+    (cond
+      [(hash-has-key? declared name)
+       ;; Already registered in env-A8 with its declared scheme.
+       (values env tvars)]
+      [else
+       (define α (fresh-tvar))
+       (values (env-extend-var env name (scheme '() α))
+               (hash-set tvars name α))])))
+
+;; Phase C — register every top:instance.  Reuses the existing
+;; handle-instance-form which both registers the instance and
+;; type-checks its method bodies.  Bodies see the full set of
+;; pre-registered def names from Phase B.
+(define (run-phase-C env declared forms)
+  (parameterize ([current-aliases (env-aliases env)])
+    (for/fold ([e env]) ([f (in-list forms)] #:when (top:instance? f))
+      (define-values (e* _) (handle-top-form f e declared))
+      e*)))
+
+;; Phase D — infer top:def bodies in dependency order using SCC
+;; analysis.  Each SCC's bindings are added to env with their
+;; placeholders, inferred together, then generalized as a group.
+(define (run-phase-D env declared def-tvars forms)
+  (define defs (filter top:def? forms))
+  (define defs-by-name
+    (for/fold ([acc (hasheq)]) ([d (in-list defs)])
+      (hash-set acc (top:def-name d) d)))
+  (define sccs (def-scc-order forms))
+  (for/fold ([env env]) ([scc (in-list sccs)])
+    (infer-def-scc env declared def-tvars defs-by-name scc)))
+
+;; The dependency-order SCC list for the top:def forms in `forms`.
+;; Each SCC is a list of names; the outer list is in topological
+;; order (callees before callers).  Exposed so codegen can emit
+;; defines in the same order — a non-function-RHS def must come
+;; after any def it references in its initializer.
+(define (def-scc-order forms)
+  (define defs (filter top:def? forms))
+  (define name-set
+    (for/seteq ([d (in-list defs)]) (top:def-name d)))
+  (define edges
+    (for/list ([d (in-list defs)])
+      (cons (top:def-name d)
+            (set->list (def-free-tops (top:def-expr d) name-set)))))
+  (tarjan-sccs (map car edges) edges))
+
+;; AST walker producing the set of top-level identifiers referenced
+;; in `expr`, restricted to `top-names` (the set of all top:def names
+;; in the module).  Shadowing-aware: identifiers bound by a lambda
+;; parameter, let/letrec binding, match-pattern variable, or handle
+;; clause's op-param / k-name are not counted for that subtree.
+(define (def-free-tops expr top-names)
+  (define seen (mutable-seteq))
+  (let walk ([e expr] [shadowed (seteq)])
+    (match e
+      [(e:literal _ _) (void)]
+      [(e:var n _)
+       (when (and (set-member? top-names n)
+                  (not (set-member? shadowed n)))
+         (set-add! seen n))]
+      [(e:lam params body _)
+       (walk body (set-union shadowed (list->seteq params)))]
+      [(e:app head args _)
+       (walk head shadowed)
+       (for ([a (in-list args)]) (walk a shadowed))]
+      [(e:let bindings body _)
+       (for ([b (in-list bindings)]) (walk (cdr b) shadowed))
+       (define sh*
+         (for/fold ([s shadowed]) ([b (in-list bindings)])
+           (set-add s (car b))))
+       (walk body sh*)]
+      [(e:letrec bindings body _)
+       (define sh*
+         (for/fold ([s shadowed]) ([b (in-list bindings)])
+           (set-add s (car b))))
+       (for ([b (in-list bindings)]) (walk (cdr b) sh*))
+       (walk body sh*)]
+      [(e:if c th el _) (walk c shadowed) (walk th shadowed) (walk el shadowed)]
+      [(e:ann body _ _) (walk body shadowed)]
+      [(e:match scrut clauses _ _)
+       (walk scrut shadowed)
+       (for ([cl (in-list clauses)])
+         (define sh* (set-union shadowed (pattern-bound-names (clause-pattern cl))))
+         (when (clause-guard cl) (walk (clause-guard cl) sh*))
+         (walk (clause-body cl) sh*))]
+      [(e:update record updates _)
+       (walk record shadowed)
+       (for ([u (in-list updates)]) (walk (cdr u) shadowed))]
+      [(e:handle expr clauses ret _)
+       (walk expr shadowed)
+       (when ret (walk ret shadowed))
+       (for ([cl (in-list clauses)])
+         (define sh* (set-union shadowed
+                                (list->seteq (handle-clause-params cl))
+                                (let ([k (handle-clause-k-name cl)])
+                                  (if k (seteq k) (seteq)))))
+         (walk (handle-clause-body cl) sh*))]
+      [(e:escape _ _ _ _) (void)]
+      [_ (void)]))
+  seen)
+
+(define (pattern-bound-names p)
+  (match p
+    [(p:var n _) (seteq n)]
+    [(p:ctor _ args _)
+     (for/fold ([s (seteq)]) ([a (in-list args)])
+       (set-union s (pattern-bound-names a)))]
+    [_ (seteq)]))
+
+;; Tarjan's algorithm.  Input: a node list and an adjacency list
+;; `(node . successors)`.  Output: list of SCCs (each an inner list
+;; of node names) in *topological order* — earliest predecessors
+;; first, so dependencies are inferred before their dependents.
+;; Self-loops keep their node in a singleton SCC.  Edges to nodes
+;; outside the input set (e.g. uses of class methods, prelude
+;; bindings) are silently dropped — only intra-module dependencies
+;; partition the def list.
+(define (tarjan-sccs nodes edges-alist)
+  (define succ (make-hasheq))
+  (for ([entry (in-list edges-alist)])
+    (hash-set! succ (car entry) (cdr entry)))
+  (define index-of (make-hasheq))
+  (define lowlink (make-hasheq))
+  (define onstack (make-hasheq))
+  (define stack '())
+  (define sccs '())
+  (define counter 0)
+  (define (strongconnect v)
+    (hash-set! index-of v counter)
+    (hash-set! lowlink v counter)
+    (set! counter (add1 counter))
+    (set! stack (cons v stack))
+    (hash-set! onstack v #t)
+    (for ([w (in-list (hash-ref succ v '()))])
+      (cond
+        [(not (hash-has-key? index-of w))
+         (strongconnect w)
+         (hash-set! lowlink v
+                    (min (hash-ref lowlink v) (hash-ref lowlink w)))]
+        [(hash-ref onstack w #f)
+         (hash-set! lowlink v
+                    (min (hash-ref lowlink v) (hash-ref index-of w)))]))
+    (when (= (hash-ref lowlink v) (hash-ref index-of v))
+      (define scc
+        (let loop ([acc '()])
+          (define w (car stack))
+          (set! stack (cdr stack))
+          (hash-remove! onstack w)
+          (cond
+            [(eq? w v) (cons w acc)]
+            [else (loop (cons w acc))])))
+      (set! sccs (cons scc sccs))))
+  (for ([v (in-list nodes)] #:unless (hash-has-key? index-of v))
+    (strongconnect v))
+  ;; Tarjan produces SCCs in reverse topological order; reverse to
+  ;; deliver them in dependency order (callees before callers).
+  (reverse sccs))
+
+;; Infer one SCC's bindings together.  All members of the SCC are
+;; visible in env when each body is type-checked; constraints
+;; accumulate across the group; generalization runs at the SCC
+;; boundary so mutually recursive bindings share a monomorphic shape
+;; during inference and land as polymorphic schemes afterward.
+;;
+;; Each def's processing mirrors `handle-top-form`'s top:def branch
+;; one of two ways:
+;;   * declared (top:dec'd) — skolemize the scheme, push skolemized
+;;     param types, infer body, unify, reduce against decl preds,
+;;     resolve methods.
+;;   * undeclared — use the placeholder tvar from Phase B; defer
+;;     generalization until the SCC closes; detect needs-dict on the
+;;     generalized scheme and run the same dict-skolem path the
+;;     single-form branch uses.
+(define (infer-def-scc env declared def-tvars defs-by-name scc-names)
+  (parameterize ([current-aliases (env-aliases env)])
+    ;; Split the SCC's names by whether they have a declared scheme.
+    (define-values (decl-names undecl-names)
+      (partition (lambda (n) (hash-has-key? declared n)) scc-names))
+    ;; Process declared members first: they're fully type-checked
+    ;; and generalized immediately, just like the old declared path.
+    ;; Their schemes are already in env from Phase A.
+    (define env-after-decl
+      (for/fold ([env env]) ([name (in-list decl-names)])
+        (define f (hash-ref defs-by-name name))
+        (infer-declared-def env declared (top:def-expr f) name (top:def-stx f))))
+    ;; Process undeclared members of the SCC.  When |undecl-names| > 1
+    ;; (genuine mutual recursion) we keep each binding's placeholder
+    ;; tvar visible while every body is inferred, unify each body's
+    ;; type into the tvar, then generalize all bindings together at
+    ;; the end of the SCC.  When |undecl-names| = 1 (a singleton SCC
+    ;; with no self-recursion either), single-binding inference
+    ;; matches the original handle-top-form behavior exactly.
+    (infer-undeclared-scc env-after-decl declared def-tvars defs-by-name
+                          undecl-names)))
+
+;; Mirror of the declared-signature branch of the old
+;; `handle-top-form` top:def case.  The scheme was already entered
+;; into env during Phase A and into `declared` for this lookup.
+(define (infer-declared-def env declared expr name stx)
+  (define decl-scheme (hash-ref declared name))
+  (define needs-dict-reqs (var-dict-requirements env decl-scheme))
+  (define-values (decl-ty decl-preds dict-skolems dict-arg-names)
+    (cond
+      [(null? needs-dict-reqs)
+       (define-values (t p) (skolemize decl-scheme))
+       (values t p (hasheq) '())]
+      [else
+       (define-values (t p s) (skolemize/tracked decl-scheme))
+       (define-values (sk-map args) (build-dict-skolems needs-dict-reqs s env))
+       (values t p sk-map args)]))
+  (when (and (current-needs-dict-defs) (not (null? dict-arg-names)))
+    (hash-set! (current-needs-dict-defs) name dict-arg-names))
+  (define saved-skolems (current-dict-skolems))
+  (current-dict-skolems dict-skolems)
+  (define-values (s t)
+    (cond
+      [(and (e:lam? expr)
+            (decl-arrow-depth-ge? decl-ty (length (e:lam-params expr))))
+       (define-values (arg-tys cod)
+         (unfold-arrow decl-ty (length (e:lam-params expr))))
+       (define env-lam
+         (for/fold ([e env])
+                   ([p (in-list (e:lam-params expr))]
+                    [ty (in-list arg-tys)])
+           (env-extend-var e p (scheme '() ty))))
+       (define-values (s-body t-body)
+         (cond
+           [(e:match? (e:lam-body expr))
+            (parameterize ([current-expected-type cod])
+              (infer-expr (e:lam-body expr) env-lam))]
+           [else (infer-expr (e:lam-body expr) env-lam)]))
+       (values s-body
+               (foldr make-arrow t-body
+                      (for/list ([ty (in-list arg-tys)])
+                        (apply-subst s-body ty))))]
+      [else (infer-expr expr env)]))
+  (define s-u
+    (with-handlers
+     ([exn:fail:unify?
+       (lambda (_)
+         (raise-syntax-error 'infer
+           (format "definition of ~s has type ~a, declared as ~a"
+                   name
+                   (pretty-type (apply-subst s t))
+                   (scheme->datum decl-scheme))
+           stx))])
+     (unify (normalize-type env (apply-subst s t)) decl-ty)))
+  (define final-subst (subst-compose s-u s))
+  (apply-subst-to-preds! final-subst)
+  (define remaining-preds
+    (reduce-context env decl-preds (snapshot-preds)))
+  (cond
+    [(not (null? remaining-preds))
+     (raise-syntax-error 'infer
+       (format "unsolved constraints in ~s: ~s"
+               name
+               (map pretty-pred remaining-preds))
+       stx)]
+    [else (restore-preds! '())])
+  (resolve-method-uses! final-subst env)
+  (current-dict-skolems saved-skolems)
+  env)
+
+;; Infer one SCC of undeclared defs.  Singleton SCC (no self-edge):
+;; behaves exactly like the previous single-def undeclared path,
+;; including the inferred-needs-dict detection.  Mutual SCC (or
+;; singleton with self-edge): each member's placeholder tvar from
+;; Phase B stays in env throughout body inference; generalization
+;; happens at the end against an env scrubbed of the SCC members so
+;; each scheme can quantify the type vars shared across the group.
+(define (infer-undeclared-scc env declared def-tvars defs-by-name names)
+  (cond
+    [(null? names) env]
+    [else
+     (define-values (s* defs-rev)
+       (for/fold ([s empty-subst] [acc '()]) ([name (in-list names)])
+         (define f (hash-ref defs-by-name name))
+         (define expr (top:def-expr f))
+         (define α (hash-ref def-tvars name))
+         (define env-cur (apply-subst/env s env))
+         (define-values (s-body t-body) (infer-expr expr env-cur))
+         (define s-now (subst-compose s-body s))
+         (define s-rec (unify (apply-subst s-now α) (apply-subst s-now t-body)))
+         (values (subst-compose s-rec s-now)
+                 (cons (list name f α) acc))))
+     (define defs (reverse defs-rev))
+     (apply-subst-to-preds! s*)
+     (define env-after-subst (apply-subst/env s* env))
+     (for/fold ([env env-after-subst]) ([entry (in-list defs)])
+       (match-define (list name f α) entry)
+       (define final-ty (apply-subst s* α))
+       ;; Strip *every* SCC member's binding from env before
+       ;; generalize.  The current member's placeholder
+       ;; `(scheme '() final-ty)` would otherwise pin its own type
+       ;; vars into env-fv and block quantification.  Already-
+       ;; generalized members (from earlier iterations) are safe to
+       ;; remove or keep — their scheme-free-vars is empty either
+       ;; way — so blanket removal is simpler than tracking which
+       ;; have been finished.
+       (define gen-env
+         (for/fold ([e env]) ([n (in-list names)])
+           (env-remove-var e n)))
+       (finish-undeclared-def env gen-env (top:def-expr f)
+                              name s* final-ty (top:def-stx f)))]))
+
+;; Shared finalizer for an undeclared def: detect inferred needs-dict,
+;; record recursive dict-uses, generalize, resolve method calls.
+;; Extracted so both single-form and SCC paths share one body.
+;; `env` is where the new binding lands; `env-for-gen` is `env`
+;; minus any SCC siblings whose placeholder tvars would block
+;; quantification of tvars shared across the group.
+(define (finish-undeclared-def env env-for-gen expr name s* final-ty stx)
+  (define env-fv (env-vars-free-vars env-for-gen))
+  (define ty-fv  (type-vars final-ty))
+  (define quant-set (set-subtract ty-fv env-fv))
+  (define dict-bearing-preds
+    (cond
+      [(or (set-empty? quant-set) (not (e:lam? expr))) '()]
+      [else
+       (for/list ([p (in-list (snapshot-preds))]
+                  #:when
+                  (and (class-has-return-typed-methods? env (pred-class p))
+                       (not (set-empty? (set-intersect (type-vars p) quant-set)))
+                       (for/or ([a (in-list (pred-args p))]) (tvar? a))))
+         p)]))
+  (cond
+    [(null? dict-bearing-preds)
+     (define generalized (generalize env-for-gen final-ty))
+     (resolve-method-uses! s* env)
+     (env-extend-var env name generalized)]
+    [else
+     (define dict-tvar-names
+       (for/fold ([acc (seteq)]) ([p (in-list dict-bearing-preds)])
+         (for/fold ([acc acc]) ([a (in-list (pred-args p))]
+                                #:when (and (tvar? a)
+                                            (set-member? quant-set
+                                                         (tvar-name a))))
+           (set-add acc (tvar-name a)))))
+     (define skolem-subst
+       (for/fold ([sub empty-subst]) ([tv (in-set dict-tvar-names)])
+         (subst-extend sub tv
+                       (tcon (string->symbol
+                              (format "$skolem.~a" tv))))))
+     (define needs-dict-reqs
+       (for/list ([p (in-list dict-bearing-preds)])
+         (cons (pred-class p) (pred-args p))))
+     (define-values (sk-map arg-names)
+       (build-dict-skolems needs-dict-reqs skolem-subst env))
+     (when (and (current-needs-dict-defs) (not (null? arg-names)))
+       (hash-set! (current-needs-dict-defs) name arg-names))
+     (record-recursive-dict-uses! expr name needs-dict-reqs s*)
+     (define generalized (generalize env-for-gen final-ty))
+     (define saved-skolems (current-dict-skolems))
+     (current-dict-skolems sk-map)
+     (resolve-method-uses! (subst-compose skolem-subst s*) env)
+     (current-dict-skolems saved-skolems)
+     (env-extend-var env name generalized)]))
+
+;; Single-form step exposed so the REPL kernel can call into
+;; handle-top-form directly without resetting the fresh-state or
+;; pending-preds boxes the REPL persists.  Callers parameterize
+;; those boxes themselves.
 (define (infer-program-step form env declared)
   (handle-top-form form env declared))
 

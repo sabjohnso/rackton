@@ -72,16 +72,46 @@ Add a signature and Rackton skolem-checks the body against it:
   (lambda (x) (f (g x))))
 }|
 
-The @racket[:] form pre-registers the name in the typing environment,
-so a signature can also appear @italic{before} mutually recursive
-definitions:
+A type signature isn't required for mutual recursion: top-level
+forms in a Rackton module are order-invariant.  Every name is
+visible to every other form regardless of where it appears in the
+file:
 
 @codeblock|{
-(: even? (-> Integer Boolean))
-(: odd?  (-> Integer Boolean))
 (define (even? n) (if (= n 0) #t (odd?  (- n 1))))
 (define (odd?  n) (if (= n 0) #f (even? (- n 1))))
 }|
+
+The same rule applies to data types, classes, instances, and
+references to a value defined later in the file:
+
+@codeblock|{
+;; Forward reference between defs:
+(: r Integer)
+(define r (g 3))
+(define (g x) (* x 2))
+
+;; Mutually recursive data types:
+(define-data Tree Leaf (Br Forest Forest))
+(define-data Forest Empty (Cns Tree Forest))
+
+;; A class used before its declaration:
+(define (greet x) (pretty x))
+(define-class (Pretty a)
+  (: pretty (-> a String)))
+}|
+
+Inference uses strongly-connected-component analysis on the def
+graph: independent defs are generalized individually (so
+@racket[id] used at two element types stays polymorphic), while
+mutually recursive bindings share a monomorphic shape during
+inference and generalize together at the SCC boundary.
+
+The @racket[:] form still pre-registers the name in the typing
+environment.  Most code doesn't need it; it remains useful for
+documentation, to constrain the inferred scheme, or to declare a
+binding that would otherwise be ambiguous (see the @racket[pure]
+case in @secref["Return-typed_methods___racket_pure__and__racket_mempty_"]).
 
 @section{Function types}
 

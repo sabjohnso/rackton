@@ -30,6 +30,68 @@
          ;; the runtime binding here.
          "prelude-runtime.rkt")
 
+;; Stable phase ordering of top-level forms for codegen emission.
+;; The aim is to satisfy runtime dependencies between *side-effecting
+;; module top-level forms* — chiefly, `define-instance` registers
+;; into a dispatch table that `define-class` defines, so every class
+;; must run before any instance.  Within a single phase, source
+;; order is preserved (Racket's `sort` is stable), so user-visible
+;; sequencing of effects (e.g. ordering of `define`s with
+;; side-effecting RHS) doesn't shift.
+;;
+;; Phase order:
+;;   0. requires            — pull in imports first.
+;;   1. data types          — `define-data-ctor` calls; independent.
+;;   2. struct-fields       — no codegen but kept for completeness.
+;;   3. classes             — `(define table (make-hasheq))` per
+;;                            method, registers a class-method
+;;                            dispatch wrapper.
+;;   4. instances           — `register-instance-method!` calls;
+;;                            require class tables to exist.
+;;   5. effects             — define a continuation-prompt-tag.
+;;   6. defs                — module-level `define`s; lazy bindings.
+;;   7. everything else     — aliases, decs, provides; mostly no
+;;                            codegen.
+(define-for-syntax (phase-sort-forms parsed)
+  (define (phase f)
+    (cond
+      [(top:require? f) 0]
+      [(top:data? f) 1]
+      [(top:struct-fields? f) 2]
+      [(top:class? f) 3]
+      [(top:instance? f) 4]
+      [(top:effect? f) 5]
+      [(top:def? f) 6]
+      [else 7]))
+  ;; Defs need a stronger ordering than "source order within phase":
+  ;; `(define use (helper 5))` evaluates `helper` immediately, so
+  ;; `helper`'s `define` must run first.  Use the same SCC order
+  ;; inference computed; defs in a single SCC are mutually
+  ;; recursive (all-functions case) so source order within the SCC
+  ;; suffices.
+  (define def-order
+    (let* ([sccs (def-scc-order parsed)]
+           [linear (apply append sccs)])
+      (for/hasheq ([n (in-list linear)] [i (in-naturals)])
+        (values n i))))
+  (define (rank f i)
+    (cond
+      [(top:def? f) (hash-ref def-order (top:def-name f) i)]
+      [else i]))
+  ;; Tag each form with its source position; for defs, override
+  ;; the position with the dependency-derived rank.
+  (define tagged
+    (for/list ([f (in-list parsed)] [i (in-naturals)])
+      (list (phase f) (rank f i) f)))
+  (define sorted
+    (sort tagged
+          (lambda (a b)
+            (cond
+              [(< (car a) (car b)) #t]
+              [(> (car a) (car b)) #f]
+              [else (< (cadr a) (cadr b))]))))
+  (for/list ([entry (in-list sorted)]) (caddr entry)))
+
 ;; Shared elaboration helper: returns
 ;;   (values compiled-syntax-list provide-stx
 ;;           bindings-data data-ctors-data tcons-data classes-data instances-data
@@ -62,9 +124,18 @@
                  [current-inlinable-bodies        (make-hasheq)]
                  [current-inlined-sites           (box '())])
     (define env (infer-program parsed prelude-env))
+    ;; Compile each parsed form into Racket syntax.  The emission
+    ;; order must respect runtime dependencies — `define-instance`
+    ;; mutates a dispatch table created by `define-class`, so all
+    ;; classes have to run before any instances.  Phase-sort with
+    ;; `sort` (Racket's `sort` is stable): forms within a phase
+    ;; preserve their source order so the user-visible execution
+    ;; ordering of defs and side-effecting top-level expressions
+    ;; doesn't change.
+    (define parsed-ordered (phase-sort-forms parsed))
     (define compiled
       (filter values
-              (for/list ([f (in-list parsed)])
+              (for/list ([f (in-list parsed-ordered)])
                 (compile-top f env))))
     ;; Emit a runtime form that publishes this elaborate's
     ;; monomorphization log via the codegen-exposed setter.  The

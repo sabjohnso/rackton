@@ -200,11 +200,15 @@
                  [current-needs-dict-defs
                    (rackton-repl-state-needs-dict-defs state)])
     (define parsed (parse-toplevel-list (list stx)))
+    ;; Run the full 4-phase pipeline over the parsed list so that
+    ;; multi-form REPL input (a single `(define …) (define …)` block,
+    ;; for instance) is order-invariant just like a module body.
+    ;; Single-form input degenerates into a 1-element mini-module —
+    ;; same end result as the old `handle-top-form-step` loop.
     (define-values (env* _declared*)
-      (for/fold ([env (rackton-repl-state-env state)]
-                 [declared (rackton-repl-state-declared state)])
-                ([p (in-list parsed)])
-        (handle-top-form-step p env declared)))
+      (infer-program/phases parsed
+                            (rackton-repl-state-env state)
+                            (rackton-repl-state-declared state)))
     (define compiled
       (filter values
               (for/list ([p (in-list parsed)])

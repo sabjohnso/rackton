@@ -28,12 +28,13 @@ in scope, the declared type is skolem-checked against the body.}
          #:contracts ([name id?])]{
 
 Declares a polymorphic or monomorphic type signature for the
-subsequent @racket[(define name …)].  Free type variables in
+matching @racket[(define name …)].  Free type variables in
 @racket[type] are implicitly universally quantified, or an explicit
-@racket[(All (a ...) type)] form may be used.  A @racket[:] declaration
-also pre-registers @racket[name] in the typing environment, so later
-top-level forms can refer to mutually recursive functions whose
-definitions appear after.
+@racket[(All (a ...) type)] form may be used.  The signature may
+appear before or after the matching @racket[define] in source
+order — top-level forms in a Rackton module are order-invariant
+(see @secref["values-and-types" #:doc '(lib "rackton/scribblings/guide/rackton-guide.scrbl")]
+for the full ordering story).
 
 @racketblock[
 (: fact (-> Integer Integer))

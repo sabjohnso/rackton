@@ -37,6 +37,7 @@
          env-ref-effect
          env-effect-of-op
          env-vars-free-vars
+         env-remove-var
          apply-subst/env
 
          initial-env)
@@ -228,6 +229,13 @@
 (define (env-vars-free-vars e)
   (for/fold ([acc (seteq)]) ([(_ sch) (in-hash (env-vars e))])
     (set-union acc (scheme-free-vars sch))))
+
+;; Drop a single variable binding from env.  Used during SCC-based
+;; generalization: when generalizing one binding of a mutual group,
+;; the *other* bindings' placeholder tvars must be invisible so that
+;; `generalize`'s env-vars-free-vars computation doesn't pin them.
+(define (env-remove-var e x)
+  (struct-copy env e [vars (hash-remove (env-vars e) x)]))
 
 ;; Lift a substitution over every scheme in the value env.  Data and
 ;; tcon envs are unaffected — their schemes never mention free tvars.
