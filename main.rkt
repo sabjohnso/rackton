@@ -106,7 +106,7 @@
 
          ;; Surface-form / type-ctor / class / return-typed-method
          ;; stubs.  Bound so (for-label rackton) in scribble docs can
-         ;; resolve @racket[define-class], @racket[Maybe], @racket[Eq],
+         ;; resolve @racket[protocol], @racket[Maybe], @racket[Eq],
          ;; @racket[pure], etc. to their reference entries.
          (all-from-out "private/lang-bindings.rkt"))
 

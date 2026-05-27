@@ -8,26 +8,26 @@
 
 (rackton
   ;; ----- A small class with ONE return-typed method ---------
-  (define-class (HasUnit (m :: (-> * *)))
+  (protocol (HasUnit (m :: (-> * *)))
     (: unit-val (m Integer)))
 
   ;; Base instances
-  (define-instance (HasUnit Maybe)
+  (instance (HasUnit Maybe)
     (define unit-val (Some 1)))
 
-  (define-instance (HasUnit IO)
+  (instance (HasUnit IO)
     (define unit-val (pure-io 2)))
 
   ;; Lifted instance over EnvT: the body uses the polymorphic
   ;; `unit-val` whose class param `m` is bound by the instance qual.
-  (define-instance ((HasUnit m) => (HasUnit (EnvT String m)))
+  (instance ((HasUnit m) => (HasUnit (EnvT String m)))
     (define unit-val (lift-env-t unit-val)))
 
   ;; Lifted instance over StateT: needs (Functor m) too, because
   ;; lift-state-t uses inner fmap.  This is the first instance in
   ;; the tests whose qual context has multiple constraints, both of
   ;; which are dict-bearing.
-  (define-instance ((HasUnit m) (Functor m) => (HasUnit (StateT Integer m)))
+  (instance ((HasUnit m) (Functor m) => (HasUnit (StateT Integer m)))
     (define unit-val (lift-state-t unit-val)))
 
   ;; Concrete uses
@@ -45,15 +45,15 @@
 
   ;; ----- A class with TWO return-typed methods to confirm dict-
   ;; arg ordering is stable ----------------------------------
-  (define-class (TwoVals (m :: (-> * *)))
+  (protocol (TwoVals (m :: (-> * *)))
     (: one-val (m Integer))
     (: two-val (m Integer)))
 
-  (define-instance (TwoVals Maybe)
+  (instance (TwoVals Maybe)
     (define one-val (Some 10))
     (define two-val (Some 20)))
 
-  (define-instance ((TwoVals m) => (TwoVals (EnvT String m)))
+  (instance ((TwoVals m) => (TwoVals (EnvT String m)))
     (define one-val (lift-env-t one-val))
     (define two-val (lift-env-t two-val)))
 

@@ -14,7 +14,7 @@ operations it needs.
 @section{Declaring a class}
 
 @codeblock|{
-(define-class (Eq a)
+(protocol (Eq a)
   (: ==  (-> a (-> a Boolean)))
   (: /= (-> a (-> a Boolean)))
   (define (/= x y) (if (== x y) #f #t)))
@@ -32,7 +32,7 @@ class constraint.
 A class can demand its parameters already satisfy another class:
 
 @codeblock|{
-(define-class ((Eq a) => (Ord a))
+(protocol ((Eq a) => (Ord a))
   (: < (-> a (-> a Boolean))))
 }|
 
@@ -43,10 +43,10 @@ Superclass closure is followed during entailment: any program with an
 @section{Declaring an instance}
 
 @codeblock|{
-(define-instance (Eq Integer)
+(instance (Eq Integer)
   (define (== x y) (= x y)))
 
-(define-instance ((Eq a) => (Eq (Maybe a)))
+(instance ((Eq a) => (Eq (Maybe a)))
   (define (== x y)
     (match x
       [(None)   (match y [(None) #t] [(Some _) #f])]
@@ -83,12 +83,12 @@ A default method body inside a class declaration is used by any
 instance that omits it:
 
 @codeblock|{
-(define-class (Eq a)
+(protocol (Eq a)
   (: == (-> a (-> a Boolean)))
   (: /= (-> a (-> a Boolean)))
   (define (/= x y) (if (== x y) #f #t)))   ;; default for /=
 
-(define-instance (Eq Integer)
+(instance (Eq Integer)
   (define (== x y) (= x y)))
 ;; /= for Integer falls back to the class default.
 }|

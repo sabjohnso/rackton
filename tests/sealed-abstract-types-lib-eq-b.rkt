@@ -8,5 +8,5 @@
 
 (define-data Color  Red  Green  Blue)
 
-(define-instance (Eq Color)
+(instance (Eq Color)
   (define (== a b) #t))

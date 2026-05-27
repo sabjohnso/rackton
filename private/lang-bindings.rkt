@@ -3,7 +3,7 @@
 ;; private/lang-bindings.rkt — identifier stubs for every name in the
 ;; Rackton language that has no other Racket-level binding.
 ;;
-;; Why these exist: Rackton's surface forms (define-class, define-data,
+;; Why these exist: Rackton's surface forms (protocol, define-data,
 ;; …), type constructors (Maybe, IO, …), classes (Eq, Functor, …), and
 ;; return-typed methods (pure, mempty, …) are not Racket macros or
 ;; values — they are recognised by the surface parser in
@@ -40,8 +40,8 @@
 (define-rackton-form : "type ascription")
 (define-rackton-form define-data "data type declaration")
 (define-rackton-form define-newtype "newtype declaration")
-(define-rackton-form define-class "type class declaration")
-(define-rackton-form define-instance "instance declaration")
+(define-rackton-form protocol "type class (protocol) declaration")
+(define-rackton-form instance "instance declaration")
 (define-rackton-form define-alias "type alias declaration")
 (define-rackton-form define-effect "algebraic effect declaration")
 
@@ -60,7 +60,7 @@
 ;; ----- provide specs -----------------------------------------------
 
 (define-rackton-form data-out "provide spec exporting a data type with its constructors")
-(define-rackton-form class-out "provide spec exporting a class with its methods")
+(define-rackton-form protocol-out "provide spec exporting a protocol with its methods")
 
 ;; ----- type constructors -------------------------------------------
 

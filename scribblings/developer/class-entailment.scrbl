@@ -54,7 +54,7 @@ To resolve a candidate constraint:
 
 Two instances overlap when their heads can be unified — both would
 resolve a constraint that matches the common type.  When
-@racket[define-instance] adds an instance to the table, the entail
+@racket[instance] adds an instance to the table, the entail
 module checks for overlap with every existing instance for the same
 class:
 

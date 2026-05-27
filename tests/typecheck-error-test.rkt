@@ -80,11 +80,11 @@
 
 (test-case "associated type: instance missing #:type binding is rejected"
   (check-rackton-compile-error
-   (define-class (Sized (c :: *))
+   (protocol (Sized (c :: *))
      (#:type Index)
      (: size-of (-> c (Index c))))
    ;; No (#:type (Index = ...)) — instance is incomplete.
-   (define-instance (Sized (List a))
+   (instance (Sized (List a))
      (define (size-of xs) (length xs)))))
 
 (test-case "record update: unknown field is rejected"

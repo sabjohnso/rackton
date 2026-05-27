@@ -4,10 +4,10 @@
 ;;
 ;; Under the new semantics:
 ;;   - A module with no (provide ...) form exports nothing.
-;;   - Bare names, (all-defined-out), (data-out T), (class-out C),
+;;   - Bare names, (all-defined-out), (data-out T), (protocol-out C),
 ;;     (rename-out ...), and (except-out ...) all behave like their
 ;;     Racket counterparts (with the Rackton-specific data-out /
-;;     class-out additions).
+;;     protocol-out additions).
 ;;   - Unexported bindings are invisible to importers' type checker
 ;;     too, not just at runtime.
 ;;   - Instances always escape regardless of provide-list.
@@ -101,18 +101,18 @@
   (check-equal? struct-out-px 7)
   (check-equal? struct-out-py 9))
 
-;; ----- (class-out C) --------------------------------------------
+;; ----- (protocol-out C) --------------------------------------------
 
 (rackton
-  (require "provide-lib-class-out.rkt")
-  (: class-out-result Integer)
-  (define class-out-result (my-size (MkSphere 42))))
+  (require "provide-lib-protocol-out.rkt")
+  (: protocol-out-result Integer)
+  (define protocol-out-result (my-size (MkSphere 42))))
 
-(test-case "(class-out Sized): my-size method dispatches across modules"
-  (check-equal? class-out-result 42))
+(test-case "(protocol-out Sized): my-size method dispatches across modules"
+  (check-equal? protocol-out-result 42))
 
-(test-case "(class-out Sized) + (data-out Sphere): helper stays hidden"
-  (check-true (require-name/fails? "provide-lib-class-out.rkt" 'helper)))
+(test-case "(protocol-out Sized) + (data-out Sphere): helper stays hidden"
+  (check-true (require-name/fails? "provide-lib-protocol-out.rkt" 'helper)))
 
 ;; ----- (rename-out [old new]) -----------------------------------
 

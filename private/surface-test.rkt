@@ -240,10 +240,10 @@
                   (ty:var 'a #f)
                   #f))
 
-  ;; ----- define-class ----------------------------------------------
+  ;; ----- protocol ---------------------------------------------------
 
   ;; Bare class with one method sig
-  (check-equal? (ptop '(define-class (Eq a)
+  (check-equal? (ptop '(protocol (Eq a)
                          (: == (-> a (-> a Boolean)))))
                 (top:class
                   '()
@@ -258,7 +258,7 @@
                   #f))
 
   ;; Class with superclass
-  (check-equal? (ptop '(define-class ((Eq a) => (Ord a))
+  (check-equal? (ptop '(protocol ((Eq a) => (Ord a))
                          (: < (-> a (-> a Boolean)))))
                 (top:class
                   (list (constraint 'Eq (list (ty:var 'a #f)) #f))
@@ -273,7 +273,7 @@
                   #f))
 
   ;; Class with a default-method implementation
-  (check-equal? (ptop '(define-class (Foo a)
+  (check-equal? (ptop '(protocol (Foo a)
                          (: bar (-> a Integer))
                          (define (bar _x) 0)))
                 (top:class
@@ -288,10 +288,10 @@
                                         (e:lam '(_x) (e:literal 0 #f) #f) #f))
                   #f))
 
-  ;; ----- define-instance --------------------------------------------
+  ;; ----- instance --------------------------------------------
 
   ;; Bare instance
-  (check-equal? (ptop '(define-instance (Eq Integer)
+  (check-equal? (ptop '(instance (Eq Integer)
                          (define == =)))
                 (top:instance
                   '()
@@ -300,7 +300,7 @@
                   #f))
 
   ;; Instance with context
-  (check-equal? (ptop '(define-instance ((Eq a) => (Eq (Maybe a)))
+  (check-equal? (ptop '(instance ((Eq a) => (Eq (Maybe a)))
                          (define (== x y) x)))
                 (top:instance
                   (list (constraint 'Eq (list (ty:var 'a #f)) #f))

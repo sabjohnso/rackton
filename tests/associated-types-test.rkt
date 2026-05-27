@@ -12,12 +12,12 @@
 
 (rackton
   ;; ----- 53.A Sized class with associated Index type -----------
-  (define-class (Sized (c :: *))
+  (protocol (Sized (c :: *))
     (#:type Index)
     (: size-of (-> c (Index c))))
 
   ;; Concrete List instance: Index resolves to Integer.
-  (define-instance (Sized (List a))
+  (instance (Sized (List a))
     (#:type (Index = Integer))
     (define (size-of xs) (length xs)))
 
@@ -27,7 +27,7 @@
   ;; ----- 53.B distinct instance with distinct Index -----------
   (define-data MyMap (MkMap Integer))
 
-  (define-instance (Sized MyMap)
+  (instance (Sized MyMap)
     (#:type (Index = MyMap))
     (define (size-of m) m))
 

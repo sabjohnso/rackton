@@ -61,10 +61,10 @@
 (rackton
   (define (greet-int n) (mk-pretty n))
 
-  (define-class (MkPretty a)
+  (protocol (MkPretty a)
     (: mk-pretty (-> a String)))
 
-  (define-instance (MkPretty Integer)
+  (instance (MkPretty Integer)
     (define (mk-pretty n) "an int"))
 
   (: greet-result String)
@@ -77,10 +77,10 @@
 
 ;; ----- instance declared before its class --------------------
 (rackton
-  (define-instance (Tagged BBox)
+  (instance (Tagged BBox)
     (define (tag-of b) "BBox"))
 
-  (define-class (Tagged a)
+  (protocol (Tagged a)
     (: tag-of (-> a String)))
 
   (define-data BBox MkBBox)

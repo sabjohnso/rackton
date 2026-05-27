@@ -97,7 +97,7 @@ references to a value defined later in the file:
 
 ;; A class used before its declaration:
 (define (greet x) (pretty x))
-(define-class (Pretty a)
+(protocol (Pretty a)
   (: pretty (-> a String)))
 }|
 

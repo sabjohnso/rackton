@@ -6,19 +6,19 @@
          "../main.rkt")
 
 (rackton
-  (define-class (Eq a)
+  (protocol (Eq a)
     (: == (-> a (-> a Boolean))))
 
-  (define-instance (Eq Integer)
+  (instance (Eq Integer)
     (define (== x y) (= x y)))
 
-  (define-instance (Eq Boolean)
+  (instance (Eq Boolean)
     (define (== x y)
       (if x y (if y #f #t))))
 
   (define-data (Maybe a) None (Some a))
 
-  (define-instance ((Eq a) => (Eq (Maybe a)))
+  (instance ((Eq a) => (Eq (Maybe a)))
     (define (== x y)
       (match x
         [(None)

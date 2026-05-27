@@ -15,7 +15,7 @@ A @racket[Monad] is a higher-kinded class providing @racket[>>=] (read
 "bind"):
 
 @codeblock|{
-(define-class ((Applicative m) => (Monad (m :: (-> * *))))
+(protocol ((Applicative m) => (Monad (m :: (-> * *))))
   (: >>= (-> (m a) (-> (-> a (m b)) (m b)))))
 }|
 

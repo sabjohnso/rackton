@@ -29,7 +29,7 @@ listed in a @racket[(provide …)] form.
 }|
 
 Supported spec forms include bare identifiers, @racket[(all-defined-out)],
-@racket[(data-out T)], @racket[(struct-out S)], @racket[(class-out C)],
+@racket[(data-out T)], @racket[(struct-out S)], @racket[(protocol-out C)],
 @racket[(rename-out [old new] …)], and @racket[(except-out spec name …)].
 See @secref["provide-specs" #:doc '(lib "rackton/scribblings/reference/rackton-reference.scrbl")]
 for the full grammar.
@@ -79,14 +79,14 @@ instances without local redeclaration:
 @codeblock|{
 ;; lib.rkt
 #lang rackton
-(provide (class-out Container) (data-out Stack))
+(provide (protocol-out Container) (data-out Stack))
 
-(define-class (Container (f :: (-> * *)))
+(protocol (Container (f :: (-> * *)))
   (: empty? (-> (f a) Boolean)))
 
 (define-data (Stack a) Empty (Push a (Stack a)))
 
-(define-instance (Container Stack)
+(instance (Container Stack)
   (define (empty? s) (match s [(Empty) #t] [(Push _ _) #f])))
 
 ;; main.rkt

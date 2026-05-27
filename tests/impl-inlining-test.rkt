@@ -18,13 +18,13 @@
 (rackton
   ;; A user-defined class with a small impl body — exactly the
   ;; shape the inliner is meant to specialize.
-  (define-class (Tag a)
+  (protocol (Tag a)
     (: tag-of (-> a Integer)))
 
-  (define-instance (Tag Integer)
+  (instance (Tag Integer)
     (define (tag-of x) (+ x 100)))
 
-  (define-instance (Tag Boolean)
+  (instance (Tag Boolean)
     (define (tag-of b) (if b 1 0)))
 
   (: r-int Integer)
@@ -43,10 +43,10 @@
 
   ;; A larger impl body — exercises the "not small enough" path so
   ;; the optimization stays monomorphized-but-not-inlined.
-  (define-class (Score a)
+  (protocol (Score a)
     (: score (-> a Integer)))
 
-  (define-instance (Score Integer)
+  (instance (Score Integer)
     (define (score n)
       (if (< n 0)
           0

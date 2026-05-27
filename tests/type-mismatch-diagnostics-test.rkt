@@ -19,11 +19,11 @@
 (test-case "no-instance error lists available instances for the class"
   (define msg
     (compile-error
-     (define-class (Showable a)
+     (protocol (Showable a)
        (: shw (-> a String)))
-     (define-instance (Showable Integer)
+     (instance (Showable Integer)
        (define (shw n) ""))
-     (define-instance (Showable Boolean)
+     (instance (Showable Boolean)
        (define (shw b) ""))
      (: bad String)
      (define bad (shw "hi"))))

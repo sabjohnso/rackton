@@ -18,12 +18,12 @@
   ;; sentinel string.  Lookup at (Box Integer) must pick the
   ;; specific; lookup at (Box String) must fall back to the generic.
 
-  (define-instance ((Show a) => (Show (Box a)))
+  (instance ((Show a) => (Show (Box a)))
     (define (show b)
       (match b
         [(MkBox v) (<> "generic-box(" (<> (show v) ")"))])))
 
-  (define-instance (Show (Box Integer))
+  (instance (Show (Box Integer))
     (define (show b)
       (match b
         [(MkBox _) "specific-integer-box"])))
@@ -39,13 +39,13 @@
   ;; locally.  Show (List Char) takes precedence at concrete Char,
   ;; while the generic still applies at other types.
 
-  (define-instance ((Show a) => (Show (List a)))
+  (instance ((Show a) => (Show (List a)))
     (define (show xs)
       (match xs
         [(Nil)      "list[]"]
         [(Cons h _) (<> "list[" (<> (show h) "]"))])))
 
-  (define-instance (Show (List Char))
+  (instance (Show (List Char))
     (define (show _) "<chars>"))
 
   (: show-chars  String)
@@ -76,17 +76,17 @@
 (test-case "registering two instances with the same head is rejected"
   (check-rackton-compile-error
    (define-data Foo MkFoo)
-   (define-instance (Show Foo)
+   (instance (Show Foo)
      (define (show _) "foo-a"))
-   (define-instance (Show Foo)
+   (instance (Show Foo)
      (define (show _) "foo-b"))))
 
 (test-case "overlapping instances with no most-specific raise at lookup"
   (check-rackton-compile-error
    (define-data (P2 a b) (MkP2 a b))
-   (define-instance ((Show b) => (Show (P2 Integer b)))
+   (instance ((Show b) => (Show (P2 Integer b)))
      (define (show _) "leftP2"))
-   (define-instance ((Show a) => (Show (P2 a Integer)))
+   (instance ((Show a) => (Show (P2 a Integer)))
      (define (show _) "rightP2"))
    ;; Both instances match (P2 Integer Integer) — incomparable.
    (define ambiguous (show (MkP2 1 2)))))

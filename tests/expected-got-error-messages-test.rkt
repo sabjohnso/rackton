@@ -45,7 +45,7 @@
 (test-case "unknown class suggests a near match"
   (define msg
     (rackton-error
-     (define-instance (Eqq Integer)
+     (instance (Eqq Integer)
        (define (eq x y) (= x y)))))
   (check-regexp-match #rx"unknown class: Eqq" msg)
   (check-regexp-match #rx"did you mean `Eq`"  msg))

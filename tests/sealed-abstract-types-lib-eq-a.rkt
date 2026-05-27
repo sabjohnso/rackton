@@ -8,7 +8,7 @@
 
 (define-data Color  Red  Green  Blue)
 
-(define-instance (Eq Color)
+(instance (Eq Color)
   (define (== a b)
     (match a
       [Red   (match b [Red   #t] [_  #f])]

@@ -71,7 +71,7 @@ which sets up a per-method dispatch table and a generic function:
 
 @racketidfont{register-instance-method!} registers a new entry in a
 dispatch table.  Codegen emits one of these for every method of
-every @racket[define-instance], using the impl body from the user
+every @racket[instance], using the impl body from the user
 source.
 
 @section{Direct calls for resolved sites}

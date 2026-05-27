@@ -123,7 +123,7 @@ A class may declare an associated type via a @racket[#:type] clause
 inside its body:
 
 @codeblock|{
-(define-class (Container c)
+(protocol (Container c)
   (#:type Elem)
   (: empty? (-> c Boolean))
   (: head   (-> c (Maybe (Elem c)))))
@@ -133,7 +133,7 @@ Each instance supplies a concrete type for the family with
 @racket[(#:type (Family = T))]:
 
 @codeblock|{
-(define-instance (Container (List a))
+(instance (Container (List a))
   (#:type (Elem = a))
   (define (empty? xs) (match xs [(Nil) #t] [(Cons _ _) #f]))
   (define (head   xs) (match xs [(Nil) None] [(Cons h _) (Some h)])))

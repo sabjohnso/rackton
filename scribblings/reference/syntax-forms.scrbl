@@ -148,8 +148,8 @@ have the appropriate polymorphic schemes.
 field-lens family.}
 
 @defform*[
-          [(define-class class-head method ...)
-           (define-class (super-class ... => class-head) method ...)]
+          [(protocol class-head method ...)
+           (protocol (super-class ... => class-head) method ...)]
           #:grammar
           ([class-head    (ClassName param ...)]
            [param         id (id :: kind)]
@@ -174,8 +174,8 @@ A class may declare one or more functional dependencies via
 @racket[#:fundep] clauses inside the body.}
 
 @defform*[
-          [(define-instance head method ...)
-           (define-instance (qual ... => head) method ...)]
+          [(instance head method ...)
+           (instance (qual ... => head) method ...)]
           #:grammar
           ([head    (ClassName type ...)]
            [qual    (ClassName var ...)]
@@ -220,19 +220,19 @@ invoked outside any handler is a runtime error.}
 
 Associated type family declaration and definition.
 
-A @racket[(#:type Family)] clause inside a @racket[define-class] body
+A @racket[(#:type Family)] clause inside a @racket[protocol] body
 declares the family.  Each instance must supply a concrete type with a
 matching @racket[(#:type (Family = T))] clause inside its
-@racket[define-instance] body, where @racket[T] is the type that the
+@racket[instance] body, where @racket[T] is the type that the
 family resolves to for that instance head.
 
 @racketblock[
-(define-class (Container c)
+(protocol (Container c)
   (#:type Elem)
   (: empty? (-> c Boolean))
   (: head   (-> c (Maybe (Elem c)))))
 
-(define-instance (Container (List a))
+(instance (Container (List a))
   (#:type (Elem = a))
   (define (empty? xs) (match xs [(Nil) #t] [(Cons _ _) #f]))
   (define (head   xs) (match xs [(Nil) None] [(Cons h _) (Some h)])))]}

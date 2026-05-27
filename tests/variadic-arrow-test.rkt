@@ -25,10 +25,10 @@
   (define add3-curried (add3 10))
 
   ;; A class method whose signature uses the variadic form.
-  (define-class (TriOp a)
+  (protocol (TriOp a)
     (: combine (-> a a a a)))
 
-  (define-instance (TriOp Integer)
+  (instance (TriOp Integer)
     (define (combine x y z) (+ x (+ y z))))
 
   (: tri-int Integer)

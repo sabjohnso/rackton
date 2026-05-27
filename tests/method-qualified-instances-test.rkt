@@ -21,7 +21,7 @@
   (: branchC (-> (Tree a) (-> a (-> (Tree a) (Tree a)))))
   (define (branchC l) (lambda (v) (lambda (r) (Branch l v r))))
 
-  (define-instance (Traversable Tree)
+  (instance (Traversable Tree)
     (define (traverse f t)
       (match t
         [(Leaf) (pure Leaf)]

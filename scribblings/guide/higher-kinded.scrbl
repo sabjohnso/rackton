@@ -25,7 +25,7 @@ type constructors.
 Kind annotations on class parameters use @racket[::]:
 
 @codeblock|{
-(define-class (Functor (f :: (-> * *)))
+(protocol (Functor (f :: (-> * *)))
   (: fmap (-> (-> a b) (-> (f a) (f b)))))
 }|
 
@@ -37,13 +37,13 @@ would reject @racket[(f a)] as ill-kinded.
 A class declaration may carry more than one type parameter:
 
 @codeblock|{
-(define-class (Convertible a b)
+(protocol (Convertible a b)
   (: convert (-> a b)))
 
-(define-instance (Convertible Integer String)
+(instance (Convertible Integer String)
   (define (convert n) (show n)))
 
-(define-instance (Convertible Boolean String)
+(instance (Convertible Boolean String)
   (define (convert b) (if b "yes" "no")))
 }|
 
@@ -59,11 +59,11 @@ A multi-parameter class may declare that some parameters are uniquely
 determined by others:
 
 @codeblock|{
-(define-class (Convert a b)
+(protocol (Convert a b)
   (#:fundep a -> b)
   (: convert (-> a b)))
 
-(define-instance (Convert Integer String)
+(instance (Convert Integer String)
   (define (convert n) (show n)))
 }|
 
@@ -81,7 +81,7 @@ The two combine naturally — @racket[Monad] is a higher-kinded class
 with a @racket[Functor] superclass:
 
 @codeblock|{
-(define-class ((Functor m) => (Monad (m :: (-> * *))))
+(protocol ((Functor m) => (Monad (m :: (-> * *))))
   (: >>= (-> (m a) (-> (-> a (m b)) (m b)))))
 }|
 

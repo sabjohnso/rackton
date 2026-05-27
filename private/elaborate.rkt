@@ -32,8 +32,8 @@
 
 ;; Stable phase ordering of top-level forms for codegen emission.
 ;; The aim is to satisfy runtime dependencies between *side-effecting
-;; module top-level forms* — chiefly, `define-instance` registers
-;; into a dispatch table that `define-class` defines, so every class
+;; module top-level forms* — chiefly, `instance` registers
+;; into a dispatch table that `protocol` defines, so every protocol
 ;; must run before any instance.  Within a single phase, source
 ;; order is preserved (Racket's `sort` is stable), so user-visible
 ;; sequencing of effects (e.g. ordering of `define`s with
@@ -125,9 +125,9 @@
                  [current-inlined-sites           (box '())])
     (define env (infer-program parsed prelude-env))
     ;; Compile each parsed form into Racket syntax.  The emission
-    ;; order must respect runtime dependencies — `define-instance`
-    ;; mutates a dispatch table created by `define-class`, so all
-    ;; classes have to run before any instances.  Phase-sort with
+    ;; order must respect runtime dependencies — `instance`
+    ;; mutates a dispatch table created by `protocol`, so all
+    ;; protocols have to run before any instances.  Phase-sort with
     ;; `sort` (Racket's `sort` is stable): forms within a phase
     ;; preserve their source order so the user-visible execution
     ;; ordering of defs and side-effecting top-level expressions
@@ -249,10 +249,10 @@
       (hash-set! export-data-ctors cname cname)
       (hash-set! export-vars       cname cname)))
 
-  (define (add-class-out cname src-stx)
+  (define (add-protocol-out cname src-stx)
     (define ci (or (env-ref-class env cname #f)
                    (raise-syntax-error 'provide
-                     (format "class-out: ~s is not a class" cname)
+                     (format "protocol-out: ~s is not a protocol" cname)
                      src-stx)))
     (hash-set! export-classes cname cname)
     (for ([(mname _) (in-hash (class-info-methods ci))])
@@ -288,15 +288,15 @@
 
   (define (process-spec spec)
     (syntax-parse spec
-      #:datum-literals (all-defined-out data-out class-out struct-out rename-out except-out)
+      #:datum-literals (all-defined-out data-out protocol-out struct-out rename-out except-out)
       [name:id
        (add-export (syntax->datum #'name) (syntax->datum #'name) #'name)]
       [(all-defined-out)
        (add-all-defined-out)]
       [(data-out tname:id)
        (add-data-out (syntax->datum #'tname) #'tname)]
-      [(class-out cname:id)
-       (add-class-out (syntax->datum #'cname) #'cname)]
+      [(protocol-out cname:id)
+       (add-protocol-out (syntax->datum #'cname) #'cname)]
       [(struct-out sname:id)
        (add-struct-out (syntax->datum #'sname) #'sname)]
       [(rename-out [old:id new:id] ...)

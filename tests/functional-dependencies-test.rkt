@@ -10,14 +10,14 @@
   ;; determined by the first.  With FD improvement, calling `convert`
   ;; on an Integer determines the output type at compile time, so
   ;; downstream uses don't need ascriptions.
-  (define-class (Convert a b)
+  (protocol (Convert a b)
     (#:fundep a -> b)
     (: convert (-> a b)))
 
-  (define-instance (Convert Integer String)
+  (instance (Convert Integer String)
     (define (convert n) (show n)))
 
-  (define-instance (Convert Boolean Integer)
+  (instance (Convert Boolean Integer)
     (define (convert b) (if b 1 0)))
 
   ;; The result type of `convert` is determined by its argument.

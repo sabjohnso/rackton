@@ -20,14 +20,14 @@
 (define prelude-source-forms
   '(;; --- Eq ----------------------------------------------------------
 
-    (define-class (Eq a)
+    (protocol (Eq a)
       (: == (-> a (-> a Boolean)))
       (: /= (-> a (-> a Boolean)))
       (define (/= x y) (if (== x y) #f #t)))
 
     ;; --- Ord (Eq is a superclass) -------------------------------
 
-    (define-class ((Eq a) => (Ord a))
+    (protocol ((Eq a) => (Ord a))
       (: <  (-> a (-> a Boolean)))
       (: >  (-> a (-> a Boolean)))
       (: <= (-> a (-> a Boolean)))
@@ -44,7 +44,7 @@
 
     ;; --- Num ----------------------------------------------------
 
-    (define-class (Num a)
+    (protocol (Num a)
       (: +      (-> a (-> a a)))
       (: -      (-> a (-> a a)))
       (: *      (-> a (-> a a)))
@@ -55,7 +55,7 @@
 
     ;; --- Show ---------------------------------------------------
 
-    (define-class (Show a)
+    (protocol (Show a)
       (: show (-> a String)))
 
     ;; --- Builtin instances --------------------------------------
@@ -63,36 +63,36 @@
     ;; only the type discipline matters here.  The actual runtime
     ;; implementations live in prelude-runtime.rkt.
 
-    (define-instance (Num Integer)
+    (instance (Num Integer)
       (define (+ x y) (racket Integer (x y) 0))
       (define (- x y) (racket Integer (x y) 0))
       (define (* x y) (racket Integer (x y) 0))
       (define (abs    x) (racket Integer (x) 0))
       (define (negate x) (racket Integer (x) 0)))
 
-    (define-instance (Eq Integer)
+    (instance (Eq Integer)
       (define (== x y) (racket Boolean (x y) #f)))
 
-    (define-instance (Eq Boolean)
+    (instance (Eq Boolean)
       (define (== x y) (if x y (if y #f #t))))
 
-    (define-instance (Eq String)
+    (instance (Eq String)
       (define (== x y) (racket Boolean (x y) #f)))
 
-    (define-instance (Ord Integer)
+    (instance (Ord Integer)
       (define (< x y) (racket Boolean (x y) #f)))
 
-    (define-instance (Show Integer)
+    (instance (Show Integer)
       (define (show x) (racket String (x) "")))
 
-    (define-instance (Show Boolean)
+    (instance (Show Boolean)
       (define (show x) (if x "True" "False")))
 
-    (define-instance (Show String)
+    (instance (Show String)
       (define (show x) x))
 
     ;; Ord String (lex order) so min/max work on strings.
-    (define-instance (Ord String)
+    (instance (Ord String)
       (define (< x y) (racket Boolean (x y) #f)))
 
     ;; --- ADTs ---------------------------------------------------
@@ -109,12 +109,12 @@
     (define-data Char)
     (define-data Bytes)
 
-    (define-instance (Eq Char)   (define (== x y) (racket Boolean (x y) #f)))
-    (define-instance (Ord Char)  (define (< x y) (racket Boolean (x y) #f)))
-    (define-instance (Show Char) (define (show c) (racket String (c) "")))
+    (instance (Eq Char)   (define (== x y) (racket Boolean (x y) #f)))
+    (instance (Ord Char)  (define (< x y) (racket Boolean (x y) #f)))
+    (instance (Show Char) (define (show c) (racket String (c) "")))
 
-    (define-instance (Eq Bytes)  (define (== x y) (racket Boolean (x y) #f)))
-    (define-instance (Show Bytes)(define (show b) (racket String (b) "")))
+    (instance (Eq Bytes)  (define (== x y) (racket Boolean (x y) #f)))
+    (instance (Show Bytes)(define (show b) (racket String (b) "")))
 
     (: char->integer (-> Char Integer))
     (define (char->integer c) (racket Integer (c) 0))
@@ -194,46 +194,46 @@
     ;; private/infer.rkt and the resolution table consumed by
     ;; private/codegen.rkt.
 
-    (define-class (Functor (f :: (-> * *)))
+    (protocol (Functor (f :: (-> * *)))
       (: fmap (-> (-> a b) (-> (f a) (f b)))))
 
-    (define-class ((Functor f) => (Applicative (f :: (-> * *))))
+    (protocol ((Functor f) => (Applicative (f :: (-> * *))))
       (: pure  (-> a (f a)))
       (: <*>   (-> (f (-> a b)) (-> (f a) (f b))))
       (: liftA2 (-> (-> a (-> b c)) (-> (f a) (-> (f b) (f c)))))
       (define (liftA2 g x y) (<*> (fmap g x) y)))
 
-    (define-class ((Applicative m) => (Monad (m :: (-> * *))))
+    (protocol ((Applicative m) => (Monad (m :: (-> * *))))
       (: >>= (-> (m a) (-> (-> a (m b)) (m b)))))
 
     ;; Maybe
-    (define-instance (Functor Maybe)
+    (instance (Functor Maybe)
       (define (fmap f m)
         (match m
           [(None)   None]
           [(Some x) (Some (f x))])))
 
-    (define-instance (Applicative Maybe)
+    (instance (Applicative Maybe)
       (define (pure x) (Some x))
       (define (<*> mf mx)
         (match mf
           [(None)   None]
           [(Some f) (fmap f mx)])))
 
-    (define-instance (Monad Maybe)
+    (instance (Monad Maybe)
       (define (>>= m f)
         (match m
           [(None)   None]
           [(Some x) (f x)])))
 
     ;; List
-    (define-instance (Functor List)
+    (instance (Functor List)
       (define (fmap f xs)
         (match xs
           [(Nil)        Nil]
           [(Cons h t)   (Cons (f h) (fmap f t))])))
 
-    (define-instance (Applicative List)
+    (instance (Applicative List)
       (define (pure x) (Cons x Nil))
       ;; cartesian-product semantics — for each function in `fs` apply
       ;; it to every `x` in `xs`, concatenating.  We can't yet call
@@ -249,20 +249,20 @@
             [(Cons f rest) (cat (fmap f xs) (<*> rest xs))]))))
 
     ;; Result e (the error type is fixed; we map over the success type)
-    (define-instance (Functor (Result e))
+    (instance (Functor (Result e))
       (define (fmap f r)
         (match r
           [(Err x) (Err x)]
           [(Ok  v) (Ok (f v))])))
 
-    (define-instance (Applicative (Result e))
+    (instance (Applicative (Result e))
       (define (pure x) (Ok x))
       (define (<*> rf rx)
         (match rf
           [(Err e) (Err e)]
           [(Ok  f) (fmap f rx)])))
 
-    (define-instance (Monad (Result e))
+    (instance (Monad (Result e))
       (define (>>= r f)
         (match r
           [(Err x) (Err x)]
@@ -276,19 +276,19 @@
     ;; on the third positional argument (the `p a b` value); `first`
     ;; and `second` are derived defaults that fix one side via `id`.
 
-    (define-class (Bifunctor (p :: (-> * (-> * *))))
+    (protocol (Bifunctor (p :: (-> * (-> * *))))
       (: bimap  (-> (-> a c) (-> (-> b d) (-> (p a b) (p c d)))))
       (: first  (-> (-> a c) (-> (p a b) (p c b))))
       (: second (-> (-> b d) (-> (p a b) (p a d))))
       (define (first  f x) (bimap f  id x))
       (define (second g x) (bimap id g  x)))
 
-    (define-instance (Bifunctor Pair)
+    (instance (Bifunctor Pair)
       (define (bimap f g p)
         (match p
           [(MkPair x y) (MkPair (f x) (g y))])))
 
-    (define-instance (Bifunctor Result)
+    (instance (Bifunctor Result)
       (define (bimap f g r)
         (match r
           [(Err e) (Err (f e))]
@@ -312,20 +312,20 @@
     ;; `length` with class methods; runtime single-dispatch on the
     ;; container value routes to the right instance.
 
-    (define-class (Foldable (t :: (-> * *)))
+    (protocol (Foldable (t :: (-> * *)))
       (: foldr   (-> (-> a (-> b b)) (-> b (-> (t a) b))))
       (: length  (-> (t a) Integer))
       (: to-list (-> (t a) (List a)))
       (define (length  xs) (foldr (lambda (_x n)   (+ n 1))      0   xs))
       (define (to-list xs) (foldr (lambda (x acc)  (Cons x acc))  Nil xs)))
 
-    (define-instance (Foldable List)
+    (instance (Foldable List)
       (define (foldr f z xs)
         (match xs
           [(Nil)         z]
           [(Cons h rest) (f h (foldr f z rest))])))
 
-    (define-instance (Foldable Maybe)
+    (instance (Foldable Maybe)
       (define (foldr f z m)
         (match m
           [(None)   z]
@@ -343,17 +343,17 @@
     ;; the corresponding `pure-impl` as the leading argument (the
     ;; dict-passing path).
 
-    (define-class (Traversable (t :: (-> * *)))
+    (protocol (Traversable (t :: (-> * *)))
       (: traverse ((Applicative f) =>
                    (-> (-> a (f b)) (-> (t a) (f (t b)))))))
 
-    (define-instance (Traversable Maybe)
+    (instance (Traversable Maybe)
       (define (traverse f m)
         (match m
           [(None)   (pure None)]
           [(Some x) (fmap Some (f x))])))
 
-    (define-instance (Traversable List)
+    (instance (Traversable List)
       (define (traverse f xs)
         (match xs
           [(Nil)         (pure Nil)]
@@ -367,21 +367,21 @@
     ;; instance from the expected type at each call site (see
     ;; @secref{Return-typed_dispatch} for the mechanism).
 
-    (define-class (Semigroup a)
+    (protocol (Semigroup a)
       (: <> (-> a (-> a a))))
 
-    (define-class ((Semigroup a) => (Monoid a))
+    (protocol ((Semigroup a) => (Monoid a))
       (: mempty a))
 
-    (define-instance (Semigroup String)
+    (instance (Semigroup String)
       ;; `string-append` is defined later in the prelude; use a host
       ;; escape so the load order doesn't bite us.
       (define (<> a b) (racket String (a b) #f)))
 
-    (define-instance (Monoid String)
+    (instance (Monoid String)
       (define mempty ""))
 
-    (define-instance (Semigroup (List a))
+    (instance (Semigroup (List a))
       ;; cartesian concat; `append` is defined later in this prelude,
       ;; so inline a local cat helper as the Applicative List instance
       ;; does.
@@ -392,7 +392,7 @@
                           [(Cons h t) (Cons h (cat t bs))]))])
           (cat xs ys))))
 
-    (define-instance (Monoid (List a))
+    (instance (Monoid (List a))
       (define mempty Nil))
 
     ;; --- Sum / Product newtypes for additive/multiplicative Monoid -
@@ -406,20 +406,20 @@
     (: get-product (-> Product Integer))
     (define (get-product p) (match p [(MkProduct n) n]))
 
-    (define-instance (Semigroup Sum)
+    (instance (Semigroup Sum)
       (define (<> a b)
         (match a [(MkSum x)
                   (match b [(MkSum y) (MkSum (+ x y))])])))
 
-    (define-instance (Monoid Sum)
+    (instance (Monoid Sum)
       (define mempty (MkSum 0)))
 
-    (define-instance (Semigroup Product)
+    (instance (Semigroup Product)
       (define (<> a b)
         (match a [(MkProduct x)
                   (match b [(MkProduct y) (MkProduct (* x y))])])))
 
-    (define-instance (Monoid Product)
+    (instance (Monoid Product)
       (define mempty (MkProduct 1)))
 
     ;; --- mconcat ------------------------------------------------
@@ -460,13 +460,13 @@
     (define (put-state s) (MkState (lambda (_) (MkPair s MkUnit))))
     (define (modify-state f) (MkState (lambda (s) (MkPair (f s) MkUnit))))
 
-    (define-instance (Functor (State s))
+    (instance (Functor (State s))
       (define (fmap f st)
         (MkState (lambda (s)
                    (match ((run-state st) s)
                      [(MkPair s2 a) (MkPair s2 (f a))])))))
 
-    (define-instance (Applicative (State s))
+    (instance (Applicative (State s))
       (define (pure a) (MkState (lambda (s) (MkPair s a))))
       (define (<*> sf sa)
         (MkState (lambda (s)
@@ -475,7 +475,7 @@
                       (match ((run-state sa) s2)
                         [(MkPair s3 a) (MkPair s3 (f a))])])))))
 
-    (define-instance (Monad (State s))
+    (instance (Monad (State s))
       (define (>>= st f)
         (MkState (lambda (s)
                    (match ((run-state st) s)
@@ -498,16 +498,16 @@
     (define (local f e)
       (MkEnv (lambda (r) ((run-env e) (f r)))))
 
-    (define-instance (Functor (Env r))
+    (instance (Functor (Env r))
       (define (fmap f e)
         (MkEnv (lambda (r) (f ((run-env e) r))))))
 
-    (define-instance (Applicative (Env r))
+    (instance (Applicative (Env r))
       (define (pure a) (MkEnv (lambda (_) a)))
       (define (<*> ef ea)
         (MkEnv (lambda (r) (((run-env ef) r) ((run-env ea) r))))))
 
-    (define-instance (Monad (Env r))
+    (instance (Monad (Env r))
       (define (>>= e f)
         (MkEnv (lambda (r) ((run-env (f ((run-env e) r))) r)))))
 
@@ -528,14 +528,14 @@
     ;; inner-monad pure/fmap impls directly, avoiding the body-
     ;; rewriting limitation the prelude inherits.
 
-    (define-instance ((Monad m) => (Functor (StateT s m)))
+    (instance ((Monad m) => (Functor (StateT s m)))
       (define (fmap f st) (racket (StateT s m b) (f st) #f)))
 
-    (define-instance ((Monad m) => (Applicative (StateT s m)))
+    (instance ((Monad m) => (Applicative (StateT s m)))
       (define (pure  a)    (racket (StateT s m a) (a) #f))
       (define (<*>   sf sa)(racket (StateT s m b) (sf sa) #f)))
 
-    (define-instance ((Monad m) => (Monad (StateT s m)))
+    (instance ((Monad m) => (Monad (StateT s m)))
       (define (>>= st f) (racket (StateT s m b) (st f) #f)))
 
     ;; --- EnvT r m: env-passing over an inner monad m -------------
@@ -548,14 +548,14 @@
     (: local-t    (-> (-> r r) (-> (EnvT r m a) (EnvT r m a))))
     (: lift-env-t (-> (m a) (EnvT r m a)))
 
-    (define-instance ((Monad m) => (Functor (EnvT r m)))
+    (instance ((Monad m) => (Functor (EnvT r m)))
       (define (fmap f e) (racket (EnvT r m b) (f e) #f)))
 
-    (define-instance ((Monad m) => (Applicative (EnvT r m)))
+    (instance ((Monad m) => (Applicative (EnvT r m)))
       (define (pure  a)    (racket (EnvT r m a) (a) #f))
       (define (<*>   ef ea)(racket (EnvT r m b) (ef ea) #f)))
 
-    (define-instance ((Monad m) => (Monad (EnvT r m)))
+    (instance ((Monad m) => (Monad (EnvT r m)))
       (define (>>= e f) (racket (EnvT r m b) (e f) #f)))
 
     ;; --- WriterT w m: accumulating writer over an inner monad ---
@@ -573,14 +573,14 @@
     (: tell          ((Applicative m) => (-> w (WriterT w m Unit))))
     (: lift-writer-t ((Functor m) (Monoid w) => (-> (m a) (WriterT w m a))))
 
-    (define-instance ((Functor m) => (Functor (WriterT w m)))
+    (instance ((Functor m) => (Functor (WriterT w m)))
       (define (fmap f wa) (racket (WriterT w m b) (f wa) #f)))
 
-    (define-instance ((Monad m) (Monoid w) => (Applicative (WriterT w m)))
+    (instance ((Monad m) (Monoid w) => (Applicative (WriterT w m)))
       (define (pure  a)     (racket (WriterT w m a) (a) #f))
       (define (<*>   wf wa) (racket (WriterT w m b) (wf wa) #f)))
 
-    (define-instance ((Monad m) (Semigroup w) => (Monad (WriterT w m)))
+    (instance ((Monad m) (Semigroup w) => (Monad (WriterT w m)))
       (define (>>= wa f) (racket (WriterT w m b) (wa f) #f)))
 
     ;; --- ExceptT e m: typed exceptions over an inner monad ------
@@ -595,14 +595,14 @@
                                            (ExceptT e m a)))))
     (: lift-except-t ((Functor m) => (-> (m a) (ExceptT e m a))))
 
-    (define-instance ((Functor m) => (Functor (ExceptT e m)))
+    (instance ((Functor m) => (Functor (ExceptT e m)))
       (define (fmap f ea) (racket (ExceptT e m b) (f ea) #f)))
 
-    (define-instance ((Monad m) => (Applicative (ExceptT e m)))
+    (instance ((Monad m) => (Applicative (ExceptT e m)))
       (define (pure  a)     (racket (ExceptT e m a) (a) #f))
       (define (<*>   ef ea) (racket (ExceptT e m b) (ef ea) #f)))
 
-    (define-instance ((Monad m) => (Monad (ExceptT e m)))
+    (instance ((Monad m) => (Monad (ExceptT e m)))
       (define (>>= ea f) (racket (ExceptT e m b) (ea f) #f)))
 
     ;; --- mtl-style classes ---------------------------
@@ -616,117 +616,117 @@
 
     ;; ----- MonadState -------------------------------------------
 
-    (define-class ((Monad m) => (MonadState s (m :: (-> * *))))
+    (protocol ((Monad m) => (MonadState s (m :: (-> * *))))
       (#:fundep m -> s)
       (: get-st    (m s))
       (: put-st    (-> s (m Unit)))
       (: modify-st (-> (-> s s) (m Unit))))
 
-    (define-instance (MonadState s (State s))
+    (instance (MonadState s (State s))
       (define get-st        get-state)
       (define (put-st x)    (put-state x))
       (define (modify-st f) (modify-state f)))
 
-    (define-instance ((Monad m) => (MonadState s (StateT s m)))
+    (instance ((Monad m) => (MonadState s (StateT s m)))
       (define get-st        get-state-t)
       (define (put-st x)    (put-state-t x))
       (define (modify-st f) (modify-state-t f)))
 
-    (define-instance ((MonadState s m) => (MonadState s (EnvT r m)))
+    (instance ((MonadState s m) => (MonadState s (EnvT r m)))
       (define get-st        (lift-env-t get-st))
       (define (put-st x)    (lift-env-t (put-st x)))
       (define (modify-st f) (lift-env-t (modify-st f))))
 
-    (define-instance ((MonadState s m) (Monoid w) => (MonadState s (WriterT w m)))
+    (instance ((MonadState s m) (Monoid w) => (MonadState s (WriterT w m)))
       (define get-st        (lift-writer-t get-st))
       (define (put-st x)    (lift-writer-t (put-st x)))
       (define (modify-st f) (lift-writer-t (modify-st f))))
 
-    (define-instance ((MonadState s m) => (MonadState s (ExceptT e m)))
+    (instance ((MonadState s m) => (MonadState s (ExceptT e m)))
       (define get-st        (lift-except-t get-st))
       (define (put-st x)    (lift-except-t (put-st x)))
       (define (modify-st f) (lift-except-t (modify-st f))))
 
     ;; ----- MonadEnv (Reader) ------------------------------------
 
-    (define-class ((Monad m) => (MonadEnv r (m :: (-> * *))))
+    (protocol ((Monad m) => (MonadEnv r (m :: (-> * *))))
       (#:fundep m -> r)
       (: ask-en   (m r))
       (: local-en (-> (-> r r) (-> (m a) (m a)))))
 
-    (define-instance (MonadEnv r (Env r))
+    (instance (MonadEnv r (Env r))
       (define ask-en     ask)
       (define (local-en f e) (local f e)))
 
-    (define-instance ((Monad m) => (MonadEnv r (EnvT r m)))
+    (instance ((Monad m) => (MonadEnv r (EnvT r m)))
       (define ask-en     ask-t)
       (define (local-en f e) (local-t f e)))
 
-    (define-instance ((MonadEnv r m) => (MonadEnv r (StateT s m)))
+    (instance ((MonadEnv r m) => (MonadEnv r (StateT s m)))
       (define ask-en     (lift-state-t ask-en))
       (define (local-en f sm)
         (racket (StateT s m a) (f sm) #f)))
 
-    (define-instance ((MonadEnv r m) (Monoid w) => (MonadEnv r (WriterT w m)))
+    (instance ((MonadEnv r m) (Monoid w) => (MonadEnv r (WriterT w m)))
       (define ask-en     (lift-writer-t ask-en))
       (define (local-en f wm)
         (racket (WriterT w m a) (f wm) #f)))
 
-    (define-instance ((MonadEnv r m) => (MonadEnv r (ExceptT e m)))
+    (instance ((MonadEnv r m) => (MonadEnv r (ExceptT e m)))
       (define ask-en     (lift-except-t ask-en))
       (define (local-en f em)
         (racket (ExceptT e m a) (f em) #f)))
 
     ;; ----- MonadWriter ------------------------------------------
 
-    (define-class ((Monoid w) (Monad m) => (MonadWriter w (m :: (-> * *))))
+    (protocol ((Monoid w) (Monad m) => (MonadWriter w (m :: (-> * *))))
       (#:fundep m -> w)
       (: tell-w (-> w (m Unit)))
       (: listen (-> (m a) (m (Pair a w))))
       (: censor (-> (-> w w) (-> (m a) (m a)))))
 
-    (define-instance ((Monoid w) (Monad m) => (MonadWriter w (WriterT w m)))
+    (instance ((Monoid w) (Monad m) => (MonadWriter w (WriterT w m)))
       (define (tell-w x)    (tell x))
       (define (listen wm)   (racket (WriterT w m (Pair a w))    (wm)   #f))
       (define (censor f wm) (racket (WriterT w m a)             (f wm) #f)))
 
-    (define-instance ((MonadWriter w m) => (MonadWriter w (StateT s m)))
+    (instance ((MonadWriter w m) => (MonadWriter w (StateT s m)))
       (define (tell-w x)    (lift-state-t (tell-w x)))
       (define (listen sm)   (racket (StateT s m (Pair a w))     (sm)   #f))
       (define (censor f sm) (racket (StateT s m a)              (f sm) #f)))
 
-    (define-instance ((MonadWriter w m) => (MonadWriter w (EnvT r m)))
+    (instance ((MonadWriter w m) => (MonadWriter w (EnvT r m)))
       (define (tell-w x)    (lift-env-t (tell-w x)))
       (define (listen em)   (racket (EnvT r m (Pair a w))       (em)   #f))
       (define (censor f em) (racket (EnvT r m a)                (f em) #f)))
 
-    (define-instance ((MonadWriter w m) => (MonadWriter w (ExceptT e m)))
+    (instance ((MonadWriter w m) => (MonadWriter w (ExceptT e m)))
       (define (tell-w x)    (lift-except-t (tell-w x)))
       (define (listen ex)   (racket (ExceptT e m (Pair a w))    (ex)   #f))
       (define (censor f ex) (racket (ExceptT e m a)             (f ex) #f)))
 
     ;; ----- MonadError -------------------------------------------
 
-    (define-class ((Monad m) => (MonadError e (m :: (-> * *))))
+    (protocol ((Monad m) => (MonadError e (m :: (-> * *))))
       (#:fundep m -> e)
       (: throw-e (-> e (m a)))
       (: catch-e (-> (m a) (-> (-> e (m a)) (m a)))))
 
-    (define-instance ((Monad m) => (MonadError e (ExceptT e m)))
+    (instance ((Monad m) => (MonadError e (ExceptT e m)))
       (define (throw-e e)    (throw-error e))
       (define (catch-e ea h) (catch-error ea h)))
 
-    (define-instance ((MonadError e m) => (MonadError e (StateT s m)))
+    (instance ((MonadError e m) => (MonadError e (StateT s m)))
       (define (throw-e ev)   (lift-state-t (throw-e ev)))
       (define (catch-e sm h)
         (racket (StateT s m a) (sm h) #f)))
 
-    (define-instance ((MonadError e m) => (MonadError e (EnvT r m)))
+    (instance ((MonadError e m) => (MonadError e (EnvT r m)))
       (define (throw-e ev)   (lift-env-t (throw-e ev)))
       (define (catch-e em h)
         (racket (EnvT r m a) (em h) #f)))
 
-    (define-instance ((MonadError e m) (Monoid w) =>
+    (instance ((MonadError e m) (Monoid w) =>
                       (MonadError e (WriterT w m)))
       (define (throw-e ev)   (lift-writer-t (throw-e ev)))
       (define (catch-e wm h)
@@ -797,14 +797,14 @@
 
     (define-data (IO a))
 
-    (define-instance (Functor IO)
+    (instance (Functor IO)
       (define (fmap f io) (racket (IO b) (f io) #f)))
 
-    (define-instance (Applicative IO)
+    (instance (Applicative IO)
       (define (pure x) (racket (IO a) (x) #f))
       (define (<*> iof iox) (racket (IO b) (iof iox) #f)))
 
-    (define-instance (Monad IO)
+    (instance (Monad IO)
       (define (>>= io f) (racket (IO b) (io f) #f)))
 
     (: print     (-> String (IO Unit)))
@@ -889,14 +889,14 @@
     (define-data (TVar a))
     (define-data (STM a))
 
-    (define-instance (Functor STM)
+    (instance (Functor STM)
       (define (fmap f s) (racket (STM b) (f s) #f)))
 
-    (define-instance (Applicative STM)
+    (instance (Applicative STM)
       (define (pure x)      (racket (STM a) (x)    #f))
       (define (<*>  sf sa)  (racket (STM b) (sf sa) #f)))
 
-    (define-instance (Monad STM)
+    (instance (Monad STM)
       (define (>>= s f) (racket (STM b) (s f) #f)))
 
     (: new-tvar   (-> a (STM (TVar a))))
@@ -927,12 +927,12 @@
 
     (define-data (Future a))
 
-    (define-class ((Monad m) => (Concurrent (m :: (-> * *))))
+    (protocol ((Monad m) => (Concurrent (m :: (-> * *))))
       (: fork-c   (-> (m a) (m (Future a))))
       (: await-c  (-> (Future a) (m a)))
       (: yield-c  (m Unit)))
 
-    (define-instance (Concurrent IO)
+    (instance (Concurrent IO)
       (define (fork-c io)
         (racket (IO (Future a)) (io)    #f))
       (define (await-c fut)
@@ -953,22 +953,22 @@
     (define (run-identity i)
       (match i [(MkIdentity x) x]))
 
-    (define-instance (Functor Identity)
+    (instance (Functor Identity)
       (define (fmap f i)
         (match i [(MkIdentity x) (MkIdentity (f x))])))
 
-    (define-instance (Applicative Identity)
+    (instance (Applicative Identity)
       (define (pure x)        (MkIdentity x))
       (define (<*>  ifn ix)
         (match ifn
           [(MkIdentity f)
            (match ix [(MkIdentity x) (MkIdentity (f x))])])))
 
-    (define-instance (Monad Identity)
+    (instance (Monad Identity)
       (define (>>= i f)
         (match i [(MkIdentity x) (f x)])))
 
-    (define-instance (Concurrent Identity)
+    (instance (Concurrent Identity)
       (define (fork-c m)
         (match m
           [(MkIdentity x) (MkIdentity (racket (Future a) (x) #f))]))
@@ -1226,26 +1226,26 @@
 
     ;; --- Float type + instances ----------------------------
 
-    (define-instance (Num Float)
+    (instance (Num Float)
       (define (+ x y) (racket Float (x y) 0.0))
       (define (- x y) (racket Float (x y) 0.0))
       (define (* x y) (racket Float (x y) 0.0))
       (define (abs    x) (racket Float (x) 0.0))
       (define (negate x) (racket Float (x) 0.0)))
 
-    (define-instance (Eq Float)
+    (instance (Eq Float)
       (define (== x y) (racket Boolean (x y) #f)))
 
-    (define-instance (Ord Float)
+    (instance (Ord Float)
       (define (< x y) (racket Boolean (x y) #f)))
 
-    (define-instance (Show Float)
+    (instance (Show Float)
       (define (show x) (racket String (x) "")))
 
-    (define-class ((Num a) => (Fractional a))
+    (protocol ((Num a) => (Fractional a))
       (: float-div (-> a (-> a a))))
 
-    (define-instance (Fractional Float)
+    (instance (Fractional Float)
       (define (float-div x y) (racket Float (x y) 0.0)))
 
     (: integer->float (-> Integer Float))
@@ -1284,47 +1284,47 @@
     (define (magnitude c) (racket Float (c) 0.0))
 
     ;; Eq / Ord / Show for Rational
-    (define-instance (Eq Rational)
+    (instance (Eq Rational)
       (define (== x y) (racket Boolean (x y) #f)))
-    (define-instance (Ord Rational)
+    (instance (Ord Rational)
       (define (< x y) (racket Boolean (x y) #f)))
-    (define-instance (Show Rational)
+    (instance (Show Rational)
       (define (show x) (racket String (x) "")))
 
     ;; Num / Fractional for Rational
-    (define-instance (Num Rational)
+    (instance (Num Rational)
       (define (+ x y) (racket Rational (x y) #f))
       (define (- x y) (racket Rational (x y) #f))
       (define (* x y) (racket Rational (x y) #f))
       (define (abs    x) (racket Rational (x) #f))
       (define (negate x) (racket Rational (x) #f)))
-    (define-instance (Fractional Rational)
+    (instance (Fractional Rational)
       (define (float-div x y) (racket Rational (x y) #f)))
 
     ;; Eq / Show for Complex
-    (define-instance (Eq Complex)
+    (instance (Eq Complex)
       (define (== x y) (racket Boolean (x y) #f)))
-    (define-instance (Show Complex)
+    (instance (Show Complex)
       (define (show x) (racket String (x) "")))
 
-    (define-instance (Num Complex)
+    (instance (Num Complex)
       (define (+ x y) (racket Complex (x y) #f))
       (define (- x y) (racket Complex (x y) #f))
       (define (* x y) (racket Complex (x y) #f))
       (define (abs    x) (racket Complex (x) #f))
       (define (negate x) (racket Complex (x) #f)))
-    (define-instance (Fractional Complex)
+    (instance (Fractional Complex)
       (define (float-div x y) (racket Complex (x y) #f)))
 
     ;; --- Integral class ----------------------------
 
-    (define-class ((Num a) => (Integral a))
+    (protocol ((Num a) => (Integral a))
       (: div  (-> a (-> a a)))
       (: mod  (-> a (-> a a)))
       (: quot (-> a (-> a a)))
       (: rem  (-> a (-> a a))))
 
-    (define-instance (Integral Integer)
+    (instance (Integral Integer)
       (define (div  a b) (racket Integer (a b) 0))
       (define (mod  a b) (racket Integer (a b) 0))
       (define (quot a b) (racket Integer (a b) 0))
@@ -1332,19 +1332,19 @@
 
     ;; --- Real class --------------------------------
 
-    (define-class ((Num a) (Ord a) => (Real a))
+    (protocol ((Num a) (Ord a) => (Real a))
       (: to-rational (-> a Rational)))
 
-    (define-instance (Real Integer)
+    (instance (Real Integer)
       (define (to-rational n) (racket Rational (n) #f)))
-    (define-instance (Real Float)
+    (instance (Real Float)
       (define (to-rational x) (racket Rational (x) #f)))
-    (define-instance (Real Rational)
+    (instance (Real Rational)
       (define (to-rational x) (racket Rational (x) #f)))
 
     ;; --- Floating class ----------------------------
 
-    (define-class ((Fractional a) => (Floating a))
+    (protocol ((Fractional a) => (Floating a))
       (: pi   a)
       (: exp  (-> a a))
       (: log  (-> a a))
@@ -1354,7 +1354,7 @@
       (: tan  (-> a a))
       (: **   (-> a (-> a a))))
 
-    (define-instance (Floating Float)
+    (instance (Floating Float)
       (define pi   (racket Float () 0.0))
       (define (exp  x)   (racket Float (x)   0.0))
       (define (log  x)   (racket Float (x)   0.0))
@@ -1364,7 +1364,7 @@
       (define (tan  x)   (racket Float (x)   0.0))
       (define (**   x y) (racket Float (x y) 0.0)))
 
-    (define-instance (Floating Complex)
+    (instance (Floating Complex)
       (define pi   (racket Complex () #f))
       (define (exp  x)   (racket Complex (x)   #f))
       (define (log  x)   (racket Complex (x)   #f))
@@ -1380,18 +1380,18 @@
     ;; future Racket-side helpers; the rounding operations all
     ;; produce Integer regardless of `a`.
 
-    (define-class ((Real a) (Fractional a) => (RealFrac a))
+    (protocol ((Real a) (Fractional a) => (RealFrac a))
       (: floor-real    (-> a Integer))
       (: ceiling-real  (-> a Integer))
       (: round-real    (-> a Integer))
       (: truncate-real (-> a Integer)))
 
-    (define-instance (RealFrac Float)
+    (instance (RealFrac Float)
       (define (floor-real    x) (racket Integer (x) 0))
       (define (ceiling-real  x) (racket Integer (x) 0))
       (define (round-real    x) (racket Integer (x) 0))
       (define (truncate-real x) (racket Integer (x) 0)))
-    (define-instance (RealFrac Rational)
+    (instance (RealFrac Rational)
       (define (floor-real    x) (racket Integer (x) 0))
       (define (ceiling-real  x) (racket Integer (x) 0))
       (define (round-real    x) (racket Integer (x) 0))
@@ -1399,12 +1399,12 @@
 
     ;; --- RealFloat class ---------------------------
 
-    (define-class ((RealFrac a) (Floating a) => (RealFloat a))
+    (protocol ((RealFrac a) (Floating a) => (RealFloat a))
       (: is-nan?      (-> a Boolean))
       (: is-infinite? (-> a Boolean))
       (: atan2        (-> a (-> a a))))
 
-    (define-instance (RealFloat Float)
+    (instance (RealFloat Float)
       (define (is-nan?      x)   (racket Boolean (x)   #f))
       (define (is-infinite? x)   (racket Boolean (x)   #f))
       (define (atan2        y x) (racket Float   (y x) 0.0)))

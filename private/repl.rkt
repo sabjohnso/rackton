@@ -82,7 +82,7 @@
   (and (pair? form)
        (memq (car form)
              '(define define-data define-newtype define-struct
-                define-class define-instance define-alias
+                protocol instance define-alias
                 : require))))
 
 ;; ----- command handling -------------------------------------------

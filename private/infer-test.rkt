@@ -199,7 +199,7 @@
   ;; class constraint attached.
   (define eq-class-env
     (program-env
-     '((define-class (Eq a)
+     '((protocol (Eq a)
          (: == (-> a (-> a Boolean)))))))
   (check-equal? (scheme->datum (env-ref-var eq-class-env '==))
                 '(All (a) ((Eq a) => (-> a (-> a Boolean)))))
@@ -208,8 +208,8 @@
   ;; specializes the constraint and it disappears from the result type.
   (define eq-int-env
     (program-env
-     '((define-class (Eq a) (: == (-> a (-> a Boolean))))
-       (define-instance (Eq Integer)
+     '((protocol (Eq a) (: == (-> a (-> a Boolean))))
+       (instance (Eq Integer)
          (define (== a b) (= a b)))
        (define x (== 3 3)))))
   (check-equal? (scheme->datum (env-ref-var eq-int-env 'x))
@@ -219,7 +219,7 @@
   ;; qualified scheme.
   (define eq-twice-env
     (program-env
-     '((define-class (Eq a) (: == (-> a (-> a Boolean))))
+     '((protocol (Eq a) (: == (-> a (-> a Boolean))))
        (define (eq-twice x) (== x x)))))
   (check-equal? (scheme->datum (env-ref-var eq-twice-env 'eq-twice))
                 '(All (a) ((Eq a) => (-> a Boolean)))))

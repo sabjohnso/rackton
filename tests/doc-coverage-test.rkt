@@ -52,7 +52,7 @@
 ;; identifiers exported by main.rkt.  Hand-maintained.
 (define surface-forms
   '(define : define-data define-newtype define-struct
-     define-class define-instance define-alias define-effect
+     protocol instance define-alias define-effect
      lambda λ let letrec match-let where
      if cond match do ann update escape racket handle
      require provide
@@ -60,7 +60,7 @@
 
 ;; Provide-spec heads recognised in (provide ...) bodies.
 (define provide-specs
-  '(all-defined-out data-out struct-out class-out rename-out except-out))
+  '(all-defined-out data-out struct-out protocol-out rename-out except-out))
 
 ;; REPL commands accepted by the interactive REPL.
 (define repl-commands

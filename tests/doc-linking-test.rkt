@@ -33,14 +33,14 @@
 
 (define surface-forms
   '(define : define-data define-newtype define-struct
-     define-class define-instance define-alias define-effect
+     protocol instance define-alias define-effect
      lambda λ let letrec match-let where
      if cond match do ann update escape racket handle
      require provide
      All))
 
 (define provide-specs
-  '(all-defined-out data-out struct-out class-out rename-out except-out))
+  '(all-defined-out data-out struct-out protocol-out rename-out except-out))
 
 (define type-ctors
   '(Integer Float Rational Complex Boolean String Char Bytes Unit

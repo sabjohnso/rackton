@@ -48,15 +48,15 @@ accessor @racketidfont{S}@racketidfont{-}@racket[_fname].
 (define-struct Point [x : Integer] [y : Integer])
 (provide (struct-out Point))]}
 
-@defform[#:literals (class-out)
-         (class-out C)]{
+@defform[#:literals (protocol-out)
+         (protocol-out C)]{
 
-Exports the class @racket[C] together with every method declared by
+Exports the protocol @racket[C] together with every method declared by
 @racket[C].
 
 @racketblock[
-(define-class (Shape a) (: area (-> a Float)))
-(provide (class-out Shape))]}
+(protocol (Shape a) (: area (-> a Float)))
+(provide (protocol-out Shape))]}
 
 @defform[#:literals (rename-out)
          (rename-out [old new] ...)]{

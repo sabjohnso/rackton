@@ -7,11 +7,11 @@
 
 (define-data (Stack a) Empty (Push a (Stack a)))
 
-(define-class (Container (f :: (-> * *)))
+(protocol (Container (f :: (-> * *)))
   (: empty? (-> (f a) Boolean))
   (: size   (-> (f a) Integer)))
 
-(define-instance (Container Stack)
+(instance (Container Stack)
   (define (empty? s)
     (match s
       [(Empty)      #t]

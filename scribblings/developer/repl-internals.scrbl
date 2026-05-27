@@ -39,8 +39,8 @@ Each call to @racket[rackton-repl-step] dispatches by input shape:
       shortforms), invoke @racket[handle-command].}
 @item{Else if the input is a top-level form (@racket[define],
       @racket[define-data], @racket[define-newtype],
-      @racket[define-struct], @racket[define-class],
-      @racket[define-instance], @racket[define-alias], @racket[:],
+      @racket[define-struct], @racket[protocol],
+      @racket[instance], @racket[define-alias], @racket[:],
       @racket[require]), invoke @racket[handle-top-input].}
 @item{Else invoke @racket[handle-expr-input], which wraps the input
       in a fresh @racket[(define $repl-N …)] so the same machinery

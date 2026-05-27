@@ -9,26 +9,26 @@
          "../main.rkt")
 
 (rackton
-  (define-class (Eq a)
+  (protocol (Eq a)
     (: eq  (-> a (-> a Boolean)))
     (: neq (-> a (-> a Boolean)))
     (define (neq x y)
       (if (eq x y) #f #t)))
 
-  (define-class ((Eq a) => (Ord a))
+  (protocol ((Eq a) => (Ord a))
     (: lt (-> a (-> a Boolean)))
     (: gt (-> a (-> a Boolean)))
     (define (gt x y) (lt y x)))
 
-  (define-instance (Eq Integer)
+  (instance (Eq Integer)
     (define (eq x y) (= x y)))
 
-  (define-instance (Ord Integer)
+  (instance (Ord Integer)
     (define (lt x y) (< x y)))
 
   (define-data (Maybe a) None (Some a))
 
-  (define-instance ((Eq a) => (Eq (Maybe a)))
+  (instance ((Eq a) => (Eq (Maybe a)))
     (define (eq x y)
       (match x
         [(None)

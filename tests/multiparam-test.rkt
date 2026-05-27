@@ -9,13 +9,13 @@
          "../main.rkt")
 
 (rackton
-  (define-class (Convertible a b)
+  (protocol (Convertible a b)
     (: convert (-> a b)))
 
-  (define-instance (Convertible Integer String)
+  (instance (Convertible Integer String)
     (define (convert n) (show n)))
 
-  (define-instance (Convertible Boolean String)
+  (instance (Convertible Boolean String)
     (define (convert b) (if b "yes" "no")))
 
   (: int-to-string (-> Integer String))

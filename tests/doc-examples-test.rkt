@@ -49,12 +49,12 @@
 ;; ----- advanced-types.scrbl: associated type with #:type clauses ---
 
 (rackton
-  (define-class (Container1 c)
+  (protocol (Container1 c)
     (#:type Elem1)
     (: empty1? (-> c Boolean))
     (: head1   (-> c (Maybe (Elem1 c)))))
 
-  (define-instance (Container1 (List a))
+  (instance (Container1 (List a))
     (#:type (Elem1 = a))
     (define (empty1? xs) (match xs [(Nil) #t] [(Cons _ _) #f]))
     (define (head1   xs) (match xs [(Nil) None] [(Cons h _) (Some h)])))

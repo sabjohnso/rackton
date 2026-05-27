@@ -170,7 +170,7 @@
 ;; and the body (signatures + defaults).
 (struct top:class    (supers head methods stx) #:transparent)
 (struct top:instance (context head methods stx) #:transparent)
-;; Items inside a `define-class` body:
+;; Items inside a `protocol` body:
 (struct method-sig     (name type stx) #:transparent)
 (struct method-default (name expr stx) #:transparent)
 ;; A functional dependency declaration: `(#:fundep lhs … -> rhs …)`
@@ -1246,7 +1246,7 @@
 
 (define (parse-top stx)
   (syntax-parse stx
-    #:datum-literals (define define-data define-newtype define-struct define-class define-instance define-alias define-effect require provide : =>)
+    #:datum-literals (define define-data define-newtype define-struct protocol instance define-alias define-effect require provide : =>)
     [(require spec ...)
      (top:require (syntax->list #'(spec ...)) stx)]
 
@@ -1364,16 +1364,16 @@
                         stx
                         #'sname)]
 
-    ;; A class with a superclass list: ((C1 a) ... => (D a))
-    [(define-class (sup ...+ => head) body ...)
+    ;; A protocol with a superclass list: ((C1 a) ... => (D a))
+    [(protocol (sup ...+ => head) body ...)
      (top:class (for/list ([s (in-list (syntax->list #'(sup ...)))])
                   (parse-constraint s))
                 (parse-constraint #'head)
                 (for/list ([m (in-list (syntax->list #'(body ...)))])
                   (parse-class-method m))
                 stx)]
-    ;; A class with no superclasses: (D a)
-    [(define-class head body ...)
+    ;; A protocol with no superclasses: (D a)
+    [(protocol head body ...)
      (top:class '()
                 (parse-constraint #'head)
                 (for/list ([m (in-list (syntax->list #'(body ...)))])
@@ -1381,14 +1381,14 @@
                 stx)]
 
     ;; Instance with context: ((Eq a) ... => (Eq (Maybe a)))
-    [(define-instance (ctx ...+ => head) body ...)
+    [(instance (ctx ...+ => head) body ...)
      (top:instance (for/list ([c (in-list (syntax->list #'(ctx ...)))])
                      (parse-constraint c))
                    (parse-constraint #'head)
                    (for/list ([m (in-list (syntax->list #'(body ...)))])
                      (parse-instance-method m))
                    stx)]
-    [(define-instance head body ...)
+    [(instance head body ...)
      (top:instance '()
                    (parse-constraint #'head)
                    (for/list ([m (in-list (syntax->list #'(body ...)))])
@@ -1414,7 +1414,7 @@
                 (parse-type #'result)
                 stx)]))
 
-;; A method form inside `define-class`: either a `(: name type)` signature,
+;; A method form inside `protocol`: either a `(: name type)` signature,
 ;; a `(define ...)` providing a default implementation, or a functional
 ;; dependency `(#:fundep lhs … -> rhs …)`.
 (define (parse-class-method stx)

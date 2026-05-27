@@ -20,13 +20,13 @@
   ;; A user-defined class so the test exercises a non-prelude
   ;; instance — prelude instances use Racket-escape bodies and are
   ;; intentionally NOT monomorphized.
-  (define-class (Tag a)
+  (protocol (Tag a)
     (: tag-of (-> a Integer)))
 
-  (define-instance (Tag Integer)
+  (instance (Tag Integer)
     (define (tag-of x) (+ x 100)))
 
-  (define-instance (Tag Boolean)
+  (instance (Tag Boolean)
     (define (tag-of b) (if b 1 0)))
 
   (: r-tag-int Integer)
