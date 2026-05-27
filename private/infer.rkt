@@ -1714,10 +1714,84 @@
         (apply-subst-to-preds! s*)
         (define final-ty (apply-subst s* t))
         (define final-env (apply-subst/env s* env))
-        (define generalized (generalize final-env final-ty))
-        (resolve-method-uses! s* env)
-        (values (env-extend-var final-env name generalized)
-                declared)])]
+        ;; Detect inferred needs-dict: pending preds over a
+        ;; return-typed-bearing class whose argument is a tvar that
+        ;; will be quantified.  Without this, a polymorphic monadic
+        ;; helper such as
+        ;;   (define (madd mx my) (do [x <- mx] [y <- my] (pure (+ x y))))
+        ;; raises "ambiguous use of pure" because `pure`'s class param
+        ;; resolves to the to-be-quantified `m`.  Treat such defs the
+        ;; same way as a declared (Monad m) => ... signature: skolemize
+        ;; the relevant tvars, allocate dict-arg names, and resolve the
+        ;; body's `pure`/`mempty` calls through the dict-skolems map.
+        (define env-fv (env-vars-free-vars final-env))
+        (define ty-fv  (type-vars final-ty))
+        (define quant-set (set-subtract ty-fv env-fv))
+        ;; Only enable the inferred needs-dict path for function
+        ;; definitions (lambda RHS).  A bare value binding such as
+        ;; `(define x mempty)` or `(define x (pure 5))` would
+        ;; otherwise become a polymorphic dict-taking value — useful
+        ;; in principle but surprising in practice, and tests pin the
+        ;; current "rejected at compile time" behavior.  Users who
+        ;; want a polymorphic value can ascribe a type with `:`.
+        (define dict-bearing-preds
+          (cond
+            [(or (set-empty? quant-set) (not (e:lam? expr))) '()]
+            [else
+             (for/list ([p (in-list (snapshot-preds))]
+                        #:when
+                        (and (class-has-return-typed-methods?
+                              env (pred-class p))
+                             (not (set-empty?
+                                   (set-intersect (type-vars p) quant-set)))
+                             (for/or ([a (in-list (pred-args p))])
+                               (tvar? a))))
+               p)]))
+        (cond
+          [(null? dict-bearing-preds)
+           (define generalized (generalize final-env final-ty))
+           (resolve-method-uses! s* env)
+           (values (env-extend-var final-env name generalized) declared)]
+          [else
+           ;; Build skolem subst: each tvar arg of a dict-bearing pred
+           ;; that will be quantified gets a fresh skolem tcon.  These
+           ;; names mirror `build-dict-skolems`' filter — non-tvar args
+           ;; are passed through `apply-subst` to itself, so they stay
+           ;; literal in the resulting types.
+           (define dict-tvar-names
+             (for/fold ([acc (seteq)]) ([p (in-list dict-bearing-preds)])
+               (for/fold ([acc acc]) ([a (in-list (pred-args p))]
+                                      #:when (and (tvar? a)
+                                                  (set-member? quant-set
+                                                               (tvar-name a))))
+                 (set-add acc (tvar-name a)))))
+           (define skolem-subst
+             (for/fold ([sub empty-subst]) ([tv (in-set dict-tvar-names)])
+               (subst-extend sub tv
+                             (tcon (string->symbol
+                                    (format "$skolem.~a" tv))))))
+           (define needs-dict-reqs
+             (for/list ([p (in-list dict-bearing-preds)])
+               (cons (pred-class p) (pred-args p))))
+           (define-values (sk-map arg-names)
+             (build-dict-skolems needs-dict-reqs skolem-subst env))
+           (when (and (current-needs-dict-defs) (not (null? arg-names)))
+             (hash-set! (current-needs-dict-defs) name arg-names))
+           ;; Recursive calls inside the body had no dict-use recorded
+           ;; (env-rec held `(scheme '() α)`), so retroactively record
+           ;; them with the same reqs — they share the lambda's
+           ;; locally-bound dict args via the skolem map.
+           (record-recursive-dict-uses! expr name needs-dict-reqs s*)
+           ;; Generalize (consumes preds from the pool).
+           (define generalized (generalize final-env final-ty))
+           ;; Resolve methods with the skolem map in scope so
+           ;; pure/mempty land on the local dict-arg names rather than
+           ;; per-tcon impls.
+           (define saved-skolems (current-dict-skolems))
+           (current-dict-skolems sk-map)
+           (resolve-method-uses! (subst-compose skolem-subst s*) env)
+           (current-dict-skolems saved-skolems)
+           (values (env-extend-var final-env name generalized) declared)])])]
 
     [(top:class supers head methods stx)
      (handle-class-form supers head methods stx env declared)]
@@ -2215,6 +2289,72 @@
         (cons cls (for/list ([a (in-list arg-types)])
                     (apply-subst sub a)))))
     (hash-set! table stx (list 'dict method-name dict-entries))))
+
+;; Walk an AST expression looking for `e:var` references to `name`
+;; and `record-dict-use!` each one with the supplied `reqs` / `sub`.
+;; Used when a non-declared def turns out to be needs-dict: recursive
+;; references inside the body weren't recorded during inference (the
+;; recursive scheme had no qual), and codegen will prepend dict-args
+;; to the lambda — so the body's calls to itself must pass those
+;; dict-args.  Tracks shadowing of `name` introduced by inner
+;; binders so we don't capture references that resolve elsewhere.
+(define (record-recursive-dict-uses! expr name reqs sub)
+  (let walk ([e expr] [shadowed? #f])
+    (cond
+      [shadowed? (void)]
+      [else
+       (match e
+         [(e:literal _ _) (void)]
+         [(e:var n stx)
+          (when (eq? n name)
+            (record-dict-use! name stx reqs sub))]
+         [(e:lam params body _)
+          (walk body (or shadowed? (and (memq name params) #t)))]
+         [(e:app head args _)
+          (walk head shadowed?)
+          (for ([a (in-list args)]) (walk a shadowed?))]
+         [(e:let bindings body _)
+          (for ([b (in-list bindings)]) (walk (cdr b) shadowed?))
+          (define new-shadowed?
+            (or shadowed?
+                (for/or ([b (in-list bindings)]) (eq? (car b) name))))
+          (walk body new-shadowed?)]
+         [(e:letrec bindings body _)
+          (define new-shadowed?
+            (or shadowed?
+                (for/or ([b (in-list bindings)]) (eq? (car b) name))))
+          (for ([b (in-list bindings)]) (walk (cdr b) new-shadowed?))
+          (walk body new-shadowed?)]
+         [(e:if c th el _)
+          (walk c shadowed?) (walk th shadowed?) (walk el shadowed?)]
+         [(e:ann body _ _) (walk body shadowed?)]
+         [(e:match scrut clauses _ _)
+          (walk scrut shadowed?)
+          (for ([cl (in-list clauses)])
+            (define sh? (or shadowed?
+                            (pattern-binds-name? (clause-pattern cl) name)))
+            (when (clause-guard cl) (walk (clause-guard cl) sh?))
+            (walk (clause-body cl) sh?))]
+         [(e:update record updates _)
+          (walk record shadowed?)
+          (for ([u (in-list updates)]) (walk (cdr u) shadowed?))]
+         [(e:handle expr clauses ret _)
+          (walk expr shadowed?)
+          (when ret (walk ret shadowed?))
+          (for ([cl (in-list clauses)])
+            (define sh? (or shadowed?
+                            (and (memq name (handle-clause-params cl)) #t)
+                            (eq? (handle-clause-k-name cl) name)))
+            (walk (handle-clause-body cl) sh?))]
+         [(e:escape _ _ _ _) (void)]
+         [_ (void)])])))
+
+(define (pattern-binds-name? p name)
+  (match p
+    [(p:var n _) (eq? n name)]
+    [(p:ctor _ args _)
+     (for/or ([a (in-list args)]) (pattern-binds-name? a name))]
+    [_ #f]))
 
 ;; After a top-level def's constraints have been reduced, walk every
 ;; recorded method use, apply `final-subst` to each entry's tvars,

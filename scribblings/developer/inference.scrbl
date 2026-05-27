@@ -97,7 +97,17 @@ between the inferer and the codegen:
       values in declaration order.}
 @item{@racket[current-needs-dict-defs] — definitions that themselves
       take dict arguments because their body uses methods of a
-      needs-dict instance.}
+      needs-dict instance.  Populated by both the declared-signature
+      path and the inferred path: when a non-declared @racket[define]
+      has a lambda RHS whose generalized scheme picks up a
+      return-typed-bearing constraint over a quantified tvar (e.g.
+      @racket[(define (madd mx my) … (pure (+ x y)))] inferring
+      @racket[(Monad m) (Num a) => …]), inference allocates a skolem
+      tcon for each such tvar, calls @racket[build-dict-skolems] to
+      derive the dict-arg names, retroactively records
+      @racket['dict] entries on recursive @racket[e:var] references
+      to the def's own name, and runs @racket[resolve-method-uses!]
+      with the skolem map in scope.}
 @item{@racket[current-monomorphized-sites] and
       @racket[current-inlined-sites] — logs accessible to user code
       via @racket[rackton-monomorphized-sites] and

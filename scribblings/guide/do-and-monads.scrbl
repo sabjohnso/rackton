@@ -102,6 +102,39 @@ is fed to a polymorphic function), use @racket[ann]:
 @racket[mempty] (in @racket[Monoid]) is similar: its type is the
 identity element, ambiguous without context.
 
+@subsection{Polymorphic monadic functions without a signature}
+
+A function whose body produces its result via @racket[pure] (or
+@racket[mempty]) over an unconstrained type variable is inferred as
+polymorphic in that variable, with the appropriate constraint in its
+scheme:
+
+@codeblock|{
+(define (madd mx my)
+  (do [x <- mx]
+      [y <- my]
+    (pure (+ x y))))
+;; inferred:  madd :: ((Monad m) (Num a) => (-> (m a) (m a) (m a)))
+}|
+
+No signature is required.  Internally this routes through the same
+dict-passing path as a user-written
+@racket[(: madd ((Monad m) (Num a) => …))]: the compiled lambda
+acquires leading dict-arg parameters, every recursive call inside the
+body re-threads them, and each external call site resolves them to
+per-instance impls.  Self-recursive needs-dict functions work without
+a signature.
+
+The inferred path only fires when the right-hand side is a lambda.  A
+bare value binding such as
+
+@codeblock|{
+(define x (pure 5))   ;; rejected: ambiguous use of pure
+}|
+
+is still rejected at compile time --- ascribe it
+(@racket[(: x (Maybe Integer))]) or wrap it in a function.
+
 @section{MTL-style classes}
 
 The four MTL classes — @racket[MonadState], @racket[MonadEnv],
