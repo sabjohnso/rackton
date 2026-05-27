@@ -639,6 +639,7 @@
     [(e:if _ _ _ s)     s]
     [(e:ann _ _ s)      s]
     [(e:match _ _ _ s)  s]
+    [(e:match* _ _ _ s) s]
     [(e:escape _ _ _ s) s]))
 
 ;; -------- "did you mean?" suggestions ------------------------------
@@ -1088,6 +1089,35 @@
      ;; exhaustiveness check — the user has asserted the pattern fits.
      (unless irrefutable?
        (check-exhaustive! (apply-subst s-final t-scrut) clauses stx env))
+     (values s-final (apply-subst s-final result-tv))]
+
+    [(e:match* scrutinees clauses _irrefutable? stx)
+     ;; Multi-scrutinee match (emitted by the multi-clause `define`
+     ;; combiner in private/surface.rkt).  Infer each scrutinee's
+     ;; type, then for each clause walk its pattern list against the
+     ;; scrutinee types, accumulate bindings into a single env
+     ;; extension, and infer the body.  Result type unifies across
+     ;; all clauses.  Exhaustiveness over the cartesian product of
+     ;; scrutinee types is not (yet) checked — the multi-clause
+     ;; combiner trusts the user to cover the cases they care about,
+     ;; matching Haskell's behaviour.
+     (define-values (s-scruts scrut-types-rev)
+       (for/fold ([s empty-subst] [acc '()]) ([sc (in-list scrutinees)])
+         (define-values (s-i t-i) (infer-expr sc (apply-subst/env s env)))
+         (values (subst-compose s-i s) (cons t-i acc))))
+     (define scrut-types (reverse scrut-types-rev))
+     (define expected (current-expected-type))
+     (current-expected-type #f)
+     (define result-tv (or expected (fresh-tvar)))
+     (define-values (s-final _)
+       (for/fold ([s s-scruts] [_ignored result-tv])
+                 ([cl (in-list clauses)])
+         (define-values (s-cl _t)
+           (infer-clause* cl
+                          (map (lambda (t) (apply-subst s t)) scrut-types)
+                          (apply-subst s result-tv)
+                          (apply-subst/env s env)))
+         (values (subst-compose s-cl s) _t)))
      (values s-final (apply-subst s-final result-tv))]))
 
 ;; Type a single match clause.  Pattern bindings extend the env for the
@@ -1352,6 +1382,72 @@
      (unify (apply-skolem-subst arm-skolem-subst
                                 (apply-subst s-acc t-body))
             refined-result-type)))
+  (values (subst-compose s-u s-acc)
+          (apply-subst s-u t-body)))
+
+;; Multi-pattern variant of `infer-clause` for `e:match*`.  Walks
+;; the clause's parameter-pattern list, unifying each with its
+;; scrutinee's type and accumulating bindings into one env
+;; extension that the body is typed against.  No GADT
+;; skolem-refinement (multi-clause defines aren't a GADT-elim site
+;; in practice); no existential support; no per-pattern guard
+;; (guard is one expression at the clause level if present).
+(define (infer-clause* cl* scrut-types result-type env)
+  (unless (= (length (clause*-patterns cl*)) (length scrut-types))
+    (raise-syntax-error 'infer
+      (format "match* clause has ~a patterns but ~a scrutinees"
+              (length (clause*-patterns cl*)) (length scrut-types))
+      (clause*-stx cl*)))
+  (define-values (s-pats env*)
+    (for/fold ([s empty-subst] [env env])
+              ([pat (in-list (clause*-patterns cl*))]
+               [scrut-t (in-list scrut-types)])
+      (define-values (bindings pat-type _ex-hyps)
+        (infer-pattern pat (apply-subst/env s env)))
+      (define s-u
+        (with-handlers
+         ([exn:fail:unify?
+           (lambda (_)
+             (raise-syntax-error 'infer
+               (format "pattern type ~a does not match scrutinee type ~a"
+                       (pretty-type pat-type)
+                       (pretty-type (apply-subst s scrut-t)))
+               (clause*-stx cl*)))])
+         (unify pat-type (apply-subst s scrut-t))))
+      (define s-now (subst-compose s-u s))
+      (define env-now
+        (for/fold ([e (apply-subst/env s-now env)]) ([b (in-list bindings)])
+          (env-extend-var e (car b)
+                          (scheme '() (apply-subst s-now (cdr b))))))
+      (values s-now env-now)))
+  (define-values (s-pre-body env-pre-body)
+    (cond
+      [(clause*-guard cl*)
+       (define-values (s-g t-g) (infer-expr (clause*-guard cl*) env*))
+       (define s-u
+         (with-handlers
+          ([exn:fail:unify?
+            (lambda (_)
+              (raise-syntax-error 'infer
+                (format "match* clause guard must be Boolean, got ~a"
+                        (pretty-type (apply-subst s-g t-g)))
+                (clause*-stx cl*)))])
+          (unify (apply-subst s-g t-g) t-bool)))
+       (define s* (subst-compose s-u (subst-compose s-g s-pats)))
+       (values s* (apply-subst/env s* env*))]
+      [else (values s-pats env*)]))
+  (define-values (s-body t-body) (infer-expr (clause*-body cl*) env-pre-body))
+  (define s-acc (subst-compose s-body s-pre-body))
+  (define s-u
+    (with-handlers
+     ([exn:fail:unify?
+       (lambda (_)
+         (raise-syntax-error 'infer
+           (format "match* clause body has type ~a but earlier clauses have ~a"
+                   (pretty-type (apply-subst s-acc t-body))
+                   (pretty-type (apply-subst s-acc result-type)))
+           (clause*-stx cl*)))])
+     (unify (apply-subst s-acc t-body) (apply-subst s-acc result-type))))
   (values (subst-compose s-u s-acc)
           (apply-subst s-u t-body)))
 
@@ -1844,6 +1940,14 @@
          (define sh* (set-union shadowed (pattern-bound-names (clause-pattern cl))))
          (when (clause-guard cl) (walk (clause-guard cl) sh*))
          (walk (clause-body cl) sh*))]
+      [(e:match* scrutinees clauses _ _)
+       (for ([s (in-list scrutinees)]) (walk s shadowed))
+       (for ([cl (in-list clauses)])
+         (define sh*
+           (for/fold ([acc shadowed]) ([p (in-list (clause*-patterns cl))])
+             (set-union acc (pattern-bound-names p))))
+         (when (clause*-guard cl) (walk (clause*-guard cl) sh*))
+         (walk (clause*-body cl) sh*))]
       [(e:update record updates _)
        (walk record shadowed)
        (for ([u (in-list updates)]) (walk (cdr u) shadowed))]
@@ -1986,7 +2090,8 @@
            (env-extend-var e p (scheme '() ty))))
        (define-values (s-body t-body)
          (cond
-           [(e:match? (e:lam-body expr))
+           [(or (e:match? (e:lam-body expr))
+                (e:match*? (e:lam-body expr)))
             (parameterize ([current-expected-type cod])
               (infer-expr (e:lam-body expr) env-lam))]
            [else (infer-expr (e:lam-body expr) env-lam)]))
@@ -2874,6 +2979,15 @@
                             (pattern-binds-name? (clause-pattern cl) name)))
             (when (clause-guard cl) (walk (clause-guard cl) sh?))
             (walk (clause-body cl) sh?))]
+         [(e:match* scrutinees clauses _ _)
+          (for ([sc (in-list scrutinees)]) (walk sc shadowed?))
+          (for ([cl (in-list clauses)])
+            (define sh?
+              (or shadowed?
+                  (for/or ([p (in-list (clause*-patterns cl))])
+                    (pattern-binds-name? p name))))
+            (when (clause*-guard cl) (walk (clause*-guard cl) sh?))
+            (walk (clause*-body cl) sh?))]
          [(e:update record updates _)
           (walk record shadowed?)
           (for ([u (in-list updates)]) (walk (cdr u) shadowed?))]

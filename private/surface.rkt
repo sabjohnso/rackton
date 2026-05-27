@@ -32,9 +32,11 @@
          (struct-out e:if)
          (struct-out e:ann)
          (struct-out e:match)
+         (struct-out e:match*)
          (struct-out e:escape)
          (struct-out e:letrec)
          (struct-out clause)
+         (struct-out clause*)
 
          (struct-out ty:var)
          (struct-out ty:con)
@@ -82,7 +84,8 @@
 
 (require syntax/parse
          racket/match
-         racket/list)
+         racket/list
+         racket/set)
 
 ;; ----- AST -----------------------------------------------------------
 
@@ -115,6 +118,19 @@
 ;; A `match` clause.  `guard` is either #f (no guard) or a surface
 ;; expression that must evaluate to #t for the clause to fire.
 (struct clause    (pattern guard body stx) #:transparent)
+
+;; Multi-scrutinee match.  Used internally to lower multi-clause
+;; `define` forms like
+;;     (define (head (Cons x _)) x)
+;;     (define (head Nil)        ...)
+;; into a single function whose body matches on every parameter at
+;; once with cross-clause fall-through.  Each `clause*` carries one
+;; pattern per scrutinee in source order.  `irrefutable?` flag has
+;; the same meaning as on `e:match`: when #t the exhaustiveness
+;; checker skips the form (the user — or the multi-clause combiner —
+;; has asserted the clauses cover every case).
+(struct e:match*  (scrutinees clauses irrefutable? stx) #:transparent)
+(struct clause*   (patterns guard body stx) #:transparent)
 
 (struct ty:var    (name stx) #:transparent)
 (struct ty:con    (name stx) #:transparent)
@@ -1054,6 +1070,74 @@
                (parse-pattern a))
              stx)]))
 
+;; Side channel: every `(define (f params…) body)` form parsed via
+;; `parse-fn-params+body` deposits its original `(params-stx body-stx)`
+;; here, keyed by the def's source stx.  The post-processor in
+;; `parse-toplevel-list` consults this when grouping consecutive
+;; same-name function defs into a single multi-clause `e:match*`,
+;; reparsing the parameter list under the multi-clause rule (bare
+;; uppercase identifiers become 0-arg ctor patterns rather than plain
+;; param names).  Outside `parse-toplevel-list` the parameter is #f
+;; and recording is skipped — `parse-top` then behaves exactly as
+;; before for the surface tests.
+(define current-fn-clauses-record (make-parameter #f))
+
+;; Parse a function's parameter list together with its body.  Each
+;; parameter is either a bare identifier (binds a plain parameter
+;; — preserves the pre-feature behaviour for every existing
+;; identifier shape, including `_x` and uppercase names) or a
+;; parenthesized pattern like `(Point x y)` or `(Cons x xs)`.
+;; Pattern parameters desugar to a synthetic identifier plus an
+;; irrefutable `match` wrapping the body.  Returns
+;; `(values param-names body-ast)`.
+;;
+;; Source order is preserved in the wrap: matching against the
+;; first parameter is outermost in the resulting expression, so a
+;; refutable pattern in the first parameter raises its mismatch
+;; before later parameters are even examined.
+;;
+;; `irrefutable?` is flagged on every generated `e:match` so the
+;; exhaustiveness checker skips it — the caller is explicitly
+;; asserting the pattern fits.  Sum-type cases that need
+;; fall-through across constructors should use the multi-clause
+;; `define` mechanism instead of a single-clause refutable pattern.
+(define (parse-fn-params+body params-stx body-stx ctx-stx)
+  (define params-list (syntax->list params-stx))
+  (define-values (names-rev wrappers-rev)
+    (for/fold ([names '()] [wrappers '()])
+              ([p (in-list params-list)])
+      (cond
+        [(identifier? p)
+         ;; Bare identifier: use directly as the lambda's
+         ;; parameter name.  No pattern parsing — `Nil` here is a
+         ;; parameter literally named `Nil`, not a 0-arg ctor
+         ;; pattern.  To pattern-match against a 0-arg ctor, wrap
+         ;; in parens: `(Nil)`.
+         (values (cons (syntax->datum p) names) wrappers)]
+        [else
+         (define pat (parse-pattern p))
+         (define fresh (gensym '$arg))
+         (values (cons fresh names)
+                 (cons (cons fresh pat) wrappers))])))
+  (define names    (reverse names-rev))
+  (define wrappers (reverse wrappers-rev))
+  (define body-ast (parse-expr body-stx))
+  (define wrapped
+    (foldr (lambda (w body)
+             (e:match (e:var (car w) ctx-stx)
+                      (list (clause (cdr w) #f body body-stx))
+                      #t
+                      ctx-stx))
+           body-ast
+           wrappers))
+  ;; Stash the original params/body for the multi-clause combiner
+  ;; that may run in `parse-toplevel-list`.  Outside that scope the
+  ;; record parameter is #f and this is a no-op.
+  (let ([rec (current-fn-clauses-record)])
+    (when rec
+      (hash-set! rec ctx-stx (cons params-stx body-stx))))
+  (values names wrapped))
+
 ;; ----- types --------------------------------------------------------
 
 (define (parse-type stx)
@@ -1183,19 +1267,26 @@
     [(: name:id ty)
      (top:dec (syntax->datum #'name) (parse-type #'ty) stx)]
 
-    [(define (f:id arg:id ...) body)
+    [(define (f:id arg ...) body)
      ;; A 0-arg define `(define (f) body)` desugars to a
      ;; lambda with one ignored Unit parameter, matching the 0-arg
      ;; call-site convention.  Without this `(f)` would call a
-     ;; non-function value.
-     (define args (map syntax->datum (syntax->list #'(arg ...))))
-     (top:def (syntax->datum #'f)
-              (e:lam (cond
-                       [(null? args) '($unit-arg)]
-                       [else args])
-                     (parse-expr #'body)
-                     stx)
-              stx)]
+     ;; non-function value.  Each `arg` may be a plain identifier
+     ;; (the historical case) or any pattern; pattern parameters
+     ;; desugar via `parse-fn-params+body` into a synthetic
+     ;; identifier plus an irrefutable match in the body.
+     (define arg-list (syntax->list #'(arg ...)))
+     (cond
+       [(null? arg-list)
+        (top:def (syntax->datum #'f)
+                 (e:lam '($unit-arg) (parse-expr #'body) stx)
+                 stx)]
+       [else
+        (define-values (names body-ast)
+          (parse-fn-params+body #'(arg ...) #'body stx))
+        (top:def (syntax->datum #'f)
+                 (e:lam names body-ast stx)
+                 stx)])]
     [(define x:id e)
      (top:def (syntax->datum #'x) (parse-expr #'e) stx)]
 
@@ -1331,12 +1422,19 @@
     #:datum-literals (: define ->)
     [(: name:id ty)
      (method-sig (syntax->datum #'name) (parse-type #'ty) stx)]
-    [(define (f:id arg:id ...) body)
-     (method-default (syntax->datum #'f)
-                     (e:lam (map syntax->datum (syntax->list #'(arg ...)))
-                            (parse-expr #'body)
-                            stx)
-                     stx)]
+    [(define (f:id arg ...) body)
+     (define arg-list (syntax->list #'(arg ...)))
+     (cond
+       [(null? arg-list)
+        (method-default (syntax->datum #'f)
+                        (e:lam '($unit-arg) (parse-expr #'body) stx)
+                        stx)]
+       [else
+        (define-values (names body-ast)
+          (parse-fn-params+body #'(arg ...) #'body stx))
+        (method-default (syntax->datum #'f)
+                        (e:lam names body-ast stx)
+                        stx)])]
     [(define x:id e)
      (method-default (syntax->datum #'x) (parse-expr #'e) stx)]
     [(#:fundep lhs:id ...+ -> rhs:id ...+)
@@ -1357,11 +1455,19 @@
      #:fail-unless (not (lowercase-id? (syntax->datum #'name)))
      "associated-type name must be a non-lowercase identifier"
      (inst-type-fam (syntax->datum #'name) (parse-type #'ty) stx)]
-    [(define (f:id arg:id ...) body)
-     (top:def (syntax->datum #'f)
-              (e:lam (map syntax->datum (syntax->list #'(arg ...)))
-                     (parse-expr #'body) stx)
-              stx)]
+    [(define (f:id arg ...) body)
+     (define arg-list (syntax->list #'(arg ...)))
+     (cond
+       [(null? arg-list)
+        (top:def (syntax->datum #'f)
+                 (e:lam '($unit-arg) (parse-expr #'body) stx)
+                 stx)]
+       [else
+        (define-values (names body-ast)
+          (parse-fn-params+body #'(arg ...) #'body stx))
+        (top:def (syntax->datum #'f)
+                 (e:lam names body-ast stx)
+                 stx)])]
     [(define x:id e)
      (top:def (syntax->datum #'x) (parse-expr #'e) stx)]))
 
@@ -1656,10 +1762,98 @@
       [(list? stx-or-list)   stx-or-list]
       [else (raise-argument-error 'parse-toplevel-list
                                   "syntax or list" stx-or-list)]))
-  ;; A single surface form may parse to multiple AST entries (e.g.
-  ;; `(define-data … #:deriving Eq Show)` desugars to the data plus
-  ;; the two synthesized instances).  Flatten if so.
+  (define record (make-hasheq))
+  (define raw
+    (parameterize ([current-fn-clauses-record record])
+      ;; A single surface form may parse to multiple AST entries (e.g.
+      ;; `(define-data … #:deriving Eq Show)` desugars to the data plus
+      ;; the two synthesized instances).  Flatten if so.
+      (apply append
+             (for/list ([f (in-list forms)])
+               (define result (parse-top f))
+               (if (list? result) result (list result))))))
+  (combine-multi-clause-defs raw record))
+
+;; Walk the parsed top-form list.  Group every top:def whose stx
+;; recorded a function-form entry in `record` by name.  Singletons
+;; pass through unchanged (already piece-1 desugared by parse-top).
+;; A name with multiple clauses becomes one top:def whose body is
+;; an `e:match*` over fresh argument identifiers, with each clause
+;; carrying its parsed-as-pattern parameter list (so bare uppercase
+;; identifiers dispatch as 0-arg ctor patterns rather than naming a
+;; plain parameter).
+(define (combine-multi-clause-defs parsed record)
+  (define groups (make-hasheq))     ; name → (list-of top:def in reverse src order)
+  (define non-fn (make-hasheq))     ; name → stx of conflicting non-function form
+  (for ([f (in-list parsed)])
+    (cond
+      [(and (top:def? f) (hash-has-key? record (top:def-stx f)))
+       (hash-update! groups (top:def-name f) (lambda (xs) (cons f xs)) '())]
+      [(top:def? f)
+       (hash-set! non-fn (top:def-name f) (top:def-stx f))]
+      [else (void)]))
+  ;; Validate: every name must be EITHER a single value def OR a
+  ;; group of function clauses with matching arity.
+  (for ([(name top-defs) (in-hash groups)])
+    (define arities
+      (for/seteq ([d (in-list top-defs)])
+        (length (e:lam-params (top:def-expr d)))))
+    (when (> (set-count arities) 1)
+      (raise-syntax-error 'rackton
+        (format "definition ~s has clauses with different arities: ~s"
+                name (sort (set->list arities) <))
+        (top:def-stx (car (reverse top-defs)))))
+    (when (hash-has-key? non-fn name)
+      (raise-syntax-error 'rackton
+        (format "definition ~s mixes function-form (define (~s …)) and value-form (define ~s …)"
+                name name name)
+        (top:def-stx (car (reverse top-defs))))))
+  ;; Emit: replace each first-occurrence clause-bearing top:def with
+  ;; the combined form; skip subsequent occurrences for the same
+  ;; name.  All other forms pass through.
+  (define emitted (mutable-seteq))
   (apply append
-         (for/list ([f (in-list forms)])
-           (define result (parse-top f))
-           (if (list? result) result (list result)))))
+         (for/list ([f (in-list parsed)])
+           (cond
+             [(and (top:def? f) (hash-has-key? record (top:def-stx f)))
+              (define name (top:def-name f))
+              (cond
+                [(set-member? emitted name) '()]
+                [else
+                 (set-add! emitted name)
+                 (define clauses (reverse (hash-ref groups name)))
+                 (list (combine-fn-clauses name clauses record))])]
+             [else (list f)]))))
+
+;; If `top-defs` is a single clause, return it unchanged — parse-top
+;; already produced the desugared singleton form.  Otherwise
+;; synthesize one top:def whose body is an `e:match*` over fresh
+;; arg names, with each clause's parameter list reparsed under the
+;; multi-clause rule via `parse-clause-params`.
+(define (combine-fn-clauses name top-defs record)
+  (cond
+    [(null? (cdr top-defs)) (car top-defs)]
+    [else
+     (define first (car top-defs))
+     (define stx (top:def-stx first))
+     (define arity (length (e:lam-params (top:def-expr first))))
+     (define fresh-names
+       (for/list ([_ (in-range arity)]) (gensym '$arg)))
+     (define clauses
+       (for/list ([d (in-list top-defs)])
+         (define rec (hash-ref record (top:def-stx d)))
+         (define params-stx (car rec))
+         (define body-stx   (cdr rec))
+         (define pats
+           (for/list ([p-stx (in-list (syntax->list params-stx))])
+             (parse-pattern p-stx)))
+         (clause* pats #f
+                  (parse-expr body-stx)
+                  (top:def-stx d))))
+     (define scrutinees
+       (for/list ([n (in-list fresh-names)]) (e:var n stx)))
+     (top:def name
+              (e:lam fresh-names
+                     (e:match* scrutinees clauses #f stx)
+                     stx)
+              stx)]))

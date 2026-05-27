@@ -227,6 +227,26 @@
               [else #'[pat bd]])))])
        (syntax/loc stx (match sc cl ...)))]
 
+    [(e:match* scrutinees clauses _irrefutable? stx)
+     ;; Lower to Racket's `match*` for multi-value matching with
+     ;; cross-clause fall-through.  No allocation; each scrutinee is
+     ;; matched against its position's pattern directly.  Emitted by
+     ;; the multi-clause `define` combiner in private/surface.rkt.
+     (with-syntax
+      ([(sc ...) (for/list ([s (in-list scrutinees)]) (compile-expr s))]
+       [(cl ...)
+        (for/list ([c (in-list clauses)])
+          (with-syntax ([(pat ...)
+                         (for/list ([p (in-list (clause*-patterns c))])
+                           (compile-pattern p))]
+                        [bd (compile-expr (clause*-body c))])
+            (cond
+              [(clause*-guard c)
+               (with-syntax ([gd (compile-expr (clause*-guard c))])
+                 #'[(pat ...) #:when gd bd])]
+              [else #'[(pat ...) bd]])))])
+       (syntax/loc stx (match* (sc ...) cl ...)))]
+
     [(e:handle expr clauses ret stx)
      ;; Lower (handle EXPR clauses... return) using
      ;; Racket's continuation prompts as a deep handler: the prompt
@@ -393,6 +413,12 @@
         (for/sum ([c (in-list cs)])
           (+ (ast-size (clause-body c))
              (if (clause-guard c) (ast-size (clause-guard c)) 0))))]
+    [(e:match* ss cs _ _)
+     (+ 1
+        (for/sum ([s (in-list ss)]) (ast-size s))
+        (for/sum ([c (in-list cs)])
+          (+ (ast-size (clause*-body c))
+             (if (clause*-guard c) (ast-size (clause*-guard c)) 0))))]
     [_ 5]))
 
 (define (contains-class-method-call? e)
@@ -418,6 +444,11 @@
               (for/or ([c (in-list cs)])
                 (or (loop (clause-body c))
                     (and (clause-guard c) (loop (clause-guard c))))))]
+         [(e:match* ss cs _ _)
+          (or (for/or ([s (in-list ss)]) (loop s))
+              (for/or ([c (in-list cs)])
+                (or (loop (clause*-body c))
+                    (and (clause*-guard c) (loop (clause*-guard c))))))]
          [_ #f]))]))
 
 ;; Derive the struct's type-head name from the record
@@ -887,6 +918,13 @@
                         (and (clause-guard c) (R (clause-guard c)))
                         (R (clause-body c)) new-stx))
               irr? new-stx)]
+    [(e:match* ss cs irr? _)
+     (e:match* (map R ss)
+               (for/list ([c (in-list cs)])
+                 (clause* (map R (clause*-patterns c))
+                          (and (clause*-guard c) (R (clause*-guard c)))
+                          (R (clause*-body c)) new-stx))
+               irr? new-stx)]
     [(p:wild _)          (p:wild new-stx)]
     [(p:var n _)         (p:var n new-stx)]
     [(p:lit v _)         (p:lit v new-stx)]

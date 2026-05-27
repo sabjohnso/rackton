@@ -14,14 +14,48 @@ and @seclink["sf-patterns"]{patterns}.
 
 @defform*[[(define name expr)
            (define (name p ...) body)]
-          #:contracts ([name id?] [p id?])]{
+          #:contracts ([name id?])]{
 
 Binds @racket[name] at module scope.  The first form binds
 @racket[name] to the value of @racket[expr]; the second is shorthand
 for @racket[(define name (lambda (p ...) body))].  Top-level
 @racket[define] is recursive: @racket[expr] may refer to
 @racket[name].  When a matching @racket[(: name type)] declaration is
-in scope, the declared type is skolem-checked against the body.}
+in scope, the declared type is skolem-checked against the body.
+
+Each parameter @racket[p] is either a bare identifier (binds a
+plain parameter) or a parenthesised pattern (destructures the
+argument):
+
+@codeblock|{
+(define-struct Point [x : Float] [y : Float])
+(define (distance (Point px py) (Point qx qy))
+  (sqrt (+ (sqr (- px qx)) (sqr (- py qy)))))
+}|
+
+A single-form definition with a destructuring pattern desugars
+to an irrefutable match: if the argument doesn't fit the pattern
+the call raises a runtime error.  For dispatch over multiple
+constructors, use the multi-clause form below.
+
+Multiple @racket[(define (name p ...) body)] forms for the same
+@racket[name] combine into a single function that pattern-matches
+across every parameter position in source-order priority — a
+Haskell-style equational definition:
+
+@codeblock|{
+(define-data MyList Nada (Mcons Integer MyList))
+(define (myhead (Mcons x _)) x)
+(define (myhead Nada)        0)
+}|
+
+In a multi-clause context a bare uppercase identifier @racket[Nada]
+dispatches as a 0-arg constructor pattern (matching the
+@racket[match] convention); use @racket[(Nada)] explicitly if you
+prefer the parenthesised form.  All clauses must have the same
+arity.  Combining a function-form @racket[(define (g x) …)] with a
+value-form @racket[(define g 5)] for the same name is rejected at
+parse time.}
 
 @defform[#:literals (:)
          (: name type)
