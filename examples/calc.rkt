@@ -89,21 +89,19 @@
 (define (parse-binary mk rest op)
   (match rest
     [(Cons a (Cons b (Nil)))
-     (>>= (parse-expr a)
-          (lambda (ea)
-            (>>= (parse-expr b)
-                 (lambda (eb)
-                   (Ok (mk ea eb))))))]
+     (flatmap (lambda (ea)
+                (flatmap (lambda (eb) (Ok (mk ea eb)))
+                         (parse-expr b)))
+              (parse-expr a))]
     [_ (Err (string-append op ": expected two operands"))]))
 
 (define (parse-let rest)
   (match rest
     [(Cons (SSym name) (Cons val (Cons body (Nil))))
-     (>>= (parse-expr val)
-          (lambda (ev)
-            (>>= (parse-expr body)
-                 (lambda (eb)
-                   (Ok (ELet name ev eb))))))]
+     (flatmap (lambda (ev)
+                (flatmap (lambda (eb) (Ok (ELet name ev eb)))
+                         (parse-expr body)))
+              (parse-expr val))]
     [_ (Err "let: expected (let name value body)")]))
 
 ;; ----- Evaluator -----------------------------------------------
@@ -126,14 +124,14 @@
     [(ESub a b) (eval-binary env a b (lambda (x y) (- x y)))]
     [(EMul a b) (eval-binary env a b (lambda (x y) (* x y)))]
     [(ELet name val body)
-     (>>= (eval-expr env val)
-          (lambda (v) (eval-expr (map-insert name v env) body)))]))
+     (flatmap (lambda (v) (eval-expr (map-insert name v env) body))
+              (eval-expr env val))]))
 
 (define (eval-binary env a b f)
-  (>>= (eval-expr env a)
-       (lambda (x)
-         (>>= (eval-expr env b)
-              (lambda (y) (Ok (f x y)))))))
+  (flatmap (lambda (x)
+             (flatmap (lambda (y) (Ok (f x y)))
+                      (eval-expr env b)))
+           (eval-expr env a)))
 
 ;; ----- Pretty -----------------------------------------------
 
@@ -146,8 +144,8 @@
 ;; Read → parse → evaluate, all packaged.
 (: process (-> String String))
 (define (process line)
-  (result->string (>>= (parse-expr (parse-line line))
-                       (lambda (e) (eval-expr empty-map e)))))
+  (result->string (flatmap (lambda (e) (eval-expr empty-map e))
+                           (parse-expr (parse-line line)))))
 
 ;; ----- REPL loop in IO --------------------------------------
 

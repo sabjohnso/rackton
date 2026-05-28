@@ -183,17 +183,17 @@ context-wrapped functions.  Superclass: @racket[Functor].
 
 @deftogether[(
   @defproc[(pure    [a a])                                          (f a)]
-  @defproc[(<*>     [fg (f (-> a b))] [fa (f a)])                   (f b)]
+  @defproc[(fapply  [fg (f (-> a b))] [fa (f a)])                   (f b)]
   @defproc[(liftA2  [g (-> a (-> b c))] [fa (f a)] [fb (f b)])      (f c)]
   @defproc[(product [fa (f a)] [fb (f b)])                          (f (Pair a b))])]{
 
 @racket[pure] is return-typed (the inferer resolves the @racket[f]
 from the call's expected type); use @racket[ann] when ambiguous.
 
-@racket[<*>], @racket[liftA2], and @racket[product] are arranged in a
-default cycle (@racket[<*>] ← @racket[product] ← @racket[liftA2] ←
-@racket[<*>]).  An instance must define at least one; the other two
-are derived.  Omitting all three is a compile-time error.}
+@racket[fapply], @racket[liftA2], and @racket[product] are arranged in
+a default cycle (@racket[fapply] ← @racket[product] ← @racket[liftA2]
+← @racket[fapply]).  An instance must define at least one; the other
+two are derived.  Omitting all three is a compile-time error.}
 
 Built-in instances: all the @racket[Functor] instances above.}
 
@@ -203,15 +203,17 @@ Computations that sequence with binding.  Superclass:
 @racket[Applicative].
 
 @deftogether[(
-  @defproc[(>>=  [m (f a)] [k (-> a (f b))])  (f b)]
-  @defproc[(join [mma (f (f a))])             (f a)])]{
+  @defproc[(flatmap [k (-> a (f b))] [m (f a)])  (f b)]
+  @defproc[(join    [mma (f (f a))])             (f a)])]{
 
-@racket[>>=] is monadic bind (sugared via @racket[do]).  @racket[join]
-collapses one layer of monadic nesting.  An instance must define at
-least one of @racket[>>=] or @racket[join]; the other is derived
-(@racket[(>>= ma f)] = @racket[(join (fmap f ma))], @racket[(join mma)]
-= @racket[(>>= mma (lambda (m) m))]).  Omitting both is a compile-time
-error.}
+@racket[flatmap] is monadic bind with the continuation as the first
+argument (sugared via @racket[do]); it matches @tt{flip (>>=)} from
+Haskell.  @racket[join] collapses one layer of monadic nesting.  An
+instance must define at least one of @racket[flatmap] or @racket[join];
+the other is derived
+(@racket[(flatmap f ma)] = @racket[(join (fmap f ma))],
+@racket[(join mma)] = @racket[(flatmap (lambda (m) m) mma)]).  Omitting
+both is a compile-time error.}
 
 Built-in instances: all the @racket[Applicative] instances above.
 For @racket[STM], compose actions monadically and then run the result

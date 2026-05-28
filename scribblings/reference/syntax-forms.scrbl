@@ -313,8 +313,8 @@ out.}
                    expr)]]{
 
 Monadic do-notation.  Each @racket[[var <- expr]] clause desugars to a
-nested @racket[>>=] call; a bare-expression clause sequences without
-binding.  The trailing @racket[body] is the final computation; its
+nested @racket[flatmap] call; a bare-expression clause sequences
+without binding.  The trailing @racket[body] is the final computation; its
 type is a monad of the same shape as the preceding clauses.
 
 @racketblock[

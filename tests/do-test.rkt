@@ -1,6 +1,6 @@
 #lang racket/base
 
-;; do-notation desugars to >>= chains over any Monad.
+;; do-notation desugars to flatmap chains over any Monad.
 
 (require rackunit
          "../main.rkt")

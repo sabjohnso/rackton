@@ -157,7 +157,7 @@ Instance: @racket[Semigroup] / @racket[Monoid] (@racket[mempty] is
 
 The IO monad — a computation that may perform side effects when
 executed.  Values of @racket[(IO a)] are first-class: build them up
-with @racket[do] / @racket[>>=], run them with @racket[run-io].
+with @racket[do] / @racket[flatmap], run them with @racket[run-io].
 Instances: @racket[Functor], @racket[Applicative], @racket[Monad],
 @racket[Concurrent].  No public constructor.}
 

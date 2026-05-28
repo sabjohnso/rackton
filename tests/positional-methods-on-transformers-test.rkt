@@ -11,8 +11,8 @@
 (rackton
   ;; ----- WriterT do-notation in a polymorphic body --------
   ;; The MonadWriter inferred body's `do` chain runtime-dispatches
-  ;; `>>=` on MkWriterT — already registered.  This is a regression
-  ;; guard.
+  ;; `flatmap` on MkWriterT — already registered.  This is a
+  ;; regression guard.
 
   (: log-and-add ((MonadWriter String m) => (-> Integer (m Integer))))
   (define (log-and-add n)

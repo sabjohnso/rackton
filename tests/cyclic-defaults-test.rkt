@@ -2,10 +2,10 @@
 
 ;; Tests for the cyclic-default extension of Applicative and Monad:
 ;;
-;;   - Monad: defining either `>>=` OR `join` is sufficient; the other
-;;     is derived.
-;;   - Applicative: defining any one of `<*>`, `liftA2`, `product` is
-;;     sufficient; the other two are derived.
+;;   - Monad: defining either `flatmap` OR `join` is sufficient; the
+;;     other is derived.
+;;   - Applicative: defining any one of `fapply`, `liftA2`, `product`
+;;     is sufficient; the other two are derived.
 ;;
 ;; A separate test verifies that omitting all cycle members raises a
 ;; targeted compile-time error rather than a runtime infinite recursion.
@@ -17,7 +17,7 @@
 ;; ----- prelude methods exist on existing instances -----------------
 
 (rackton
-  ;; join on the prelude's Monad Maybe: derived from its >>= default.
+  ;; join on the prelude's Monad Maybe: derived from its flatmap default.
   (: jm Integer)
   (define jm
     (match (join (Some (Some 7))) [(None) 0] [(Some x) x]))
@@ -44,19 +44,19 @@
     (define (fmap f b) (match b [(MkBox x) (MkBox (f x))])))
 
   (instance (Applicative Box)
-    (define (pure x)    (MkBox x))
-    (define (<*> bf bx) (match bf [(MkBox f) (fmap f bx)])))
+    (define (pure x)       (MkBox x))
+    (define (fapply bf bx) (match bf [(MkBox f) (fmap f bx)])))
 
-  ;; Only join is defined; >>= must derive.
+  ;; Only join is defined; flatmap must derive.
   (instance (Monad Box)
     (define (join bb) (match bb [(MkBox b) b])))
 
   (: bind-via-join Integer)
   (define bind-via-join
-    (match (>>= (MkBox 5) (lambda (x) (MkBox (+ x 10))))
+    (match (flatmap (lambda (x) (MkBox (+ x 10))) (MkBox 5))
       [(MkBox v) v])))
 
-(test-case "instance with join-only: >>= derives correctly"
+(test-case "instance with join-only: flatmap derives correctly"
   (check-equal? bind-via-join 15))
 
 ;; ----- instance defines only `liftA2` ------------------------------
@@ -67,7 +67,7 @@
   (instance (Functor Wrap)
     (define (fmap f w) (match w [(MkWrap x) (MkWrap (f x))])))
 
-  ;; Only liftA2 is defined; <*> and product must derive.
+  ;; Only liftA2 is defined; fapply and product must derive.
   (instance (Applicative Wrap)
     (define (pure x) (MkWrap x))
     (define (liftA2 g x y)
@@ -76,7 +76,7 @@
 
   (: ap-via-liftA2 Integer)
   (define ap-via-liftA2
-    (match (<*> (MkWrap (lambda (x) (+ x 1))) (MkWrap 41))
+    (match (fapply (MkWrap (lambda (x) (+ x 1))) (MkWrap 41))
       [(MkWrap v) v]))
 
   (: prod-via-liftA2 Integer)
@@ -84,7 +84,7 @@
     (match (product (MkWrap 2) (MkWrap 3))
       [(MkWrap p) (match p [(MkPair a b) (+ a b)])])))
 
-(test-case "instance with liftA2-only: <*> derives"
+(test-case "instance with liftA2-only: fapply derives"
   (check-equal? ap-via-liftA2 42))
 
 (test-case "instance with liftA2-only: product derives"
@@ -98,7 +98,7 @@
   (instance (Functor Cell)
     (define (fmap f c) (match c [(MkCell x) (MkCell (f x))])))
 
-  ;; Only product is defined; <*> and liftA2 must derive.
+  ;; Only product is defined; fapply and liftA2 must derive.
   (instance (Applicative Cell)
     (define (pure x) (MkCell x))
     (define (product x y)
@@ -107,7 +107,7 @@
 
   (: ap-via-product Integer)
   (define ap-via-product
-    (match (<*> (MkCell (lambda (x) (+ x 1))) (MkCell 41))
+    (match (fapply (MkCell (lambda (x) (+ x 1))) (MkCell 41))
       [(MkCell v) v]))
 
   (: liftA2-via-product Integer)
@@ -115,7 +115,7 @@
     (match (liftA2 (lambda (a b) (+ a b)) (MkCell 3) (MkCell 4))
       [(MkCell v) v])))
 
-(test-case "instance with product-only: <*> derives"
+(test-case "instance with product-only: fapply derives"
   (check-equal? ap-via-product 42))
 
 (test-case "instance with product-only: liftA2 derives"
@@ -123,7 +123,7 @@
 
 ;; ----- compile-time error when ALL cycle members are omitted -------
 
-(test-case "instance omitting all of {<*>, liftA2, product} fails at compile time"
+(test-case "instance omitting all of {fapply, liftA2, product} fails at compile time"
   (define ((expand src))
     (parameterize ([current-namespace (make-base-namespace)])
       (eval src)))
@@ -139,7 +139,7 @@
         (instance (Applicative Stub)
           (define (pure x) (MkStub x))))))))
 
-(test-case "instance omitting both of {>>=, join} fails at compile time"
+(test-case "instance omitting both of {flatmap, join} fails at compile time"
   (define ((expand src))
     (parameterize ([current-namespace (make-base-namespace)])
       (eval src)))
@@ -154,5 +154,5 @@
           (define (fmap f s) (match s [(MkStub2 x) (MkStub2 (f x))])))
         (instance (Applicative Stub2)
           (define (pure x) (MkStub2 x))
-          (define (<*> sf sx) (match sf [(MkStub2 f) (fmap f sx)])))
+          (define (fapply sf sx) (match sf [(MkStub2 f) (fmap f sx)])))
         (instance (Monad Stub2)))))))

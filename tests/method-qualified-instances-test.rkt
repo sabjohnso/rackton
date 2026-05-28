@@ -17,7 +17,7 @@
 
   ;; A small curried helper that re-builds Branch — auto-curry
   ;; would help if we called `Branch` directly, but passing it
-  ;; through liftA2 / <*> needs the curried form.
+  ;; through liftA2 / fapply needs the curried form.
   (: branchC (-> (Tree a) (-> a (-> (Tree a) (Tree a)))))
   (define (branchC l) (lambda (v) (lambda (r) (Branch l v r))))
 
@@ -26,7 +26,7 @@
       (match t
         [(Leaf) (pure Leaf)]
         [(Branch l v r)
-         (<*> (<*> (<*> (pure branchC) (traverse f l))
+         (fapply (fapply (fapply (pure branchC) (traverse f l))
                    (f v))
               (traverse f r))])))
 

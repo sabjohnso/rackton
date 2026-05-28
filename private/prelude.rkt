@@ -197,30 +197,32 @@
     (protocol (Functor (f :: (-> * *)))
       (: fmap (-> (-> a b) (-> (f a) (f b)))))
 
-    ;; Applicative has three derivable methods — <*>, liftA2, product —
+    ;; Applicative has three derivable methods — fapply, liftA2, product —
     ;; arranged in a default cycle so an instance can pick whichever
     ;; primitive it finds most natural and the other two derive.  The
-    ;; default-cycle direction is <*> ← product ← liftA2 ← <*>.  An
+    ;; default-cycle direction is fapply ← product ← liftA2 ← fapply.  An
     ;; instance must define at least one of the three; omitting all of
     ;; them is rejected at compile time (see check-default-cycles in
     ;; private/infer.rkt).
     (protocol ((Functor f) => (Applicative (f :: (-> * *))))
       (: pure    (-> a (f a)))
-      (: <*>     (-> (f (-> a b)) (-> (f a) (f b))))
+      (: fapply  (-> (f (-> a b)) (-> (f a) (f b))))
       (: liftA2  (-> (-> a (-> b c)) (-> (f a) (-> (f b) (f c)))))
       (: product (-> (f a) (-> (f b) (f (Pair a b)))))
-      (define (<*> ff fa)
+      (define (fapply ff fa)
         (fmap (lambda (p) (match p [(MkPair f x) (f x)])) (product ff fa)))
-      (define (liftA2 g x y) (<*> (fmap g x) y))
+      (define (liftA2 g x y) (fapply (fmap g x) y))
       (define (product x y) (liftA2 MkPair x y)))
 
-    ;; Monad has two derivable methods — >>= and join — with mutual
-    ;; defaults.  An instance must define at least one.
+    ;; Monad has two derivable methods — flatmap and join — with mutual
+    ;; defaults.  An instance must define at least one.  flatmap takes
+    ;; the continuation first and the monadic value second; the
+    ;; ordering matches `flip (>>=)` from Haskell.
     (protocol ((Applicative m) => (Monad (m :: (-> * *))))
-      (: >>=  (-> (m a) (-> (-> a (m b)) (m b))))
-      (: join (-> (m (m a)) (m a)))
-      (define (>>= ma f) (join (fmap f ma)))
-      (define (join mma) (>>= mma (lambda (m) m))))
+      (: flatmap (-> (-> a (m b)) (-> (m a) (m b))))
+      (: join    (-> (m (m a)) (m a)))
+      (define (flatmap f ma) (join (fmap f ma)))
+      (define (join mma)     (flatmap (lambda (m) m) mma)))
 
     ;; Maybe
     (instance (Functor Maybe)
@@ -231,13 +233,13 @@
 
     (instance (Applicative Maybe)
       (define (pure x) (Some x))
-      (define (<*> mf mx)
+      (define (fapply mf mx)
         (match mf
           [(None)   None]
           [(Some f) (fmap f mx)])))
 
     (instance (Monad Maybe)
-      (define (>>= m f)
+      (define (flatmap f m)
         (match m
           [(None)   None]
           [(Some x) (f x)])))
@@ -255,14 +257,14 @@
       ;; it to every `x` in `xs`, concatenating.  We can't yet call
       ;; the top-level `append` (it's defined later in the prelude), so
       ;; we inline a local concat helper.
-      (define (<*> fs xs)
+      (define (fapply fs xs)
         (letrec ([cat (lambda (a b)
                         (match a
                           [(Nil)      b]
                           [(Cons h t) (Cons h (cat t b))]))])
           (match fs
             [(Nil)         Nil]
-            [(Cons f rest) (cat (fmap f xs) (<*> rest xs))]))))
+            [(Cons f rest) (cat (fmap f xs) (fapply rest xs))]))))
 
     ;; Result e (the error type is fixed; we map over the success type)
     (instance (Functor (Result e))
@@ -273,13 +275,13 @@
 
     (instance (Applicative (Result e))
       (define (pure x) (Ok x))
-      (define (<*> rf rx)
+      (define (fapply rf rx)
         (match rf
           [(Err e) (Err e)]
           [(Ok  f) (fmap f rx)])))
 
     (instance (Monad (Result e))
-      (define (>>= r f)
+      (define (flatmap f r)
         (match r
           [(Err x) (Err x)]
           [(Ok  v) (f v)])))
@@ -484,7 +486,7 @@
 
     (instance (Applicative (State s))
       (define (pure a) (MkState (lambda (s) (MkPair s a))))
-      (define (<*> sf sa)
+      (define (fapply sf sa)
         (MkState (lambda (s)
                    (match ((run-state sf) s)
                      [(MkPair s2 f)
@@ -492,7 +494,7 @@
                         [(MkPair s3 a) (MkPair s3 (f a))])])))))
 
     (instance (Monad (State s))
-      (define (>>= st f)
+      (define (flatmap f st)
         (MkState (lambda (s)
                    (match ((run-state st) s)
                      [(MkPair s2 a) ((run-state (f a)) s2)])))))
@@ -520,11 +522,11 @@
 
     (instance (Applicative (Env r))
       (define (pure a) (MkEnv (lambda (_) a)))
-      (define (<*> ef ea)
+      (define (fapply ef ea)
         (MkEnv (lambda (r) (((run-env ef) r) ((run-env ea) r))))))
 
     (instance (Monad (Env r))
-      (define (>>= e f)
+      (define (flatmap f e)
         (MkEnv (lambda (r) ((run-env (f ((run-env e) r))) r)))))
 
     ;; --- StateT s m: state-passing over an inner monad m ---------
@@ -549,10 +551,10 @@
 
     (instance ((Monad m) => (Applicative (StateT s m)))
       (define (pure  a)    (racket (StateT s m a) (a) #f))
-      (define (<*>   sf sa)(racket (StateT s m b) (sf sa) #f)))
+      (define (fapply sf sa)(racket (StateT s m b) (sf sa) #f)))
 
     (instance ((Monad m) => (Monad (StateT s m)))
-      (define (>>= st f) (racket (StateT s m b) (st f) #f)))
+      (define (flatmap f st) (racket (StateT s m b) (st f) #f)))
 
     ;; --- EnvT r m: env-passing over an inner monad m -------------
 
@@ -569,10 +571,10 @@
 
     (instance ((Monad m) => (Applicative (EnvT r m)))
       (define (pure  a)    (racket (EnvT r m a) (a) #f))
-      (define (<*>   ef ea)(racket (EnvT r m b) (ef ea) #f)))
+      (define (fapply ef ea)(racket (EnvT r m b) (ef ea) #f)))
 
     (instance ((Monad m) => (Monad (EnvT r m)))
-      (define (>>= e f) (racket (EnvT r m b) (e f) #f)))
+      (define (flatmap f e) (racket (EnvT r m b) (e f) #f)))
 
     ;; --- WriterT w m: accumulating writer over an inner monad ---
     ;;
@@ -594,10 +596,10 @@
 
     (instance ((Monad m) (Monoid w) => (Applicative (WriterT w m)))
       (define (pure  a)     (racket (WriterT w m a) (a) #f))
-      (define (<*>   wf wa) (racket (WriterT w m b) (wf wa) #f)))
+      (define (fapply wf wa) (racket (WriterT w m b) (wf wa) #f)))
 
     (instance ((Monad m) (Semigroup w) => (Monad (WriterT w m)))
-      (define (>>= wa f) (racket (WriterT w m b) (wa f) #f)))
+      (define (flatmap f wa) (racket (WriterT w m b) (wa f) #f)))
 
     ;; --- ExceptT e m: typed exceptions over an inner monad ------
 
@@ -616,10 +618,10 @@
 
     (instance ((Monad m) => (Applicative (ExceptT e m)))
       (define (pure  a)     (racket (ExceptT e m a) (a) #f))
-      (define (<*>   ef ea) (racket (ExceptT e m b) (ef ea) #f)))
+      (define (fapply ef ea) (racket (ExceptT e m b) (ef ea) #f)))
 
     (instance ((Monad m) => (Monad (ExceptT e m)))
-      (define (>>= ea f) (racket (ExceptT e m b) (ea f) #f)))
+      (define (flatmap f ea) (racket (ExceptT e m b) (ea f) #f)))
 
     ;; --- mtl-style classes ---------------------------
     ;;
@@ -818,10 +820,10 @@
 
     (instance (Applicative IO)
       (define (pure x) (racket (IO a) (x) #f))
-      (define (<*> iof iox) (racket (IO b) (iof iox) #f)))
+      (define (fapply iof iox) (racket (IO b) (iof iox) #f)))
 
     (instance (Monad IO)
-      (define (>>= io f) (racket (IO b) (io f) #f)))
+      (define (flatmap f io) (racket (IO b) (io f) #f)))
 
     (: print     (-> String (IO Unit)))
     (define (print s) (racket (IO Unit) (s) #f))
@@ -910,10 +912,10 @@
 
     (instance (Applicative STM)
       (define (pure x)      (racket (STM a) (x)    #f))
-      (define (<*>  sf sa)  (racket (STM b) (sf sa) #f)))
+      (define (fapply sf sa)(racket (STM b) (sf sa) #f)))
 
     (instance (Monad STM)
-      (define (>>= s f) (racket (STM b) (s f) #f)))
+      (define (flatmap f s) (racket (STM b) (s f) #f)))
 
     (: new-tvar   (-> a (STM (TVar a))))
     (define (new-tvar v) (racket (STM (TVar a)) (v) #f))
@@ -975,13 +977,13 @@
 
     (instance (Applicative Identity)
       (define (pure x)        (MkIdentity x))
-      (define (<*>  ifn ix)
+      (define (fapply ifn ix)
         (match ifn
           [(MkIdentity f)
            (match ix [(MkIdentity x) (MkIdentity (f x))])])))
 
     (instance (Monad Identity)
-      (define (>>= i f)
+      (define (flatmap f i)
         (match i [(MkIdentity x) (f x)])))
 
     (instance (Concurrent Identity)

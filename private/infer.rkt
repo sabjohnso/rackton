@@ -2586,7 +2586,7 @@
          (define body (mqual (list head-pred) raw))
          ;; Quantify over EVERY type variable that appears in the
          ;; method type (including method-local ones like `a`/`b`
-         ;; in `(>>= : (m a) -> (a -> m b) -> m b)`).  Class params
+         ;; in `(flatmap : (a -> m b) -> (m a) -> m b)`).  Class params
          ;; come first by convention.
          (define body-vars (type-vars body))
          (define extra-vars
@@ -3727,7 +3727,7 @@
       ;; Skolemize method-local tvars that appear in this method's
       ;; qual context (e.g. `(Applicative f) =>` on traverse).
       ;; Without this, the body's polymorphic class-method references
-      ;; (pure, <*>, …) can't resolve — the f tvar isn't a concrete
+      ;; (pure, fapply, …) can't resolve — the f tvar isn't a concrete
       ;; tcon nor an instance-qual skolem.  Make it a fresh tcon so
       ;; the same dict-skolem mechanism used for instance-qual tvars
       ;; resolves them to local dict-arg names.

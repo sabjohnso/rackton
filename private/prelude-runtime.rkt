@@ -110,8 +110,8 @@
  <  >  <=  >=
  show
  fmap
- <*> liftA2 product
- >>= join
+ fapply liftA2 product
+ flatmap join
  bimap first second
  foldr length to-list sum
  <>
@@ -129,10 +129,10 @@
  ;; leading parameters; the elaborator inserts them at each call
  ;; site where the dispatch arg's inferred type matches the
  ;; instance.
- |$>>=:ExceptT| |$<*>:ExceptT| |$liftA2:ExceptT|
- |$>>=:WriterT| |$<*>:WriterT| |$liftA2:WriterT|
- |$>>=:StateT|  |$<*>:StateT|  |$liftA2:StateT|
- |$>>=:EnvT|    |$<*>:EnvT|    |$liftA2:EnvT|
+ |$flatmap:ExceptT| |$fapply:ExceptT| |$liftA2:ExceptT|
+ |$flatmap:WriterT| |$fapply:WriterT| |$liftA2:WriterT|
+ |$flatmap:StateT|  |$fapply:StateT|  |$liftA2:StateT|
+ |$flatmap:EnvT|    |$fapply:EnvT|    |$liftA2:EnvT|
  |$mempty:String| |$mempty:List| |$mempty:Sum| |$mempty:Product|
  ;; Mtl-style class impls.  Base instances are 0-dict; lifted
  ;; instances over a transformer take per-method dict args from the
@@ -169,10 +169,10 @@
  $dispatch:min $dispatch:max
  $dispatch:show
  $dispatch:fmap
- $dispatch:<*>
+ $dispatch:fapply
  $dispatch:liftA2
  $dispatch:product
- $dispatch:>>=
+ $dispatch:flatmap
  $dispatch:join
  $dispatch:bimap
  $dispatch:first
@@ -353,17 +353,18 @@
 (define $dispatch:show (make-hasheq))(define-class-method show $dispatch:show 0 1)
 ;; Functor's fmap dispatches on the SECOND argument (the container).
 (define $dispatch:fmap (make-hasheq))(define-class-method fmap $dispatch:fmap 1 2)
-;; Applicative's <*> dispatches on the FIRST argument (the f (a->b)).
+;; Applicative's fapply dispatches on the FIRST argument (the f (a->b)).
 ;; product dispatches on the FIRST argument (the f a).
 ;; liftA2 dispatches on the SECOND argument (after the combining function).
 ;; Defaults are provided via the class's default method bodies (cyclic).
-(define $dispatch:<*>     (make-hasheq))(define-class-method <*>     $dispatch:<*>     0 2)
+(define $dispatch:fapply  (make-hasheq))(define-class-method fapply  $dispatch:fapply  0 2)
 (define $dispatch:liftA2  (make-hasheq))(define-class-method liftA2  $dispatch:liftA2  1 3)
 (define $dispatch:product (make-hasheq))(define-class-method product $dispatch:product 0 2)
-;; Monad's bind dispatches on the FIRST argument (the wrapped value).
+;; Monad's bind (flatmap) dispatches on the SECOND argument (the
+;; wrapped value); the first argument is the continuation `a -> m b`.
 ;; join dispatches on the FIRST argument (the m (m a)).
-(define $dispatch:>>=  (make-hasheq))(define-class-method >>=  $dispatch:>>=  0 2)
-(define $dispatch:join (make-hasheq))(define-class-method join $dispatch:join 0 1)
+(define $dispatch:flatmap (make-hasheq))(define-class-method flatmap $dispatch:flatmap 1 2)
+(define $dispatch:join    (make-hasheq))(define-class-method join    $dispatch:join    0 1)
 ;; Bifunctor's bimap/first/second dispatch on the value (the `p a b`).
 ;; bimap takes 3 args, value is arg 2.  first/second take 2 args, value is arg 1.
 (define $dispatch:bimap  (make-hasheq))(define-class-method bimap  $dispatch:bimap  2 3)
@@ -407,7 +408,7 @@
 
 ;; pure-via-witness resolves `pure :: a -> m a` from any
 ;; m-value at runtime by walking the ctor chain.  Used by needs-dict
-;; instance method closures (ExceptT's >>=, catch-e, ...) which need
+;; instance method closures (ExceptT's flatmap, catch-e, ...) which need
 ;; the inner monad's `pure` to lift / rewrap values.  Bottoms out at
 ;; non-needs-dict bases registered in $pure-by-tag.
 ;;
@@ -767,13 +768,13 @@
          (define b (run-io y))
          (g a b))))
 
-(define (io-bind io f)
+(define (io-bind f io)
   ($io (lambda () (run-io (f (run-io io))))))
 
-(register-instance-method! $dispatch:fmap   '$io io-fmap)
-(register-instance-method! $dispatch:<*>    '$io io-ap)
-(register-instance-method! $dispatch:liftA2 '$io io-liftA2)
-(register-instance-method! $dispatch:>>=    '$io io-bind)
+(register-instance-method! $dispatch:fmap    '$io io-fmap)
+(register-instance-method! $dispatch:fapply  '$io io-ap)
+(register-instance-method! $dispatch:liftA2  '$io io-liftA2)
+(register-instance-method! $dispatch:flatmap '$io io-bind)
 
 ;; ----- Mutable refs (in IO) -----------------------------------
 
@@ -1008,7 +1009,7 @@
           (define a (($stm-thunk sa) log))
           (define b (($stm-thunk sb) log))
           (g a b))))
-(define (stm-bind s f)
+(define (stm-bind f s)
   ($stm (lambda (log)
           (define a (($stm-thunk s) log))
           (($stm-thunk (f a)) log))))
@@ -1017,9 +1018,9 @@
 (define |$pure:STM| stm-pure)
 (register-pure-impl! '$stm |$pure:STM|)
 
-(register-instance-method! $dispatch:<*>    '$stm stm-ap)
-(register-instance-method! $dispatch:liftA2 '$stm stm-liftA2)
-(register-instance-method! $dispatch:>>=    '$stm stm-bind)
+(register-instance-method! $dispatch:fapply  '$stm stm-ap)
+(register-instance-method! $dispatch:liftA2  '$stm stm-liftA2)
+(register-instance-method! $dispatch:flatmap '$stm stm-bind)
 
 ;; ----- Concurrent class + Future -----------------
 ;;
@@ -1078,7 +1079,7 @@
   (match ifn
     [(MkIdentity f)
      (match ix [(MkIdentity x) (MkIdentity (f x))])]))
-(register-instance-method! $dispatch:<*> '$ctor:MkIdentity identity-ap)
+(register-instance-method! $dispatch:fapply '$ctor:MkIdentity identity-ap)
 
 (define (identity-liftA2 g ia ib)
   (match ia
@@ -1086,9 +1087,9 @@
      (match ib [(MkIdentity b) (MkIdentity (g a b))])]))
 (register-instance-method! $dispatch:liftA2 '$ctor:MkIdentity identity-liftA2)
 
-(define (identity-bind i f)
+(define (identity-bind f i)
   (match i [(MkIdentity x) (f x)]))
-(register-instance-method! $dispatch:>>= '$ctor:MkIdentity identity-bind)
+(register-instance-method! $dispatch:flatmap '$ctor:MkIdentity identity-bind)
 
 ;; Concurrent Identity — fork-c runs the computation immediately
 ;; and uses the bare value as the Future; await-c rewraps in
@@ -1553,13 +1554,13 @@
 (register-instance-method! $dispatch:fmap '$ctor:None  maybe-fmap)
 (register-instance-method! $dispatch:fmap '$ctor:Some  maybe-fmap)
 
-(define maybe->>=
-  (lambda (m f)
+(define maybe-flatmap
+  (lambda (f m)
     (match m
       [(None)   None]
       [(Some x) (f x)])))
-(register-instance-method! $dispatch:>>=  '$ctor:None  maybe->>=)
-(register-instance-method! $dispatch:>>=  '$ctor:Some  maybe->>=)
+(register-instance-method! $dispatch:flatmap '$ctor:None  maybe-flatmap)
+(register-instance-method! $dispatch:flatmap '$ctor:Some  maybe-flatmap)
 
 ;; List
 (define (list-fmap f xs)
@@ -1578,13 +1579,13 @@
 (register-instance-method! $dispatch:fmap '$ctor:Err   result-fmap)
 (register-instance-method! $dispatch:fmap '$ctor:Ok    result-fmap)
 
-(define result->>=
-  (lambda (r f)
+(define result-flatmap
+  (lambda (f r)
     (match r
       [(Err x) (Err x)]
       [(Ok  v) (f v)])))
-(register-instance-method! $dispatch:>>=  '$ctor:Err   result->>=)
-(register-instance-method! $dispatch:>>=  '$ctor:Ok    result->>=)
+(register-instance-method! $dispatch:flatmap '$ctor:Err   result-flatmap)
+(register-instance-method! $dispatch:flatmap '$ctor:Ok    result-flatmap)
 
 ;; ----- State monad runtime ---------------------------------------
 
@@ -1612,7 +1613,7 @@
                [(MkPair s2 f)
                 (match ((run-state sa) s2)
                   [(MkPair s3 a) (MkPair s3 (f a))])]))))
-(register-instance-method! $dispatch:<*> '$ctor:MkState state-ap)
+(register-instance-method! $dispatch:fapply '$ctor:MkState state-ap)
 
 (define (state-liftA2 g sa sb)
   (MkState (lambda (s)
@@ -1622,11 +1623,11 @@
                   [(MkPair s3 b) (MkPair s3 (g a b))])]))))
 (register-instance-method! $dispatch:liftA2 '$ctor:MkState state-liftA2)
 
-(define (state->>= st f)
+(define (state-flatmap f st)
   (MkState (lambda (s)
              (match ((run-state st) s)
                [(MkPair s2 a) ((run-state (f a)) s2)]))))
-(register-instance-method! $dispatch:>>= '$ctor:MkState state->>=)
+(register-instance-method! $dispatch:flatmap '$ctor:MkState state-flatmap)
 
 ;; ----- Env monad runtime -----------------------------------------
 
@@ -1644,15 +1645,15 @@
 
 (define (env-ap ef ea)
   (MkEnv (lambda (r) (((run-env ef) r) ((run-env ea) r)))))
-(register-instance-method! $dispatch:<*> '$ctor:MkEnv env-ap)
+(register-instance-method! $dispatch:fapply '$ctor:MkEnv env-ap)
 
 (define (env-liftA2 g ea eb)
   (MkEnv (lambda (r) (g ((run-env ea) r) ((run-env eb) r)))))
 (register-instance-method! $dispatch:liftA2 '$ctor:MkEnv env-liftA2)
 
-(define (env->>= e f)
+(define (env-flatmap f e)
   (MkEnv (lambda (r) ((run-env (f ((run-env e) r))) r))))
-(register-instance-method! $dispatch:>>= '$ctor:MkEnv env->>=)
+(register-instance-method! $dispatch:flatmap '$ctor:MkEnv env-flatmap)
 
 ;; ----- StateT s m runtime ----------------------------------------
 ;; Each method whose semantics need the inner monad's `pure` takes
@@ -1693,38 +1694,38 @@
                     ((run-state-t st) s)))))
 (register-instance-method! $dispatch:fmap '$ctor:MkStateT state-t-fmap)
 
-;; <*> via >>= and fmap of inner monad — no inner pure.
+;; fapply via flatmap and fmap of inner monad — no inner pure.
 (define (state-t-ap sf sa)
   (MkStateT (lambda (s)
-              (>>= ((run-state-t sf) s)
-                   (lambda (p1)
-                     (match p1
-                       [(MkPair s2 f)
-                        (fmap (lambda (p2)
-                                (match p2
-                                  [(MkPair s3 a) (MkPair s3 (f a))]))
-                              ((run-state-t sa) s2))]))))))
-(register-instance-method! $dispatch:<*> '$ctor:MkStateT state-t-ap)
+              (flatmap (lambda (p1)
+                         (match p1
+                           [(MkPair s2 f)
+                            (fmap (lambda (p2)
+                                    (match p2
+                                      [(MkPair s3 a) (MkPair s3 (f a))]))
+                                  ((run-state-t sa) s2))]))
+                       ((run-state-t sf) s)))))
+(register-instance-method! $dispatch:fapply '$ctor:MkStateT state-t-ap)
 
 (define (state-t-liftA2 g sa sb)
   (MkStateT (lambda (s)
-              (>>= ((run-state-t sa) s)
-                   (lambda (p1)
-                     (match p1
-                       [(MkPair s2 a)
-                        (fmap (lambda (p2)
-                                (match p2
-                                  [(MkPair s3 b) (MkPair s3 (g a b))]))
-                              ((run-state-t sb) s2))]))))))
+              (flatmap (lambda (p1)
+                         (match p1
+                           [(MkPair s2 a)
+                            (fmap (lambda (p2)
+                                    (match p2
+                                      [(MkPair s3 b) (MkPair s3 (g a b))]))
+                                  ((run-state-t sb) s2))]))
+                       ((run-state-t sa) s)))))
 (register-instance-method! $dispatch:liftA2 '$ctor:MkStateT state-t-liftA2)
 
-(define (state-t->>= st f)
+(define (state-t-flatmap f st)
   (MkStateT (lambda (s)
-              (>>= ((run-state-t st) s)
-                   (lambda (p)
-                     (match p
-                       [(MkPair s2 a) ((run-state-t (f a)) s2)]))))))
-(register-instance-method! $dispatch:>>= '$ctor:MkStateT state-t->>=)
+              (flatmap (lambda (p)
+                         (match p
+                           [(MkPair s2 a) ((run-state-t (f a)) s2)]))
+                       ((run-state-t st) s)))))
+(register-instance-method! $dispatch:flatmap '$ctor:MkStateT state-t-flatmap)
 
 ;; ----- EnvT r m runtime -----------------------------------------
 
@@ -1745,22 +1746,22 @@
 
 (define (env-t-ap ef ea)
   (MkEnvT (lambda (r)
-            (>>= ((run-env-t ef) r)
-                 (lambda (f) (fmap f ((run-env-t ea) r)))))))
-(register-instance-method! $dispatch:<*> '$ctor:MkEnvT env-t-ap)
+            (flatmap (lambda (f) (fmap f ((run-env-t ea) r)))
+                     ((run-env-t ef) r)))))
+(register-instance-method! $dispatch:fapply '$ctor:MkEnvT env-t-ap)
 
 (define (env-t-liftA2 g ea eb)
   (MkEnvT (lambda (r)
-            (>>= ((run-env-t ea) r)
-                 (lambda (a) (fmap (lambda (b) (g a b))
-                                   ((run-env-t eb) r)))))))
+            (flatmap (lambda (a) (fmap (lambda (b) (g a b))
+                                       ((run-env-t eb) r)))
+                     ((run-env-t ea) r)))))
 (register-instance-method! $dispatch:liftA2 '$ctor:MkEnvT env-t-liftA2)
 
-(define (env-t->>= e f)
+(define (env-t-flatmap f e)
   (MkEnvT (lambda (r)
-            (>>= ((run-env-t e) r)
-                 (lambda (a) ((run-env-t (f a)) r))))))
-(register-instance-method! $dispatch:>>= '$ctor:MkEnvT env-t->>=)
+            (flatmap (lambda (a) ((run-env-t (f a)) r))
+                     ((run-env-t e) r)))))
+(register-instance-method! $dispatch:flatmap '$ctor:MkEnvT env-t-flatmap)
 
 ;; ----- Applicative instances ------------------------------------
 
@@ -1770,10 +1771,10 @@
     (match mf
       [(None)   None]
       [(Some f) (fmap f mx)])))
-(register-instance-method! $dispatch:<*> '$ctor:None maybe-ap)
-(register-instance-method! $dispatch:<*> '$ctor:Some maybe-ap)
+(register-instance-method! $dispatch:fapply '$ctor:None maybe-ap)
+(register-instance-method! $dispatch:fapply '$ctor:Some maybe-ap)
 
-;; Per-instance liftA2 impls (not derived from <*>/fmap so that
+;; Per-instance liftA2 impls (not derived from fapply/fmap so that
 ;; user-supplied multi-arg lambdas can be applied with both args at
 ;; once — see the note in prelude.rkt's Applicative class.)
 (define (maybe-liftA2 g mx my)
@@ -1796,8 +1797,8 @@
          (match mapped
            [(Nil)      (cat rest)]
            [(Cons h t) (Cons h (prepend t))]))])))
-(register-instance-method! $dispatch:<*> '$ctor:Nil  list-ap)
-(register-instance-method! $dispatch:<*> '$ctor:Cons list-ap)
+(register-instance-method! $dispatch:fapply '$ctor:Nil  list-ap)
+(register-instance-method! $dispatch:fapply '$ctor:Cons list-ap)
 
 (define (list-liftA2 g xs ys)
   ;; cartesian: for each x in xs, for each y in ys, (g x y).
@@ -1818,8 +1819,8 @@
     (match rf
       [(Err e) (Err e)]
       [(Ok  f) (fmap f rx)])))
-(register-instance-method! $dispatch:<*> '$ctor:Err result-ap)
-(register-instance-method! $dispatch:<*> '$ctor:Ok  result-ap)
+(register-instance-method! $dispatch:fapply '$ctor:Err result-ap)
+(register-instance-method! $dispatch:fapply '$ctor:Ok  result-ap)
 
 (define (result-liftA2 g rx ry)
   (match rx
@@ -1932,45 +1933,45 @@
          (run-writer-t w))))
 (register-instance-method! $dispatch:fmap '$ctor:MkWriterT writer-t-fmap)
 
-;; <*>, liftA2, >>=, fmap: all dispatched at runtime on the WriterT
-;; struct.  Their bodies use inner `>>=` and inner `fmap` (also
-;; runtime-dispatched on the m-value), so they take NO dict args —
-;; only the user-facing arguments.
+;; fapply, liftA2, flatmap, fmap: all dispatched at runtime on the
+;; WriterT struct.  Their bodies use inner `flatmap` and inner `fmap`
+;; (also runtime-dispatched on the m-value), so they take NO dict
+;; args — only the user-facing arguments.
 (define (writer-t-ap wf wa)
   (MkWriterT
-   (>>= (run-writer-t wf)
-        (lambda (p1)
-          (match p1
-            [(MkPair w1 f)
-             (fmap (lambda (p2)
-                     (match p2
-                       [(MkPair w2 a) (MkPair (<> w1 w2) (f a))]))
-                   (run-writer-t wa))])))))
-(register-instance-method! $dispatch:<*> '$ctor:MkWriterT writer-t-ap)
+   (flatmap (lambda (p1)
+              (match p1
+                [(MkPair w1 f)
+                 (fmap (lambda (p2)
+                         (match p2
+                           [(MkPair w2 a) (MkPair (<> w1 w2) (f a))]))
+                       (run-writer-t wa))]))
+            (run-writer-t wf))))
+(register-instance-method! $dispatch:fapply '$ctor:MkWriterT writer-t-ap)
 
 (define (writer-t-liftA2 g wa wb)
   (MkWriterT
-   (>>= (run-writer-t wa)
-        (lambda (p1)
-          (match p1
-            [(MkPair w1 a)
-             (fmap (lambda (p2)
-                     (match p2
-                       [(MkPair w2 b) (MkPair (<> w1 w2) (g a b))]))
-                   (run-writer-t wb))])))))
+   (flatmap (lambda (p1)
+              (match p1
+                [(MkPair w1 a)
+                 (fmap (lambda (p2)
+                         (match p2
+                           [(MkPair w2 b) (MkPair (<> w1 w2) (g a b))]))
+                       (run-writer-t wb))]))
+            (run-writer-t wa))))
 (register-instance-method! $dispatch:liftA2 '$ctor:MkWriterT writer-t-liftA2)
 
-(define (writer-t->>= wa f)
+(define (writer-t-flatmap f wa)
   (MkWriterT
-   (>>= (run-writer-t wa)
-        (lambda (p1)
-          (match p1
-            [(MkPair w1 a)
-             (fmap (lambda (p2)
-                     (match p2
-                       [(MkPair w2 b) (MkPair (<> w1 w2) b)]))
-                   (run-writer-t (f a)))])))))
-(register-instance-method! $dispatch:>>= '$ctor:MkWriterT writer-t->>=)
+   (flatmap (lambda (p1)
+              (match p1
+                [(MkPair w1 a)
+                 (fmap (lambda (p2)
+                         (match p2
+                           [(MkPair w2 b) (MkPair (<> w1 w2) b)]))
+                       (run-writer-t (f a)))]))
+            (run-writer-t wa))))
+(register-instance-method! $dispatch:flatmap '$ctor:MkWriterT writer-t-flatmap)
 
 ;; ----- Per-instance compile-time-direct impls ---------
 ;;
@@ -1984,9 +1985,9 @@
 ;; bodies don't use them — uniformity with the elaborator's
 ;; insertion rules outweighs the few ignored bindings.
 
-(define/curried (|$>>=:WriterT| inner-pure wa f)
-  (writer-t->>= wa f))
-(define/curried (|$<*>:WriterT| inner-pure inner-mempty wf wa)
+(define/curried (|$flatmap:WriterT| inner-pure f wa)
+  (writer-t-flatmap f wa))
+(define/curried (|$fapply:WriterT| inner-pure inner-mempty wf wa)
   (writer-t-ap wf wa))
 (define/curried (|$liftA2:WriterT| inner-pure inner-mempty g wa wb)
   (writer-t-liftA2 g wa wb))
@@ -1994,17 +1995,17 @@
 ;; StateT / EnvT class-method impls also become reachable through
 ;; the compile-time-direct dispatch path because their instances
 ;; carry `(Monad m) =>`.  The runtime bodies don't actually need
-;; the dict args (built using only inner fmap/>>=), but the named
+;; the dict args (built using only inner fmap/flatmap), but the named
 ;; impls accept them to match the elaborator's uniform insertion
 ;; rule.
 
-(define/curried (|$>>=:StateT|   inner-pure st f)     (state-t->>= st f))
-(define/curried (|$<*>:StateT|   inner-pure sf sa)    (state-t-ap sf sa))
-(define/curried (|$liftA2:StateT| inner-pure g sa sb) (state-t-liftA2 g sa sb))
+(define/curried (|$flatmap:StateT| inner-pure f st)   (state-t-flatmap f st))
+(define/curried (|$fapply:StateT|  inner-pure sf sa)  (state-t-ap sf sa))
+(define/curried (|$liftA2:StateT|  inner-pure g sa sb) (state-t-liftA2 g sa sb))
 
-(define/curried (|$>>=:EnvT|   inner-pure e f)        (env-t->>= e f))
-(define/curried (|$<*>:EnvT|   inner-pure ef ea)      (env-t-ap ef ea))
-(define/curried (|$liftA2:EnvT| inner-pure g ea eb)   (env-t-liftA2 g ea eb))
+(define/curried (|$flatmap:EnvT| inner-pure f e)      (env-t-flatmap f e))
+(define/curried (|$fapply:EnvT|  inner-pure ef ea)    (env-t-ap ef ea))
+(define/curried (|$liftA2:EnvT|  inner-pure g ea eb)  (env-t-liftA2 g ea eb))
 
 ;; ----- ExceptT e m runtime ---------------------------------------
 
@@ -2018,11 +2019,11 @@
 
 (define/curried (catch-error inner-pure ea handler)
   (MkExceptT
-   (>>= (run-except-t ea)
-        (lambda (r)
-          (match r
-            [(Err e) (run-except-t (handler e))]
-            [(Ok  v) (inner-pure (Ok v))])))))
+   (flatmap (lambda (r)
+              (match r
+                [(Err e) (run-except-t (handler e))]
+                [(Ok  v) (inner-pure (Ok v))]))
+            (run-except-t ea))))
 
 (define (lift-except-t ma)
   (MkExceptT (fmap Ok ma)))
@@ -2036,41 +2037,41 @@
          (run-except-t e))))
 (register-instance-method! $dispatch:fmap '$ctor:MkExceptT except-t-fmap)
 
-;; Applicative <*> short-circuits on Err — needs inner pure to lift
+;; Applicative fapply short-circuits on Err — needs inner pure to lift
 ;; the Err back into m.
-(define/curried (|$<*>:ExceptT| inner-pure ef ea)
+(define/curried (|$fapply:ExceptT| inner-pure ef ea)
   (MkExceptT
-   (>>= (run-except-t ef)
-        (lambda (rf)
-          (match rf
-            [(Err x) (inner-pure (Err x))]
-            [(Ok  f)
-             (fmap (lambda (ra)
-                     (match ra
-                       [(Err x) (Err x)]
-                       [(Ok  a) (Ok (f a))]))
-                   (run-except-t ea))])))))
+   (flatmap (lambda (rf)
+              (match rf
+                [(Err x) (inner-pure (Err x))]
+                [(Ok  f)
+                 (fmap (lambda (ra)
+                         (match ra
+                           [(Err x) (Err x)]
+                           [(Ok  a) (Ok (f a))]))
+                       (run-except-t ea))]))
+            (run-except-t ef))))
 
 (define/curried (|$liftA2:ExceptT| inner-pure g ea eb)
   (MkExceptT
-   (>>= (run-except-t ea)
-        (lambda (ra)
-          (match ra
-            [(Err x) (inner-pure (Err x))]
-            [(Ok  a)
-             (fmap (lambda (rb)
-                     (match rb
-                       [(Err x) (Err x)]
-                       [(Ok  b) (Ok (g a b))]))
-                   (run-except-t eb))])))))
+   (flatmap (lambda (ra)
+              (match ra
+                [(Err x) (inner-pure (Err x))]
+                [(Ok  a)
+                 (fmap (lambda (rb)
+                         (match rb
+                           [(Err x) (Err x)]
+                           [(Ok  b) (Ok (g a b))]))
+                       (run-except-t eb))]))
+            (run-except-t ea))))
 
-(define/curried (|$>>=:ExceptT| inner-pure ea f)
+(define/curried (|$flatmap:ExceptT| inner-pure f ea)
   (MkExceptT
-   (>>= (run-except-t ea)
-        (lambda (r)
-          (match r
-            [(Err x) (inner-pure (Err x))]
-            [(Ok  a) (run-except-t (f a))])))))
+   (flatmap (lambda (r)
+              (match r
+                [(Err x) (inner-pure (Err x))]
+                [(Ok  a) (run-except-t (f a))]))
+            (run-except-t ea))))
 
 ;; Register ExceptT's needs-dict methods at runtime,
 ;; deriving the inner-pure dict via pure-via-witness on the
@@ -2081,12 +2082,12 @@
 ;; pure-via-witness inspects the wrapped m's ctor tag and walks
 ;; needs-dict layers until it bottoms out at a registered base
 ;; (IO, Maybe, List, Result).
-(register-instance-method! $dispatch:>>= '$ctor:MkExceptT
-  (lambda (ea f)
-    (|$>>=:ExceptT| (pure-via-witness (run-except-t ea)) ea f)))
-(register-instance-method! $dispatch:<*> '$ctor:MkExceptT
+(register-instance-method! $dispatch:flatmap '$ctor:MkExceptT
+  (lambda (f ea)
+    (|$flatmap:ExceptT| (pure-via-witness (run-except-t ea)) f ea)))
+(register-instance-method! $dispatch:fapply '$ctor:MkExceptT
   (lambda (ef ea)
-    (|$<*>:ExceptT| (pure-via-witness (run-except-t ef)) ef ea)))
+    (|$fapply:ExceptT| (pure-via-witness (run-except-t ef)) ef ea)))
 (register-instance-method! $dispatch:liftA2 '$ctor:MkExceptT
   (lambda (g ea eb)
     (|$liftA2:ExceptT| (pure-via-witness (run-except-t ea)) g ea eb)))
@@ -2320,14 +2321,14 @@
 ;; In user code, the elaborator falls back to a class's default method
 ;; body whenever an instance omits the method.  The prelude is hand-
 ;; rolled instead of going through codegen, so we do that fallback
-;; manually here: every monad ctor that registered `>>=` gets `join`
-;; derived from `>>=`, and every applicative ctor that registered
-;; `liftA2` gets `product` derived from `liftA2`.
+;; manually here: every monad ctor that registered `flatmap` gets
+;; `join` derived from `flatmap`, and every applicative ctor that
+;; registered `liftA2` gets `product` derived from `liftA2`.
 
-(define default-join    (lambda (mma) (>>= mma (lambda (m) m))))
+(define default-join    (lambda (mma) (flatmap (lambda (m) m) mma)))
 (define default-product (lambda (x y) (liftA2 MkPair x y)))
 
-(for ([ctor (in-hash-keys $dispatch:>>=)])
+(for ([ctor (in-hash-keys $dispatch:flatmap)])
   (register-instance-method! $dispatch:join ctor default-join))
 
 (for ([ctor (in-hash-keys $dispatch:liftA2)])

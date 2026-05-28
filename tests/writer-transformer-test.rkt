@@ -3,7 +3,7 @@
 ;; WriterT transformer.
 ;;
 ;; (ExceptT was originally bundled but dropped after surfacing that
-;; its `>>=` Err branch needs an inner `pure` that the class-method
+;; its `flatmap` Err branch needs an inner `pure` that the class-method
 ;; dispatch wrapper can't yet carry as a dict arg.  See the phase
 ;; notes for the deferral.)
 

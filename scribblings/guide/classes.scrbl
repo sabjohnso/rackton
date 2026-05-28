@@ -104,26 +104,28 @@ whichever method is most natural and the others derive.  The prelude's
 
 @codeblock|{
 (protocol ((Applicative m) => (Monad (m :: (-> * *))))
-  (: >>=  (-> (m a) (-> (-> a (m b)) (m b))))
-  (: join (-> (m (m a)) (m a)))
-  (define (>>= ma f) (join (fmap f ma)))
-  (define (join mma) (>>= mma (lambda (m) m))))
+  (: flatmap (-> (-> a (m b)) (-> (m a) (m b))))
+  (: join    (-> (m (m a)) (m a)))
+  (define (flatmap f ma) (join (fmap f ma)))
+  (define (join mma)     (flatmap (lambda (m) m) mma)))
 }|
 
-An instance must define at least one of @racket[>>=] or @racket[join];
-the other is derived.  Defining neither would loop at runtime, so
-Rackton rejects such an instance at compile time:
+An instance must define at least one of @racket[flatmap] or
+@racket[join]; the other is derived.  Defining neither would loop at
+runtime, so Rackton rejects such an instance at compile time:
 
 @codeblock|{
 (instance (Monad MyType))   ;; → instance is incomplete:
-                            ;;   methods (>>= join) form a cyclic
-                            ;;   default chain (>>= → join → >>=);
-                            ;;   at least one must be defined
-                            ;;   directly to break the cycle.
+                            ;;   methods (flatmap join) form a
+                            ;;   cyclic default chain
+                            ;;   (flatmap → join → flatmap); at
+                            ;;   least one must be defined directly
+                            ;;   to break the cycle.
 }|
 
-@racket[Applicative] is a 3-cycle (@racket[<*>] ← @racket[product] ←
-@racket[liftA2] ← @racket[<*>]); defining any single member suffices.
+@racket[Applicative] is a 3-cycle (@racket[fapply] ← @racket[product]
+← @racket[liftA2] ← @racket[fapply]); defining any single member
+suffices.
 
 @section{Coherence}
 

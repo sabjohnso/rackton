@@ -496,7 +496,7 @@
 ;;   0 fields → `(pure Ctor)`
 ;;   1 field  → `(fmap Ctor lift0)`
 ;;   2 fields → `(liftA2 Ctor lift0 lift1)`
-;;   N≥3      → `(<*> (<*> … (liftA2 Ctor lift0 lift1) … lift_{N-2}) lift_{N-1})`
+;;   N≥3      → `(fapply (fapply … (liftA2 Ctor lift0 lift1) … lift_{N-2}) lift_{N-1})`
 (define (synthesize-traversable-instance tname tparams ctors stx)
   (when (null? tparams)
     (raise-syntax-error 'define-data
@@ -541,14 +541,14 @@
             (list (e:var ctor-name stx) (car lifted-fields))
             stx)]
     [else
-     ;; (liftA2 Ctor lift0 lift1) then chain (<*> acc liftN) for N≥2.
+     ;; (liftA2 Ctor lift0 lift1) then chain (fapply acc liftN) for N≥2.
      (for/fold ([acc (e:app (e:var 'liftA2 stx)
                             (list (e:var ctor-name stx)
                                   (car lifted-fields)
                                   (cadr lifted-fields))
                             stx)])
                ([lf (in-list (cddr lifted-fields))])
-       (e:app (e:var '<*> stx) (list acc lf) stx))]))
+       (e:app (e:var 'fapply stx) (list acc lf) stx))]))
 
 (define (transform-traverse-field ft arg-name fparam tname stx)
   (define arg (e:var arg-name stx))
@@ -919,10 +919,10 @@
                body-stx
                stx)]
 
-    ;; (do [x <- m1] [y <- m2] ... body)  desugars to nested >>= calls.
-    ;; A statement is `[var <- expr]`; each binds the un-wrapped value
-    ;; for the rest of the chain.  The trailing `body` is the final
-    ;; computation.
+    ;; (do [x <- m1] [y <- m2] ... body)  desugars to nested flatmap
+    ;; calls.  A statement is `[var <- expr]`; each binds the un-wrapped
+    ;; value for the rest of the chain.  The trailing `body` is the
+    ;; final computation.
     [(do stmt ...+ body)
      (parse-do (syntax->list #'(stmt ...)) #'body stx)]
 
@@ -1030,11 +1030,11 @@
      (syntax-parse s
        #:datum-literals (<-)
        [[v:id <- expr]
-        (e:app (e:var '>>= stx)
-               (list (parse-expr #'expr)
-                     (e:lam (list (syntax->datum #'v))
+        (e:app (e:var 'flatmap stx)
+               (list (e:lam (list (syntax->datum #'v))
                             (parse-do (cdr stmts) body-stx stx)
-                            stx))
+                            stx)
+                     (parse-expr #'expr))
                stx)]
        [expr
         ;; Bare-expression clause: sequence `expr` for its monadic
@@ -1042,11 +1042,11 @@
         ;; same shape as `[_fresh <- expr]` but with a fresh
         ;; identifier so the wildcard isn't a binder.
         (define fresh (gensym '_do))
-        (e:app (e:var '>>= stx)
-               (list (parse-expr #'expr)
-                     (e:lam (list fresh)
+        (e:app (e:var 'flatmap stx)
+               (list (e:lam (list fresh)
                             (parse-do (cdr stmts) body-stx stx)
-                            stx))
+                            stx)
+                     (parse-expr #'expr))
                stx)])]))
 
 ;; ----- patterns -----------------------------------------------------

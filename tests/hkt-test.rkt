@@ -16,8 +16,8 @@
   ;; A bind chain over Maybe.
   (: add-one-then-double (-> Integer (Maybe Integer)))
   (define (add-one-then-double n)
-    (>>= (Some (+ n 1))
-         (lambda (m) (Some (* m 2)))))
+    (flatmap (lambda (m) (Some (* m 2)))
+             (Some (+ n 1))))
 
   ;; Result-typed plumbing.
   (: safe-divide (-> Integer (-> Integer (Result String Integer))))
@@ -47,7 +47,7 @@
 
 (test-case "Monad Result — bind chain composes errors"
   (define (div a b)
-    (>>= (safe-divide a b)
-         (lambda (q) (safe-divide q 1))))
+    (flatmap (lambda (q) (safe-divide q 1))
+             (safe-divide a b)))
   (check-equal? (div 10 2) (Ok 5))
   (check-equal? (div 10 0) (Err "divide by zero")))

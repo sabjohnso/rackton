@@ -81,7 +81,7 @@ When the inferer has resolved a class-method call at compile time
 resolution in @racket[current-method-resolutions].  The codegen,
 when lowering the call, checks the table — if the call is resolved,
 it emits a direct call to the per-instance impl name (e.g.
-@racketidfont{$pure:Maybe}, @racketidfont{$<*>:WriterT}) instead of going through
+@racketidfont{$pure:Maybe}, @racketidfont{$fapply:WriterT}) instead of going through
 the dispatcher.
 
 This is the @italic{monomorphization} pass.  See

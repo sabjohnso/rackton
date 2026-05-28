@@ -82,13 +82,14 @@ with a @racket[Functor] superclass:
 
 @codeblock|{
 (protocol ((Functor m) => (Monad (m :: (-> * *))))
-  (: >>= (-> (m a) (-> (-> a (m b)) (m b)))))
+  (: flatmap (-> (-> a (m b)) (-> (m a) (m b)))))
 }|
 
 Dispatch for higher-kinded class methods uses the position of the
 first argument whose type mentions a class parameter.  For
 @racket[fmap], that is the second argument (the container); for
-@racket[>>=], the first.  This is computed automatically at class
+@racket[flatmap], that is also the second argument (the @racket[(m a)]
+follows the continuation).  This is computed automatically at class
 definition.
 
 @section{Built-in instances}

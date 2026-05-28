@@ -47,7 +47,7 @@ convention is @racketidfont{$}@racket[_method]@racketidfont{:}@racket[_Tcon]:
 @item{@racketidfont{$pure:Maybe}, @racketidfont{$pure:List}, @racketidfont{$pure:Result},
       @racketidfont{$pure:IO}, @racketidfont{$pure:State}, @racketidfont{$pure:Env} —
       the per-instance @racket[pure] impls.}
-@item{@racketidfont{$>>=:ExceptT}, @racketidfont{$<*>:ExceptT}, @racketidfont{$liftA2:ExceptT}
+@item{@racketidfont{$flatmap:ExceptT}, @racketidfont{$fapply:ExceptT}, @racketidfont{$liftA2:ExceptT}
       — needs-dict impls for ExceptT.}
 @item{@racketidfont{$mempty:String}, @racketidfont{$mempty:List}, @racketidfont{$mempty:Sum},
       @racketidfont{$mempty:Product} — return-typed @racket[mempty] impls.}

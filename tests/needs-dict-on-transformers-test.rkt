@@ -9,10 +9,10 @@
          "../main.rkt")
 
 (rackton
-  ;; ----- regression: base ExceptT >>= --------------------
+  ;; ----- regression: base ExceptT flatmap ----------------
   ;; The base ExceptT case has a one-line catch-e covered elsewhere;
-  ;; this test pulls the >>= path through `do`-notation directly to
-  ;; guard against a regression in the registration.
+  ;; this test pulls the flatmap path through `do`-notation directly
+  ;; to guard against a regression in the registration.
 
   (: ok-then  (ExceptT String IO Integer))
   (define ok-then
@@ -23,10 +23,10 @@
   (: ok-then-result (IO (Result String Integer)))
   (define ok-then-result (run-except-t ok-then))
 
-  ;; ----- nested ExceptT >>= ------------------------------
+  ;; ----- nested ExceptT flatmap --------------------------
   ;; The inner monad is ExceptT String IO (itself needs-dict).
   ;; Without a runtime resolver for needs-dict instances,
-  ;; >>= on MkExceptT fails here.
+  ;; flatmap on MkExceptT fails here.
 
   (: nested-ok (ExceptT String (ExceptT String IO) Integer))
   (define nested-ok

@@ -6,21 +6,21 @@
          "../main.rkt")
 
 (rackton
-  ;; ----- Applicative <*> over Maybe ---------------------------
+  ;; ----- Applicative fapply over Maybe ---------------------------
   (: maybe-ap1 (Maybe Integer))
-  (define maybe-ap1 (<*> (Some (lambda (x) (+ x 1))) (Some 41)))
+  (define maybe-ap1 (fapply (Some (lambda (x) (+ x 1))) (Some 41)))
 
   (: maybe-ap2 (Maybe Integer))
-  (define maybe-ap2 (<*> None (Some 41)))
+  (define maybe-ap2 (fapply None (Some 41)))
 
-  ;; ----- Applicative <*> over Result --------------------------
+  ;; ----- Applicative fapply over Result --------------------------
   (: result-ap (Result String Integer))
-  (define result-ap (<*> (Ok (lambda (x) (* x 2))) (Ok 21)))
+  (define result-ap (fapply (Ok (lambda (x) (* x 2))) (Ok 21)))
 
-  ;; ----- Applicative <*> over List ----------------------------
+  ;; ----- Applicative fapply over List ----------------------------
   (: list-ap (List Integer))
   (define list-ap
-    (<*> (Cons (lambda (x) (+ x 10))
+    (fapply (Cons (lambda (x) (+ x 10))
                (Cons (lambda (x) (* x 2)) Nil))
          (Cons 1 (Cons 2 Nil))))
 
@@ -29,10 +29,10 @@
   (define lifted-add
     (liftA2 (lambda (x y) (+ x y)) (Some 3) (Some 4)))
 
-  ;; ----- Applicative <*> over IO ------------------------------
+  ;; ----- Applicative fapply over IO ------------------------------
   (: io-ap (IO Integer))
   (define io-ap
-    (<*> (pure-io (lambda (x) (+ x 100))) (pure-io 5)))
+    (fapply (pure-io (lambda (x) (+ x 100))) (pure-io 5)))
 
   ;; ----- Bifunctor bimap over Pair ----------------------------
   (: pair-bimapped (Pair Integer String))
@@ -95,22 +95,22 @@
 
 ;; ---------- assertions ------------------------------------------
 
-(test-case "Applicative <*> on Maybe"
+(test-case "Applicative fapply on Maybe"
   (check-equal? maybe-ap1 (Some 42))
   (check-equal? maybe-ap2 None))
 
-(test-case "Applicative <*> on Result"
+(test-case "Applicative fapply on Result"
   (check-equal? result-ap (Ok 42)))
 
-(test-case "Applicative <*> on List (cartesian)"
-  ;; [(+10), (*2)] <*> [1,2] = [11, 12, 2, 4]
+(test-case "Applicative fapply on List (cartesian)"
+  ;; [(+10), (*2)] fapply [1,2] = [11, 12, 2, 4]
   (check-equal? list-ap
                 (Cons 11 (Cons 12 (Cons 2 (Cons 4 Nil))))))
 
 (test-case "Applicative liftA2 on Maybe"
   (check-equal? lifted-add (Some 7)))
 
-(test-case "Applicative <*> on IO"
+(test-case "Applicative fapply on IO"
   (check-equal? (run-io io-ap) 105))
 
 (test-case "Bifunctor bimap on Pair"

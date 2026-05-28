@@ -16,7 +16,7 @@
 ;;     not Rackton API;
 ;;   * names starting with `$` are excluded — these are compile-time-
 ;;     resolved per-instance impl identifiers (e.g. `$pure:Maybe`,
-;;     `$dispatch:>>=`) that the elaborator emits and that user code
+;;     `$dispatch:flatmap`) that the elaborator emits and that user code
 ;;     never types;
 ;;   * the explicit `internal-names` list below covers a handful of
 ;;     macro-output helpers (`define-data-ctor` etc.) and the

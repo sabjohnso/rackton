@@ -6,7 +6,7 @@
 
 Side effects in Rackton happen inside the @racket[IO] monad.
 @racket[IO] is declared with no public constructors — values can only
-be built by primitives.  Sequencing uses @racket[do] / @racket[>>=]
+be built by primitives.  Sequencing uses @racket[do] / @racket[flatmap]
 just like any other @racket[Monad].
 
 @section{Hello, IO}

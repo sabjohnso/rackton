@@ -11,27 +11,27 @@ This chapter assumes you've read @secref["classes"] and
 
 @section{The Monad class}
 
-A @racket[Monad] is a higher-kinded class providing @racket[>>=] (read
-"bind"):
+A @racket[Monad] is a higher-kinded class providing @racket[flatmap]
+(the function-first cousin of Haskell's @tt{>>=}):
 
 @codeblock|{
 (protocol ((Applicative m) => (Monad (m :: (-> * *))))
-  (: >>= (-> (m a) (-> (-> a (m b)) (m b)))))
+  (: flatmap (-> (-> a (m b)) (-> (m a) (m b)))))
 }|
 
-Pronounced: take an @racket[(m a)], a function from @racket[a] to
-@racket[(m b)], yield @racket[(m b)].
+Pronounced: take a function from @racket[a] to @racket[(m b)] and an
+@racket[(m a)], yield @racket[(m b)].
 
 @section{do-notation}
 
-Writing nested @racket[>>=] calls by hand quickly becomes unreadable:
+Writing nested @racket[flatmap] calls by hand quickly becomes
+unreadable:
 
 @codeblock|{
-(>>= (Some 3)
-     (lambda (x)
-       (>>= (Some 4)
-            (lambda (y)
-              (Some (+ x y))))))
+(flatmap (lambda (x)
+           (flatmap (lambda (y) (Some (+ x y)))
+                    (Some 4)))
+         (Some 3))
 }|
 
 The @racket[do] form is sugar for the same shape:
@@ -43,10 +43,10 @@ The @racket[do] form is sugar for the same shape:
 ;; ⇒ (Some 7)
 }|
 
-Each @racket[[var <- expr]] clause desugars to a nested @racket[>>=]
-call binding @racket[var] to the unwrapped result.  The trailing
-expression is the final result of the block; its type must be a monad
-of the same shape as the preceding clauses.
+Each @racket[[var <- expr]] clause desugars to a nested
+@racket[flatmap] call binding @racket[var] to the unwrapped result.
+The trailing expression is the final result of the block; its type
+must be a monad of the same shape as the preceding clauses.
 
 You can also write a clause without binding:
 
@@ -57,7 +57,7 @@ You can also write a clause without binding:
 }|
 
 A bare expression clause discards its result (via
-@racket[(>>= _ (lambda (_) _))]).
+@racket[(flatmap (lambda (_) _) _)]).
 
 @section{Built-in monads}
 
