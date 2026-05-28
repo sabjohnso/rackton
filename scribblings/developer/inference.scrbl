@@ -40,9 +40,10 @@ the inferer rejects the program with "no Num instance for a".
 
 @section{GADT refinement}
 
-A constructor with @racket[#:returns @#,racket[(T τ₁ … τₙ)]] declares
-that pattern-matching on it constrains the scrutinee's type parameters
-to @racket[τ₁ … τₙ].  At each match clause, the inferer:
+A constructor whose signature ends in @racket[(T τ₁ … τₙ)] (declared
+via @racket[(Ctor : (-> field … @#,racket[(T τ₁ … τₙ)]))]) constrains
+the scrutinee's type parameters to @racket[τ₁ … τₙ] when pattern-matched.
+At each match clause, the inferer:
 
 @itemlist[#:style 'ordered
 @item{Instantiates the constructor's universally-quantified existentials

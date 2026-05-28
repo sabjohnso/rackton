@@ -22,7 +22,7 @@ everything together.  Stages, in order:
 
 @item{@bold{Infer.}  @filepath{private/infer.rkt} runs Algorithm W
       with let-generalization, skolemization for declared signatures,
-      GADT @racket[#:returns] refinement, type-class constraint
+      GADT result-type refinement, type-class constraint
       collection, and constraint reduction.  Type AST and substitutions
       live in @filepath{private/types.rkt}; the unifier in
       @filepath{private/unify.rkt}; class entailment / instance search

@@ -157,7 +157,8 @@
 ;; Existing (non-existential) ctors use empty lists for both.
 ;; `result-type` is either #f (default — the data type's
 ;; `(T tparams)` shape) or a ty-AST giving the ctor's specific
-;; result type for GADTs (declared via `#:returns RT`).
+;; result type for GADTs (declared via `: (-> ft … RT)`, where the
+;; final arrow type is the result and the leading types are fields).
 (struct data-ctor    (name field-types stx extra-tvars extra-context
                       result-type)
   #:transparent)
@@ -1714,6 +1715,22 @@
              #f ctx-stx))
   (top:def accessor-name (e:lam '(r) body ctx-stx) ctx-stx))
 
+;; Split a GADT constructor's `: SIG` type into (values field-stxs result-stx).
+;; An arrow `(-> a₁ … aₙ)` with n ≥ 2 yields fields a₁…aₙ₋₁ and result aₙ.
+;; A single-element arrow `(-> r)` (a 0-arg function) and any non-arrow type
+;; both yield no fields and result = the type itself (a nullary constructor).
+(define (split-ctor-signature sig)
+  (syntax-parse sig
+    #:datum-literals (->)
+    [(-> a ...+)
+     (define args (syntax->list #'(a ...)))
+     (cond
+       [(null? (cdr args)) (values '() (car args))]
+       [else
+        (define rev (reverse args))
+        (values (reverse (cdr rev)) (car rev))])]
+    [_ (values '() sig)]))
+
 (define (parse-data-ctor stx)
   (syntax-parse stx
     [name:id
@@ -1734,19 +1751,20 @@
                 (for/list ([c (in-list (syntax->list #'(ctx ...)))])
                   (parse-constraint c))
                 #f)]
-    ;; GADT ctor with `#:returns RT` clause that gives
-    ;; the ctor's specific result type instead of the default
-    ;; `(T tparams)` shape.
-    [(name:id (~datum #:returns) rt ft ...)
+    ;; GADT ctor with `: SIG` clause giving the ctor's full type
+    ;; signature.  When SIG is an arrow `(-> ft … RT)` the leading
+    ;; types are the fields and the final type is the refined result;
+    ;; a non-arrow SIG is a nullary ctor whose result type is SIG.
+    [(name:id (~datum :) sig)
      #:fail-unless (not (lowercase-id? (syntax->datum #'name)))
      "data constructor name must be a non-lowercase identifier"
+     (define-values (field-stxs result-stx) (split-ctor-signature #'sig))
      (data-ctor (syntax->datum #'name)
-                (for/list ([t (in-list (syntax->list #'(ft ...)))])
-                  (parse-type t))
+                (for/list ([t (in-list field-stxs)]) (parse-type t))
                 stx
                 '()
                 '()
-                (parse-type #'rt))]
+                (parse-type result-stx))]
     [(name:id ft ...+)
      #:fail-unless (not (lowercase-id? (syntax->datum #'name)))
      "data constructor name must be a non-lowercase identifier"

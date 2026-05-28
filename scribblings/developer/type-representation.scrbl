@@ -87,9 +87,10 @@ distinct, opaque constant.  Skolems appear in two contexts:
       the skolemised body.  This ensures the body actually has the
       promised polymorphic type rather than accidentally specialising
       one of the type parameters.}
-@item{@bold{GADT refinement.}  Matching on a GADT constructor with a
-      @racket[#:returns] clause unifies the scrutinee's type
-      parameters against the constructor's return type, often binding
+@item{@bold{GADT refinement.}  Matching on a GADT constructor whose
+      @racket[: (-> field … Result)] signature refines its result
+      unifies the scrutinee's type parameters against that result type,
+      often binding
       a parameter to a concrete type.  The bound parameter behaves as
       a skolem within the clause.}]
 

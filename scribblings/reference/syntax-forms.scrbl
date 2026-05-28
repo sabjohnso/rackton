@@ -113,8 +113,11 @@ A constructor may carry its own existential quantifier and constraint
 context via per-constructor @racket[#:forall] / @racket[#:where]
 clauses (see
 @seclink["existentials" #:doc '(lib "rackton/scribblings/guide/rackton-guide.scrbl")]{the guide}),
-and may use @racket[#:returns] to assert a refined return type
-(GADT-style).
+and may give a full type signature after a @racket[:] to assert a
+refined return type (GADT-style): @racket[(Ctor : (-> field … Result))],
+where the arrow's final type is the result and the leading types are
+the fields.  A field-less GADT constructor uses a non-arrow signature
+@racket[(Ctor : Result)].
 
 @racketblock[
 (define-data ExistsShow

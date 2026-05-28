@@ -57,9 +57,10 @@ with brief notes on where each idea lands in the codebase.
       Jones, and Kevin Donnelly.  @italic{System F with type
       equality coercions}.  TLDI '07.
 
-      The theoretical underpinning of GADTs.  Rackton's
-      @racket[#:returns] is a surface for the same idea, though the
-      implementation is more direct than the full coercion calculus.}]
+      The theoretical underpinning of GADTs.  Rackton's per-constructor
+      @racket[: (-> field … Result)] signature is surface syntax for the
+      same idea, though the implementation is more direct than the full
+      coercion calculus.}]
 
 @section{Algebraic effects}
 

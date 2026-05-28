@@ -12,10 +12,10 @@
   ;; Boolean, addition is Integer-only, conditional is polymorphic.
 
   (define-data (Expr a)
-    (Lit  #:returns (Expr Integer) Integer)
-    (BVal #:returns (Expr Boolean) Boolean)
-    (Plus #:returns (Expr Integer) (Expr Integer) (Expr Integer))
-    (If   #:returns (Expr a)       (Expr Boolean) (Expr a) (Expr a)))
+    (Lit  : (-> Integer (Expr Integer)))
+    (BVal : (-> Boolean (Expr Boolean)))
+    (Plus : (-> (Expr Integer) (Expr Integer) (Expr Integer)))
+    (If   : (-> (Expr Boolean) (Expr a) (Expr a) (Expr a))))
 
   ;; ----- 50.A Monomorphic evaluator at Integer --------------
   ;; The simpler case — no skolem refinement needed.
@@ -80,7 +80,27 @@
   (: rackton-eq-pair? (-> (Pair Integer Integer) (-> Integer (-> Integer Boolean))))
   (define (rackton-eq-pair? p a b)
     (match p
-      [(MkPair x y) (and (= x a) (= y b))])))
+      [(MkPair x y) (and (= x a) (= y b))]))
+
+  ;; ----- 50.D Nullary GADT constructors ---------------------
+  ;; A field-less ctor still refines its result type via a
+  ;; non-arrow signature `(Tag : (Tagged T))`.
+
+  (define-data (Tagged a)
+    (IntTag  : (Tagged Integer))
+    (BoolTag : (Tagged Boolean)))
+
+  (: tag-width (-> (Tagged a) Integer))
+  (define (tag-width t)
+    (match t
+      [(IntTag)  64]
+      [(BoolTag) 1]))
+
+  (: int-tag-width Integer)
+  (define int-tag-width (tag-width IntTag))
+
+  (: bool-tag-width Integer)
+  (define bool-tag-width (tag-width BoolTag)))
 
 ;; ---------- assertions ---------------------------------------
 
@@ -102,3 +122,7 @@
 
 (test-case "Explicit (~ a b) equality constraint"
   (check-true (rackton-eq-pair? eq-int 7 7)))
+
+(test-case "Nullary GADT constructors with refined result type"
+  (check-equal? int-tag-width  64)
+  (check-equal? bool-tag-width 1))

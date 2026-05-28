@@ -50,15 +50,20 @@ skolem cannot escape its clause:
 
 @section{Generalised ADTs (GADTs)}
 
-A constructor can refine its result type with @racket[#:returns]:
+A constructor can refine its result type by giving its full type
+signature after a @racket[:].  The signature is an arrow whose final
+type is the result and whose leading types are the fields:
 
 @codeblock|{
 (define-data (Term a)
-  (IntLit  Integer    #:returns (Term Integer))
-  (BoolLit Boolean    #:returns (Term Boolean))
-  (Plus    (Term Integer) (Term Integer)  #:returns (Term Integer))
-  (If      (Term Boolean) (Term a) (Term a) #:returns (Term a)))
+  (IntLit  : (-> Integer (Term Integer)))
+  (BoolLit : (-> Boolean (Term Boolean)))
+  (Plus    : (-> (Term Integer) (Term Integer) (Term Integer)))
+  (If      : (-> (Term Boolean) (Term a) (Term a) (Term a))))
 }|
+
+A field-less constructor uses a non-arrow signature, where the lone
+type is the refined result (e.g. @racket[(Empty : (Term a))]).
 
 Matching on a GADT constructor refines the scrutinee's type parameter
 within the clause:
