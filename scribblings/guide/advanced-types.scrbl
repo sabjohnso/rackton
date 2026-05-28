@@ -63,7 +63,35 @@ type is the result and whose leading types are the fields:
 }|
 
 A field-less constructor uses a non-arrow signature, where the lone
-type is the refined result (e.g. @racket[(Empty : (Term a))]).
+type is the result.  Whether that result actually @emph{refines}
+anything depends on what you write:
+
+@itemlist[
+
+@item{A @emph{concrete} result genuinely refines.  Given
+@racket[(IntTag : (Tagged Integer))], matching @racket[IntTag] teaches
+the type checker that the parameter is @racket[Integer]:
+
+@codeblock|{
+(define-data (Tagged a)
+  (IntTag  : (Tagged Integer))
+  (BoolTag : (Tagged Boolean)))
+
+(: width (-> (Tagged a) Integer))
+(define (width t)
+  (match t
+    [(IntTag)  64]   (code:comment "here a == Integer")
+    [(BoolTag) 1]))  (code:comment "here a == Boolean")
+}|}
+
+@item{A result that just mentions the type's @emph{own} parameter
+refines nothing.  @racket[(Empty : (Term a))] is accepted, but @racket[a]
+stays universally quantified, so @racket[Empty] is an ordinary
+polymorphic value of type @racket[(Term a)] — exactly equivalent to a
+plain nullary constructor @racket[Empty], just as @racket[Nil] has type
+@racket[(List a)].  Matching it learns nothing about @racket[a].}
+
+]
 
 Matching on a GADT constructor refines the scrutinee's type parameter
 within the clause:
