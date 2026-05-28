@@ -3492,6 +3492,112 @@
       (for/and ([m (in-list inst-method-names)])
         (member m class-method-names))))
 
+;; Walk a surface-expression AST and collect every e:var whose name
+;; is in `class-method-names` (a hasheq used as a set).  Returns the
+;; set of class methods referenced anywhere in the body — including
+;; in dead branches of `if`/`match`, since for cycle-completeness we
+;; care about syntactic references, not reachability.
+(define (collect-class-method-refs expr class-method-names)
+  (define found (make-hasheq))
+  (define (visit e)
+    (cond
+      [(e:literal? e) (void)]
+      [(e:var? e)
+       (define n (e:var-name e))
+       (when (hash-ref class-method-names n #f)
+         (hash-set! found n #t))]
+      [(e:lam? e) (visit (e:lam-body e))]
+      [(e:app? e) (visit (e:app-head e))
+                  (for-each visit (e:app-args e))]
+      [(e:let? e) (for ([b (in-list (e:let-bindings e))])
+                    (visit (cdr b)))
+                  (visit (e:let-body e))]
+      [(e:letrec? e) (for ([b (in-list (e:letrec-bindings e))])
+                       (visit (cdr b)))
+                     (visit (e:letrec-body e))]
+      [(e:if? e) (visit (e:if-test e))
+                 (visit (e:if-then e))
+                 (visit (e:if-else e))]
+      [(e:ann? e) (visit (e:ann-expr e))]
+      [(e:match? e) (visit (e:match-scrutinee e))
+                    (for ([c (in-list (e:match-clauses e))])
+                      (when (clause-guard c) (visit (clause-guard c)))
+                      (visit (clause-body c)))]
+      [(e:update? e) (visit (e:update-record e))
+                     (for ([u (in-list (e:update-updates e))])
+                       (visit (cdr u)))]
+      [(e:escape? e) (visit (e:escape-body e))]
+      [else (void)]))
+  (visit expr)
+  found)
+
+;; Given a class's defaults hash and its set of method names, build a
+;; directed graph: method m → list of methods called from m's default
+;; body.  Methods with no default appear in the graph as nodes with no
+;; outgoing edges (callers can't use them as fallback).
+(define (build-default-call-graph defaults method-names)
+  (define name-set (for/hasheq ([m (in-list method-names)]) (values m #t)))
+  (for/hasheq ([m (in-list method-names)])
+    (define default (hash-ref defaults m #f))
+    (values m
+            (cond
+              [(not default) '()]
+              [else (hash-keys (collect-class-method-refs default name-set))]))))
+
+;; DFS cycle-detector.  Returns one cycle (a list of node names in
+;; traversal order, with the repeated node at both ends) if any cycle
+;; exists in the subgraph restricted to `live-nodes`, else #f.
+(define (find-method-cycle live-nodes adj)
+  (define color (make-hasheq))    ; node → 'white | 'gray | 'black
+  (define parent (make-hasheq))   ; node → predecessor on current DFS path
+  (define cycle (box #f))
+  (define live? (for/hasheq ([n (in-list live-nodes)]) (values n #t)))
+  (define (dfs n)
+    (unless (unbox cycle)
+      (hash-set! color n 'gray)
+      (for ([m (in-list (hash-ref adj n '()))]
+            #:when (hash-ref live? m #f)
+            #:unless (unbox cycle))
+        (case (hash-ref color m 'white)
+          [(gray)
+           ;; Back-edge: cycle from m back to itself through n.
+           (define cyc
+             (let loop ([k n] [acc (list m)])
+               (cond
+                 [(equal? k m) (cons m acc)]
+                 [else (loop (hash-ref parent k) (cons k acc))])))
+           (set-box! cycle cyc)]
+          [(white)
+           (hash-set! parent m n)
+           (dfs m)]))
+      (hash-set! color n 'black)))
+  (for ([n (in-list live-nodes)]
+        #:when (eq? (hash-ref color n 'white) 'white)
+        #:unless (unbox cycle))
+    (dfs n))
+  (unbox cycle))
+
+;; Check that the instance's user-defined methods break every cycle in
+;; the class's default-call graph.  If a cycle remains among methods
+;; the instance did NOT define, raise a targeted syntax error.
+(define (check-instance-default-cycle cinfo user-impls head-pred-raw stx)
+  (define method-names (hash-keys (class-info-methods cinfo)))
+  (define adj (build-default-call-graph (class-info-defaults cinfo)
+                                        method-names))
+  (define live (filter (lambda (m) (not (hash-ref user-impls m #f)))
+                       method-names))
+  (define cyc (find-method-cycle live adj))
+  (when cyc
+    (raise-syntax-error 'infer
+      (format
+       (string-append
+        "instance ~s is incomplete: methods ~s form a cyclic default chain "
+        "(~a); at least one must be defined directly to break the cycle.")
+       (pred->datum head-pred-raw)
+       cyc
+       (string-join (map symbol->string cyc) " → "))
+      stx)))
+
 (define (handle-instance-form ctx head methods stx env declared)
   (define head-pred-raw (resolve-constraint head))
   (define class-name (pred-class head-pred-raw))
@@ -3564,6 +3670,11 @@
       (match m
         [(top:def name expr _) (hash-set acc name expr)]
         [(inst-type-fam _ _ _) acc])))
+  ;; Require the instance to break every default cycle: if any cycle
+  ;; remains among methods the instance did not define, fail at
+  ;; compile time with a message naming the cycle.  Without this check
+  ;; an "all-default" instance would loop at runtime on first call.
+  (check-instance-default-cycle cinfo user-impls head-pred-raw stx)
   ;; Collect this instance's type-family bindings and
   ;; check that every family the class declared is supplied.
   (define type-family-bindings

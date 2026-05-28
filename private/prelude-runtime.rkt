@@ -110,8 +110,8 @@
  <  >  <=  >=
  show
  fmap
- <*> liftA2
- >>=
+ <*> liftA2 product
+ >>= join
  bimap first second
  foldr length to-list sum
  <>
@@ -171,7 +171,9 @@
  $dispatch:fmap
  $dispatch:<*>
  $dispatch:liftA2
+ $dispatch:product
  $dispatch:>>=
+ $dispatch:join
  $dispatch:bimap
  $dispatch:first
  $dispatch:second
@@ -352,11 +354,16 @@
 ;; Functor's fmap dispatches on the SECOND argument (the container).
 (define $dispatch:fmap (make-hasheq))(define-class-method fmap $dispatch:fmap 1 2)
 ;; Applicative's <*> dispatches on the FIRST argument (the f (a->b)).
-;; liftA2 is provided via the class's default method body.
-(define $dispatch:<*>    (make-hasheq))(define-class-method <*>    $dispatch:<*>    0 2)
-(define $dispatch:liftA2 (make-hasheq))(define-class-method liftA2 $dispatch:liftA2 1 3)
+;; product dispatches on the FIRST argument (the f a).
+;; liftA2 dispatches on the SECOND argument (after the combining function).
+;; Defaults are provided via the class's default method bodies (cyclic).
+(define $dispatch:<*>     (make-hasheq))(define-class-method <*>     $dispatch:<*>     0 2)
+(define $dispatch:liftA2  (make-hasheq))(define-class-method liftA2  $dispatch:liftA2  1 3)
+(define $dispatch:product (make-hasheq))(define-class-method product $dispatch:product 0 2)
 ;; Monad's bind dispatches on the FIRST argument (the wrapped value).
+;; join dispatches on the FIRST argument (the m (m a)).
 (define $dispatch:>>=  (make-hasheq))(define-class-method >>=  $dispatch:>>=  0 2)
+(define $dispatch:join (make-hasheq))(define-class-method join $dispatch:join 0 1)
 ;; Bifunctor's bimap/first/second dispatch on the value (the `p a b`).
 ;; bimap takes 3 args, value is arg 2.  first/second take 2 args, value is arg 1.
 (define $dispatch:bimap  (make-hasheq))(define-class-method bimap  $dispatch:bimap  2 3)
@@ -2307,4 +2314,22 @@
 (register-instance-method! $dispatch:local-en '$ctor:MkExceptT
   (lambda (f em)
     (MkExceptT (local-en f (run-except-t em)))))
+
+;; ----- default `join` and `product` for prelude instances ----------
+;;
+;; In user code, the elaborator falls back to a class's default method
+;; body whenever an instance omits the method.  The prelude is hand-
+;; rolled instead of going through codegen, so we do that fallback
+;; manually here: every monad ctor that registered `>>=` gets `join`
+;; derived from `>>=`, and every applicative ctor that registered
+;; `liftA2` gets `product` derived from `liftA2`.
+
+(define default-join    (lambda (mma) (>>= mma (lambda (m) m))))
+(define default-product (lambda (x y) (liftA2 MkPair x y)))
+
+(for ([ctor (in-hash-keys $dispatch:>>=)])
+  (register-instance-method! $dispatch:join ctor default-join))
+
+(for ([ctor (in-hash-keys $dispatch:liftA2)])
+  (register-instance-method! $dispatch:product ctor default-product))
 

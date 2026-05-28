@@ -182,16 +182,18 @@ Functors with a context-introducing @racket[pure] and a way to apply
 context-wrapped functions.  Superclass: @racket[Functor].
 
 @deftogether[(
-  @defproc[(pure   [a a])                                            (f a)]
-  @defproc[(<*>    [fg (f (-> a b))] [fa (f a)])                     (f b)]
-  @defproc[(liftA2 [g (-> a (-> b c))] [fa (f a)] [fb (f b)])        (f c)])]{
+  @defproc[(pure    [a a])                                          (f a)]
+  @defproc[(<*>     [fg (f (-> a b))] [fa (f a)])                   (f b)]
+  @defproc[(liftA2  [g (-> a (-> b c))] [fa (f a)] [fb (f b)])      (f c)]
+  @defproc[(product [fa (f a)] [fb (f b)])                          (f (Pair a b))])]{
 
 @racket[pure] is return-typed (the inferer resolves the @racket[f]
 from the call's expected type); use @racket[ann] when ambiguous.
-@racket[liftA2] has a default implementation in terms of @racket[<*>]
-and @racket[fmap] (@racket[(liftA2 g x y)] = @racket[(<*> (fmap g x) y)]);
-an instance may override it to apply both arguments at once when that
-matters for the instance's semantics.}
+
+@racket[<*>], @racket[liftA2], and @racket[product] are arranged in a
+default cycle (@racket[<*>] ← @racket[product] ← @racket[liftA2] ←
+@racket[<*>]).  An instance must define at least one; the other two
+are derived.  Omitting all three is a compile-time error.}
 
 Built-in instances: all the @racket[Functor] instances above.}
 
@@ -200,9 +202,16 @@ Built-in instances: all the @racket[Functor] instances above.}
 Computations that sequence with binding.  Superclass:
 @racket[Applicative].
 
-@defproc[(>>= [m (f a)] [k (-> a (f b))]) (f b)]{
+@deftogether[(
+  @defproc[(>>=  [m (f a)] [k (-> a (f b))])  (f b)]
+  @defproc[(join [mma (f (f a))])             (f a)])]{
 
-Monadic bind.  Sugared via @racket[do].}
+@racket[>>=] is monadic bind (sugared via @racket[do]).  @racket[join]
+collapses one layer of monadic nesting.  An instance must define at
+least one of @racket[>>=] or @racket[join]; the other is derived
+(@racket[(>>= ma f)] = @racket[(join (fmap f ma))], @racket[(join mma)]
+= @racket[(>>= mma (lambda (m) m))]).  Omitting both is a compile-time
+error.}
 
 Built-in instances: all the @racket[Applicative] instances above.
 For @racket[STM], compose actions monadically and then run the result

@@ -96,6 +96,35 @@ instance that omits it:
 Defaults can call other methods of the same class — Rackton resolves
 each call to the eventual instance's body.
 
+@section{Cyclic defaults}
+
+Some classes arrange their defaults in a cycle so an instance can pick
+whichever method is most natural and the others derive.  The prelude's
+@racket[Monad] is a 2-cycle:
+
+@codeblock|{
+(protocol ((Applicative m) => (Monad (m :: (-> * *))))
+  (: >>=  (-> (m a) (-> (-> a (m b)) (m b))))
+  (: join (-> (m (m a)) (m a)))
+  (define (>>= ma f) (join (fmap f ma)))
+  (define (join mma) (>>= mma (lambda (m) m))))
+}|
+
+An instance must define at least one of @racket[>>=] or @racket[join];
+the other is derived.  Defining neither would loop at runtime, so
+Rackton rejects such an instance at compile time:
+
+@codeblock|{
+(instance (Monad MyType))   ;; → instance is incomplete:
+                            ;;   methods (>>= join) form a cyclic
+                            ;;   default chain (>>= → join → >>=);
+                            ;;   at least one must be defined
+                            ;;   directly to break the cycle.
+}|
+
+@racket[Applicative] is a 3-cycle (@racket[<*>] ← @racket[product] ←
+@racket[liftA2] ← @racket[<*>]); defining any single member suffices.
+
 @section{Coherence}
 
 Rackton enforces @italic{module-level} coherence: an instance is

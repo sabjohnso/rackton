@@ -197,14 +197,30 @@
     (protocol (Functor (f :: (-> * *)))
       (: fmap (-> (-> a b) (-> (f a) (f b)))))
 
+    ;; Applicative has three derivable methods — <*>, liftA2, product —
+    ;; arranged in a default cycle so an instance can pick whichever
+    ;; primitive it finds most natural and the other two derive.  The
+    ;; default-cycle direction is <*> ← product ← liftA2 ← <*>.  An
+    ;; instance must define at least one of the three; omitting all of
+    ;; them is rejected at compile time (see check-default-cycles in
+    ;; private/infer.rkt).
     (protocol ((Functor f) => (Applicative (f :: (-> * *))))
-      (: pure  (-> a (f a)))
-      (: <*>   (-> (f (-> a b)) (-> (f a) (f b))))
-      (: liftA2 (-> (-> a (-> b c)) (-> (f a) (-> (f b) (f c)))))
-      (define (liftA2 g x y) (<*> (fmap g x) y)))
+      (: pure    (-> a (f a)))
+      (: <*>     (-> (f (-> a b)) (-> (f a) (f b))))
+      (: liftA2  (-> (-> a (-> b c)) (-> (f a) (-> (f b) (f c)))))
+      (: product (-> (f a) (-> (f b) (f (Pair a b)))))
+      (define (<*> ff fa)
+        (fmap (lambda (p) (match p [(MkPair f x) (f x)])) (product ff fa)))
+      (define (liftA2 g x y) (<*> (fmap g x) y))
+      (define (product x y) (liftA2 MkPair x y)))
 
+    ;; Monad has two derivable methods — >>= and join — with mutual
+    ;; defaults.  An instance must define at least one.
     (protocol ((Applicative m) => (Monad (m :: (-> * *))))
-      (: >>= (-> (m a) (-> (-> a (m b)) (m b)))))
+      (: >>=  (-> (m a) (-> (-> a (m b)) (m b))))
+      (: join (-> (m (m a)) (m a)))
+      (define (>>= ma f) (join (fmap f ma)))
+      (define (join mma) (>>= mma (lambda (m) m))))
 
     ;; Maybe
     (instance (Functor Maybe)
