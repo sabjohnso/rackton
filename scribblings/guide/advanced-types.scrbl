@@ -56,40 +56,31 @@ type is the result and whose leading types are the fields:
 
 @codeblock|{
 (define-data (Term a)
+  (Lit     : (-> a (Term a)))
   (IntLit  : (-> Integer (Term Integer)))
   (BoolLit : (-> Boolean (Term Boolean)))
   (Plus    : (-> (Term Integer) (Term Integer) (Term Integer)))
   (If      : (-> (Term Boolean) (Term a) (Term a) (Term a))))
 }|
 
-A field-less constructor uses a non-arrow signature, where the lone
-type is the result.  Whether that result actually @emph{refines}
-anything depends on what you write:
+How much a constructor refines the parameter @racket[a] depends on
+whether its result type is @emph{concrete} or a @emph{bare variable}:
 
 @itemlist[
 
-@item{A @emph{concrete} result genuinely refines.  Given
-@racket[(IntTag : (Tagged Integer))], matching @racket[IntTag] teaches
-the type checker that the parameter is @racket[Integer]:
+@item{@racket[IntLit], @racket[BoolLit], and @racket[Plus] have
+concrete result indices (@racket[(Term Integer)], @racket[(Term
+Boolean)]).  Matching one refines @racket[a] to that concrete type.}
 
-@codeblock|{
-(define-data (Tagged a)
-  (IntTag  : (Tagged Integer))
-  (BoolTag : (Tagged Boolean)))
+@item{@racket[(Lit : (-> a (Term a)))] has a bare-variable index equal
+to its field type, so it is an ordinary polymorphic constructor — type
+@racket[(-> a (Term a))] for every @racket[a].  Matching it refines
+nothing: the stored value already has type @racket[a], so you just get
+it back.}
 
-(: width (-> (Tagged a) Integer))
-(define (width t)
-  (match t
-    [(IntTag)  64]   (code:comment "here a == Integer")
-    [(BoolTag) 1]))  (code:comment "here a == Boolean")
-}|}
-
-@item{A result that just mentions the type's @emph{own} parameter
-refines nothing.  @racket[(Empty : (Term a))] is accepted, but @racket[a]
-stays universally quantified, so @racket[Empty] is an ordinary
-polymorphic value of type @racket[(Term a)] — exactly equivalent to a
-plain nullary constructor @racket[Empty], just as @racket[Nil] has type
-@racket[(List a)].  Matching it learns nothing about @racket[a].}
+@item{@racket[If] is likewise parametric in @racket[a] — its two
+branches and its result all share the same @racket[a] — so it refines
+nothing either.}
 
 ]
 
@@ -100,6 +91,7 @@ within the clause:
 (: eval-term (-> (Term a) a))
 (define (eval-term t)
   (match t
+    [(Lit     x)        x]      (code:comment "a stays polymorphic")
     [(IntLit  n)        n]      (code:comment "here a == Integer")
     [(BoolLit b)        b]      (code:comment "here a == Boolean")
     [(Plus x y)         (+ (eval-term x) (eval-term y))]
@@ -108,6 +100,26 @@ within the clause:
 
 The refinement is local to the clause, so different clauses can return
 different types — exactly what makes a typed interpreter possible.
+
+The same concrete-vs-variable rule governs @emph{field-less}
+constructors, which use a non-arrow signature whose lone type is the
+result.  A concrete result refines, while a bare-variable result is
+universally quantified and refines nothing — exactly like @racket[Nil]
+has type @racket[(List a)] for every @racket[a]:
+
+@codeblock|{
+(define-data (Tagged a)
+  (IntTag  : (Tagged Integer))   (code:comment "concrete — refines a ~ Integer")
+  (BoolTag : (Tagged Boolean))   (code:comment "concrete — refines a ~ Boolean")
+  (AnyTag  : (Tagged a)))        (code:comment "polymorphic — no refinement")
+
+(: width (-> (Tagged a) Integer))
+(define (width t)
+  (match t
+    [(IntTag)  64]
+    [(BoolTag) 1]
+    [(AnyTag)  0]))   (code:comment "a is unconstrained here")
+}|
 
 @section{Type aliases}
 
