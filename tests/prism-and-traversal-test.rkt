@@ -47,7 +47,7 @@
 
   ;; ----- 48.C lens-as-traversal ------------------------------
 
-  (define-struct Point
+  (struct Point
     [x : Integer]
     [y : Integer]
     #:deriving Lens)

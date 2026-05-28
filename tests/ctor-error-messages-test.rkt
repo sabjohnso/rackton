@@ -4,7 +4,7 @@
 ;;
 ;; Two targeted improvements:
 ;;   1. Constructor arity errors include the struct's field names,
-;;      so a mis-arity on a `define-struct` ctor tells the user
+;;      so a mis-arity on a `struct` ctor tells the user
 ;;      which fields are missing.
 ;;   2. "No instance" errors suggest `#:deriving X` when X is one
 ;;      of the derivable classes (Eq, Ord, Show, Functor, etc.).
@@ -26,14 +26,14 @@
 (test-case "ctor arity mismatch in pattern lists struct field names"
   (define msg
     (catch-rackton-error
-     (define-struct Point [x : Integer] [y : Integer])
+     (struct Point [x : Integer] [y : Integer])
      (define (peek p) (match p [(Point a) a]))))
   (check-regexp-match #rx"fields: x, y" msg))
 
 (test-case "ctor arity mismatch in pattern lists struct field names (3 fields)"
   (define msg
     (catch-rackton-error
-     (define-struct Tri [a : Integer] [b : Integer] [c : Integer])
+     (struct Tri [a : Integer] [b : Integer] [c : Integer])
      (define (peek t) (match t [(Tri x y) x]))))
   (check-regexp-match #rx"fields: a, b, c" msg))
 
@@ -42,13 +42,13 @@
 (test-case "missing Eq instance suggests #:deriving Eq"
   (define msg
     (catch-rackton-error
-     (define-data Box (MkBox Integer))
+     (data Box (MkBox Integer))
      (define same (== (MkBox 1) (MkBox 2)))))
   (check-regexp-match #rx"#:deriving Eq" msg))
 
 (test-case "missing Show instance suggests #:deriving Show"
   (define msg
     (catch-rackton-error
-     (define-data Box (MkBox Integer))
+     (data Box (MkBox Integer))
      (define shown (show (MkBox 1)))))
   (check-regexp-match #rx"#:deriving Show" msg))

@@ -38,7 +38,7 @@
 ;; ----- instance defines only `join` --------------------------------
 
 (rackton
-  (define-data (Box a) (MkBox a))
+  (data (Box a) (MkBox a))
 
   (instance (Functor Box)
     (define (fmap f b) (match b [(MkBox x) (MkBox (f x))])))
@@ -62,7 +62,7 @@
 ;; ----- instance defines only `liftA2` ------------------------------
 
 (rackton
-  (define-data (Wrap a) (MkWrap a))
+  (data (Wrap a) (MkWrap a))
 
   (instance (Functor Wrap)
     (define (fmap f w) (match w [(MkWrap x) (MkWrap (f x))])))
@@ -93,7 +93,7 @@
 ;; ----- instance defines only `product` -----------------------------
 
 (rackton
-  (define-data (Cell a) (MkCell a))
+  (data (Cell a) (MkCell a))
 
   (instance (Functor Cell)
     (define (fmap f c) (match c [(MkCell x) (MkCell (f x))])))
@@ -133,7 +133,7 @@
     '(module test-cycle racket/base
        (require rackton)
        (rackton
-        (define-data (Stub a) (MkStub a))
+        (data (Stub a) (MkStub a))
         (instance (Functor Stub)
           (define (fmap f s) (match s [(MkStub x) (MkStub (f x))])))
         (instance (Applicative Stub)
@@ -149,7 +149,7 @@
     '(module test-cycle-monad racket/base
        (require rackton)
        (rackton
-        (define-data (Stub2 a) (MkStub2 a))
+        (data (Stub2 a) (MkStub2 a))
         (instance (Functor Stub2)
           (define (fmap f s) (match s [(MkStub2 x) (MkStub2 (f x))])))
         (instance (Applicative Stub2)

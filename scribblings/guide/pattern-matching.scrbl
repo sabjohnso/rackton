@@ -85,4 +85,4 @@ For a single match, @racket[match-let] is more direct:
 The body sees @racket[x] and @racket[y].  A failure to match raises a
 panic — use @racket[match-let] only when the pattern is irrefutable
 (constructor with exactly one inhabitant, like @racket[MkPair] or a
-@racket[define-struct] constructor).
+@racket[struct] constructor).

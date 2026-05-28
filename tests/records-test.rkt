@@ -1,13 +1,13 @@
 #lang racket/base
 
-;; Records via `define-struct`: single-ctor named-field types with
+;; Records via `struct`: single-ctor named-field types with
 ;; auto-generated accessors.
 
 (require rackunit
          "../main.rkt")
 
 (rackton
-  (define-struct Point
+  (struct Point
     [x : Integer]
     [y : Integer])
 
@@ -26,7 +26,7 @@
   (define d-p1     (distance-squared p1))
 
   ;; Parametric struct
-  (define-struct (Box a)
+  (struct (Box a)
     [value : a]
     [label : String])
 

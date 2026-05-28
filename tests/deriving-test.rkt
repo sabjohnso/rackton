@@ -6,7 +6,7 @@
          "../main.rkt")
 
 (rackton
-  (define-data (Tree a)
+  (data (Tree a)
     Leaf
     (Node (Tree a) a (Tree a))
     #:deriving Eq Show)

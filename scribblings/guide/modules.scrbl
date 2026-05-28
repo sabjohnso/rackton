@@ -22,7 +22,7 @@ listed in a @racket[(provide …)] form.
          tree-depth
          (data-out Tree))   (code:comment "exports Tree and all its constructors")
 
-(define-data (Tree a) Leaf (Node (Tree a) a (Tree a)))
+(data (Tree a) Leaf (Node (Tree a) a (Tree a)))
 
 (: tree-sum (-> (Tree Integer) Integer))
 (define (tree-sum t) ...)
@@ -52,7 +52,7 @@ imports both the runtime bindings and (if the target is a
 ;; lib.rkt
 #lang rackton
 (provide tree-sum (data-out Tree))
-(define-data (Tree a) Leaf (Node (Tree a) a (Tree a)))
+(data (Tree a) Leaf (Node (Tree a) a (Tree a)))
 (: tree-sum (-> (Tree Integer) Integer))
 (define (tree-sum t) ...)
 
@@ -84,7 +84,7 @@ instances without local redeclaration:
 (protocol (Container (f :: (-> * *)))
   (: empty? (-> (f a) Boolean)))
 
-(define-data (Stack a) Empty (Push a (Stack a)))
+(data (Stack a) Empty (Push a (Stack a)))
 
 (instance (Container Stack)
   (define (empty? s) (match s [(Empty) #t] [(Push _ _) #f])))

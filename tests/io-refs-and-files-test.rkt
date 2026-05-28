@@ -39,7 +39,7 @@
   (define p-sw  (swap p))
 
   ;; #:deriving Functor on a single-tparam tree
-  (define-data (Tree a)
+  (data (Tree a)
     Leaf
     (Node (Tree a) a (Tree a))
     #:deriving Functor)

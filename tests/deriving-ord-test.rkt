@@ -8,7 +8,7 @@
          "../main.rkt")
 
 (rackton
-  (define-data Color Red Green Blue #:deriving Ord Show)
+  (data Color Red Green Blue #:deriving Ord Show)
 
   (define c1 (< Red Green))    ; #t  (Red comes first)
   (define c2 (< Blue Green))   ; #f
@@ -16,7 +16,7 @@
   (define c4 (< Red Red))      ; #f
 
   ;; Parametric data type with Ord-comparable contents
-  (define-data (Pair2 a)
+  (data (Pair2 a)
     (MkPair2 a a)
     #:deriving Ord)
 

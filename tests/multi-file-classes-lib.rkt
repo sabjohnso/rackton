@@ -5,7 +5,7 @@
 
 (provide (all-defined-out))
 
-(define-data (Stack a) Empty (Push a (Stack a)))
+(data (Stack a) Empty (Push a (Stack a)))
 
 (protocol (Container (f :: (-> * *)))
   (: empty? (-> (f a) Boolean))

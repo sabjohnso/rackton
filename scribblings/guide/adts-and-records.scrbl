@@ -7,14 +7,14 @@
 Rackton offers three closely-related ways to declare your own data:
 
 @itemlist[
-@item{@racket[define-data] — algebraic data types (sums of products).}
-@item{@racket[define-newtype] — zero-overhead single-field wrappers.}
-@item{@racket[define-struct] — records with named typed fields.}]
+@item{@racket[data] — algebraic data types (sums of products).}
+@item{@racket[newtype] — zero-overhead single-field wrappers.}
+@item{@racket[struct] — records with named typed fields.}]
 
-@section{Sums of products with @racket[define-data]}
+@section{Sums of products with @racket[data]}
 
 @codeblock|{
-(define-data (Tree a)
+(data (Tree a)
   Leaf
   (Node (Tree a) a (Tree a)))
 }|
@@ -42,7 +42,7 @@ without further work.
 @section{Newtypes}
 
 @codeblock|{
-(define-newtype Distance (MkDistance Float))
+(newtype Distance (MkDistance Float))
 }|
 
 A newtype is a single-constructor type whose constructor takes exactly
@@ -51,12 +51,12 @@ wrapped value; semantically it's a different type from the field's
 type, so the type checker won't accidentally treat a
 @racket[Distance] as a @racket[Float].
 
-@section{Records with @racket[define-struct]}
+@section{Records with @racket[struct]}
 
 When you want named fields and accessors:
 
 @codeblock|{
-(define-struct Point
+(struct Point
   [x : Integer]
   [y : Integer])
 
@@ -70,7 +70,7 @@ The constructor is the struct name; accessors are
 parameters on the head:
 
 @codeblock|{
-(define-struct (Box a)
+(struct (Box a)
   [v   : a]
   [tag : String])
 }|
@@ -90,11 +90,11 @@ Untouched fields are copied verbatim.  This is the only way to
 
 @section{Deriving common instances}
 
-Listing @racket[#:deriving] at the end of a @racket[define-data] or
-@racket[define-struct] synthesises the named class instances:
+Listing @racket[#:deriving] at the end of a @racket[data] or
+@racket[struct] synthesises the named class instances:
 
 @codeblock|{
-(define-data (Tree a)
+(data (Tree a)
   Leaf
   (Node (Tree a) a (Tree a))
   #:deriving Eq Show Functor)
@@ -104,8 +104,8 @@ Available classes for deriving include @racket[Eq], @racket[Ord]
 (which auto-derives @racket[Eq] as well), @racket[Show],
 @racket[Functor], @racket[Foldable], @racket[Traversable],
 @racket[Bifunctor], @racket[Semigroup], @racket[Monoid], plus the
-optics families: per-field @racket[Lens] on @racket[define-struct] and
-per-constructor @racket[Prism] on @racket[define-data].  Each derived
+optics families: per-field @racket[Lens] on @racket[struct] and
+per-constructor @racket[Prism] on @racket[data].  Each derived
 instance picks up the appropriate context (so @racket[#:deriving Eq]
 on @racket[(Tree a)] yields the qualified instance
 @racket[((Eq a) => (Eq (Tree a)))]).

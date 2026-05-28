@@ -259,7 +259,7 @@
       (hash-set! export-vars mname mname)))
 
   (define (add-struct-out sname src-stx)
-    ;; A define-struct registers its field list in env-struct-fields;
+    ;; A struct registers its field list in env-struct-fields;
     ;; the lone constructor shares the struct's name and the per-
     ;; field accessors are emitted as `Sname-fname` top:defs by
     ;; parse-struct-form.  (struct-out S) bundles all three.

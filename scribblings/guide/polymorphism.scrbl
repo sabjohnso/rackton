@@ -95,7 +95,7 @@ signatures, using a per-constructor @racket[#:forall] / @racket[#:where]
 clause:
 
 @codeblock|{
-(define-data Anything
+(data Anything
   (Wrap #:forall (a) a (-> a String)))
 }|
 
@@ -106,7 +106,7 @@ class constraints — those constraints become hypotheses available
 inside any clause that matches the constructor:
 
 @codeblock|{
-(define-data ExistsShow
+(data ExistsShow
   (PackShow #:forall (a) #:where (Show a) a))
 }|
 

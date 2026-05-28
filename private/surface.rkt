@@ -500,7 +500,7 @@
 ;;   N≥3      → `(fapply (fapply … (liftA2 Ctor lift0 lift1) … lift_{N-2}) lift_{N-1})`
 (define (synthesize-traversable-instance tname tparams ctors stx)
   (when (null? tparams)
-    (raise-syntax-error 'define-data
+    (raise-syntax-error 'data
       "cannot derive Traversable for a type with no type parameters"
       stx))
   (define fparam (last tparams))
@@ -576,7 +576,7 @@
 ;; No qual context.
 (define (synthesize-bifunctor-instance tname tparams ctors stx)
   (when (< (length tparams) 2)
-    (raise-syntax-error 'define-data
+    (raise-syntax-error 'data
       "cannot derive Bifunctor for a type with fewer than two type parameters"
       stx))
   (define f1 (list-ref tparams (- (length tparams) 2)))
@@ -638,7 +638,7 @@
 ;; by reduce-context; tvar field types stay in the qual.
 (define (synthesize-semigroup-instance tname tparams ctors stx)
   (unless (= (length ctors) 1)
-    (raise-syntax-error 'define-data
+    (raise-syntax-error 'data
       "cannot derive Semigroup for a type with multiple constructors — only single-ctor types can be combined pointwise"
       stx))
   (define ctor (car ctors))
@@ -679,7 +679,7 @@
 ;; `mempty`s.  Qual context carries `(Monoid a)` per tparam.
 (define (synthesize-monoid-instance tname tparams ctors stx)
   (unless (= (length ctors) 1)
-    (raise-syntax-error 'define-data
+    (raise-syntax-error 'data
       "cannot derive Monoid for a type with multiple constructors — only single-ctor types have a canonical empty"
       stx))
   (define ctor (car ctors))
@@ -1247,7 +1247,7 @@
 
 (define (parse-top stx)
   (syntax-parse stx
-    #:datum-literals (define define-data define-newtype define-struct protocol instance define-alias define-effect require provide : =>)
+    #:datum-literals (define data newtype struct protocol instance define-alias define-effect require provide : =>)
     [(require spec ...)
      (top:require (syntax->list #'(spec ...)) stx)]
 
@@ -1291,7 +1291,7 @@
     [(define x:id e)
      (top:def (syntax->datum #'x) (parse-expr #'e) stx)]
 
-    [(define-data (tname:id tparam:id ...) item ...)
+    [(data (tname:id tparam:id ...) item ...)
      #:fail-unless (not (lowercase-id? (syntax->datum #'tname)))
      "data type name must be a non-lowercase identifier"
      (parse-data-form (syntax->datum #'tname)
@@ -1299,7 +1299,7 @@
                       (syntax->list #'(item ...))
                       stx
                       #'tname)]
-    [(define-data tname:id item ...)
+    [(data tname:id item ...)
      #:fail-unless (not (lowercase-id? (syntax->datum #'tname)))
      "data type name must be a non-lowercase identifier"
      (parse-data-form (syntax->datum #'tname)
@@ -1308,47 +1308,47 @@
                       stx
                       #'tname)]
 
-    ;; (define-newtype Name (Wrap T) [#:deriving Cls ...])
-    ;; (define-newtype (Name a ...) (Wrap T) [#:deriving Cls ...])
-    ;; Sugar over define-data for the common "one ctor, one field"
+    ;; (newtype Name (Wrap T) [#:deriving Cls ...])
+    ;; (newtype (Name a ...) (Wrap T) [#:deriving Cls ...])
+    ;; Sugar over data for the common "one ctor, one field"
     ;; case.  A nominal wrapper around an existing type.  At runtime
     ;; the wrapper is a plain ADT — the "zero-cost" of a newtype is
     ;; documentary, not a perf optimization.  A trailing
     ;; `#:deriving Cls ...` flows through to parse-data-form.
-    [(define-newtype (tname:id tparam:id ...) (ctor:id ftype) rest ...)
+    [(newtype (tname:id tparam:id ...) (ctor:id ftype) rest ...)
      #:fail-unless (not (lowercase-id? (syntax->datum #'tname)))
      "newtype name must be a non-lowercase identifier"
      #:fail-unless (not (lowercase-id? (syntax->datum #'ctor)))
      "newtype constructor name must be a non-lowercase identifier"
      #:fail-unless (newtype-rest-ok? #'(rest ...))
-     "newtype must declare exactly one constructor with one field — for multiple ctors or multiple fields use define-data"
+     "newtype must declare exactly one constructor with one field — for multiple ctors or multiple fields use data"
      (parse-data-form (syntax->datum #'tname)
                       (map syntax->datum (syntax->list #'(tparam ...)))
                       (cons #'(ctor ftype) (syntax->list #'(rest ...)))
                       stx
                       #'tname)]
-    [(define-newtype tname:id (ctor:id ftype) rest ...)
+    [(newtype tname:id (ctor:id ftype) rest ...)
      #:fail-unless (not (lowercase-id? (syntax->datum #'tname)))
      "newtype name must be a non-lowercase identifier"
      #:fail-unless (not (lowercase-id? (syntax->datum #'ctor)))
      "newtype constructor name must be a non-lowercase identifier"
      #:fail-unless (newtype-rest-ok? #'(rest ...))
-     "newtype must declare exactly one constructor with one field — for multiple ctors or multiple fields use define-data"
+     "newtype must declare exactly one constructor with one field — for multiple ctors or multiple fields use data"
      (parse-data-form (syntax->datum #'tname)
                       '()
                       (cons #'(ctor ftype) (syntax->list #'(rest ...)))
                       stx
                       #'tname)]
-    [(define-newtype _ _ ...)
+    [(newtype _ _ ...)
      (raise-syntax-error
-      'define-newtype
-      "newtype must declare exactly one constructor with one field — for multiple ctors or multiple fields use define-data"
+      'newtype
+      "newtype must declare exactly one constructor with one field — for multiple ctors or multiple fields use data"
       stx)]
 
-    ;; (define-struct (Name a b ...) [field : type] ...) and the bare
+    ;; (struct (Name a b ...) [field : type] ...) and the bare
     ;; non-parameterised variant.  Desugars to a single-constructor
-    ;; define-data plus one accessor function per field.
-    [(define-struct (sname:id sparam:id ...) field ...)
+    ;; data plus one accessor function per field.
+    [(struct (sname:id sparam:id ...) field ...)
      #:fail-unless (not (lowercase-id? (syntax->datum #'sname)))
      "struct name must be a non-lowercase identifier"
      (parse-struct-form (syntax->datum #'sname)
@@ -1356,7 +1356,7 @@
                         (syntax->list #'(field ...))
                         stx
                         #'sname)]
-    [(define-struct sname:id field ...)
+    [(struct sname:id field ...)
      #:fail-unless (not (lowercase-id? (syntax->datum #'sname)))
      "struct name must be a non-lowercase identifier"
      (parse-struct-form (syntax->datum #'sname)
@@ -1472,7 +1472,7 @@
     [(define x:id e)
      (top:def (syntax->datum #'x) (parse-expr #'e) stx)]))
 
-;; Split a define-data body into constructor specs and an optional
+;; Split a data body into constructor specs and an optional
 ;; `#:deriving Cls ...` tail.  Returns a list of top-level forms:
 ;; the top:data and any synthesized top:instance entries.
 ;;
@@ -1502,7 +1502,7 @@
      (cons data-form
            (synthesize-deriving deriving-classes
                                 tname tparams ctors ctx-stx stx
-                                'define-data))]))
+                                'data))]))
 
 ;; A newtype's `rest` after `(ctor ftype)` is permitted only if it
 ;; is either empty or starts with the `#:deriving` keyword.  Reject
@@ -1525,7 +1525,7 @@
 
 ;; Split the trailing `#:deriving Cls ...` clause off a list of body
 ;; items.  Returns (values items-before deriving-classes).  Shared
-;; by define-data, define-newtype, and define-struct so all three
+;; by data, newtype, and struct so all three
 ;; honor the same deriving menu.
 (define (split-deriving items)
   (let loop ([rem items] [acc '()])
@@ -1539,7 +1539,7 @@
 
 ;; Synthesize the per-class instance forms for a data type's
 ;; deriving list.  `kind-tag` is the surface keyword raising the
-;; error so messages stay accurate ('define-data / 'define-struct).
+;; error so messages stay accurate ('data / 'struct).
 (define (synthesize-deriving classes tname tparams ctors ctx-stx err-stx kind-tag)
   ;; Deriving Ord implies deriving Eq (Ord has Eq as a superclass
   ;; and our `<` calls `==`); same for Foldable's required Functor
@@ -1589,9 +1589,9 @@
               (list (synthesize-monoid-instance tname tparams ctors ctx-stx))]
              [(Prism)
               (cond
-                [(eq? kind-tag 'define-struct)
+                [(eq? kind-tag 'struct)
                  (raise-syntax-error kind-tag
-                   "cannot derive Prism for define-struct (single-ctor record) — use Lens instead"
+                   "cannot derive Prism for struct (single-ctor record) — use Lens instead"
                    err-stx)]
                 [else
                  (synthesize-prism-defs tname tparams ctors ctx-stx)])]
@@ -1600,7 +1600,7 @@
                 (format "cannot derive ~s — supported: Eq, Ord, Show, Functor, Foldable, Traversable, Bifunctor, Semigroup, Monoid, Prism" cls)
                 err-stx)]))))
 
-;; ----- records: define-struct ---------------------------------------
+;; ----- records: struct ---------------------------------------
 
 (define (parse-struct-form name tparams field-stxs stx tname-stx)
   ;; Split off a trailing `#:deriving Cls ...` clause before
@@ -1636,7 +1636,7 @@
       [else
        (synthesize-deriving other-deriving-classes
                             name tparams (list ctor)
-                            tname-stx stx 'define-struct)]))
+                            tname-stx stx 'struct)]))
   (append (list data-form
                 (top:struct-fields name field-names stx))
           accessor-defs derived lens-defs))
@@ -1649,7 +1649,7 @@
     [else            (values #f xs)]))
 
 ;; Emit per-field lens defs `Tname-fname-lens` for a
-;; single-ctor define-struct.  Each lens reuses the existing
+;; single-ctor struct.  Each lens reuses the existing
 ;; accessor `Tname-fname` as the getter and rebuilds the struct
 ;; with `(Tname ...)` for the setter.
 (define (synthesize-lens-defs tname tparams field-names ctx-stx)
@@ -1784,7 +1784,7 @@
   (define raw
     (parameterize ([current-fn-clauses-record record])
       ;; A single surface form may parse to multiple AST entries (e.g.
-      ;; `(define-data … #:deriving Eq Show)` desugars to the data plus
+      ;; `(data … #:deriving Eq Show)` desugars to the data plus
       ;; the two synthesized instances).  Flatten if so.
       (apply append
              (for/list ([f (in-list forms)])

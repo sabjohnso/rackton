@@ -1,6 +1,6 @@
 #lang racket/base
 
-;; Auto-derive prisms for define-data sum types.
+;; Auto-derive prisms for data sum types.
 
 (require rackunit
          "../main.rkt")
@@ -11,7 +11,7 @@
   ;; Maybe — the test only verifies that Prism deriving emits
   ;; one prism per ctor.
 
-  (define-data (Opt a)
+  (data (Opt a)
     Absent
     (Present a)
     #:deriving Prism)
@@ -38,7 +38,7 @@
 
   ;; ----- Result-like (two unary ctors) -------------------
 
-  (define-data (Either2 e a)
+  (data (Either2 e a)
     (Lft e)
     (Rgt a)
     #:deriving Prism)
@@ -59,7 +59,7 @@
   ;; and work; the 2-arg ctor still works as a value but has no
   ;; prism.
 
-  (define-data Tri
+  (data Tri
     Empty
     (One Integer)
     (Two Integer Integer)

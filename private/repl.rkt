@@ -81,7 +81,7 @@
 (define (top-form? form)
   (and (pair? form)
        (memq (car form)
-             '(define define-data define-newtype define-struct
+             '(define data newtype struct
                 protocol instance define-alias
                 : require))))
 

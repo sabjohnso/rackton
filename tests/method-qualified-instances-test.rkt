@@ -11,7 +11,7 @@
 (rackton
   ;; ----- user-written Traversable instance --------------
 
-  (define-data (Tree a)
+  (data (Tree a)
     Leaf
     (Branch (Tree a) a (Tree a)))
 
@@ -45,7 +45,7 @@
 
   ;; ----- 39.B derived Traversable on a simpler ADT ------------
 
-  (define-data (Box a) (MkBox a)
+  (data (Box a) (MkBox a)
     #:deriving Functor Foldable Traversable)
 
   (: derived-trav-ok (Maybe (Box Integer)))

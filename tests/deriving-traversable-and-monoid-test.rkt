@@ -9,7 +9,7 @@
 (rackton
   ;; ----- Bifunctor on a custom two-tparam ADT -------------
 
-  (define-data (Either2 a b) (Lft a) (Rgt b)
+  (data (Either2 a b) (Lft a) (Rgt b)
     #:deriving Bifunctor)
 
   (: mapped-left  (Either2 Integer String))
@@ -20,7 +20,7 @@
 
   ;; ----- Semigroup on a single-ctor record ----------------
 
-  (define-struct (Log a)
+  (struct (Log a)
     [entries : (List a)]
     [tag     : String]
     #:deriving Semigroup)
@@ -32,7 +32,7 @@
 
   ;; ----- Monoid on a single-ctor record -------------------
 
-  (define-struct Counter
+  (struct Counter
     [hits   : (List Integer)]
     [label  : String]
     #:deriving Semigroup Monoid)

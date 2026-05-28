@@ -51,7 +51,7 @@
 ;; Surface forms are macros recognised by private/surface.rkt, not
 ;; identifiers exported by main.rkt.  Hand-maintained.
 (define surface-forms
-  '(define : define-data define-newtype define-struct
+  '(define : data newtype struct
      protocol instance define-alias define-effect
      lambda λ let letrec match-let where
      if cond match do ann update escape racket handle

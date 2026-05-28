@@ -92,8 +92,8 @@ references to a value defined later in the file:
 (define (g x) (* x 2))
 
 ;; Mutually recursive data types:
-(define-data Tree Leaf (Br Forest Forest))
-(define-data Forest Empty (Cns Tree Forest))
+(data Tree Leaf (Br Forest Forest))
+(data Forest Empty (Cns Tree Forest))
 
 ;; A class used before its declaration:
 (define (greet x) (pretty x))

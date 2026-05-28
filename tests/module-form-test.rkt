@@ -22,7 +22,7 @@
 
 (module mod-maybe rackton
   (provide (all-defined-out))
-  (define-data (Maybe a) None (Some a))
+  (data (Maybe a) None (Some a))
 
   (: from-maybe (-> a (-> (Maybe a) a)))
   (define (from-maybe d m)
@@ -40,7 +40,7 @@
 
 (module mod-class rackton
   (provide (all-defined-out))
-  (define-data Color  Red  Green  Blue)
+  (data Color  Red  Green  Blue)
 
   (instance (Eq Color)
     (define (== a b)

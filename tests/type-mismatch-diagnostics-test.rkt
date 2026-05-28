@@ -59,7 +59,7 @@
   ;; so the message must point at the declared/expected result type.
   (define msg
     (compile-error
-     (define-data (Expr a)
+     (data (Expr a)
        (Lit  : (-> a (Expr a)))
        (Zero : (Expr a)))
      (: eval-boolean (-> (Expr Boolean) (Expr Boolean)))

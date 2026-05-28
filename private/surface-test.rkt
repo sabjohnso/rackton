@@ -203,7 +203,7 @@
                          (e:lam '(x) (e:var 'x #f) #f)
                          #f))
 
-  (check-equal? (ptop '(define-data (Maybe a) None (Some a)))
+  (check-equal? (ptop '(data (Maybe a) None (Some a)))
                 (top:data 'Maybe '(a)
                           (list (data-ctor 'None '() #f '() '() #f)
                                 (data-ctor 'Some
@@ -212,7 +212,7 @@
                           #f
                           #f))
 
-  (check-equal? (ptop '(define-data Bool True False))
+  (check-equal? (ptop '(data Bool True False))
                 (top:data 'Bool '()
                           (list (data-ctor 'True '() #f '() '() #f)
                                 (data-ctor 'False '() #f '() '() #f))

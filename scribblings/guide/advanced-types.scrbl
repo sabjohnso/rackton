@@ -15,7 +15,7 @@ type from the outside world.  Use a per-constructor @racket[#:forall]
 clause to introduce the hidden variable:
 
 @codeblock|{
-(define-data Anything
+(data Anything
   (Wrap #:forall (a) a (-> a String)))
 
 (define many
@@ -31,7 +31,7 @@ constraints — those become hypotheses inside any clause that matches
 the constructor:
 
 @codeblock|{
-(define-data ExistsShow
+(data ExistsShow
   (PackShow #:forall (a) #:where (Show a) a))
 }|
 
@@ -55,7 +55,7 @@ signature after a @racket[:].  The signature is an arrow whose final
 type is the result and whose leading types are the fields:
 
 @codeblock|{
-(define-data (Term a)
+(data (Term a)
   (Lit     : (-> a (Term a)))
   (IntLit  : (-> Integer (Term Integer)))
   (BoolLit : (-> Boolean (Term Boolean)))
@@ -108,7 +108,7 @@ universally quantified and refines nothing — exactly like @racket[Nil]
 has type @racket[(List a)] for every @racket[a]:
 
 @codeblock|{
-(define-data (Tagged a)
+(data (Tagged a)
   (IntTag  : (Tagged Integer))   (code:comment "concrete — refines a ~ Integer")
   (BoolTag : (Tagged Boolean))   (code:comment "concrete — refines a ~ Boolean")
   (AnyTag  : (Tagged a)))        (code:comment "polymorphic — no refinement")
@@ -134,7 +134,7 @@ runtime cost.  Recursive aliases are rejected with a clear error.
 
 @section{Sealed abstract types}
 
-Adding @racket[#:abstract] to a @racket[define-data] hides the
+Adding @racket[#:abstract] to a @racket[data] hides the
 constructors from the type checker in any module that doesn't define
 the type:
 
@@ -143,7 +143,7 @@ the type:
 #lang rackton
 (provide (data-out Counter) make-counter increment count)
 
-(define-data Counter #:abstract
+(data Counter #:abstract
   (Counter Integer))
 
 (: make-counter (-> Counter))

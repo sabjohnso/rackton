@@ -1,6 +1,6 @@
 #lang racket/base
 
-;; `#:deriving` extended to records (via define-struct) and Foldable
+;; `#:deriving` extended to records (via struct) and Foldable
 ;; derivation.  Also exercises newtype and parametric-ADT deriving as
 ;; regression coverage.
 
@@ -11,7 +11,7 @@
   ;; ----- 35.A non-parametric record ---------------------------
   ;; All four currently-supported classes on a simple record.
 
-  (define-struct Point
+  (struct Point
     [x : Integer]
     [y : Integer]
     #:deriving Eq Show Ord)
@@ -30,7 +30,7 @@
 
   ;; ----- 35.B parametric record + Functor + Foldable -----------
 
-  (define-struct (Box a)
+  (struct (Box a)
     [value : a]
     #:deriving Eq Show Functor Foldable)
 
@@ -48,7 +48,7 @@
   ;; would prevent the synth from firing — the test below uses two
   ;; Integers, so Eq applies.
 
-  (define-data (Pair2 a b)
+  (data (Pair2 a b)
     (MkPair2 a b)
     #:deriving Eq Show)
 
@@ -61,7 +61,7 @@
   ;; ----- 35.D recursive parametric ADT + Foldable --------------
   ;; A small tree; foldr should visit every leaf left-to-right.
 
-  (define-data (Tree a)
+  (data (Tree a)
     Leaf
     (Branch (Tree a) a (Tree a))
     #:deriving Eq Show Foldable)
@@ -81,7 +81,7 @@
 
   ;; ----- 35.E newtype deriving (regression) --------------------
 
-  (define-newtype Wrap (MkWrap Integer)
+  (newtype Wrap (MkWrap Integer)
     #:deriving Eq Show)
 
   (: wrap-eq Boolean)
@@ -90,7 +90,7 @@
   (: wrap-show String)
   (define wrap-show (show (MkWrap 42)))
 
-  (define-newtype (Idiom a) (MkIdiom a)
+  (newtype (Idiom a) (MkIdiom a)
     #:deriving Functor)
 
   (: id-mapped (Idiom Integer))

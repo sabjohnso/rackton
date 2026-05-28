@@ -4,7 +4,7 @@
 ;; constructor, and every field accessor (`S-<field>`).  A bare
 ;; `helper` is intentionally not exported.
 
-(define-struct Point
+(struct Point
   [x : Integer]
   [y : Integer])
 

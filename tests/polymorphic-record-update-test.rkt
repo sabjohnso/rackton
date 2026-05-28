@@ -11,7 +11,7 @@
          "../main.rkt")
 
 (rackton
-  (define-struct Point
+  (struct Point
     [x : Integer]
     [y : Integer])
 
@@ -24,7 +24,7 @@
   (define move (update (Point 1 2) [x 99] [y 88]))
 
   ;; ----- 54.C parametric record ------------------------------
-  (define-struct (Box a)
+  (struct (Box a)
     [value : a]
     [tag   : String])
 

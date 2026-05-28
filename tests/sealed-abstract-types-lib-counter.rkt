@@ -7,7 +7,7 @@
 
 (provide (all-defined-out))
 
-(define-data Counter
+(data Counter
   (MkCounter Integer)
   #:abstract)
 

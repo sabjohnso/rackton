@@ -28,7 +28,7 @@ plain parameter) or a parenthesised pattern (destructures the
 argument):
 
 @codeblock|{
-(define-struct Point [x : Float] [y : Float])
+(struct Point [x : Float] [y : Float])
 (define (distance (Point px py) (Point qx qy))
   (sqrt (+ (sqr (- px qx)) (sqr (- py qy)))))
 }|
@@ -44,7 +44,7 @@ across every parameter position in source-order priority — a
 Haskell-style equational definition:
 
 @codeblock|{
-(define-data MyList Nada (Mcons Integer MyList))
+(data MyList Nada (Mcons Integer MyList))
 (define (myhead (Mcons x _)) x)
 (define (myhead Nada)        0)
 }|
@@ -88,7 +88,7 @@ that is not generalised at the surrounding @racket[define].
 (define (apply-twice f) (lambda (x) (f (f x))))]}
 
 @defform[
-         (define-data (Name a ...) ctor-spec ... maybe-deriving)
+         (data (Name a ...) ctor-spec ... maybe-deriving)
          #:grammar
          [(ctor-spec       bare-ctor (Ctor type ...))
           (bare-ctor       id)
@@ -120,19 +120,19 @@ the fields.  A field-less GADT constructor uses a non-arrow signature
 @racket[(Ctor : Result)].
 
 @racketblock[
-(define-data ExistsShow
+(data ExistsShow
   (PackShow #:forall (a) #:where (Show a) a))]}
 
 @defform[
-         (define-newtype Name (MkName Type))]{
+         (newtype Name (MkName Type))]{
 
 Declares a single-field, single-constructor wrapper type with no
 runtime overhead beyond a struct tag.  Equivalent to
-@racket[(define-data Name (MkName Type))] but documents intent.}
+@racket[(data Name (MkName Type))] but documents intent.}
 
 @defform*[
-          [(define-struct Name [field : type] ... maybe-deriving)
-           (define-struct (Name a ...) [field : type] ... maybe-deriving)]
+          [(struct Name [field : type] ... maybe-deriving)
+           (struct (Name a ...) [field : type] ... maybe-deriving)]
           #:grammar
           ([maybe-deriving  code:blank (code:line #:deriving class ...)])]{
 
@@ -142,12 +142,12 @@ The parameterised form supports polymorphic structs whose accessors
 have the appropriate polymorphic schemes.
 
 @racketblock[
-(define-struct Point [x : Integer] [y : Integer])
+(struct Point [x : Integer] [y : Integer])
 (define p (Point 3 4))
 (define px (Point-x p))]
 
 @racket[#:deriving] honours the same classes as
-@racket[define-data], including @racket[Foldable] and the auto-derived
+@racket[data], including @racket[Foldable] and the auto-derived
 field-lens family.}
 
 @defform*[
@@ -340,7 +340,7 @@ Functional record update.  Returns a new struct of the same type as
 Untouched fields are copied verbatim.
 
 @racketblock[
-(define-struct Point [x : Integer] [y : Integer])
+(struct Point [x : Integer] [y : Integer])
 (define p1 (Point 3 4))
 (define p2 (update p1 [x 99]))     (code:comment "Point with x=99, y=4")]}
 

@@ -4,7 +4,7 @@
 
 (provide (all-defined-out))
 
-(define-data (Tree a) Leaf (Node (Tree a) a (Tree a)))
+(data (Tree a) Leaf (Node (Tree a) a (Tree a)))
 
 (: max-int (-> Integer (-> Integer Integer)))
 (define (max-int a b)

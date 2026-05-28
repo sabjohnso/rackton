@@ -8,7 +8,7 @@
 (protocol (Sized a)
   (: my-size (-> a Integer)))
 
-(define-data Sphere (MkSphere Integer))
+(data Sphere (MkSphere Integer))
 
 (instance (Sized Sphere)
   (define (my-size s)

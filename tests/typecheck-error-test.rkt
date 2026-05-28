@@ -29,7 +29,7 @@
 
 (test-case "constructor arity is enforced"
   (check-rackton-compile-error
-   (define-data (Maybe a) None (Some a))
+   (data (Maybe a) None (Some a))
    (define x (match None [(Some a b) a]))))
 
 (test-case "polymorphic declaration is enforced (skolemization)"
@@ -39,7 +39,7 @@
 
 (test-case "non-exhaustive match on an ADT is rejected"
   (check-rackton-compile-error
-   (define-data X A B C)
+   (data X A B C)
    (define (f x) (match x [A 1] [B 2])))) ; missing C
 
 (test-case "non-exhaustive match on Boolean is rejected"
@@ -89,10 +89,10 @@
 
 (test-case "record update: unknown field is rejected"
   (check-rackton-compile-error
-   (define-struct Point [x : Integer] [y : Integer])
+   (struct Point [x : Integer] [y : Integer])
    (define bad (update (Point 1 2) [z 5]))))
 
 (test-case "record update: type mismatch on field value is rejected"
   (check-rackton-compile-error
-   (define-struct Point [x : Integer] [y : Integer])
+   (struct Point [x : Integer] [y : Integer])
    (define bad (update (Point 1 2) [x "not-int"]))))

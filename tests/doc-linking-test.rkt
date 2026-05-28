@@ -32,7 +32,7 @@
 ;; entries; the doc-coverage test enforces the opposite direction.
 
 (define surface-forms
-  '(define : define-data define-newtype define-struct
+  '(define : data newtype struct
      protocol instance define-alias define-effect
      lambda λ let letrec match-let where
      if cond match do ann update escape racket handle

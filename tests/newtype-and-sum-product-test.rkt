@@ -84,10 +84,10 @@
      (eval #'(rackton form ...)
            (variable-reference->namespace (#%variable-reference))))))
 
-(test-case "define-newtype rejects multi-field ctor"
+(test-case "newtype rejects multi-field ctor"
   (check-rackton-compile-error
-   (define-newtype Bad (BadCtor Integer Integer))))
+   (newtype Bad (BadCtor Integer Integer))))
 
-(test-case "define-newtype rejects multiple ctors"
+(test-case "newtype rejects multiple ctors"
   (check-rackton-compile-error
-   (define-newtype Bad (A Integer) (B Integer))))
+   (newtype Bad (A Integer) (B Integer))))

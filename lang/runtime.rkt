@@ -5,13 +5,13 @@
 ;; A file written as
 ;;
 ;;     #lang rackton
-;;     (define-data (Maybe a) None (Some a))
+;;     (data (Maybe a) None (Some a))
 ;;     (define (from-maybe d m) (match m [(None) d] [(Some x) x]))
 ;;
 ;; is read by lang/reader.rkt into
 ;;
 ;;     (module name rackton/lang/runtime
-;;       (rackton (define-data (Maybe a) None (Some a))
+;;       (rackton (data (Maybe a) None (Some a))
 ;;                (define (from-maybe d m) ...))
 ;;       (provide (all-defined-out)))
 ;;

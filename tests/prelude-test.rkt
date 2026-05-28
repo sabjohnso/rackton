@@ -26,7 +26,7 @@
   (instance (Ord Integer)
     (define (lt x y) (< x y)))
 
-  (define-data (Maybe a) None (Some a))
+  (data (Maybe a) None (Some a))
 
   (instance ((Eq a) => (Eq (Maybe a)))
     (define (eq x y)

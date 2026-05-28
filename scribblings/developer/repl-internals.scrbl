@@ -38,8 +38,8 @@ Each call to @racket[rackton-repl-step] dispatches by input shape:
       @racket[:info], @racket[:quit], @racket[:help] or their
       shortforms), invoke @racket[handle-command].}
 @item{Else if the input is a top-level form (@racket[define],
-      @racket[define-data], @racket[define-newtype],
-      @racket[define-struct], @racket[protocol],
+      @racket[data], @racket[newtype],
+      @racket[struct], @racket[protocol],
       @racket[instance], @racket[define-alias], @racket[:],
       @racket[require]), invoke @racket[handle-top-input].}
 @item{Else invoke @racket[handle-expr-input], which wraps the input

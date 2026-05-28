@@ -11,7 +11,7 @@
 (rackton
   ;; ----- 37.A specific overrides generic ----------------------
 
-  (define-data (Box a) (MkBox a))
+  (data (Box a) (MkBox a))
 
   ;; A generic `Show (Box a)` (requires Show a too) and a specific
   ;; `Show (Box Integer)` that ignores the inner Show and emits a
@@ -75,7 +75,7 @@
 
 (test-case "registering two instances with the same head is rejected"
   (check-rackton-compile-error
-   (define-data Foo MkFoo)
+   (data Foo MkFoo)
    (instance (Show Foo)
      (define (show _) "foo-a"))
    (instance (Show Foo)
@@ -83,7 +83,7 @@
 
 (test-case "overlapping instances with no most-specific raise at lookup"
   (check-rackton-compile-error
-   (define-data (P2 a b) (MkP2 a b))
+   (data (P2 a b) (MkP2 a b))
    (instance ((Show b) => (Show (P2 Integer b)))
      (define (show _) "leftP2"))
    (instance ((Show a) => (Show (P2 a Integer)))

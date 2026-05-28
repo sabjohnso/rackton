@@ -9,7 +9,7 @@
 ;; ----- Piece 1: single-form parameter destructuring -----------
 
 (rackton
-  (define-struct Point
+  (struct Point
     [x : Float]
     [y : Float]
     #:deriving Show Eq Ord)
@@ -39,7 +39,7 @@
 ;; ----- Piece 2: multi-clause defines --------------------------
 
 (rackton
-  (define-data MyList Nada (Mcons Integer MyList))
+  (data MyList Nada (Mcons Integer MyList))
 
   ;; Two clauses; bare uppercase id `Nada` dispatches as a 0-arg
   ;; ctor pattern when there's more than one clause.

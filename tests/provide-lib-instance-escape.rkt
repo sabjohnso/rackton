@@ -5,7 +5,7 @@
 ;; constructors; the (Eq Color) instance still has to cross the
 ;; module boundary so a client can call `==` on Color values.
 
-(define-data Color  Red  Green  Blue)
+(data Color  Red  Green  Blue)
 
 (instance (Eq Color)
   (define (== a b)

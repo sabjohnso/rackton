@@ -9,7 +9,7 @@
 (rackton
   ;; ----- heterogeneous Show ------------------------------
 
-  (define-data ExistsShow
+  (data ExistsShow
     (PackShow #:forall (a) #:where (Show a) a))
 
   ;; Construct a list of heterogeneous showable values.
@@ -34,7 +34,7 @@
   ;; ----- existential Eq ----------------------------------
   ;; Pack a value with its own Eq witness; compare against itself.
 
-  (define-data ExistsEq
+  (data ExistsEq
     (PackEq #:forall (a) #:where (Eq a) a))
 
   ;; Self-comparison: the bound value compared to itself is always

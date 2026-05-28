@@ -11,7 +11,7 @@
   ;; type of the Expr it builds: literals are Integer, booleans are
   ;; Boolean, addition is Integer-only, conditional is polymorphic.
 
-  (define-data (Expr a)
+  (data (Expr a)
     (Lit  : (-> Integer (Expr Integer)))
     (BVal : (-> Boolean (Expr Boolean)))
     (Plus : (-> (Expr Integer) (Expr Integer) (Expr Integer)))
@@ -86,7 +86,7 @@
   ;; A field-less ctor still refines its result type via a
   ;; non-arrow signature `(Tag : (Tagged T))`.
 
-  (define-data (Tagged a)
+  (data (Tagged a)
     (IntTag  : (Tagged Integer))
     (BoolTag : (Tagged Boolean)))
 

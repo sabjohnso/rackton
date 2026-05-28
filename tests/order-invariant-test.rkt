@@ -38,8 +38,8 @@
 
 ;; ----- mutually recursive data types -------------------------
 (rackton
-  (define-data Tr  Lf (Br Frst Frst))
-  (define-data Frst Empt (Cns Tr Frst))
+  (data Tr  Lf (Br Frst Frst))
+  (data Frst Empt (Cns Tr Frst))
 
   (: leaf Tr)
   (define leaf Lf)
@@ -83,7 +83,7 @@
   (protocol (Tagged a)
     (: tag-of (-> a String)))
 
-  (define-data BBox MkBBox)
+  (data BBox MkBBox)
 
   (: bbox-tag String)
   (define bbox-tag (tag-of MkBBox))

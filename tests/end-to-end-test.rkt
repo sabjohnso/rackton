@@ -17,7 +17,7 @@
   (define (fact n)
     (if (= n 0) 1 (* n (fact (- n 1)))))
 
-  (define-data (Maybe a) None (Some a))
+  (data (Maybe a) None (Some a))
 
   (: map-maybe (-> (-> a b) (-> (Maybe a) (Maybe b))))
   (define (map-maybe f m)
@@ -25,13 +25,13 @@
       [(None)   None]
       [(Some x) (Some (f x))]))
 
-  (define-data (Pair a b) (MkPair a b))
+  (data (Pair a b) (MkPair a b))
 
   (: swap (-> (Pair a b) (Pair b a)))
   (define (swap p)
     (match p [(MkPair x y) (MkPair y x)]))
 
-  (define-data Color Red Green Blue)
+  (data Color Red Green Blue)
 
   (: color-code (-> Color Integer))
   (define (color-code c)

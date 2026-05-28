@@ -159,7 +159,7 @@ Render @racket[x] for display.}
 Built-in instances: @racket[Integer], @racket[Float], @racket[Rational],
 @racket[Complex], @racket[Boolean], @racket[String], @racket[Char],
 @racket[Bytes].  Derived @racket[Show] is available on any
-@racket[define-data] via @racket[#:deriving Show].}
+@racket[data] via @racket[#:deriving Show].}
 
 @section{Functor hierarchy}
 
@@ -234,7 +234,7 @@ Type constructors that can be folded down to a summary.
 @racket[to-list] have default implementations derived from it.}
 
 Built-in instances: @racket[List], @racket[Maybe].  Derived via
-@racket[#:deriving Foldable] on @racket[define-data].}
+@racket[#:deriving Foldable] on @racket[data].}
 
 @defidform[#:kind "class" Traversable]{
 

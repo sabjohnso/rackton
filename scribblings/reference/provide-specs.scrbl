@@ -30,22 +30,22 @@ re-exported.
 @defform[#:literals (data-out)
          (data-out T)]{
 
-Exports the @racket[define-data] type @racket[T] together with every
+Exports the @racket[data] type @racket[T] together with every
 constructor of @racket[T].
 
 @racketblock[
-(define-data (Tree a) Leaf (Node (Tree a) a (Tree a)))
+(data (Tree a) Leaf (Node (Tree a) a (Tree a)))
 (provide (data-out Tree))]}
 
 @defform[#:literals (struct-out)
          (struct-out S)]{
 
-Analogue of Racket's @racket[struct-out] for @racket[define-struct]:
+Analogue of Racket's @racket[struct-out] for @racket[struct]:
 exports the struct type @racket[S], its constructor, and every field
 accessor @racketidfont{S}@racketidfont{-}@racket[_fname].
 
 @racketblock[
-(define-struct Point [x : Integer] [y : Integer])
+(struct Point [x : Integer] [y : Integer])
 (provide (struct-out Point))]}
 
 @defform[#:literals (protocol-out)
@@ -86,5 +86,5 @@ as a type-checker entry.
 
 @racketblock[
 (define (greet name) name)
-(define-data Color Red Green Blue)
+(data Color Red Green Blue)
 (provide greet Color Red Green Blue)]

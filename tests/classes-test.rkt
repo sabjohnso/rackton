@@ -16,7 +16,7 @@
     (define (== x y)
       (if x y (if y #f #t))))
 
-  (define-data (Maybe a) None (Some a))
+  (data (Maybe a) None (Some a))
 
   (instance ((Eq a) => (Eq (Maybe a)))
     (define (== x y)

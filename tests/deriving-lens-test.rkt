@@ -1,6 +1,6 @@
 #lang racket/base
 
-;; Auto-derive field lenses for define-struct via
+;; Auto-derive field lenses for struct via
 ;; `#:deriving Lens`.  Each field `f` of struct `T` gets a named
 ;; `T-f-lens` definition.
 
@@ -10,7 +10,7 @@
 (rackton
   ;; ----- 47.A flat struct ------------------------------------
 
-  (define-struct Point
+  (struct Point
     [x : Integer]
     [y : Integer]
     #:deriving Lens)
@@ -32,7 +32,7 @@
 
   ;; ----- 47.B parametric struct -------------------------------
 
-  (define-struct (Box a)
+  (struct (Box a)
     [value : a]
     #:deriving Lens)
 
@@ -47,7 +47,7 @@
 
   ;; ----- 47.C composed lenses through nesting ------------------
 
-  (define-struct Segment
+  (struct Segment
     [start : Point]
     [end   : Point]
     #:deriving Lens)

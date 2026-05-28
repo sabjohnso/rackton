@@ -22,7 +22,7 @@ the type checker does not propagate schemes between them.
 @racketblock[
 (require rackton)
 (rackton
-  (define-data (Maybe a) None (Some a))
+  (data (Maybe a) None (Some a))
   (: from-maybe (-> a (-> (Maybe a) a)))
   (define (from-maybe d m)
     (match m [(None) d] [(Some x) x])))]}

@@ -26,7 +26,7 @@
 ;; ----- advanced-types.scrbl: existential with #:forall / #:where ---
 
 (rackton
-  (define-data ExistsShow1
+  (data ExistsShow1
     (PackShow1 #:forall (a) #:where (Show a) a))
 
   (: exhibit (List ExistsShow1))
@@ -68,7 +68,7 @@
 ;; ----- optics.scrbl: lens deriving + naming ------------------------
 
 (rackton
-  (define-struct DocPoint
+  (struct DocPoint
     [x : Integer]
     [y : Integer]
     #:deriving Lens)
@@ -90,7 +90,7 @@
 ;; ----- optics.scrbl: prism deriving + naming -----------------------
 
 (rackton
-  (define-data DocOpt
+  (data DocOpt
     DocAbsent
     (DocPresent Integer)
     #:deriving Prism)

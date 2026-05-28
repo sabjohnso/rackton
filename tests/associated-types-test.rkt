@@ -25,7 +25,7 @@
   (define r-list-size (size-of (Cons 1 (Cons 2 (Cons 3 Nil)))))
 
   ;; ----- 53.B distinct instance with distinct Index -----------
-  (define-data MyMap (MkMap Integer))
+  (data MyMap (MkMap Integer))
 
   (instance (Sized MyMap)
     (#:type (Index = MyMap))

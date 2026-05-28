@@ -97,17 +97,17 @@
 
     ;; --- ADTs ---------------------------------------------------
 
-    (define-data (Maybe a)    None (Some a))
-    (define-data (List a)     Nil  (Cons a (List a)))
-    (define-data (Pair a b)   (MkPair a b))
-    (define-data (Result e a) (Err e) (Ok a))
-    (define-data Unit MkUnit)
+    (data (Maybe a)    None (Some a))
+    (data (List a)     Nil  (Cons a (List a)))
+    (data (Pair a b)   (MkPair a b))
+    (data (Result e a) (Err e) (Ok a))
+    (data Unit MkUnit)
 
     ;; --- Char and Bytes primitives (opaque ADTs; values come from
     ;; Racket's reader as `#\A` and `#"…"`) -----------------------
 
-    (define-data Char)
-    (define-data Bytes)
+    (data Char)
+    (data Bytes)
 
     (instance (Eq Char)   (define (== x y) (racket Boolean (x y) #f)))
     (instance (Ord Char)  (define (< x y) (racket Boolean (x y) #f)))
@@ -415,8 +415,8 @@
 
     ;; --- Sum / Product newtypes for additive/multiplicative Monoid -
 
-    (define-newtype Sum     (MkSum     Integer))
-    (define-newtype Product (MkProduct Integer))
+    (newtype Sum     (MkSum     Integer))
+    (newtype Product (MkProduct Integer))
 
     (: get-sum     (-> Sum Integer))
     (define (get-sum s)     (match s [(MkSum n) n]))
@@ -455,7 +455,7 @@
     ;; A computation that threads a state value through a chain of
     ;; operations.  Internally a function `s -> (Pair s a)`.
 
-    (define-newtype (State s a)
+    (newtype (State s a)
       (MkState (-> s (Pair s a))))
 
     (: run-state    (-> (State s a) (-> s (Pair s a))))
@@ -502,7 +502,7 @@
     ;; --- Env monad (a/k/a Reader; renamed to avoid the Scheme
     ;; reader-name collision) ----------------------------------
 
-    (define-newtype (Env r a)
+    (newtype (Env r a)
       (MkEnv (-> r a)))
 
     (: run-env (-> (Env r a) (-> r a)))
@@ -531,7 +531,7 @@
 
     ;; --- StateT s m: state-passing over an inner monad m ---------
 
-    (define-newtype (StateT s m a)
+    (newtype (StateT s m a)
       (MkStateT (-> s (m (Pair s a)))))
 
     (: run-state-t    (-> (StateT s m a) (-> s (m (Pair s a)))))
@@ -558,7 +558,7 @@
 
     ;; --- EnvT r m: env-passing over an inner monad m -------------
 
-    (define-newtype (EnvT r m a)
+    (newtype (EnvT r m a)
       (MkEnvT (-> r (m a))))
 
     (: run-env-t  (-> (EnvT r m a) (-> r (m a))))
@@ -582,7 +582,7 @@
     ;; gets accumulated via `<>`.  pure inserts mempty, tell writes
     ;; one log entry, and lift hoists an arbitrary m-action.
 
-    (define-newtype (WriterT w m a)
+    (newtype (WriterT w m a)
       (MkWriterT (m (Pair w a))))
 
     (: run-writer-t  (-> (WriterT w m a) (m (Pair w a))))
@@ -603,7 +603,7 @@
 
     ;; --- ExceptT e m: typed exceptions over an inner monad ------
 
-    (define-newtype (ExceptT e m a)
+    (newtype (ExceptT e m a)
       (MkExceptT (m (Result e a))))
 
     (: run-except-t  (-> (ExceptT e m a) (m (Result e a))))
@@ -813,7 +813,7 @@
 
     ;; --- IO ---------------------------------------------------
 
-    (define-data (IO a))
+    (data (IO a))
 
     (instance (Functor IO)
       (define (fmap f io) (racket (IO b) (f io) #f)))
@@ -842,7 +842,7 @@
 
     ;; --- Mutable references ----------------------------------
 
-    (define-data (Ref a))
+    (data (Ref a))
 
     (: make-ref  (-> a (IO (Ref a))))
     (define (make-ref v) (racket (IO (Ref a)) (v) #f))
@@ -859,9 +859,9 @@
     ;; channels.  All operations live in IO.  See "Concurrency
     ;; primitives" in the docs for usage patterns.
 
-    (define-data ThreadId)
-    (define-data (MVar a))
-    (define-data (Chan a))
+    (data ThreadId)
+    (data (MVar a))
+    (data (Chan a))
 
     (: fork-io     (-> (IO a) (IO ThreadId)))
     (define (fork-io action) (racket (IO ThreadId) (action) #f))
@@ -904,8 +904,8 @@
     ;; commit time under a global commit lock, and applies writes
     ;; or restarts on a version mismatch (or on `retry`).
 
-    (define-data (TVar a))
-    (define-data (STM a))
+    (data (TVar a))
+    (data (STM a))
 
     (instance (Functor STM)
       (define (fmap f s) (racket (STM b) (f s) #f)))
@@ -943,7 +943,7 @@
     ;; later additions may include STM (transactional) or Mock
     ;; (pure-time-step) instances.
 
-    (define-data (Future a))
+    (data (Future a))
 
     (protocol ((Monad m) => (Concurrent (m :: (-> * *))))
       (: fork-c   (-> (m a) (m (Future a))))
@@ -965,7 +965,7 @@
     ;; Future; await-c reads it back.  Useful for deterministic
     ;; unit tests of polymorphic concurrent code.
 
-    (define-data (Identity a) (MkIdentity a))
+    (data (Identity a) (MkIdentity a))
 
     (: run-identity (-> (Identity a) a))
     (define (run-identity i)
@@ -1003,7 +1003,7 @@
     ;; new `s`.  view / set / over operate on a single lens;
     ;; lens-compose chains two lenses through a nested structure.
 
-    (define-data (Lens s a)
+    (data (Lens s a)
       (MkLens (-> s a) (-> s (-> a s))))
 
     (: view (-> (Lens s a) (-> s a)))
@@ -1032,7 +1032,7 @@
     ;; returns Some when the target ctor matches, None otherwise.
     ;; review always succeeds — it builds the target ctor.
 
-    (define-data (Prism s a)
+    (data (Prism s a)
       (MkPrism (-> s (Maybe a)) (-> a s)))
 
     (: preview (-> (Prism s a) (-> s (Maybe a))))
@@ -1048,7 +1048,7 @@
     ;; A traversal focuses on zero-or-more sub-parts.  to-list-of
     ;; gathers them; over-of transforms all of them.
 
-    (define-data (Traversal s a)
+    (data (Traversal s a)
       (MkTraversal (-> s (List a))
                    (-> (-> a a) (-> s s))))
 
@@ -1181,8 +1181,8 @@
 
     ;; --- Immutable Map and Set ------------------------------
 
-    (define-data (Map k v))
-    (define-data (Set a))
+    (data (Map k v))
+    (data (Set a))
 
     (: empty-map (Map k v))
     (define empty-map (racket (Map k v) () #f))
@@ -1277,8 +1277,8 @@
 
     ;; --- Rational + Complex types -----------------
 
-    (define-data Rational)
-    (define-data Complex)
+    (data Rational)
+    (data Complex)
 
     (: make-rational (-> Integer (-> Integer Rational)))
     (define (make-rational n d) (racket Rational (n d) #f))

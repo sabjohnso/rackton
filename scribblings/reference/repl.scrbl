@@ -17,7 +17,7 @@ Run it from a shell with:
 @commandline{racket -l rackton/repl}
 
 The REPL accepts any Rackton expression or top-level form
-(@racket[define], @racket[define-data], @racket[protocol], etc.)
+(@racket[define], @racket[data], @racket[protocol], etc.)
 and prints the resulting binding's type after each input.  It also
 recognises a handful of meta-commands, each starting with a colon.
 

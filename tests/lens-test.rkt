@@ -8,7 +8,7 @@
          "../main.rkt")
 
 (rackton
-  (define-struct Point
+  (struct Point
     [x : Integer]
     [y : Integer])
 
@@ -38,7 +38,7 @@
 
   ;; Nested: a Segment with two endpoints.  Compose lenses to
   ;; reach the start-point's x.
-  (define-struct Segment
+  (struct Segment
     [start  : Point]
     [end    : Point])
 

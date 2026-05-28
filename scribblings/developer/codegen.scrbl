@@ -24,7 +24,7 @@ The type checker has already done that work.
 
 @section{ADT lowering}
 
-A @racket[define-data] form expands to a series of
+A @racket[data] form expands to a series of
 @racketidfont{define-data-ctor} calls in @filepath{private/adt.rkt}.
 @racketidfont{define-data-ctor} is a macro that, for a constructor
 @racket[name] of arity @racket[N]:
@@ -108,7 +108,7 @@ precise rule.
 
 @section{Records and update}
 
-A @racket[define-struct] form compiles to a Racket @racket[struct]
+A @racket[struct] form compiles to a Racket @racket[struct]
 with auto-generated accessors.  The struct's field information goes
 into the env's @racket[struct-fields] table, keyed by struct name.
 

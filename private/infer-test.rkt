@@ -79,7 +79,7 @@
   ;; Define Maybe then verify constructor and match typings.
   (define maybe-env
     (program-env
-     '((define-data (Maybe a) None (Some a)))))
+     '((data (Maybe a) None (Some a)))))
 
   ;; None should be polymorphic.
   (let ([info (env-ref-data maybe-env 'None)])
@@ -152,7 +152,7 @@
   ;; map over Maybe: tests ADTs + polymorphism together.
   (define maybe-map-env
     (program-env
-     '((define-data (Maybe a) None (Some a))
+     '((data (Maybe a) None (Some a))
        (: map-maybe (-> (-> a b) (-> (Maybe a) (Maybe b))))
        (define (map-maybe f m)
          (match m

@@ -15,14 +15,14 @@
 
 ;; ----- Sexpr: result of a single `read` -------------------------
 
-(define-data Sexpr
+(data Sexpr
   (SInt Integer)
   (SSym String)
   (SList (List Sexpr)))
 
 ;; ----- Expr: the typed AST after the surface parser -------------
 
-(define-data Expr
+(data Expr
   (EInt Integer)
   (EVar String)
   (EAdd Expr Expr)

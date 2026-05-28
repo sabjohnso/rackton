@@ -14,7 +14,7 @@
 
 ;; ----- Item: one row of the todo file ---------------------------
 
-(define-data Item
+(data Item
   (Item Boolean String))
 
 ;; ----- where the items live ------------------------------------

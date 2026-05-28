@@ -8,7 +8,7 @@
 ;;   ;;    (rackton ...) macro form:
 ;;   (require rackton)
 ;;   (rackton
-;;     (define-data (Maybe a) None (Some a))
+;;     (data (Maybe a) None (Some a))
 ;;     (: from-just (-> a (-> (Maybe a) a)))
 ;;     (define (from-just d m)
 ;;       (match m [(None) d] [(Some x) x])))
@@ -27,7 +27,7 @@
 ;; The supported subset covers:
 ;;   literals (Integer / Boolean / String),
 ;;   lambda / application, let, if, ascription, match,
-;;   define / declare (:) / define-data,
+;;   define / declare (:) / data,
 ;;   Hindley–Milner inference with let-polymorphism,
 ;;   ADTs with pattern matching.
 
@@ -131,7 +131,7 @@
     (define (fact n)
       (if (= n 0) 1 (* n (fact (- n 1)))))
 
-    (define-data (Maybe a) None (Some a))
+    (data (Maybe a) None (Some a))
 
     (: from-maybe (-> a (-> (Maybe a) a)))
     (define (from-maybe d m)

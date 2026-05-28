@@ -13,11 +13,11 @@ positions.
 
 A @racket[(Lens s a)] is a getter/setter pair for an @racket[a]
 inside an @racket[s].  Add @racket[#:deriving Lens] to a
-@racket[define-struct] to synthesise one lens per field, named
+@racket[struct] to synthesise one lens per field, named
 @racketidfont{T}@racketidfont{-}@racket[_field]@racketidfont{-lens}:
 
 @codeblock|{
-(define-struct Point [x : Integer] [y : Integer]
+(struct Point [x : Integer] [y : Integer]
   #:deriving Lens)
 
 (define p (Point 3 4))
@@ -34,8 +34,8 @@ Compose lenses with @racket[lens-compose] to drill into nested
 structure:
 
 @codeblock|{
-(define-struct Address [city : String] [zip : Integer] #:deriving Lens)
-(define-struct Person  [name : String] [addr : Address] #:deriving Lens)
+(struct Address [city : String] [zip : Integer] #:deriving Lens)
+(struct Person  [name : String] [addr : Address] #:deriving Lens)
 
 (define alice (Person "Alice" (Address "NYC" 10001)))
 
@@ -58,10 +58,10 @@ You can also construct a lens directly with @racket[MkLens]:
 
 A @racket[(Prism s a)] is a pattern: either it extracts an @racket[a]
 from an @racket[s] or it doesn't.  Add @racket[#:deriving Prism] to a
-@racket[define-data] to synthesise one prism per constructor.
+@racket[data] to synthesise one prism per constructor.
 
 @codeblock|{
-(define-data Opt
+(data Opt
   Absent
   (Present Integer)
   #:deriving Prism)
@@ -79,7 +79,7 @@ named @racketidfont{T}@racketidfont{-}@racket[_Ctor]@racketidfont{-prism}:
 
 @racket[preview] tries to focus; @racket[review] builds a value at the
 focused position.  (Prism deriving is unavailable on
-@racket[define-struct] — a single-constructor record has nothing to
+@racket[struct] — a single-constructor record has nothing to
 discriminate; use @racket[Lens] instead.)
 
 @section{Traversals}

@@ -35,10 +35,10 @@
   (define-values (_ outs) (drive-session '((:type (lambda (x) x)))))
   (check-regexp-match #rx"->" (car outs)))
 
-(test-case "REPL: env persists a define-data and uses ctor later"
+(test-case "REPL: env persists a data and uses ctor later"
   (define-values (_ outs)
     (drive-session
-     '((define-data (Box a) (MkBox a))
+     '((data (Box a) (MkBox a))
        (MkBox 5))))
   (check-regexp-match #rx"MkBox" (cadr outs))
   (check-regexp-match #rx"Box" (cadr outs)))

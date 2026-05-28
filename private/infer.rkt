@@ -1486,7 +1486,7 @@
                   name (suggest-similar name env))
           stx)]
        [(not (= (length args) (data-info-arity info)))
-        ;; When the ctor is from a `define-struct`, the
+        ;; When the ctor is from a `struct`, the
         ;; struct's ordered field-name list is in env; append it
         ;; to the message so the user sees which fields the
         ;; pattern is missing.
