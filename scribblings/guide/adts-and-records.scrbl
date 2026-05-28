@@ -70,7 +70,7 @@ The constructor is the struct name; accessors are
 parameters on the head:
 
 @codeblock|{
-(struct (Box a)
+(struct (Tagged a)
   [v   : a]
   [tag : String])
 }|
