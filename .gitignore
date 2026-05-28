@@ -5,3 +5,16 @@
 compiled/
 /doc/
 *.org
+
+# Scribble --html render artifacts (companion assets + rendered pages)
+scribble.css
+scribble-common.js
+racket.css
+manual-fonts.css
+manual-style.css
+manual-racket.css
+manual-racket.js
+rackton.html
+rackton-guide.html
+rackton-reference.html
+rackton-developer.html
