@@ -1078,12 +1078,13 @@
      (define result-tv (or expected (fresh-tvar)))
      (define-values (s-final _)
        (for/fold ([s s-scrut] [_ignored result-tv])
-                 ([cl (in-list clauses)])
+                 ([cl (in-list clauses)] [i (in-naturals)])
          (define-values (s-cl _t)
            (infer-clause cl
                          (apply-subst s t-scrut)
                          (apply-subst s result-tv)
-                         (apply-subst/env s env)))
+                         (apply-subst/env s env)
+                         (> i 0)))
          (values (subst-compose s-cl s) _t)))
      ;; A match-let-style irrefutable destructure skips the
      ;; exhaustiveness check — the user has asserted the pattern fits.
@@ -1111,12 +1112,13 @@
      (define result-tv (or expected (fresh-tvar)))
      (define-values (s-final _)
        (for/fold ([s s-scruts] [_ignored result-tv])
-                 ([cl (in-list clauses)])
+                 ([cl (in-list clauses)] [i (in-naturals)])
          (define-values (s-cl _t)
            (infer-clause* cl
                           (map (lambda (t) (apply-subst s t)) scrut-types)
                           (apply-subst s result-tv)
-                          (apply-subst/env s env)))
+                          (apply-subst/env s env)
+                          (> i 0)))
          (values (subst-compose s-cl s) _t)))
      (values s-final (apply-subst s-final result-tv))]))
 
@@ -1301,7 +1303,11 @@
       [(arrow? t) (loop (arrow-cod t) (cons (arrow-dom t) acc))]
       [else (values (reverse acc) t)])))
 
-(define (infer-clause cl scrut-type result-type env)
+;; `earlier-arms?` is #t once a previous arm has already constrained
+;; the running result type; #f on the first arm, where any mismatch can
+;; only be against the result type seeded from the declared signature
+;; (a fresh result tvar would unify rather than fail).
+(define (infer-clause cl scrut-type result-type env [earlier-arms? #t])
   (define-values (bindings pat-type ex-hyps)
     (infer-pattern (clause-pattern cl) env))
   ;; Try standard unify first; on a hard mismatch (a
@@ -1375,7 +1381,9 @@
      ([exn:fail:unify?
        (lambda (_)
          (raise-syntax-error 'infer
-           (format "match clause body has type ~a but earlier arms have ~a"
+           (format (if earlier-arms?
+                       "match clause body has type ~a but earlier arms have ~a"
+                       "match clause body has type ~a but the expected result type is ~a")
                    (pretty-type (apply-subst s-acc t-body))
                    (pretty-type refined-result-type))
            (clause-stx cl)))])
@@ -1392,7 +1400,10 @@
 ;; skolem-refinement (multi-clause defines aren't a GADT-elim site
 ;; in practice); no existential support; no per-pattern guard
 ;; (guard is one expression at the clause level if present).
-(define (infer-clause* cl* scrut-types result-type env)
+;; `earlier-clauses?` mirrors `infer-clause`'s `earlier-arms?`: #f on
+;; the first clause, where a result mismatch can only be against the
+;; type seeded from the declared signature.
+(define (infer-clause* cl* scrut-types result-type env [earlier-clauses? #t])
   (unless (= (length (clause*-patterns cl*)) (length scrut-types))
     (raise-syntax-error 'infer
       (format "match* clause has ~a patterns but ~a scrutinees"
@@ -1443,7 +1454,9 @@
      ([exn:fail:unify?
        (lambda (_)
          (raise-syntax-error 'infer
-           (format "match* clause body has type ~a but earlier clauses have ~a"
+           (format (if earlier-clauses?
+                       "match* clause body has type ~a but earlier clauses have ~a"
+                       "match* clause body has type ~a but the expected result type is ~a")
                    (pretty-type (apply-subst s-acc t-body))
                    (pretty-type (apply-subst s-acc result-type)))
            (clause*-stx cl*)))])

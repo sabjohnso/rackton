@@ -53,3 +53,40 @@
   (check-true (regexp-match? #rx"unbound" msg) msg)
   ;; "did you mean `pure`?" — the search includes class methods.
   (check-true (regexp-match? #rx"pure" msg) msg))
+
+(test-case "first-arm result mismatch blames the declared result type, not earlier arms"
+  ;; The mismatch is on the very first arm — there are no earlier arms,
+  ;; so the message must point at the declared/expected result type.
+  (define msg
+    (compile-error
+     (define-data (Expr a)
+       (Lit  : (-> a (Expr a)))
+       (Zero : (Expr a)))
+     (: eval-boolean (-> (Expr Boolean) (Expr Boolean)))
+     (define (eval-boolean e)
+       (match e
+         [(Lit a) a]
+         [Zero #f]))))
+  (check-false (regexp-match? #rx"earlier arms" msg) msg)
+  (check-true  (regexp-match? #rx"expected result type" msg) msg)
+  (check-true  (regexp-match? #rx"Expr Boolean" msg) msg))
+
+(test-case "later-arm result mismatch still blames earlier arms"
+  ;; No declared signature: the first arm fixes the result type, so a
+  ;; later mismatch genuinely conflicts with an earlier arm.
+  (define msg
+    (compile-error
+     (define (g b)
+       (match b
+         [#t 1]
+         [#f "two"]))))
+  (check-true (regexp-match? #rx"earlier arms" msg) msg))
+
+(test-case "first-clause result mismatch in a multi-clause define blames the signature"
+  (define msg
+    (compile-error
+     (: f (-> Integer String))
+     (define (f 0) 0)
+     (define (f n) "n")))
+  (check-false (regexp-match? #rx"earlier clauses" msg) msg)
+  (check-true  (regexp-match? #rx"expected result type" msg) msg))
