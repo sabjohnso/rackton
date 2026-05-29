@@ -107,8 +107,14 @@
          ;; in would collide with that module for any client of both.
          (except-out (all-from-out racket/base) #%module-begin sort)
 
-         ;; prelude — class methods, ADTs, and combinators.
-         (all-from-out "private/prelude-runtime.rkt")
+         ;; prelude — class methods, ADTs, and combinators.  Names that
+         ;; have been slimmed out to stdlib modules (which foreign-import
+         ;; them from prelude-runtime directly) are excluded here so they
+         ;; are not auto-available — users must require the stdlib module.
+         (except-out (all-from-out "private/prelude-runtime.rkt")
+                     ;; rackton/control/stm
+                     new-tvar read-tvar write-tvar retry or-else atomically
+                     stm-fmap stm-pure stm-ap stm-bind)
 
          ;; Surface-form / type-ctor / class / return-typed-method
          ;; stubs.  Bound so (for-label rackton) in scribble docs can

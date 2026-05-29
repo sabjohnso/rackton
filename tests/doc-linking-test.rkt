@@ -45,7 +45,7 @@
 (define type-ctors
   '(Integer Float Rational Complex Boolean String Char Bytes Unit
     Maybe List Pair Result
-    IO Ref MVar Chan ThreadId Future TVar STM
+    IO Ref MVar Chan ThreadId Future
     Identity
     State Env StateT EnvT WriterT ExceptT))
 

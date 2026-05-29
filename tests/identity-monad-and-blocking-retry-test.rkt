@@ -9,6 +9,7 @@
          "../main.rkt")
 
 (rackton
+  (require rackton/control/stm)
   ;; ----- 44.1 blocking retry ----------------------------------
   ;; A blocked transaction waits until a watched TVar changes,
   ;; then completes.  We exercise the wake-up by having a second

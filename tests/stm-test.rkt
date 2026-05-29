@@ -7,6 +7,7 @@
          "../main.rkt")
 
 (rackton
+  (require rackton/control/stm)
   ;; ----- 41.A single-threaded mutation ------------------------
 
   (: simple-mutate (IO Integer))

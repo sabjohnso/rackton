@@ -12,7 +12,8 @@
          rackton/data/list
          rackton/data/tuple
          rackton/data/map
-         rackton/data/set)
+         rackton/data/set
+         rackton/control/stm)
 
 (provide (all-from-out rackton/data/maybe)
          (all-from-out rackton/data/monoid)
@@ -20,4 +21,5 @@
          (all-from-out rackton/data/list)
          (all-from-out rackton/data/tuple)
          (all-from-out rackton/data/map)
-         (all-from-out rackton/data/set))
+         (all-from-out rackton/data/set)
+         (all-from-out rackton/control/stm))

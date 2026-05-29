@@ -885,44 +885,8 @@
     (: recv-chan (-> (Chan a) (IO a)))
     (define (recv-chan ch) (racket (IO a) (ch) #f))
 
-    ;; --- STM --------------------------------------
-    ;;
-    ;; Optimistic-concurrency software transactional memory.  An
-    ;; STM action is composed monadically; `atomically` runs it
-    ;; against a transaction log, verifies read versions at
-    ;; commit time under a global commit lock, and applies writes
-    ;; or restarts on a version mismatch (or on `retry`).
-
-    (data (TVar a))
-    (data (STM a))
-
-    (instance (Functor STM)
-      (define (fmap f s) (racket (STM b) (f s) #f)))
-
-    (instance (Applicative STM)
-      (define (pure x)      (racket (STM a) (x)    #f))
-      (define (fapply sf sa)(racket (STM b) (sf sa) #f)))
-
-    (instance (Monad STM)
-      (define (flatmap f s) (racket (STM b) (s f) #f)))
-
-    (: new-tvar   (-> a (STM (TVar a))))
-    (define (new-tvar v) (racket (STM (TVar a)) (v) #f))
-
-    (: read-tvar  (-> (TVar a) (STM a)))
-    (define (read-tvar tv) (racket (STM a) (tv) #f))
-
-    (: write-tvar (-> (TVar a) (-> a (STM Unit))))
-    (define (write-tvar tv v) (racket (STM Unit) (tv v) #f))
-
-    (: retry (STM a))
-    (define retry (racket (STM a) () #f))
-
-    (: or-else (-> (STM a) (-> (STM a) (STM a))))
-    (define (or-else s1 s2) (racket (STM a) (s1 s2) #f))
-
-    (: atomically (-> (STM a) (IO a)))
-    (define (atomically s) (racket (IO a) (s) #f))
+    ;; STM (TVar/STM types, instances, ops) moved to rackton/control/stm
+    ;; (Phase 2 slim; runtime in private/prelude-runtime via `foreign`).
 
     ;; --- Concurrent class -------------------------
     ;;

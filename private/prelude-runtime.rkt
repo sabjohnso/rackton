@@ -225,9 +225,11 @@
  new-mvar new-empty-mvar take-mvar put-mvar read-mvar modify-mvar
  new-chan send-chan recv-chan
 
- ;; STM
+ ;; STM (foreign-imported by rackton/control/stm; the user-facing names
+ ;; are except-out of main's re-export so they're not auto-available)
  new-tvar read-tvar write-tvar
  retry or-else atomically
+ stm-fmap stm-pure stm-ap stm-bind
  |$pure:STM|
 
  ;; Concurrent
@@ -1005,12 +1007,14 @@
                  (semaphore-post $atomically-lock)
                  (loop)])])))))
 
-;; STM Functor / Applicative / Monad — register against the
-;; runtime dispatch tables on the STM ctor tag.
+;; STM Functor / Applicative / Monad method impls.  The instances now
+;; live in rackton/control/stm, which foreign-imports these and
+;; registers them under STM's #:runtime-tag ('$stm) — so no dispatch
+;; registration here.  register-pure-impl! '$stm stays (the witness-based
+;; pure table, used by needs-dict transformer code over an STM inner).
 
 (define (stm-fmap f s)
   ($stm (lambda (log) (f (($stm-thunk s) log)))))
-(register-instance-method! $dispatch:fmap '$stm stm-fmap)
 
 (define (stm-pure x) ($stm (lambda (_log) x)))
 (define (stm-ap sf sa)
@@ -1018,23 +1022,13 @@
           (define f (($stm-thunk sf) log))
           (define a (($stm-thunk sa) log))
           (f a))))
-(define (stm-liftA2 g sa sb)
-  ($stm (lambda (log)
-          (define a (($stm-thunk sa) log))
-          (define b (($stm-thunk sb) log))
-          (g a b))))
 (define (stm-bind f s)
   ($stm (lambda (log)
           (define a (($stm-thunk s) log))
           (($stm-thunk (f a)) log))))
 
-;; STM's pure is return-typed, so register via the impl-name path.
 (define |$pure:STM| stm-pure)
 (register-pure-impl! '$stm |$pure:STM|)
-
-(register-instance-method! $dispatch:fapply  '$stm stm-ap)
-(register-instance-method! $dispatch:liftA2  '$stm stm-liftA2)
-(register-instance-method! $dispatch:flatmap '$stm stm-bind)
 
 ;; ----- Concurrent class + Future -----------------
 ;;
@@ -2229,7 +2223,7 @@
 (register-instance-method! $dispatch:pure 'IO       |$pure:IO|)
 (register-instance-method! $dispatch:pure 'State    |$pure:State|)
 (register-instance-method! $dispatch:pure 'Env      |$pure:Env|)
-(register-instance-method! $dispatch:pure 'STM      |$pure:STM|)
+;; $pure:STM registers from rackton/control/stm's Applicative instance.
 (register-instance-method! $dispatch:pure 'Identity |$pure:Identity|)
 
 (register-instance-method! $dispatch:mempty 'String  |$mempty:String|)
