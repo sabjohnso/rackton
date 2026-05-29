@@ -29,6 +29,7 @@
          current-pending-preds
          current-method-uses
          current-method-resolutions
+         current-return-typed-methods
          current-method-dict-resolutions
          current-dict-skolems
          current-needs-dict-defs
@@ -67,8 +68,16 @@
 ;; entry is graduated into `current-method-resolutions`.
 (define current-method-uses        (make-parameter #f))
 ;; Resolved return-typed-method calls.  A hashtable from stx → impl
-;; name symbol (e.g. '$pure:Maybe).  Consumed by codegen.
+;; name symbol (e.g. '$pure:Maybe).  Consumed by codegen.  NOTE this map
+;; also receives positional monomorphizations (e.g. '$==:Integer), so a
+;; non-#f entry alone does NOT imply the call is return-typed — codegen
+;; cross-checks the method name against `current-return-typed-methods`.
 (define current-method-resolutions (make-parameter #f))
+;; The set of method names that dispatch return-typed (computed from the
+;; env at elaborate time, read by codegen).  A plain (no-dict)
+;; return-typed call site routes through the per-method runtime dispatch
+;; table so an instance defined in another module is reachable.
+(define current-return-typed-methods (make-parameter #f))
 ;; Resolved dict-method calls.  A hashtable from stx → (Listof
 ;; impl-name-symbol) — the codegen prepends these to the e:app args
 ;; when compiling the call site.

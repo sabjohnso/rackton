@@ -72,6 +72,7 @@
     define-data-ctor
     define-class-method
     register-instance-method!
+    lookup-return-method
     ;; Re-export of racket/match's `match` for use inside `(racket ...)`
     ;; escapes.  Documented as the surface form `match`, not separately.
     match

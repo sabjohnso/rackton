@@ -134,9 +134,14 @@
     ;; doesn't change.
     (define parsed-ordered (phase-sort-forms parsed))
     (define compiled
-      (filter values
-              (for/list ([f (in-list parsed-ordered)])
-                (compile-top f env))))
+      ;; Return-typed method names (pure/mempty/…) drive codegen's choice
+      ;; of a runtime-table lookup vs a direct impl reference at call
+      ;; sites — see current-return-typed-methods.
+      (parameterize ([current-return-typed-methods
+                      (env-return-typed-methods env)])
+        (filter values
+                (for/list ([f (in-list parsed-ordered)])
+                  (compile-top f env)))))
     ;; Emit a runtime form that publishes this elaborate's
     ;; monomorphization log via the codegen-exposed setter.  The
     ;; rackton-monomorphized-sites accessor returns this list so

@@ -16,6 +16,7 @@
 (provide define-class-method
          define/curried
          register-instance-method!
+         lookup-return-method
          dispatch-tag
          rackton-no-instance-error)
 
@@ -99,6 +100,19 @@
 
 (define (register-instance-method! table tag impl)
   (hash-set! table tag impl))
+
+;; Look up a return-typed method's per-instance impl from its dispatch
+;; table by the compile-time-resolved result-type tag.  Unlike
+;; positional dispatch (which reads the tag off a runtime argument),
+;; the call site supplies the tag as a constant.  Errors loudly when no
+;; instance is registered for that type (e.g. an instance module was
+;; never required, so its registration side-effect never ran).
+(define (lookup-return-method table tag method-name)
+  (hash-ref table tag
+            (lambda ()
+              (error method-name
+                     "no instance registered for return-typed method at type ~a"
+                     tag))))
 
 ;; Define a function that accepts EITHER its full arity at once OR any
 ;; shorter prefix, returning a closure that collects the rest.  This is

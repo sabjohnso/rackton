@@ -33,6 +33,7 @@
 (require racket/match
          racket/list
          racket/set
+         racket/string
          (for-template (except-in racket/base
                                   + - * < > <= >= = compose
                                   not and or length foldr filter
@@ -127,7 +128,6 @@
      (define resolved
        (and (current-method-resolutions)
             (hash-ref (current-method-resolutions) stx #f)))
-     (define final-name (datum->syntax stx (or resolved name) stx))
      ;; If this var carries a dict-resolution, wrap it in a variadic
      ;; closure that prepends the dict args at call time.  The closure
      ;; defers — calling `(wrapped x y)` becomes `(name dict... x y)`.
@@ -137,17 +137,47 @@
      (define dict-impls
        (and (current-method-dict-resolutions)
             (hash-ref (current-method-dict-resolutions) stx #f)))
+     ;; A no-dict return-typed call (pure/mempty/… on a non-needs-dict
+     ;; instance) routes through the per-method runtime dispatch table by
+     ;; the compile-time-resolved type tag.  This is what lets an
+     ;; instance defined in ANOTHER module be found: positional methods
+     ;; already cross modules via this table mechanism; return-typed ones
+     ;; now do too, keyed by the result type's tag instead of a runtime
+     ;; argument's tag.  (current-method-resolutions also holds positional
+     ;; monomorphizations, so we gate on the method being return-typed.)
+     ;; A concrete return-typed resolution names a per-instance impl as
+     ;; "$<name>:<tcon>".  A needs-dict body instead resolves the method
+     ;; to a LOCAL dict-arg parameter named "$dict-<name>-<skolem>" — that
+     ;; must stay a direct reference, NOT a table lookup.  Distinguish by
+     ;; the "$<name>:" prefix.
+     (define return-prefix (string-append "$" (symbol->string name) ":"))
+     (define concrete-return?
+       (and resolved
+            (current-return-typed-methods)
+            (set-member? (current-return-typed-methods) name)
+            (string-prefix? (symbol->string resolved) return-prefix)))
      (cond
+       [(and concrete-return? (or (not dict-impls) (null? dict-impls)))
+        ;; Route through the per-method runtime dispatch table by the
+        ;; compile-time-resolved type tag (the suffix after "$<name>:"),
+        ;; so an instance defined in another module is reachable.
+        (define tag
+          (string->symbol
+           (substring (symbol->string resolved) (string-length return-prefix))))
+        (with-syntax ([table (datum->syntax stx (method-dispatch-symbol name) stx)]
+                      [tg    (datum->syntax stx tag stx)]
+                      [mn    (datum->syntax stx name stx)])
+          (syntax/loc stx (lookup-return-method table 'tg 'mn)))]
        [(and dict-impls (not (null? dict-impls)))
         ;; Partial-apply the dict args.  For a 0-user-arg reference
         ;; like `get-state-t` this gives the value directly; for an
         ;; N-user-arg reference it gives a closure (auto-currying on
         ;; the hand-written runtime impl handles the rest).
-        (with-syntax ([head final-name]
+        (with-syntax ([head (datum->syntax stx (or resolved name) stx)]
                       [(d ...) (for/list ([sym (in-list dict-impls)])
                                  (datum->syntax stx sym stx))])
           (syntax/loc stx (head d ...)))]
-       [else final-name])]
+       [else (datum->syntax stx (or resolved name) stx)])]
 
     [(e:lam params body stx)
      ;; A multi-parameter lambda compiles to a `case-lambda` whose
@@ -592,7 +622,20 @@
         #'(begin
             (define table (make-hasheq))
             (define-class-method meth table pos-stx ar-stx)))))
-  (with-syntax ([(def ...) defs])
+  ;; Return-typed methods get a dispatch table too — but no
+  ;; define-class-method wrapper, since they don't dispatch on a runtime
+  ;; argument.  Instances register their impls here; call sites look up
+  ;; by the compile-time-resolved result-type tag (see compile-expr's
+  ;; e:var branch).  Prelude classes are not compiled here — their
+  ;; tables live in prelude-runtime.rkt — so this only fires for
+  ;; user-declared classes with return-typed members.
+  (define return-table-defs
+    (for/list ([n (in-list method-names)]
+               #:when (eq? (hash-ref (class-info-dispatchpos cinfo) n #f)
+                           'return))
+      (with-syntax ([table (datum->syntax stx (method-dispatch-symbol n) stx)])
+        #'(define table (make-hasheq)))))
+  (with-syntax ([(def ...) (append defs return-table-defs)])
     (syntax/loc stx (begin def ...))))
 
 ;; Count the number of arrows in the method's body type — i.e. its
@@ -693,12 +736,33 @@
               [(and dict-args (not (null? dict-args)))
                (prepend-lambda-params body dict-args stx)]
               [else body]))
-          (with-syntax ([impl-name
-                         (datum->syntax stx
-                                        (return-impl-symbol name head-tcon-names)
-                                        stx)]
-                        [impl (compile-expr body*)])
-            (list #'(define impl-name impl)))]
+          (define impl-name-sym (return-impl-symbol name head-tcon-names))
+          (define def-form
+            (with-syntax ([impl-name (datum->syntax stx impl-name-sym stx)]
+                          [impl (compile-expr body*)])
+              #'(define impl-name impl)))
+          (cond
+            ;; needs-dict return-typed instance (e.g. a transformer's
+            ;; pure): keep the bare define only.  Its call sites carry
+            ;; dict args and resolve via the direct (prelude-provided)
+            ;; reference, not the tag table.
+            [(and dict-args (not (null? dict-args)))
+             (list def-form)]
+            ;; plain return-typed instance: ALSO register into the
+            ;; per-method dispatch table so a call site in another module
+            ;; can find it.  The tag is the impl-name suffix (after
+            ;; "$<name>:"), matching what the call site extracts.
+            [else
+             (define tag-sym
+               (string->symbol
+                (substring (symbol->string impl-name-sym)
+                           (+ 2 (string-length (symbol->string name))))))
+             (define reg-form
+               (with-syntax ([table     (datum->syntax stx (method-dispatch-symbol name) stx)]
+                             [tag       (datum->syntax stx tag-sym stx)]
+                             [impl-name (datum->syntax stx impl-name-sym stx)])
+                 #'(register-instance-method! table 'tag impl-name)))
+             (list def-form reg-form)])]
          [else
           ;; Positional class-method instance impls have two kinds of
           ;; dict-args, stored as a (inst-args . method-args) pair

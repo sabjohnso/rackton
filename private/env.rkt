@@ -25,6 +25,7 @@
          env-extend-class
          env-clear-instances
          env-ref-class
+         env-return-typed-methods
          env-class-owning-family
          env-extend-instance
          env-instances
@@ -173,6 +174,18 @@
 
 (define (env-ref-class e name [default #f])
   (hash-ref (env-classes e) name default))
+
+;; The set of all method names (across every class in scope) whose
+;; dispatch is return-typed ('return).  Codegen consults this to route
+;; their call sites through the per-method runtime dispatch table
+;; (so an instance defined in another module is reachable), rather than
+;; a direct per-instance impl reference that doesn't cross the boundary.
+(define (env-return-typed-methods e)
+  (for*/fold ([acc (seteq)])
+             ([(_cn ci) (in-hash (env-classes e))]
+              [(m dp)   (in-hash (class-info-dispatchpos ci))]
+              #:when (eq? dp 'return))
+    (set-add acc m)))
 
 (define (env-extend-instance e class-name inst)
   (struct-copy env e

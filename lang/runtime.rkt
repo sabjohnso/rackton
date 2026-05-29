@@ -77,6 +77,7 @@
  define-data-ctor
  define-class-method
  register-instance-method!
+ lookup-return-method
  match
 
  ;; prelude classes, instances, ADTs, and combinators come from main.rkt

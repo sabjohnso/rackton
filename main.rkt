@@ -86,6 +86,7 @@
          define-data-ctor
          define-class-method
          register-instance-method!
+         lookup-return-method
          match
 
          ;; module-language essentials so this module can serve as the

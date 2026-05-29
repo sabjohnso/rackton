@@ -118,6 +118,12 @@
  traverse
  mconcat
 
+ ;; Return-typed dispatch tables — shared so user-defined instances in
+ ;; other modules register their pure / mempty / … here and call sites
+ ;; look them up by result-type tag (Enabler A).
+ $dispatch:pure $dispatch:mempty $dispatch:pi
+ $dispatch:get-st $dispatch:ask-en $dispatch:await-c $dispatch:yield-c
+
  ;; Return-typed class methods (resolved at compile time per call site;
  ;; the `$pure:TCon` names are what the codegen emits after resolution).
  |$pure:Maybe| |$pure:List| |$pure:Result| |$pure:IO|
@@ -690,6 +696,21 @@
 ;; elaborator (see resolve-method-uses! in private/infer.rkt) to one
 ;; of these per-instance names based on the expected return type at
 ;; each call site.
+;; Per-method dispatch tables for the return-typed methods `pure` and
+;; `mempty`, keyed by the result type's ctor tag (e.g. 'Maybe, 'String).
+;; Codegen emits `(lookup-return-method $dispatch:pure 'Tag 'pure)` at
+;; call sites; plain (non-needs-dict) instances — both these prelude ones
+;; and user-defined ones in other modules — register here.  This is the
+;; return-typed analogue of the positional `$dispatch:fmap` &c. tables.
+;; (Registrations are at the end of this file, once every impl exists.)
+(define $dispatch:pure    (make-hasheq))
+(define $dispatch:mempty  (make-hasheq))
+(define $dispatch:pi      (make-hasheq))
+(define $dispatch:get-st  (make-hasheq))
+(define $dispatch:ask-en  (make-hasheq))
+(define $dispatch:await-c (make-hasheq))
+(define $dispatch:yield-c (make-hasheq))
+
 (define (|$pure:Maybe|  x) (Some x))
 (define (|$pure:List|   x) (Cons x Nil))
 (define (|$pure:Result| x) (Ok x))
@@ -2342,3 +2363,38 @@
 (for ([ctor (in-hash-keys $dispatch:liftA2)])
   (register-instance-method! $dispatch:product ctor default-product))
 
+
+;; ----- return-typed dispatch tables: register the plain prelude impls
+;; Keyed by the result type's ctor tag (matching what codegen extracts
+;; from the resolved `$pure:Tag` / `$mempty:Tag` impl name).  The
+;; needs-dict transformer pures (StateT/EnvT/WriterT/ExceptT) are NOT
+;; registered here — their call sites carry dict args and resolve via
+;; the direct provided reference, not this table.
+(register-instance-method! $dispatch:pure 'Maybe    |$pure:Maybe|)
+(register-instance-method! $dispatch:pure 'List     |$pure:List|)
+(register-instance-method! $dispatch:pure 'Result   |$pure:Result|)
+(register-instance-method! $dispatch:pure 'IO       |$pure:IO|)
+(register-instance-method! $dispatch:pure 'State    |$pure:State|)
+(register-instance-method! $dispatch:pure 'Env      |$pure:Env|)
+(register-instance-method! $dispatch:pure 'STM      |$pure:STM|)
+(register-instance-method! $dispatch:pure 'Identity |$pure:Identity|)
+
+(register-instance-method! $dispatch:mempty 'String  |$mempty:String|)
+(register-instance-method! $dispatch:mempty 'List    |$mempty:List|)
+(register-instance-method! $dispatch:mempty 'Sum     |$mempty:Sum|)
+(register-instance-method! $dispatch:mempty 'Product |$mempty:Product|)
+
+;; Other return-typed methods (Floating.pi, MonadState.get-st,
+;; MonadEnv.ask-en, Concurrent.await-c/yield-c).  Only the base
+;; (non-needs-dict) instances are registered — the lifted transformer
+;; instances are needs-dict and resolve via the direct provided ref.
+(register-instance-method! $dispatch:pi 'Float   |$pi:Float|)
+(register-instance-method! $dispatch:pi 'Complex |$pi:Complex|)
+
+(register-instance-method! $dispatch:get-st 'State |$get-st:State|)
+(register-instance-method! $dispatch:ask-en 'Env   |$ask-en:Env|)
+
+(register-instance-method! $dispatch:await-c 'IO       |$await-c:IO|)
+(register-instance-method! $dispatch:await-c 'Identity |$await-c:Identity|)
+(register-instance-method! $dispatch:yield-c 'IO       |$yield-c:IO|)
+(register-instance-method! $dispatch:yield-c 'Identity |$yield-c:Identity|)
