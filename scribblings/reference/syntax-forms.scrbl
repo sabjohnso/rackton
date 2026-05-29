@@ -325,6 +325,13 @@ type is a monad of the same shape as the preceding clauses.
     [y <- (Some 4)]
   (Some (+ x y)))]}
 
+@defform[(list elem ...)]{
+
+List-literal sugar.  Desugars to a @racket[Cons]/@racket[Nil] chain, so
+@racket[(list 1 2 3)] is @racket[(Cons 1 (Cons 2 (Cons 3 Nil)))] and
+@racket[(list)] is @racket[Nil].  The result is an ordinary
+@racket[(List a)]; all elements must share one type.}
+
 @defform[(ann expr type)]{
 
 Type ascription.  Asserts that @racket[expr] has type @racket[type];

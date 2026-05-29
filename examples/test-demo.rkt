@@ -27,8 +27,7 @@
     ;; plain unit checks
     (describe "checks"
       (it "arithmetic" (check-equal? (+ 2 2) 4))
-      (it "reverse"    (check-true (int-list-eq (rev (Cons 1 (Cons 2 Nil)))
-                                                (Cons 2 (Cons 1 Nil))))))
+      (it "reverse"    (check-true (int-list-eq (rev (list 1 2)) (list 2 1)))))
 
     ;; properties with integrated shrinking
     (describe "properties"

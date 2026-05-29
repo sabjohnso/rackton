@@ -834,7 +834,7 @@
 
 (define (parse-expr stx)
   (syntax-parse stx
-    #:datum-literals (lambda λ let letrec match-let where if cond else ann match racket do <- update handle return describe context ->)
+    #:datum-literals (lambda λ let letrec match-let where if cond else ann match racket do <- update handle return describe context list ->)
     [n:number  (e:literal (syntax->datum #'n) stx)]
     [b:boolean (e:literal (syntax->datum #'b) stx)]
     [s:string  (e:literal (syntax->datum #'s) stx)]
@@ -880,6 +880,13 @@
                                  (loop (cdr pats) (cdr rhss))
                                  (car pats)))
                    #t stx)]))]
+
+    ;; (list e ...) — list-literal sugar.  Desugars to a Cons/Nil
+    ;; chain; (list) is Nil.  Purely a parser rewrite, so the result is
+    ;; an ordinary (List a).
+    [(list elem ...)
+     (build-list-ast
+      (map parse-expr (syntax->list #'(elem ...))) stx)]
 
     ;; (describe NAME child ...) / (context NAME child ...) — the test
     ;; framework's grouping forms, made variadic so children need no
