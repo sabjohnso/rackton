@@ -250,12 +250,22 @@ Anonymous function with parameters @racket[p ...] and result
 @racket[body].  Currying is implicit: @racket[(lambda (x y) e)] has
 type @racket[(-> a (-> b c))], not a tupled domain.}
 
-@defform[(let ([var expr] ...) body)]{
+@defform*[[(let ([var expr] ...) body)
+           (let loop ([var init] ...) body)]]{
 
 Parallel binding.  Each @racket[expr] is evaluated in the surrounding
 scope; the resulting values bind @racket[var ...] in @racket[body].
 Each binding is generalised independently against the surrounding
-environment after inference, giving Rackton its let-polymorphism.}
+environment after inference, giving Rackton its let-polymorphism.
+
+The second, @emph{named} form is a loop: @racket[loop] is bound in
+@racket[body] to a recursive procedure of the @racket[var ...], invoked
+with the @racket[init] seeds.  It desugars to
+@racket[(letrec ([loop (lambda (var ...) body)]) (loop init ...))].
+
+@racketblock[
+(let loop ([i 0] [acc 0])
+  (if (> i 10) acc (loop (+ i 1) (+ acc i))))]}
 
 @defform[(letrec ([var expr] ...) body)]{
 
@@ -324,6 +334,51 @@ type is a monad of the same shape as the preceding clauses.
 (do [x <- (Some 3)]
     [y <- (Some 4)]
   (Some (+ x y)))]}
+
+@defform[(let& ([var expr] ...) body)]{
+
+Sequential monadic binding (in the spirit of OCaml's @tt{let*}, with a
+different introducer since @racket[let*] already has a meaning in
+Scheme).  Each @racket[expr] is a monadic value @racket[(m a)]; @racket[var]
+binds the unwrapped @racket[a] and is in scope for the later
+@racket[expr]s and @racket[body].  Desugars to a nested @racket[flatmap]
+chain — the same family as @racket[do], in binding-list shape.  The
+trailing @racket[body] is the final monadic computation.
+
+@racketblock[
+(let& ([a (Some 1)]
+       [b (Some (+ a 1))])
+  (Some (+ a b)))]}
+
+@defform*[[(let% ([var expr] ...) body)
+           (let% loop ([var expr] ...) body)]]{
+
+Parallel (independent) monadic binding.  The @racket[expr]s may not
+reference one another; they are gathered with @racket[product] and the
+result is fed through @racket[flatmap] into the monadic @racket[body].
+Requires @racket[(Monad m)].
+
+The named form is a monadic loop: @racket[loop]'s parameters are the
+monadic values, recombined via @racket[product] on every iteration, so
+the body may recurse with fresh monadic values.
+
+@racketblock[
+(let% ([a (Some 10)]
+       [b (Some 20)])
+  (Some (+ a b)))]}
+
+@defform[(let+ ([var expr] ...) body)]{
+
+Applicative binding (OCaml's @tt{let+} / @tt{and+}).  Like @racket[let%]
+the @racket[expr]s are independent and gathered with @racket[product],
+but @racket[body] is a @emph{pure} expression mapped in with
+@racket[fmap]; the result is wrapped by the functor.  Requires only
+@racket[(Applicative f)], and has no named form.
+
+@racketblock[
+(let+ ([a (Some 4)]
+       [b (Some 5)])
+  (+ a b))]}
 
 @defform[(list elem ...)]{
 

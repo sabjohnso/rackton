@@ -834,7 +834,7 @@
 
 (define (parse-expr stx)
   (syntax-parse stx
-    #:datum-literals (lambda λ let letrec match-let where if cond else ann match racket do <- update handle return describe context list ->)
+    #:datum-literals (lambda λ let let& let% let+ letrec match-let where if cond else ann match racket do <- update handle return describe context list ->)
     [n:number  (e:literal (syntax->datum #'n) stx)]
     [b:boolean (e:literal (syntax->datum #'b) stx)]
     [s:string  (e:literal (syntax->datum #'s) stx)]
@@ -850,12 +850,53 @@
             (parse-expr #'body)
             stx)]
 
+    ;; Named (loop) let — Scheme-style: `loop` is a recursive procedure
+    ;; bound in the body, seeded by the initial RHS.  Matched before the
+    ;; plain `let` because the head after `let` is an id here, a binding
+    ;; group there, so the two never overlap.
+    [(let loop:id ([x:id rhs] ...+) body)
+     (build-named-let (syntax->datum #'loop)
+                      (parse-binding-pairs #'(x ...) #'(rhs ...))
+                      (parse-expr #'body)
+                      stx)]
+
     [(let ([x:id rhs] ...) body)
      (e:let (for/list ([id (in-list (syntax->list #'(x ...)))]
                        [r  (in-list (syntax->list #'(rhs ...)))])
               (cons (syntax->datum id) (parse-expr r)))
             (parse-expr #'body)
             stx)]
+
+    ;; let& — sequential monad bind (deps allowed); nested flatmap, same
+    ;; family as `do`.  Body is the final monadic expression.
+    [(let& ([x:id rhs] ...+) body)
+     (build-sequential-let (parse-binding-pairs #'(x ...) #'(rhs ...))
+                           (parse-expr #'body)
+                           stx)]
+
+    ;; let% (named) — monadic loop: loop params are the monadic values,
+    ;; combined per iteration via the gathered-product engine.
+    [(let% loop:id ([x:id rhs] ...+) body)
+     (build-named-monadic-let (syntax->datum #'loop)
+                              (parse-binding-pairs #'(x ...) #'(rhs ...))
+                              (parse-expr #'body)
+                              stx)]
+
+    ;; let% — parallel/independent monad bind: gather via `product`,
+    ;; then `flatmap` into a monadic body.
+    [(let% ([x:id rhs] ...+) body)
+     (build-gathered-let 'flatmap
+                         (parse-binding-pairs #'(x ...) #'(rhs ...))
+                         (parse-expr #'body)
+                         stx)]
+
+    ;; let+ — applicative bind: gather via `product`, then `fmap`.  The
+    ;; body is a PURE expression; the result is wrapped by the functor.
+    [(let+ ([x:id rhs] ...+) body)
+     (build-gathered-let 'fmap
+                         (parse-binding-pairs #'(x ...) #'(rhs ...))
+                         (parse-expr #'body)
+                         stx)]
 
     [(letrec ([x:id rhs] ...) body)
      (e:letrec (for/list ([id (in-list (syntax->list #'(x ...)))]
@@ -1057,6 +1098,96 @@
     (raise-syntax-error 'parse-handle
       "expected exactly one [return v -> body] clause" outer-stx))
   (values ops (car rets)))
+
+;; ----- monadic / applicative let desugarings -----------------------
+;;
+;; Parse parallel binding-clause syntax `([x rhs] ...)` into a list of
+;; `(cons name-sym rhs-ast)` pairs.  RHS are parsed independently in the
+;; enclosing scope; sequential/loop scoping is supplied by the builders.
+(define (parse-binding-pairs ids-stx rhss-stx)
+  (for/list ([id (in-list (syntax->list ids-stx))]
+             [r  (in-list (syntax->list rhss-stx))])
+    (cons (syntax->datum id) (parse-expr r))))
+
+;; Gather independent binding RHS into one applicative value via
+;; right-associated `product`, with the matching nested `MkPair`
+;; destructuring pattern.  A single binding has no product: the value is
+;; the lone RHS and the pattern is a plain variable.
+;;
+;;   [(a . m1) (b . m2) (c . m3)]
+;;     value   = (product m1 (product m2 m3))
+;;     pattern = (MkPair a (MkPair b c))
+(define (gather-product binds stx)
+  (define name (car (car binds)))
+  (define rhs  (cdr (car binds)))
+  (cond
+    [(null? (cdr binds))
+     (values rhs (p:var name stx))]
+    [else
+     (define-values (rest-ast rest-pat) (gather-product (cdr binds) stx))
+     (values (e:app (e:var 'product stx) (list rhs rest-ast) stx)
+             (p:ctor 'MkPair (list (p:var name stx) rest-pat) stx))]))
+
+;; Build `(combiner (lambda (p) (match p [pattern body])) gathered)` for
+;; let% (combiner = 'flatmap) and let+ (combiner = 'fmap).  A single
+;; binding takes the shortcut `(combiner (lambda (name) body) rhs)`.
+(define (build-gathered-let combiner binds body-ast stx)
+  (cond
+    [(null? (cdr binds))
+     (define name (car (car binds)))
+     (define rhs  (cdr (car binds)))
+     (e:app (e:var combiner stx)
+            (list (e:lam (list name) body-ast stx) rhs)
+            stx)]
+    [else
+     (define-values (gathered pat) (gather-product binds stx))
+     (define p (gensym '$let))
+     (e:app (e:var combiner stx)
+            (list (e:lam (list p)
+                         (e:match (e:var p stx)
+                                  (list (clause pat #f body-ast stx))
+                                  #t stx)
+                         stx)
+                  gathered)
+            stx)]))
+
+;; let& — sequential nested flatmap.  Each later binding's RHS sits
+;; inside the earlier bindings' lambdas, so it sees them in scope.
+(define (build-sequential-let binds body-ast stx)
+  (cond
+    [(null? binds) body-ast]
+    [else
+     (define name (car (car binds)))
+     (define rhs  (cdr (car binds)))
+     (e:app (e:var 'flatmap stx)
+            (list (e:lam (list name)
+                         (build-sequential-let (cdr binds) body-ast stx)
+                         stx)
+                  rhs)
+            stx)]))
+
+;; Named pure let — `(letrec ([loop (lambda (x ...) body)]) (loop i ...))`.
+(define (build-named-let loop-name binds body-ast stx)
+  (e:letrec (list (cons loop-name
+                        (e:lam (map car binds) body-ast stx)))
+            (e:app (e:var loop-name stx) (map cdr binds) stx)
+            stx))
+
+;; Named monadic let% — the loop's parameters are the monadic values;
+;; each entry combines them via the gathered-product engine (flatmap)
+;; and binds the names; the body is monadic and may recurse with fresh
+;; monadic values.  The initial RHS are the seeds.
+(define (build-named-monadic-let loop-name binds body-ast stx)
+  (define names  (map car binds))
+  (define seeds  (map cdr binds))
+  (define params (map (lambda (_) (gensym '$arg)) binds))
+  (define param-binds
+    (for/list ([n (in-list names)] [p (in-list params)])
+      (cons n (e:var p stx))))
+  (define loop-body (build-gathered-let 'flatmap param-binds body-ast stx))
+  (e:letrec (list (cons loop-name (e:lam params loop-body stx)))
+            (e:app (e:var loop-name stx) seeds stx)
+            stx))
 
 (define (parse-do stmts body-stx stx)
   (cond
