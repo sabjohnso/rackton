@@ -8,6 +8,8 @@
 
 (rackton
   (require rackton/data/list)
+  (require rackton/data/map)
+  (require rackton/data/set)
   ;; Build a Map by chained inserts; immutability means earlier values
   ;; are preserved.
   (: built-map (Map String Integer))

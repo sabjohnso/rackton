@@ -246,12 +246,8 @@
  ;; Panic
  panic
 
- ;; Immutable Map / Set
- empty-map map-insert map-lookup map-delete map-keys map-values map-size map-fold
- empty-set set-insert set-member? set-delete set-size set-to-list
-
- ;; List helpers (concat-map -> rackton/data/list)
- group-by
+ ;; Immutable Map / Set + group-by moved to rackton/data/map +
+ ;; rackton/data/set (runtime in private/containers-runtime).
 
  ;; Float
  float-div integer->float float->integer abs-float
@@ -630,6 +626,13 @@
     [(rkt:and (rkt:<= 0 i) (rkt:< i (rkt:string-length s)))
      (Some (rkt:string-ref s i))]
     [else None]))
+
+;; Build a rackton List from a Racket sequence (shared helper; the
+;; Map/Set runtime moved out but string/bytes conversions still need it).
+(define (rkt-seq->list xs)
+  (let loop ([xs (rkt:reverse xs)] [acc Nil])
+    (cond [(null? xs) acc]
+          [else (loop (cdr xs) (Cons (car xs) acc))])))
 
 (define (string->chars s)
   (rkt-seq->list (rkt:string->list s)))
@@ -1164,53 +1167,9 @@
 
 (define (panic msg) (error 'rackton-panic msg))
 
-;; ----- Immutable Map (backed by Racket's immutable hash) ------
-
-(struct $map (h) #:transparent)
-(struct $set (h) #:transparent)
-
-(define empty-map ($map (hash)))
-(define empty-set ($set (hash)))
-
-(define/curried (map-insert k v m) ($map (hash-set ($map-h m) k v)))
-(define/curried (map-lookup k m)
-  (cond [(hash-has-key? ($map-h m) k) (Some (hash-ref ($map-h m) k))]
-        [else None]))
-(define/curried (map-delete k m) ($map (hash-remove ($map-h m) k)))
-
-;; Build a rackton List from a Racket sequence.
-(define (rkt-seq->list xs)
-  (let loop ([xs (rkt:reverse xs)] [acc Nil])
-    (cond [(null? xs) acc]
-          [else (loop (cdr xs) (Cons (car xs) acc))])))
-
-(define (map-keys   m) (rkt-seq->list (hash-keys   ($map-h m))))
-(define (map-values m) (rkt-seq->list (hash-values ($map-h m))))
-(define (map-size   m) (hash-count ($map-h m)))
-
-(define/curried (map-fold f z m)
-  (for/fold ([acc z]) ([(k v) (in-hash ($map-h m))])
-    (((f k) v) acc)))
-
-;; ----- Immutable Set ------------------------------------------
-
-(define/curried (set-insert x s) ($set (hash-set ($set-h s) x #t)))
-(define/curried (set-member? x s) (hash-has-key? ($set-h s) x))
-(define/curried (set-delete x s) ($set (hash-remove ($set-h s) x)))
-(define (set-size s) (hash-count ($set-h s)))
-(define (set-to-list s) (rkt-seq->list (hash-keys ($set-h s))))
-
-;; ----- List helpers -------------------------------------------
-;; (concat-map moved to rackton/data/list)
-
-(define/curried (group-by key xs)
-  (foldr (lambda (x m)
-           (define k (key x))
-           (match (map-lookup k m)
-             [(None)     (map-insert k (Cons x Nil) m)]
-             [(Some lst) (map-insert k (Cons x lst) m)]))
-         empty-map
-         xs))
+;; Map / Set (and group-by) moved to rackton/data/map + rackton/data/set
+;; (Phase 2 slim); runtime lives in private/containers-runtime.rkt and is
+;; reached via `foreign`.
 
 ;; ----- Float ops ---------------------------------------------
 

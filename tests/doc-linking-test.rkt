@@ -47,8 +47,7 @@
     Maybe List Pair Result
     IO Ref MVar Chan ThreadId Future TVar STM
     Identity
-    State Env StateT EnvT WriterT ExceptT
-    Map Set))
+    State Env StateT EnvT WriterT ExceptT))
 
 (define classes
   '(Eq Ord Num Fractional Integral Real Floating RealFrac RealFloat

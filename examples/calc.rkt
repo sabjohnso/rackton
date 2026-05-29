@@ -13,6 +13,8 @@
 ;; through the host-language escape, then walked into a typed AST
 ;; before evaluation.
 
+(require rackton/data/map)
+
 ;; ----- Sexpr: result of a single `read` -------------------------
 
 (data Sexpr

@@ -1025,65 +1025,9 @@
     (: panic (-> String a))
     (define (panic msg) (racket a (msg) #f))
 
-    ;; --- Immutable Map and Set ------------------------------
-
-    (data (Map k v))
-    (data (Set a))
-
-    (: empty-map (Map k v))
-    (define empty-map (racket (Map k v) () #f))
-
-    (: map-insert ((Eq k) => (-> k (-> v (-> (Map k v) (Map k v))))))
-    (define (map-insert k v m) (racket (Map k v) (k v m) #f))
-
-    (: map-lookup ((Eq k) => (-> k (-> (Map k v) (Maybe v)))))
-    (define (map-lookup k m) (racket (Maybe v) (k m) None))
-
-    (: map-delete ((Eq k) => (-> k (-> (Map k v) (Map k v)))))
-    (define (map-delete k m) (racket (Map k v) (k m) #f))
-
-    (: map-keys (-> (Map k v) (List k)))
-    (define (map-keys m) (racket (List k) (m) Nil))
-
-    (: map-values (-> (Map k v) (List v)))
-    (define (map-values m) (racket (List v) (m) Nil))
-
-    (: map-size (-> (Map k v) Integer))
-    (define (map-size m) (racket Integer (m) 0))
-
-    (: map-fold (-> (-> k (-> v (-> b b))) (-> b (-> (Map k v) b))))
-    (define (map-fold f z m) (racket b (f z m) z))
-
-    (: empty-set (Set a))
-    (define empty-set (racket (Set a) () #f))
-
-    (: set-insert ((Eq a) => (-> a (-> (Set a) (Set a)))))
-    (define (set-insert x s) (racket (Set a) (x s) #f))
-
-    (: set-member? ((Eq a) => (-> a (-> (Set a) Boolean))))
-    (define (set-member? x s) (racket Boolean (x s) #f))
-
-    (: set-delete ((Eq a) => (-> a (-> (Set a) (Set a)))))
-    (define (set-delete x s) (racket (Set a) (x s) #f))
-
-    (: set-size (-> (Set a) Integer))
-    (define (set-size s) (racket Integer (s) 0))
-
-    (: set-to-list (-> (Set a) (List a)))
-    (define (set-to-list s) (racket (List a) (s) Nil))
-
-    ;; --- List helpers leaning on Map -----------------------
-    ;; (concat-map moved to rackton/data/list)
-
-    (: group-by ((Eq k) => (-> (-> a k) (-> (List a) (Map k (List a))))))
-    (define (group-by key xs)
-      (foldr (lambda (x m)
-               (let ([k (key x)])
-                 (match (map-lookup k m)
-                   [(None)     (map-insert k (Cons x Nil) m)]
-                   [(Some lst) (map-insert k (Cons x lst) m)])))
-             empty-map
-             xs))
+    ;; Map / Set (and group-by) moved to rackton/data/map +
+    ;; rackton/data/set (Phase 2 slim; runtime via
+    ;; private/containers-runtime reached through `foreign`).
 
     ;; --- Float type + instances ----------------------------
 
