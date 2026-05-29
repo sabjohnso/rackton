@@ -823,9 +823,18 @@
 
 ;; ----- expressions --------------------------------------------------
 
+;; Build the Cons/Nil list AST from a list of already-parsed element
+;; expressions.  Used by the variadic `describe`/`context` desugaring.
+(define (build-list-ast elems stx)
+  (cond
+    [(null? elems) (e:var 'Nil stx)]
+    [else (e:app (e:var 'Cons stx)
+                 (list (car elems) (build-list-ast (cdr elems) stx))
+                 stx)]))
+
 (define (parse-expr stx)
   (syntax-parse stx
-    #:datum-literals (lambda λ let letrec match-let where if cond else ann match racket do <- update handle return ->)
+    #:datum-literals (lambda λ let letrec match-let where if cond else ann match racket do <- update handle return describe context ->)
     [n:number  (e:literal (syntax->datum #'n) stx)]
     [b:boolean (e:literal (syntax->datum #'b) stx)]
     [s:string  (e:literal (syntax->datum #'s) stx)]
@@ -871,6 +880,25 @@
                                  (loop (cdr pats) (cdr rhss))
                                  (car pats)))
                    #t stx)]))]
+
+    ;; (describe NAME child ...) / (context NAME child ...) — the test
+    ;; framework's grouping forms, made variadic so children need no
+    ;; explicit list wrapper.  Desugars to a call to the library
+    ;; function `group-of` (resolved in the user's env, like `do`
+    ;; resolves `flatmap`); the children are gathered into a List via
+    ;; Cons/Nil.  Both forms are aliases.
+    [(describe name child ...)
+     (e:app (e:var 'group-of stx)
+            (list (parse-expr #'name)
+                  (build-list-ast
+                   (map parse-expr (syntax->list #'(child ...))) stx))
+            stx)]
+    [(context name child ...)
+     (e:app (e:var 'group-of stx)
+            (list (parse-expr #'name)
+                  (build-list-ast
+                   (map parse-expr (syntax->list #'(child ...))) stx))
+            stx)]
 
     ;; (where ([n expr] ...) body) — sequential local bindings.
     ;; Each binding sees the ones before it.  Equivalent to a

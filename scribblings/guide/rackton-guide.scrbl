@@ -32,4 +32,5 @@ signatures when needed.
 @include-section["optics.scrbl"]
 @include-section["modules.scrbl"]
 @include-section["racket-interop.scrbl"]
+@include-section["testing.scrbl"]
 @include-section["examples.scrbl"]
