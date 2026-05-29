@@ -40,7 +40,7 @@
      All))
 
 (define provide-specs
-  '(all-defined-out data-out struct-out protocol-out rename-out except-out))
+  '(all-defined-out all-from-out data-out struct-out protocol-out rename-out except-out))
 
 (define type-ctors
   '(Integer Float Rational Complex Boolean String Char Bytes Unit

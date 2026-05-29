@@ -60,7 +60,7 @@
 
 ;; Provide-spec heads recognised in (provide ...) bodies.
 (define provide-specs
-  '(all-defined-out data-out struct-out protocol-out rename-out except-out))
+  '(all-defined-out all-from-out data-out struct-out protocol-out rename-out except-out))
 
 ;; REPL commands accepted by the interactive REPL.
 (define repl-commands

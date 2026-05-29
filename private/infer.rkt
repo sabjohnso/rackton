@@ -22,6 +22,7 @@
          infer-program
          infer-program/phases
          infer-program-step
+         require-spec->submod-spec
          def-scc-order
          generalize
          instantiate

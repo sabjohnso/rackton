@@ -27,6 +27,19 @@ re-exported.
 
 @racketblock[(provide (all-defined-out))]}
 
+@defform[#:literals (all-from-out)
+         (all-from-out module-path ...)]{
+
+Re-exports every name imported from each @racket[module-path] — value
+bindings, data constructors, type constructors, and classes — without
+listing them individually.  Use it to build a re-export chain or an
+umbrella module.  Instances escape regardless of @racket[provide], so
+they are carried through too.
+
+@racketblock[
+(require "tree.rkt")
+(provide (all-from-out "tree.rkt"))]}
+
 @defform[#:literals (data-out)
          (data-out T)]{
 

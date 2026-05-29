@@ -281,6 +281,30 @@
         (string->symbol (format "~a-~a" sname fname)))
       (hash-set! export-vars accessor accessor)))
 
+  ;; (all-from-out M) — re-export every name M published.  M's exports
+  ;; were already folded into `env` when this module's (require M) was
+  ;; processed by inference, so adding M's published names to the export
+  ;; maps makes the sidecar re-serialize their schemes (from env) and
+  ;; makes build-racket-provide re-emit the value bindings (which resolve
+  ;; through this module's own (require M)).  Instances escape regardless.
+  (define (add-all-from-out mod-stx)
+    (define submod-spec (require-spec->submod-spec mod-stx))
+    (unless submod-spec
+      (raise-syntax-error 'provide
+        "all-from-out: unsupported module path" mod-stx))
+    (define (published sym)
+      (with-handlers ([exn:fail? (lambda (_) '())])
+        (dynamic-require submod-spec sym)))
+    (for ([e (in-list (published 'rackton-bindings))])
+      (hash-set! export-vars (car e) (car e)))
+    (for ([e (in-list (published 'rackton-data-ctors))])
+      (hash-set! export-data-ctors (car e) (car e))
+      (hash-set! export-vars       (car e) (car e)))
+    (for ([e (in-list (published 'rackton-tcons))])
+      (hash-set! export-tcons (car e) (car e)))
+    (for ([e (in-list (published 'rackton-classes))])
+      (hash-set! export-classes (car e) (car e))))
+
   (define (remove-name name)
     ;; except-out: drop name from every category it appears in.
     ;; The drop is silent if the name isn't there — Racket's
@@ -293,11 +317,14 @@
 
   (define (process-spec spec)
     (syntax-parse spec
-      #:datum-literals (all-defined-out data-out protocol-out struct-out rename-out except-out)
+      #:datum-literals (all-defined-out all-from-out data-out protocol-out struct-out rename-out except-out)
       [name:id
        (add-export (syntax->datum #'name) (syntax->datum #'name) #'name)]
       [(all-defined-out)
        (add-all-defined-out)]
+      [(all-from-out mod ...)
+       (for ([m (in-list (syntax->list #'(mod ...)))])
+         (add-all-from-out m))]
       [(data-out tname:id)
        (add-data-out (syntax->datum #'tname) #'tname)]
       [(protocol-out cname:id)
