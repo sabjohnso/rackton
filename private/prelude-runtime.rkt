@@ -92,8 +92,7 @@
 
  ;; ADTs (constructors usable as expressions and as match patterns)
  None Some Nil Cons MkPair Ok Err MkUnit
- MkState MkEnv MkStateT MkEnvT MkWriterT MkExceptT MkIdentity MkLens
- MkPrism MkTraversal
+ MkState MkEnv MkStateT MkEnvT MkWriterT MkExceptT MkIdentity
  run-state eval-state exec-state get-state put-state modify-state
  run-env ask local
  run-state-t eval-state-t exec-state-t
@@ -241,11 +240,7 @@
  reverse append zip take drop find sort
  fst snd swap
 
- ;; Lens primitives
- view set over lens-compose
-
- ;; Prisms and traversals
- preview review to-list-of over-of list-traversal lens-as-traversal
+ ;; Optics (view/set/over/preview/review/…) moved to rackton/data/lens.
 
  ;; Panic
  panic
@@ -330,11 +325,7 @@
 (define-data-ctor MkExceptT 1)
 ;; Identity for the Mock Concurrent demo.
 (define-data-ctor MkIdentity 1)
-;; Lens stores a (getter, setter) pair.
-(define-data-ctor MkLens     2)
-;; Prisms and traversals.
-(define-data-ctor MkPrism    2)
-(define-data-ctor MkTraversal 2)
+;; MkLens / MkPrism / MkTraversal moved to rackton/data/lens (Phase 2).
 
 ;; ----- Class dispatch tables -------------------------------------
 
@@ -1221,46 +1212,8 @@
 (define (snd p)  (match p [(MkPair _ b) b]))
 (define (swap p) (match p [(MkPair a b) (MkPair b a)]))
 
-;; ----- Lens primitives ----------------------------
-
-(define/curried (view l s)
-  (match l [(MkLens g _) (g s)]))
-
-(define/curried (set l v s)
-  (match l [(MkLens _ ps) ((ps s) v)]))
-
-(define/curried (over l f s)
-  (match l [(MkLens g ps) ((ps s) (f (g s)))]))
-
-(define/curried (lens-compose outer inner)
-  (MkLens
-   (lambda (s) (view inner (view outer s)))
-   (lambda (s)
-     (lambda (b) (set outer (set inner b (view outer s)) s)))))
-
-;; ----- Prism primitives ---------------------------
-
-(define/curried (preview p s)
-  (match p [(MkPrism extract _) (extract s)]))
-
-(define/curried (review p a)
-  (match p [(MkPrism _ build) (build a)]))
-
-;; ----- Traversal primitives -----------------------
-
-(define/curried (to-list-of t s)
-  (match t [(MkTraversal get-all _) (get-all s)]))
-
-(define/curried (over-of t f s)
-  (match t [(MkTraversal _ modify-all) ((modify-all f) s)]))
-
-(define list-traversal
-  (MkTraversal id (lambda (f) (lambda (xs) (fmap f xs)))))
-
-(define (lens-as-traversal l)
-  (MkTraversal
-   (lambda (s) (Cons (view l s) Nil))
-   (lambda (f) (lambda (s) (over l f s)))))
+;; Optics primitives (Lens / Prism / Traversal) moved to
+;; rackton/data/lens (Phase 2 slim).
 
 ;; ----- panic ---------------------------------------------------
 

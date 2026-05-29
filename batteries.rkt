@@ -7,7 +7,9 @@
 ;; (Enabler C).
 
 (require rackton/data/maybe
-         rackton/data/monoid)
+         rackton/data/monoid
+         rackton/data/lens)
 
 (provide (all-from-out rackton/data/maybe)
-         (all-from-out rackton/data/monoid))
+         (all-from-out rackton/data/monoid)
+         (all-from-out rackton/data/lens))

@@ -6,6 +6,7 @@
          "../main.rkt")
 
 (rackton
+  (require rackton/data/lens)
   ;; ----- 48.A Maybe prisms -----------------------------------
 
   ;; A prism focusing on the `Some` constructor of `Maybe a`.

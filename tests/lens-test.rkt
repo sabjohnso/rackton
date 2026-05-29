@@ -8,6 +8,7 @@
          "../main.rkt")
 
 (rackton
+  (require rackton/data/lens)
   (struct Point
     [x : Integer]
     [y : Integer])

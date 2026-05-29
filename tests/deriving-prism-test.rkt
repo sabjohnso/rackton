@@ -6,6 +6,7 @@
          "../main.rkt")
 
 (rackton
+  (require rackton/data/lens)
   ;; ----- Maybe-ish type with Prism deriving --------------
   ;; Use a local copy (`Opt`) so we don't clash with the prelude
   ;; Maybe — the test only verifies that Prism deriving emits

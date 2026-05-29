@@ -68,6 +68,7 @@
 ;; ----- optics.scrbl: lens deriving + naming ------------------------
 
 (rackton
+  (require rackton/data/lens)
   (struct DocPoint
     [x : Integer]
     [y : Integer]
@@ -90,6 +91,7 @@
 ;; ----- optics.scrbl: prism deriving + naming -----------------------
 
 (rackton
+  (require rackton/data/lens)
   (data DocOpt
     DocAbsent
     (DocPresent Integer)

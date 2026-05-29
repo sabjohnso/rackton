@@ -46,7 +46,7 @@
   '(Integer Float Rational Complex Boolean String Char Bytes Unit
     Maybe List Pair Result
     IO Ref MVar Chan ThreadId Future TVar STM
-    Lens Prism Traversal Identity
+    Identity
     State Env StateT EnvT WriterT ExceptT
     Map Set))
 

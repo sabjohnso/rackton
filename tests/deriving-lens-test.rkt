@@ -8,6 +8,7 @@
          "../main.rkt")
 
 (rackton
+  (require rackton/data/lens)
   ;; ----- 47.A flat struct ------------------------------------
 
   (struct Point
