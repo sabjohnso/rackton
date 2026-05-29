@@ -56,6 +56,7 @@
   (define (phase f)
     (cond
       [(top:require? f) 0]
+      [(top:foreign? f) 0]
       [(top:data? f) 1]
       [(top:struct-fields? f) 2]
       [(top:class? f) 3]
@@ -174,6 +175,8 @@
   (for ([f (in-list parsed)])
     (match f
       [(top:def name _ _)
+       (hash-set! vars name #t)]
+      [(top:foreign name _ _ _ _)
        (hash-set! vars name #t)]
       [(top:data tname _ ctors _ _)
        (hash-set! tcons tname #t)

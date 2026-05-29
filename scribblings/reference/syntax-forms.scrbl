@@ -481,3 +481,31 @@ checker.}
 
 Declares export specifications for the current module.  See
 @secref["provide-specs"] for the supported spec forms.}
+
+@defform*[#:literals (->)
+          [(foreign name type #:from module-path)
+           (foreign name type #:from module-path #:as racket-id)]]{
+
+Imports a host (Racket) binding and gives it a Rackton @racket[type], so
+Rackton code can use a primitive that the prelude does not surface (for
+example something from @racketmodname[racket/string] or
+@racketmodname[racket/set]).  @racket[module-path] is a Racket module
+path (a collection path like @racketmodname[racket/string], or a
+@racket[_string] for a relative file).  Without @racket[#:as] the Racket
+binding has the same name as @racket[name]; with @racket[#:as
+racket-id] the host binding @racket[racket-id] is bound to the Rackton
+@racket[name].
+
+The declared @racket[type] is the @emph{trust boundary} — it is
+@bold{not} checked against the host binding (FFI-style).  An incorrect
+type, or a host value whose runtime representation does not match the
+Rackton type (e.g. a Racket list where a Rackton @racket[List] is
+claimed), is a bug the type checker cannot catch.  Calls must also match
+the host binding's arity (a curried @racket[type] is fine, but partially
+applying a strict host function will raise at runtime).
+
+@racketblock[
+(foreign string-contains? (-> String (-> String Boolean))
+         #:from racket/string)
+(foreign str-replace (-> String (-> String (-> String String)))
+         #:from racket/string #:as string-replace)]}

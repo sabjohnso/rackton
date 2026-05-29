@@ -1800,7 +1800,15 @@
   (define env-A8
     (for/fold ([e env-A7]) ([(name sch) (in-hash declared)])
       (env-extend-var e name sch)))
-  (values env-A8 declared))
+  ;; A9: foreign (host) imports — register each as a typed var, like a
+  ;; bare dec, but NOT in `declared` (there is no Rackton def body; the
+  ;; binding comes from the Racket require codegen emits).
+  (define env-A9
+    (parameterize ([current-aliases (env-aliases env-A8)])
+      (for/fold ([e env-A8]) ([f (in-list forms)] #:when (top:foreign? f))
+        (env-extend-var e (top:foreign-name f)
+                        (resolve-scheme (top:foreign-type f))))))
+  (values env-A9 declared))
 
 ;; Pre-register every top:data's tcon header in env: name + arity +
 ;; full ctor-name list + abstract flag.  Ctor schemes are resolved

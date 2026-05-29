@@ -573,6 +573,14 @@
     [(top:require specs stx)
      (with-syntax ([(s ...) specs])
        (syntax/loc stx (require s ...)))]
+    [(top:foreign name type mod-path racket-id stx)
+     ;; Bind the Rackton name to the host binding via a renaming
+     ;; only-in require.  Type info is erased; the declared type was the
+     ;; (unchecked) trust boundary at inference time.
+     (with-syntax ([mp  (datum->syntax stx mod-path stx)]
+                   [rid (datum->syntax stx racket-id stx)]
+                   [nm  (datum->syntax stx name stx)])
+       (syntax/loc stx (require (only-in mp [rid nm]))))]
     [(top:provide _ _)
      ;; The elaborator resolves the union of all provide-specs and
      ;; emits a single Racket-level (provide …) form afterwards, so

@@ -48,6 +48,7 @@
 ;; Expressions and binding forms not provided by racket/base.
 (define-rackton-form match-let "destructuring binding")
 (define-rackton-form where "sequential local binding")
+(define-rackton-form foreign "host (FFI) import")
 (define-rackton-form let& "sequential monadic binding")
 (define-rackton-form let% "parallel monadic binding")
 (define-rackton-form let+ "applicative binding")

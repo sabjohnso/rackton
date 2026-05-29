@@ -62,6 +62,7 @@
          (struct-out class-type-fam)
          (struct-out inst-type-fam)
          (struct-out top:require)
+         (struct-out top:foreign)
          (struct-out top:provide)
          (struct-out top:alias)
          (struct-out top:struct-fields)
@@ -190,6 +191,13 @@
 ;; A multi-file import: `(require "file.rkt" ...)` inside a rackton form.
 ;; Specs are the raw require specs (passed verbatim to Racket's require).
 (struct top:require    (specs stx) #:transparent)
+;; A foreign (host) import: `(foreign name τ #:from M [#:as rkt-id])`.
+;; Declares the Rackton-typed binding `name` of type `type`, backed by
+;; the Racket binding `racket-id` from module path `module-path`.  The
+;; declared type is the trust boundary (unchecked — FFI-style).  Like a
+;; bare `(: …)` dec at the type level (mconcat is the prelude precedent),
+;; plus a Racket-level `require` emitted by codegen for the binding.
+(struct top:foreign    (name type module-path racket-id stx) #:transparent)
 ;; A user-level export declaration: `(provide spec ...)` inside a
 ;; rackton block.  `specs` is the raw list of syntax objects — the
 ;; elaborator resolves each spec against the final env into four
@@ -1413,9 +1421,20 @@
 
 (define (parse-top stx)
   (syntax-parse stx
-    #:datum-literals (define data newtype struct protocol instance define-alias define-effect require provide : =>)
+    #:datum-literals (define data newtype struct protocol instance define-alias define-effect require provide foreign : =>)
     [(require spec ...)
      (top:require (syntax->list #'(spec ...)) stx)]
+
+    ;; (foreign name τ #:from M)            — racket-id = name
+    ;; (foreign name τ #:from M #:as rkt-id) — renamed
+    ;; M is a module path (collection id like racket/string, or a
+    ;; relative "file.rkt" string).
+    [(foreign name:id ty #:from mod #:as rkt:id)
+     (top:foreign (syntax->datum #'name) (parse-type #'ty)
+                  (syntax->datum #'mod) (syntax->datum #'rkt) stx)]
+    [(foreign name:id ty #:from mod)
+     (top:foreign (syntax->datum #'name) (parse-type #'ty)
+                  (syntax->datum #'mod) (syntax->datum #'name) stx)]
 
     [(provide spec ...)
      (top:provide (syntax->list #'(spec ...)) stx)]
