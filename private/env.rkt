@@ -114,7 +114,14 @@
 ;;   methods : (HashEq method-name → surface-expr) — method bodies
 ;;   type-family-bindings : (HashEq family-name → type) — empty for
 ;;                          classes with no associated types
-(struct instance-info (head context methods type-family-bindings) #:transparent)
+;;   origin  : (U String #f) — identity of the module that ORIGINALLY
+;;             declared this instance (its source path), preserved across
+;;             re-export through the rackton-schemes sidecar.  Lets the
+;;             coherence check dedup the SAME instance reaching the env by
+;;             two import paths (a diamond) while still rejecting two
+;;             DIFFERENT instances that share a head.  #f when unknown
+;;             (prelude instances, hand-built test fixtures).
+(struct instance-info (head context methods type-family-bindings origin) #:transparent)
 
 (define empty-env (env (hasheq) (hasheq) (hasheq) (hasheq) (hasheq) (hasheq) (hasheq) (hasheq) (hasheq)))
 

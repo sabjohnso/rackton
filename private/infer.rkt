@@ -2740,19 +2740,31 @@
              (define decoded (decode-instance-info entry))
              (define class-name (car decoded))
              (define new-inst (cdr decoded))
-             ;; Module-level coherence — reject when an
-             ;; imported instance's head is alpha-equivalent to one
-             ;; already in scope.  This catches the same instance
-             ;; declared in two independent modules.
-             (for ([existing (in-list (env-instances acc class-name))])
-               (when (instance-heads-equivalent?
-                      (instance-info-head existing)
-                      (instance-info-head new-inst))
-                 (raise-syntax-error 'require
-                   (format "instance coherence: ~s would conflict with an instance already in scope"
-                           (pred->datum (instance-info-head new-inst)))
-                   stx)))
-             (env-extend-instance acc class-name new-inst))])])))
+             ;; Module-level coherence.  An imported instance whose head
+             ;; is alpha-equivalent to one already in scope is either:
+             ;;   - the SAME instance reaching us by a second import path
+             ;;     (a diamond) — detected by equal, non-#f origins — in
+             ;;     which case we dedup (skip the re-add); or
+             ;;   - a genuinely DIFFERENT instance with the same head
+             ;;     (different or unknown origin) — a real conflict, which
+             ;;     stays a hard error.
+             (define dup-status
+               (for/or ([existing (in-list (env-instances acc class-name))])
+                 (and (instance-heads-equivalent?
+                       (instance-info-head existing)
+                       (instance-info-head new-inst))
+                      (let ([eo (instance-info-origin existing)]
+                            [no (instance-info-origin new-inst)])
+                        (cond
+                          [(and eo no (equal? eo no)) 'same]
+                          [else
+                           (raise-syntax-error 'require
+                             (format "instance coherence: ~s would conflict with an instance already in scope"
+                                     (pred->datum (instance-info-head new-inst)))
+                             stx)])))))
+             (cond
+               [(eq? dup-status 'same) acc]   ;; benign diamond — dedup
+               [else (env-extend-instance acc class-name new-inst)]))])])))
   (values new-env declared))
 
 ;; Resolve a require spec syntax to a usable `(submod ... rackton-schemes)`
@@ -3611,9 +3623,22 @@
        (string-join (map symbol->string cyc) " → "))
       stx)))
 
+;; Identity of the module a piece of syntax came from, as a string, or
+;; #f when unknown (e.g. the synthetic syntax used during prelude
+;; construction).  Used to stamp an instance's origin so a diamond
+;; import of the SAME instance can be deduped without rejecting two
+;; genuinely different instances that share a head.
+(define (origin-of stx)
+  (define src (and (syntax? stx) (syntax-source stx)))
+  (cond
+    [(path? src)   (path->string src)]
+    [(string? src) src]
+    [else          #f]))
+
 (define (handle-instance-form ctx head methods stx env declared)
   (define head-pred-raw (resolve-constraint head))
   (define class-name (pred-class head-pred-raw))
+  (define inst-origin (origin-of stx))
   (define cinfo (env-ref-class env class-name))
   (unless cinfo
     (raise-syntax-error 'infer
@@ -3713,7 +3738,8 @@
        (env-extend-instance env class-name
                             (instance-info head-pred-raw ctx-preds-raw
                                            (hasheq)
-                                           type-family-bindings))]))
+                                           type-family-bindings
+                                           inst-origin))]))
   (define checked-bodies
     (for/fold ([acc (hasheq)])
               ([(method-name method-sch)
@@ -3832,7 +3858,7 @@
         (current-dict-skolems saved-skolems))
       (hash-set acc method-name body)))
   (define info (instance-info head-pred-raw ctx-preds-raw checked-bodies
-                              type-family-bindings))
+                              type-family-bindings inst-origin))
   ;; Mark instances added during prelude-env construction
   ;; so the monomorphization resolver knows not to redirect calls
   ;; to a non-existent named impl.

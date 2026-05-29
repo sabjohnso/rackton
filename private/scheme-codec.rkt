@@ -211,20 +211,36 @@
         ;; sexps so the importer can normalize associated types
         ;; against this instance.
         (for/list ([(name ty) (in-hash (instance-info-type-family-bindings ii))])
-          (list name (type->datum ty)))))
+          (list name (type->datum ty)))
+        ;; Originating module identity, preserved across re-export so a
+        ;; diamond import of one instance can be deduped (see
+        ;; instance-info origin field in env.rkt).
+        (instance-info-origin ii)))
 
 (define (decode-instance-info datum)
   (match datum
+    [(list class-name head-sexp ctx-list bindings-list origin)
+     (cons class-name
+           (instance-info (sexp->pred head-sexp)
+                          (map sexp->pred ctx-list)
+                          (hasheq)
+                          (for/hasheq ([entry (in-list bindings-list)])
+                            (values (car entry) (sexp->type (cadr entry))))
+                          origin))]
+    ;; Back-compat: sidecars compiled before the origin field carried
+    ;; only four / three elements.  Decode them with origin = #f.
     [(list class-name head-sexp ctx-list bindings-list)
      (cons class-name
            (instance-info (sexp->pred head-sexp)
                           (map sexp->pred ctx-list)
                           (hasheq)
                           (for/hasheq ([entry (in-list bindings-list)])
-                            (values (car entry) (sexp->type (cadr entry))))))]
+                            (values (car entry) (sexp->type (cadr entry))))
+                          #f))]
     [(list class-name head-sexp ctx-list)
      (cons class-name
            (instance-info (sexp->pred head-sexp)
                           (map sexp->pred ctx-list)
                           (hasheq)
-                          (hasheq)))]))
+                          (hasheq)
+                          #f))]))
