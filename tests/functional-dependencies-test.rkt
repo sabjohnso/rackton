@@ -6,6 +6,7 @@
          "../main.rkt")
 
 (rackton
+  (require rackton/data/list)
   ;; A multi-param class whose second parameter is functionally
   ;; determined by the first.  With FD improvement, calling `convert`
   ;; on an Integer determines the output type at compile time, so

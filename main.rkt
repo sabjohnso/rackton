@@ -100,7 +100,12 @@
          ;; module-form modules and inside (racket ...) escapes.
          ;; #%module-begin is excepted because we provide our own
          ;; (custom-wrapping) version above.
-         (except-out (all-from-out racket/base) #%module-begin)
+         ;; `sort` is excluded here too: it is a racket/base name that
+         ;; reaches this module via the #lang racket/base language import
+         ;; (the explicit except-in above only covers the explicit
+         ;; require), and it now lives in rackton/data/list — leaving it
+         ;; in would collide with that module for any client of both.
+         (except-out (all-from-out racket/base) #%module-begin sort)
 
          ;; prelude — class methods, ADTs, and combinators.
          (all-from-out "private/prelude-runtime.rkt")

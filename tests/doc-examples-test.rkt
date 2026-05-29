@@ -117,6 +117,7 @@
 ;; operation as a named function with list-comprehension argument order.
 
 (rackton
+  (require rackton/data/list)
   (: doubled (List Integer))
   (define doubled
     (concat-map (lambda (x) (Cons x (Cons x Nil)))

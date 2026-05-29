@@ -1010,83 +1010,15 @@
     (define (reverse xs)
       (foldr (lambda (h acc) (append acc (Cons h Nil))) Nil xs))
 
-    (: zip (-> (List a) (-> (List b) (List (Pair a b)))))
-    (define (zip as bs)
-      (match as
-        [(Nil) Nil]
-        [(Cons a at)
-         (match bs
-           [(Nil) Nil]
-           [(Cons b bt)
-            (Cons (MkPair a b) (zip at bt))])]))
-
-    (: take (-> Integer (-> (List a) (List a))))
-    (define (take n xs)
-      (if (<= n 0)
-          Nil
-          (match xs
-            [(Nil)        Nil]
-            [(Cons h t)   (Cons h (take (- n 1) t))])))
-
-    (: drop (-> Integer (-> (List a) (List a))))
-    (define (drop n xs)
-      (if (<= n 0)
-          xs
-          (match xs
-            [(Nil)        Nil]
-            [(Cons _ t)   (drop (- n 1) t)])))
-
-    (: find (-> (-> a Boolean) (-> (List a) (Maybe a))))
-    (define (find p xs)
-      (match xs
-        [(Nil)        None]
-        [(Cons h t)   (if (p h) (Some h) (find p t))]))
-
     (: fst (-> (Pair a b) a))
     (define (fst p) (match p [(MkPair a _) a]))
 
     (: snd (-> (Pair a b) b))
     (define (snd p) (match p [(MkPair _ b) b]))
 
-    (: swap (-> (Pair a b) (Pair b a)))
-    (define (swap p) (match p [(MkPair a b) (MkPair b a)]))
-
-    ;; Merge sort over (Ord a).  O(n log n) stable.
-
-    (: split-at (-> Integer (-> (List a) (Pair (List a) (List a)))))
-    (define (split-at n xs)
-      (if (== n 0)
-          (MkPair Nil xs)
-          (match xs
-            [(Nil) (MkPair Nil Nil)]
-            [(Cons h t)
-             (let ([rest (split-at (- n 1) t)])
-               (MkPair (Cons h (fst rest)) (snd rest)))])))
-
-    (: merge-lists ((Ord a) => (-> (List a) (-> (List a) (List a)))))
-    (define (merge-lists xs ys)
-      (match xs
-        [(Nil) ys]
-        [(Cons hx tx)
-         (match ys
-           [(Nil) xs]
-           [(Cons hy ty)
-            (if (< hx hy)
-                (Cons hx (merge-lists tx ys))
-                (Cons hy (merge-lists xs ty)))])]))
-
-    (: sort ((Ord a) => (-> (List a) (List a))))
-    (define (sort xs)
-      (let ([n (length xs)])
-        (if (< n 2)
-            xs
-            ;; Was `(div n 2)` when div was a free Integer helper;
-            ;; div is now an Integral class method declared later
-            ;; in the prelude, so we host-escape the quotient here
-            ;; to keep sort's definition order-independent.
-            (let ([halves (split-at (racket Integer (n) 0) xs)])
-              (merge-lists (sort (fst halves))
-                           (sort (snd halves)))))))
+    ;; zip / take / drop / find / split-at / merge-lists / sort /
+    ;; concat-map moved to rackton/data/list; swap to rackton/data/tuple
+    ;; (Phase 2 slim).
 
     ;; Unrecoverable failure with a message.  Typed at bottom so it can
     ;; appear anywhere; raises at runtime.
@@ -1141,10 +1073,7 @@
     (define (set-to-list s) (racket (List a) (s) Nil))
 
     ;; --- List helpers leaning on Map -----------------------
-
-    (: concat-map (-> (-> a (List b)) (-> (List a) (List b))))
-    (define (concat-map f xs)
-      (foldr (lambda (x acc) (append (f x) acc)) Nil xs))
+    ;; (concat-map moved to rackton/data/list)
 
     (: group-by ((Eq k) => (-> (-> a k) (-> (List a) (Map k (List a))))))
     (define (group-by key xs)

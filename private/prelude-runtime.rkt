@@ -236,9 +236,10 @@
  ;; Identity + Concurrent Identity
  run-identity |$await-c:Identity| |$yield-c:Identity| |$pure:Identity|
 
- ;; List + Pair helpers
- reverse append zip take drop find sort
- fst snd swap
+ ;; List + Pair helpers (zip/take/drop/find/sort -> rackton/data/list,
+ ;; swap -> rackton/data/tuple, Phase 2 slim)
+ reverse append
+ fst snd
 
  ;; Optics (view/set/over/preview/review/…) moved to rackton/data/lens.
 
@@ -249,8 +250,8 @@
  empty-map map-insert map-lookup map-delete map-keys map-values map-size map-fold
  empty-set set-insert set-member? set-delete set-size set-to-list
 
- ;; List helpers
- concat-map group-by
+ ;; List helpers (concat-map -> rackton/data/list)
+ group-by
 
  ;; Float
  float-div integer->float float->integer abs-float
@@ -1147,70 +1148,14 @@
     [(Nil) ys]
     [(Cons h t) (Cons h (append t ys))]))
 
-(define/curried (zip as bs)
-  (match as
-    [(Nil) Nil]
-    [(Cons a at)
-     (match bs
-       [(Nil) Nil]
-       [(Cons b bt) (Cons (MkPair a b) (zip at bt))])]))
-
-(define/curried (take n xs)
-  (cond
-    [(rkt:<= n 0) Nil]
-    [else
-     (match xs
-       [(Nil) Nil]
-       [(Cons h t) (Cons h (take (rkt:- n 1) t))])]))
-
-(define/curried (drop n xs)
-  (cond
-    [(rkt:<= n 0) xs]
-    [else
-     (match xs
-       [(Nil) Nil]
-       [(Cons _ t) (drop (rkt:- n 1) t)])]))
-
-(define/curried (find p xs)
-  (match xs
-    [(Nil) None]
-    [(Cons h t) (if (p h) (Some h) (find p t))]))
-
-;; Merge sort over Rackton's < (Ord).  O(n log n) stable.
-(define (split-at-runtime n xs)
-  (cond
-    [(rkt:= n 0) (MkPair Nil xs)]
-    [else
-     (match xs
-       [(Nil) (MkPair Nil Nil)]
-       [(Cons h t)
-        (define rest (split-at-runtime (rkt:- n 1) t))
-        (MkPair (Cons h (fst rest)) (snd rest))])]))
-
-(define (merge-lists xs ys)
-  (match xs
-    [(Nil) ys]
-    [(Cons hx tx)
-     (match ys
-       [(Nil) xs]
-       [(Cons hy ty)
-        (if (< hx hy)
-            (Cons hx (merge-lists tx ys))
-            (Cons hy (merge-lists xs ty)))])]))
-
-(define (sort xs)
-  (define n (length xs))
-  (cond
-    [(rkt:< n 2) xs]
-    [else
-     (define halves (split-at-runtime (rkt:quotient n 2) xs))
-     (merge-lists (sort (fst halves)) (sort (snd halves)))]))
+;; zip / take / drop / find / split-at / merge-lists / sort moved to
+;; rackton/data/list (Phase 2 slim).
 
 ;; ----- Pair helpers -------------------------------------------
 
 (define (fst p)  (match p [(MkPair a _) a]))
 (define (snd p)  (match p [(MkPair _ b) b]))
-(define (swap p) (match p [(MkPair a b) (MkPair b a)]))
+;; swap moved to rackton/data/tuple (Phase 2 slim).
 
 ;; Optics primitives (Lens / Prism / Traversal) moved to
 ;; rackton/data/lens (Phase 2 slim).
@@ -1256,9 +1201,7 @@
 (define (set-to-list s) (rkt-seq->list (hash-keys ($set-h s))))
 
 ;; ----- List helpers -------------------------------------------
-
-(define/curried (concat-map f xs)
-  (foldr (lambda (x acc) (append (f x) acc)) Nil xs))
+;; (concat-map moved to rackton/data/list)
 
 (define/curried (group-by key xs)
   (foldr (lambda (x m)

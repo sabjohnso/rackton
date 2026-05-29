@@ -7,6 +7,7 @@
          "../main.rkt")
 
 (rackton
+  (require rackton/data/list)
   ;; Build a Map by chained inserts; immutability means earlier values
   ;; are preserved.
   (: built-map (Map String Integer))

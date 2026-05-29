@@ -85,4 +85,7 @@
 
  ;; non-conflicting parts of racket/base, available inside `(racket …)`
  ;; escape bodies as well as in any user-emitted code
- (all-from-out racket/base))
+ ;; `sort` excluded — it reaches here via #lang racket/base and now
+ ;; lives in rackton/data/list (Phase 2 slim); leaving it would collide
+ ;; with that module in any #lang rackton file that requires it.
+ (except-out (all-from-out racket/base) sort))

@@ -8,6 +8,8 @@
          "../main.rkt")
 
 (rackton
+  (require rackton/data/list)
+  (require rackton/data/tuple)
   ;; Mutable counter via Ref.  loop-step must precede its caller.
   (: loop-step (-> (Ref Integer) (-> Integer (IO Unit))))
   (define (loop-step r stop)
