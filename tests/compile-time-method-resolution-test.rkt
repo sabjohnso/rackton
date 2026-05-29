@@ -7,6 +7,7 @@
          "../main.rkt")
 
 (rackton
+  (require rackton/data/monoid)
   ;; ----- mconcat over String --------------------------------
   (: glued String)
   (define glued

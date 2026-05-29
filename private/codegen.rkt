@@ -158,24 +158,19 @@
             (string-prefix? (symbol->string resolved) return-prefix)))
      (cond
        [(and concrete-return? (or (not dict-impls) (null? dict-impls)))
-        ;; Route through the per-method runtime dispatch table by the
-        ;; compile-time-resolved type tag (the suffix after "$<name>:"),
-        ;; so an instance defined in another module is reachable.
-        (define tag
-          (string->symbol
-           (substring (symbol->string resolved) (string-length return-prefix))))
-        (with-syntax ([table (datum->syntax stx (method-dispatch-symbol name) stx)]
-                      [tg    (datum->syntax stx tag stx)]
-                      [mn    (datum->syntax stx name stx)])
-          (syntax/loc stx (lookup-return-method table 'tg 'mn)))]
+        ;; Route through the per-method runtime dispatch table so an
+        ;; instance defined in another module is reachable.
+        (compile-method-impl-ref resolved stx)]
        [(and dict-impls (not (null? dict-impls)))
         ;; Partial-apply the dict args.  For a 0-user-arg reference
         ;; like `get-state-t` this gives the value directly; for an
         ;; N-user-arg reference it gives a closure (auto-currying on
-        ;; the hand-written runtime impl handles the rest).
+        ;; the hand-written runtime impl handles the rest).  Each dict-arg
+        ;; that is itself a concrete return-typed impl ($mempty:Sum &c.)
+        ;; is routed through the table too, so it crosses module bounds.
         (with-syntax ([head (datum->syntax stx (or resolved name) stx)]
                       [(d ...) (for/list ([sym (in-list dict-impls)])
-                                 (datum->syntax stx sym stx))])
+                                 (compile-dict-impl sym stx))])
           (syntax/loc stx (head d ...)))]
        [else (datum->syntax stx (or resolved name) stx)])]
 
@@ -951,6 +946,44 @@
 
 (define (method-dispatch-symbol method-name)
   (string->symbol (format "$dispatch:~a" method-name)))
+
+;; Compile a reference to a resolved method-impl symbol.  A CONCRETE
+;; return-typed impl — "$<method>:<tag>" whose <method> is return-typed —
+;; is routed through the per-method runtime dispatch table so it crosses
+;; module boundaries (Enabler A); everything else (positional per-instance
+;; impls like $==:Integer, and local needs-dict dict-arg params like
+;; $dict-mempty-$skolem, which have no ":") is emitted as a direct
+;; reference.  Used at both the e:var call site and the dict-arg path.
+(define (compile-method-impl-ref sym stx)
+  (define m (regexp-match #rx"^[$]([^:]+):(.+)$" (symbol->string sym)))
+  (cond
+    [(and m
+          (current-return-typed-methods)
+          (set-member? (current-return-typed-methods) (string->symbol (cadr m))))
+     (with-syntax ([table (datum->syntax stx (method-dispatch-symbol
+                                              (string->symbol (cadr m))) stx)]
+                   [tg    (datum->syntax stx (string->symbol (caddr m)) stx)]
+                   [mn    (datum->syntax stx (string->symbol (cadr m)) stx)])
+       (syntax/loc stx (lookup-return-method table 'tg 'mn)))]
+    [else (datum->syntax stx sym stx)]))
+
+;; Compile one dict-arg entry from current-method-dict-resolutions.  An
+;; entry is either a bare impl symbol (a PLAIN impl — routed through the
+;; table when it's a concrete return-typed method, so it crosses module
+;; boundaries) or a LIST = a needs-dict impl applied to its sub-dict
+;; args.  For the list case the head stays a direct reference (needs-dict
+;; impls are prelude-provided and aren't table-registered), while each
+;; sub-arg is compiled recursively so a concrete return-typed sub-dict
+;; (e.g. the inner monad's $pure:IO) still routes through the table.
+(define (compile-dict-impl x stx)
+  (cond
+    [(symbol? x) (compile-method-impl-ref x stx)]
+    [(pair? x)
+     (with-syntax ([h        (datum->syntax stx (car x) stx)]
+                   [(a ...)  (for/list ([y (in-list (cdr x))])
+                               (compile-dict-impl y stx))])
+       (syntax/loc stx (h a ...)))]
+    [else (datum->syntax stx x stx)]))
 
 ;; Walk a surface AST, replacing every stx slot with `new-stx`.  Used
 ;; when applying a class's default method body inside an instance

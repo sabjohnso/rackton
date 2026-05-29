@@ -7,6 +7,7 @@
          "../main.rkt")
 
 (rackton
+  (require rackton/data/monoid)
   ;; ----- Sum: additive monoid ----------------------------------
   (: s-add Sum)
   (define s-add (<> (MkSum 3) (MkSum 5)))

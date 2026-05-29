@@ -8,6 +8,7 @@
          "../main.rkt")
 
 (rackton
+  (require rackton/data/monoid)
   ;; ----- the motivating example: madd over any Monad -------
   ;; No `(: madd ...)` — inference should generalize and skolemize.
   (define (madd mx my)

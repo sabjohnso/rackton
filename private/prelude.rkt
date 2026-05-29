@@ -426,32 +426,8 @@
     (instance (Monoid (List a))
       (define mempty Nil))
 
-    ;; --- Sum / Product newtypes for additive/multiplicative Monoid -
-
-    (newtype Sum     (MkSum     Integer))
-    (newtype Product (MkProduct Integer))
-
-    (: get-sum     (-> Sum Integer))
-    (define (get-sum s)     (match s [(MkSum n) n]))
-
-    (: get-product (-> Product Integer))
-    (define (get-product p) (match p [(MkProduct n) n]))
-
-    (instance (Semigroup Sum)
-      (define (<> a b)
-        (match a [(MkSum x)
-                  (match b [(MkSum y) (MkSum (+ x y))])])))
-
-    (instance (Monoid Sum)
-      (define mempty (MkSum 0)))
-
-    (instance (Semigroup Product)
-      (define (<> a b)
-        (match a [(MkProduct x)
-                  (match b [(MkProduct y) (MkProduct (* x y))])])))
-
-    (instance (Monoid Product)
-      (define mempty (MkProduct 1)))
+    ;; `Sum` / `Product` (additive/multiplicative Monoid newtypes) moved
+    ;; to rackton/data/monoid (Phase 2 slim).
 
     ;; --- mconcat ------------------------------------------------
     ;;

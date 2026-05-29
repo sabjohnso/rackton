@@ -6,6 +6,7 @@
          "../main.rkt")
 
 (rackton
+  (require rackton/data/monoid)
   ;; ----- User-defined Monoid fold ------------------------
   (: my-concat ((Monoid a) => (-> (List a) a)))
   (define (my-concat xs)

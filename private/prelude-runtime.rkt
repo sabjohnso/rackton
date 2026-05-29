@@ -92,8 +92,6 @@
 
  ;; ADTs (constructors usable as expressions and as match patterns)
  None Some Nil Cons MkPair Ok Err MkUnit
- MkSum MkProduct
- get-sum get-product
  MkState MkEnv MkStateT MkEnvT MkWriterT MkExceptT MkIdentity MkLens
  MkPrism MkTraversal
  run-state eval-state exec-state get-state put-state modify-state
@@ -122,7 +120,9 @@
  ;; other modules register their pure / mempty / … here and call sites
  ;; look them up by result-type tag (Enabler A).
  $dispatch:pure $dispatch:mempty $dispatch:pi
- $dispatch:get-st $dispatch:ask-en $dispatch:await-c $dispatch:yield-c
+ $dispatch:get-st $dispatch:put-st $dispatch:modify-st
+ $dispatch:ask-en $dispatch:tell-w $dispatch:throw-e
+ $dispatch:await-c $dispatch:yield-c
 
  ;; Return-typed class methods (resolved at compile time per call site;
  ;; the `$pure:TCon` names are what the codegen emits after resolution).
@@ -139,7 +139,7 @@
  |$flatmap:WriterT| |$fapply:WriterT| |$liftA2:WriterT|
  |$flatmap:StateT|  |$fapply:StateT|  |$liftA2:StateT|
  |$flatmap:EnvT|    |$fapply:EnvT|    |$liftA2:EnvT|
- |$mempty:String| |$mempty:List| |$mempty:Sum| |$mempty:Product|
+ |$mempty:String| |$mempty:List|
  ;; Mtl-style class impls.  Base instances are 0-dict; lifted
  ;; instances over a transformer take per-method dict args from the
  ;; inner monad's instance (order matches the class's return-typed
@@ -318,8 +318,7 @@
 
 (define-data-ctor MkUnit 0)
 
-(define-data-ctor MkSum     1)
-(define-data-ctor MkProduct 1)
+;; MkSum / MkProduct moved to rackton/data/monoid (Phase 2 slim).
 
 (define-data-ctor MkState 1)
 (define-data-ctor MkEnv   1)
@@ -703,13 +702,24 @@
 ;; and user-defined ones in other modules — register here.  This is the
 ;; return-typed analogue of the positional `$dispatch:fmap` &c. tables.
 ;; (Registrations are at the end of this file, once every impl exists.)
-(define $dispatch:pure    (make-hasheq))
-(define $dispatch:mempty  (make-hasheq))
-(define $dispatch:pi      (make-hasheq))
-(define $dispatch:get-st  (make-hasheq))
-(define $dispatch:ask-en  (make-hasheq))
-(define $dispatch:await-c (make-hasheq))
-(define $dispatch:yield-c (make-hasheq))
+;; One table per return-typed method (the authoritative set is
+;; env-return-typed-methods over prelude-env: pure mempty pi get-st
+;; put-st modify-st ask-en tell-w throw-e await-c yield-c).  Every one
+;; must exist as a binding because codegen routes return-typed call sites
+;; / dict-args through `$dispatch:<m>`; tell-w / throw-e have only
+;; needs-dict instances (no plain base) but still get a table so a stray
+;; route resolves to a binding rather than an unbound-identifier error.
+(define $dispatch:pure      (make-hasheq))
+(define $dispatch:mempty    (make-hasheq))
+(define $dispatch:pi        (make-hasheq))
+(define $dispatch:get-st    (make-hasheq))
+(define $dispatch:put-st    (make-hasheq))
+(define $dispatch:modify-st (make-hasheq))
+(define $dispatch:ask-en    (make-hasheq))
+(define $dispatch:tell-w    (make-hasheq))
+(define $dispatch:throw-e   (make-hasheq))
+(define $dispatch:await-c   (make-hasheq))
+(define $dispatch:yield-c   (make-hasheq))
 
 (define (|$pure:Maybe|  x) (Some x))
 (define (|$pure:List|   x) (Cons x Nil))
@@ -728,13 +738,9 @@
 (register-pure-impl! '$io          |$pure:IO|)
 
 ;; ----- Monoid mempty (return-typed) -------------------------------
+;; Sum / Product moved to rackton/data/monoid (Phase 2 slim).
 (define |$mempty:String|  "")
 (define |$mempty:List|    Nil)
-(define |$mempty:Sum|     (MkSum     0))
-(define |$mempty:Product| (MkProduct 1))
-
-(define (get-sum     s) (match s [(MkSum n) n]))
-(define (get-product p) (match p [(MkProduct n) n]))
 
 ;; ----- Semigroup <> -----------------------------------------------
 (define (semigroup-list-<> xs ys)
@@ -745,14 +751,6 @@
                            (lambda (a b) (rkt:string-append a b)))
 (register-instance-method! $dispatch:<> '$ctor:Nil  semigroup-list-<>)
 (register-instance-method! $dispatch:<> '$ctor:Cons semigroup-list-<>)
-(register-instance-method! $dispatch:<> '$ctor:MkSum
-                           (lambda (a b)
-                             (match a [(MkSum x)
-                                       (match b [(MkSum y) (MkSum (rkt:+ x y))])])))
-(register-instance-method! $dispatch:<> '$ctor:MkProduct
-                           (lambda (a b)
-                             (match a [(MkProduct x)
-                                       (match b [(MkProduct y) (MkProduct (rkt:* x y))])])))
 
 ;; ----- Traversable traverse ---------------------------------------
 ;; Each impl receives the resolved `pure-impl` as its leading argument
@@ -2381,8 +2379,7 @@
 
 (register-instance-method! $dispatch:mempty 'String  |$mempty:String|)
 (register-instance-method! $dispatch:mempty 'List    |$mempty:List|)
-(register-instance-method! $dispatch:mempty 'Sum     |$mempty:Sum|)
-(register-instance-method! $dispatch:mempty 'Product |$mempty:Product|)
+;; Sum / Product mempty register themselves from rackton/data/monoid.
 
 ;; Other return-typed methods (Floating.pi, MonadState.get-st,
 ;; MonadEnv.ask-en, Concurrent.await-c/yield-c).  Only the base
@@ -2391,8 +2388,12 @@
 (register-instance-method! $dispatch:pi 'Float   |$pi:Float|)
 (register-instance-method! $dispatch:pi 'Complex |$pi:Complex|)
 
-(register-instance-method! $dispatch:get-st 'State |$get-st:State|)
-(register-instance-method! $dispatch:ask-en 'Env   |$ask-en:Env|)
+(register-instance-method! $dispatch:get-st    'State |$get-st:State|)
+(register-instance-method! $dispatch:put-st    'State |$put-st:State|)
+(register-instance-method! $dispatch:modify-st 'State |$modify-st:State|)
+(register-instance-method! $dispatch:ask-en    'Env   |$ask-en:Env|)
+;; tell-w / throw-e have only needs-dict instances — no plain base to
+;; register; their tables stay empty.
 
 (register-instance-method! $dispatch:await-c 'IO       |$await-c:IO|)
 (register-instance-method! $dispatch:await-c 'Identity |$await-c:Identity|)
