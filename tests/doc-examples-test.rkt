@@ -109,10 +109,10 @@
   (check-equal? preview-absent None)
   (check-equal? review-result (DocPresent 42)))
 
-;; ----- do-and-monads.scrbl: List is not a Monad, use concat-map -----
+;; ----- do-and-monads.scrbl: concat-map, the standalone List bind -----
 ;;
-;; This is the negative claim — verify that concat-map IS available
-;; (since we directed users to it in place of (Monad List)).
+;; List is a Monad (flatmap is concatMap); concat-map is the same
+;; operation as a named function with list-comprehension argument order.
 
 (rackton
   (: doubled (List Integer))

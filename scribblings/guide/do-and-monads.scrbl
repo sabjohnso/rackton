@@ -64,6 +64,8 @@ A bare expression clause discards its result (via
 @itemlist[
 @item{@racket[Maybe]   — short-circuiting on @racket[None].}
 @item{@racket[Result e] — short-circuiting on @racket[Err].}
+@item{@racket[List]    — non-deterministic choice; @racket[flatmap] is
+      concatMap and @racket[do] gives cartesian-product semantics.}
 @item{@racket[IO]      — sequential side-effects (see @secref["io-and-mutation"]).}
 @item{@racket[State s], @racket[Env r] — pure threaded effects.}
 @item{@racket[StateT s m], @racket[EnvT r m], @racket[WriterT w m],
@@ -73,9 +75,11 @@ A bare expression clause discards its result (via
 @item{@racket[Identity] — the trivial monad, useful as a base for
       transformer stacks.}]
 
-@racket[List] is a @racket[Functor] and an @racket[Applicative] but
-@italic{not} a @racket[Monad] in the prelude.  Use @racket[concat-map]
-for non-deterministic sequencing.
+@racket[List]'s @racket[flatmap] is concatMap: each element is bound to
+a list and the results are concatenated, so @racket[do] over @racket[List]
+enumerates the cartesian product of the bound generators.  The
+standalone @racket[concat-map] function is the same operation with its
+arguments in list-comprehension order.
 
 @section{Return-typed methods: @racket[pure] and @racket[mempty]}
 

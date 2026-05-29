@@ -1570,6 +1570,14 @@
 (register-instance-method! $dispatch:fmap '$ctor:Nil   list-fmap)
 (register-instance-method! $dispatch:fmap '$ctor:Cons  list-fmap)
 
+;; concatMap — apply `f` to each element and append the resulting lists.
+(define (list-flatmap f xs)
+  (match xs
+    [(Nil)        Nil]
+    [(Cons h t)   (semigroup-list-<> (f h) (list-flatmap f t))]))
+(register-instance-method! $dispatch:flatmap '$ctor:Nil   list-flatmap)
+(register-instance-method! $dispatch:flatmap '$ctor:Cons  list-flatmap)
+
 ;; Result e
 (define result-fmap
   (lambda (f r)

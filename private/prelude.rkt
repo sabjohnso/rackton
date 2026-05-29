@@ -266,6 +266,19 @@
             [(Nil)         Nil]
             [(Cons f rest) (cat (fmap f xs) (fapply rest xs))]))))
 
+    ;; concatMap semantics — apply `f` to every element and concatenate
+    ;; the resulting lists.  As with `fapply` above, the top-level
+    ;; `append` isn't defined yet, so we inline the same `cat` helper.
+    (instance (Monad List)
+      (define (flatmap f xs)
+        (letrec ([cat (lambda (a b)
+                        (match a
+                          [(Nil)      b]
+                          [(Cons h t) (Cons h (cat t b))]))])
+          (match xs
+            [(Nil)        Nil]
+            [(Cons h t)   (cat (f h) (flatmap f t))]))))
+
     ;; Result e (the error type is fixed; we map over the success type)
     (instance (Functor (Result e))
       (define (fmap f r)
