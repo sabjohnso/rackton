@@ -74,7 +74,13 @@
 ;; `abstract?` records whether the data type is sealed —
 ;; its ctors are not re-exported across module boundaries.  Default
 ;; #f keeps existing code untouched.
-(struct tcon-info (name arity ctors abstract?) #:transparent)
+;; `runtime-tag` (U Symbol #f): for an opaque (data T) whose runtime
+;; values are a host struct (reached via `foreign`), the dispatch tag
+;; those values carry (= the struct's type name, what dispatch-tag
+;; returns).  When set, an instance's positional methods register under
+;; this tag instead of T's (nonexistent) constructor tags, so dispatch
+;; on those opaque values resolves.  #f for ordinary types.
+(struct tcon-info (name arity ctors abstract? runtime-tag) #:transparent)
 
 ;; A class's static information.
 ;;   name        : symbol — the class name

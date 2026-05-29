@@ -1827,14 +1827,15 @@
                      (tcon-info tname (length tparams)
                                 (for/list ([c (in-list ctors)])
                                   (data-ctor-name c))
-                                abstract?))))
+                                abstract?
+                                (top:data-runtime-tag f)))))
 
 ;; Resolve every top:data form's ctor field types against the
 ;; type-level-complete env, registering each ctor as a data binding.
 ;; Mirrors the existing `handle-top-form` top:data branch's ctor loop.
 (define (resolve-data-ctors env forms)
   (for/fold ([env env]) ([f (in-list forms)] #:when (top:data? f))
-    (match-define (top:data tname tparams ctors stx _abstract?) f)
+    (match-define (top:data tname tparams ctors stx _abstract? _runtime-tag) f)
     (define default-result-type
       (make-tapp (tcon tname)
                  (for/list ([p (in-list tparams)]) (tvar p))))
@@ -2518,7 +2519,7 @@
                                   (effect-op-name o)))
              declared)]
 
-    [(top:data tname tparams ctors stx abstract?)
+    [(top:data tname tparams ctors stx abstract? runtime-tag)
      (define default-result-type
        (make-tapp (tcon tname)
                   (for/list ([p (in-list tparams)]) (tvar p))))
@@ -2527,7 +2528,8 @@
                         (tcon-info tname (length tparams)
                                    (for/list ([c (in-list ctors)])
                                      (data-ctor-name c))
-                                   abstract?)))
+                                   abstract?
+                                   runtime-tag)))
      (define env**
        (for/fold ([e env*]) ([c (in-list ctors)])
          (define field-tys

@@ -150,7 +150,7 @@
 (struct top:dec      (name type stx) #:transparent)
 ;; `abstract?` flag — when #t, the data type's ctors are
 ;; NOT re-exported to importing modules.  The type-name itself is.
-(struct top:data     (name params ctors stx abstract?) #:transparent)
+(struct top:data     (name params ctors stx abstract? runtime-tag) #:transparent)
 ;; A data ctor may carry its own existential quantifier
 ;; via `#:forall (a) #:where (Cls a) ...` keywords between the ctor
 ;; name and the field types.  `extra-tvars` lists the existentially
@@ -1671,11 +1671,12 @@
   ;; Peel off the `#:abstract` flag (it may appear
   ;; alongside `#:deriving` in any order before the ctor list ends).
   (define-values (items-1 abstract?) (split-abstract items))
+  (define-values (items-2 runtime-tag) (split-runtime-tag items-1))
   (define-values (ctor-stxs deriving-classes)
-    (split-deriving items-1))
+    (split-deriving items-2))
   (define ctors
     (for/list ([c (in-list ctor-stxs)]) (parse-data-ctor c)))
-  (define data-form (top:data tname tparams ctors stx abstract?))
+  (define data-form (top:data tname tparams ctors stx abstract? runtime-tag))
   (cond
     [(null? deriving-classes) data-form]
     [else
@@ -1707,6 +1708,22 @@
       [(eq? (syntax->datum (car rem)) '#:abstract)
        (loop (cdr rem) acc #t)]
       [else (loop (cdr rem) (cons (car rem) acc) abs?)])))
+
+;; Peel off a `#:runtime-tag tag` pair from a data body items list.
+;; Returns (values rest tag-symbol-or-#f).  The tag names the dispatch
+;; tag the type's opaque runtime values carry (see tcon-info runtime-tag
+;; in env.rkt); used for foreign-backed opaque types with instances.
+(define (split-runtime-tag items)
+  (let loop ([rem items] [acc '()])
+    (cond
+      [(null? rem) (values (reverse acc) #f)]
+      [(eq? (syntax->datum (car rem)) '#:runtime-tag)
+       (when (null? (cdr rem))
+         (raise-syntax-error 'data "#:runtime-tag must be followed by a tag"
+                             (car rem)))
+       (values (append (reverse acc) (cddr rem))
+               (syntax->datum (cadr rem)))]
+      [else (loop (cdr rem) (cons (car rem) acc))])))
 
 ;; Split the trailing `#:deriving Cls ...` clause off a list of body
 ;; items.  Returns (values items-before deriving-classes).  Shared
@@ -1800,7 +1817,7 @@
   (define field-names (map car field-pairs))
   (define field-types (map cdr field-pairs))
   (define ctor (data-ctor-plain name field-types stx))
-  (define data-form (top:data name tparams (list ctor) stx abstract?))
+  (define data-form (top:data name tparams (list ctor) stx abstract? #f))
   (define accessor-defs
     (for/list ([fname (in-list field-names)]
                [i (in-naturals)])

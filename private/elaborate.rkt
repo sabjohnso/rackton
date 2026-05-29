@@ -178,7 +178,7 @@
        (hash-set! vars name #t)]
       [(top:foreign name _ _ _ _)
        (hash-set! vars name #t)]
-      [(top:data tname _ ctors _ _)
+      [(top:data tname _ ctors _ _ _)
        (hash-set! tcons tname #t)
        (for ([c (in-list ctors)])
          (define cname (data-ctor-name c))

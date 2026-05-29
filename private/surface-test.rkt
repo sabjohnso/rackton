@@ -64,7 +64,8 @@
                                              (data-ctor-extra-context c)
                                              (data-ctor-result-type c)))
                                 #f
-                                (top:data-abstract? v))]
+                                (top:data-abstract? v)
+                                (top:data-runtime-tag v))]
       [(top:class? v) (top:class (map strip (top:class-supers v))
                                  (strip (top:class-head v))
                                  (map strip (top:class-methods v))
@@ -210,12 +211,14 @@
                                            (list (ty:var 'a #f))
                                            #f '() '() #f))
                           #f
+                          #f
                           #f))
 
   (check-equal? (ptop '(data Bool True False))
                 (top:data 'Bool '()
                           (list (data-ctor 'True '() #f '() '() #f)
                                 (data-ctor 'False '() #f '() '() #f))
+                          #f
                           #f
                           #f))
 

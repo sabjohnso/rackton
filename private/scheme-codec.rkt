@@ -89,14 +89,19 @@
         (tcon-info-ctors ti)
         ;; Abstract? flag, present for newly-emitted sidecars;
         ;; old sidecars decode with #f.
-        (tcon-info-abstract? ti)))
+        (tcon-info-abstract? ti)
+        ;; Opaque runtime dispatch tag (or #f); lets an importer that
+        ;; defines a new instance for the type register it correctly.
+        (tcon-info-runtime-tag ti)))
 
 (define (decode-tcon-info datum)
   (match datum
+    [(list name arity ctors abstract? runtime-tag)
+     (tcon-info name arity ctors abstract? runtime-tag)]
     [(list name arity ctors abstract?)
-     (tcon-info name arity ctors abstract?)]
+     (tcon-info name arity ctors abstract? #f)]
     [(list name arity ctors)
-     (tcon-info name arity ctors #f)]))
+     (tcon-info name arity ctors #f #f)]))
 
 ;; ----- kinds, classes, instances ------------------------------
 

@@ -558,7 +558,7 @@
      (with-syntax ([n (datum->syntax stx name stx)]
                    [e (compile-expr expr*)])
        (syntax/loc stx (define n e)))]
-    [(top:data tname tparams ctors stx _abstract?)
+    [(top:data tname tparams ctors stx _abstract? _runtime-tag)
      (with-syntax
       ([(ctor-form ...)
         (for/list ([c (in-list ctors)])
@@ -1075,5 +1075,12 @@
      (unless ti
        (error 'tags-for-instance-head
               "no tcon info for ~s when registering instance" head-tcon))
-     (for/list ([c (in-list (tcon-info-ctors ti))])
-       (string->symbol (format "$ctor:~a" c)))]))
+     (cond
+       ;; Opaque type whose runtime values carry a declared dispatch tag
+       ;; (#:runtime-tag): register positional instance methods under it,
+       ;; matching what dispatch-tag returns for those host values.
+       [(tcon-info-runtime-tag ti)
+        (list (tcon-info-runtime-tag ti))]
+       [else
+        (for/list ([c (in-list (tcon-info-ctors ti))])
+          (string->symbol (format "$ctor:~a" c)))])]))
