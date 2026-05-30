@@ -31,7 +31,8 @@
          rackton/control/monad/reader
          rackton/control/monad/writer
          rackton/control/monad/except
-         rackton/system)
+         rackton/system
+         rackton/text/string)
 
 (provide (all-from-out rackton/data/maybe)
          (all-from-out rackton/data/either)
@@ -58,4 +59,5 @@
          (all-from-out rackton/control/monad/reader)
          (all-from-out rackton/control/monad/writer)
          (all-from-out rackton/control/monad/except)
+         (all-from-out rackton/text/string)
          (all-from-out rackton/system))

@@ -113,6 +113,12 @@ instances available.
 @item{@racketmodname[rackton/system] — the system interface: mutable
   references (@racket[Ref]), files, @racket[try] / @racket[raise-io],
   and process/environment access.}
+@item{@racketmodname[rackton/text/string] — String operations:
+  @racket[null-string?], @racket[reverse-string],
+  @racket[to-upper-string]/@racket[to-lower-string],
+  @racket[strip]/@racket[strip-start]/@racket[strip-end],
+  @racket[split-keep], @racket[lines]/@racket[words],
+  @racket[unlines]/@racket[unwords].}
 ]
 
 The mtl-style classes themselves (@racket[MonadState], @racket[MonadEnv],
