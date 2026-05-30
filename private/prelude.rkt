@@ -450,25 +450,9 @@
     ;; Rackton — no hand-written runtime needed).  That module owns
     ;; every mtl instance where StateT is the outer transformer.
 
-    ;; --- EnvT r m: env-passing over an inner monad m -------------
-
-    (newtype (EnvT r m a)
-      (MkEnvT (-> r (m a))))
-
-    (: run-env-t  (-> (EnvT r m a) (-> r (m a))))
-    (: ask-t      ((Applicative m) => (EnvT r m r)))
-    (: local-t    (-> (-> r r) (-> (EnvT r m a) (EnvT r m a))))
-    (: lift-env-t (-> (m a) (EnvT r m a)))
-
-    (instance ((Monad m) => (Functor (EnvT r m)))
-      (define (fmap f e) (racket (EnvT r m b) (f e) #f)))
-
-    (instance ((Monad m) => (Applicative (EnvT r m)))
-      (define (pure  a)    (racket (EnvT r m a) (a) #f))
-      (define (fapply ef ea)(racket (EnvT r m b) (ef ea) #f)))
-
-    (instance ((Monad m) => (Monad (EnvT r m)))
-      (define (flatmap f e) (racket (EnvT r m b) (e f) #f)))
+    ;; EnvT r m (env-passing over an inner monad) moved to
+    ;; rackton/control/monad/reader (Phase 2 slim, pure Rackton).  That
+    ;; module owns every mtl instance where EnvT is the outer transformer.
 
     ;; --- WriterT w m: accumulating writer over an inner monad ---
     ;;
@@ -537,10 +521,7 @@
     ;; (MonadState instances for State and StateT moved to
     ;; rackton/control/monad/state)
 
-    (instance ((MonadState s m) => (MonadState s (EnvT r m)))
-      (define get-st        (lift-env-t get-st))
-      (define (put-st x)    (lift-env-t (put-st x)))
-      (define (modify-st f) (lift-env-t (modify-st f))))
+    ;; (MonadState (EnvT r m) moved to rackton/control/monad/reader)
 
     (instance ((MonadState s m) (Monoid w) => (MonadState s (WriterT w m)))
       (define get-st        (lift-writer-t get-st))
@@ -559,13 +540,9 @@
       (: ask-en   (m r))
       (: local-en (-> (-> r r) (-> (m a) (m a)))))
 
-    ;; (MonadEnv (Env r) instance moved to rackton/control/monad/reader)
-
-    (instance ((Monad m) => (MonadEnv r (EnvT r m)))
-      (define ask-en     ask-t)
-      (define (local-en f e) (local-t f e)))
-
-    ;; (MonadEnv (StateT s m) moved to rackton/control/monad/state)
+    ;; (MonadEnv instances for Env and EnvT moved to
+    ;; rackton/control/monad/reader; MonadEnv (StateT s m) to
+    ;; rackton/control/monad/state)
 
     (instance ((MonadEnv r m) (Monoid w) => (MonadEnv r (WriterT w m)))
       (define ask-en     (lift-writer-t ask-en))
@@ -592,10 +569,7 @@
 
     ;; (MonadWriter (StateT s m) moved to rackton/control/monad/state)
 
-    (instance ((MonadWriter w m) => (MonadWriter w (EnvT r m)))
-      (define (tell-w x)    (lift-env-t (tell-w x)))
-      (define (listen em)   (racket (EnvT r m (Pair a w))       (em)   #f))
-      (define (censor f em) (racket (EnvT r m a)                (f em) #f)))
+    ;; (MonadWriter (EnvT r m) moved to rackton/control/monad/reader)
 
     (instance ((MonadWriter w m) => (MonadWriter w (ExceptT e m)))
       (define (tell-w x)    (lift-except-t (tell-w x)))
@@ -615,10 +589,7 @@
 
     ;; (MonadError (StateT s m) moved to rackton/control/monad/state)
 
-    (instance ((MonadError e m) => (MonadError e (EnvT r m)))
-      (define (throw-e ev)   (lift-env-t (throw-e ev)))
-      (define (catch-e em h)
-        (racket (EnvT r m a) (em h) #f)))
+    ;; (MonadError (EnvT r m) moved to rackton/control/monad/reader)
 
     (instance ((MonadError e m) (Monoid w) =>
                       (MonadError e (WriterT w m)))

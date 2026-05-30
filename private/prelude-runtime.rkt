@@ -97,8 +97,8 @@
  ;; StateT runtime (MkStateT, run/eval/exec/get/put/modify/lift-state-t,
  ;; and its $pure / $flatmap / mtl impls) moved to
  ;; rackton/control/monad/state — authored there as pure Rackton.
- MkEnvT MkWriterT MkExceptT MkIdentity
- run-env-t ask-t local-t lift-env-t
+ ;; EnvT runtime moved to rackton/control/monad/reader.
+ MkWriterT MkExceptT MkIdentity
  run-writer-t eval-writer-t exec-writer-t tell lift-writer-t
  run-except-t throw-error catch-error lift-except-t
 
@@ -127,7 +127,6 @@
  ;; Return-typed class methods (resolved at compile time per call site;
  ;; the `$pure:TCon` names are what the codegen emits after resolution).
  |$pure:Maybe| |$pure:List| |$pure:Result| |$pure:IO|
- |$pure:EnvT|
  |$pure:WriterT| |$pure:ExceptT|
  ;; Per-instance class-method impls for compile-time direct
  ;; dispatch.  Receive instance-qual dict args as
@@ -136,22 +135,18 @@
  ;; instance.
  |$flatmap:ExceptT| |$fapply:ExceptT| |$liftA2:ExceptT|
  |$flatmap:WriterT| |$fapply:WriterT| |$liftA2:WriterT|
- |$flatmap:EnvT|    |$fapply:EnvT|    |$liftA2:EnvT|
  |$mempty:String| |$mempty:List|
  ;; Mtl-style class impls.  Base instances are 0-dict; lifted
  ;; instances over a transformer take per-method dict args from the
  ;; inner monad's instance (order matches the class's return-typed
  ;; method declaration order — see build-dict-skolems in infer.rkt).
- |$get-st:EnvT|     |$put-st:EnvT|     |$modify-st:EnvT|
  |$get-st:WriterT|  |$put-st:WriterT|  |$modify-st:WriterT|
  |$get-st:ExceptT|  |$put-st:ExceptT|  |$modify-st:ExceptT|
- |$ask-en:EnvT|    |$local-en:EnvT|
  |$ask-en:WriterT| |$local-en:WriterT|
  |$ask-en:ExceptT| |$local-en:ExceptT|
- |$tell-w:WriterT| |$tell-w:EnvT| |$tell-w:ExceptT|
+ |$tell-w:WriterT| |$tell-w:ExceptT|
  |$listen:WriterT| |$censor:WriterT|
  |$throw-e:ExceptT| |$catch-e:ExceptT|
- |$throw-e:EnvT|    |$catch-e:EnvT|
  |$throw-e:WriterT| |$catch-e:WriterT|
  ;; Runtime dispatchers for the positional class methods
  ;; introduced by mtl polish (local-en already covered above).
@@ -318,7 +313,7 @@
 ;; MkState / MkEnv moved to rackton/control/monad/state + reader.
 
 ;; MkStateT moved to rackton/control/monad/state.
-(define-data-ctor MkEnvT   1)
+;; MkEnvT moved to rackton/control/monad/reader.
 
 (define-data-ctor MkWriterT 1)
 (define-data-ctor MkExceptT 1)
@@ -424,9 +419,8 @@
     ;; (MkStateT witness case moved with StateT to
     ;; rackton/control/monad/state; ExceptT/EnvT-over-StateT that would
     ;; recurse here now resolve StateT's pure via the dict path.)
-    [($ctor:MkEnvT)
-     (define inner-pure (pure-via-witness ((run-env-t witness) #f)))
-     (lambda (a) (MkEnvT (lambda (_) (inner-pure a))))]
+    ;; (MkEnvT witness case moved with EnvT to rackton/control/monad/
+    ;; reader.)
     [($ctor:MkWriterT)
      ;; WriterT's pure needs both inner-pure AND the log Monoid's
      ;; mempty.  The witness alone doesn't carry the monoid type;
@@ -1466,41 +1460,7 @@
 ;; Rackton — the module regenerates run/eval/exec/get/put/modify/lift,
 ;; the Functor/Applicative/Monad impls, and the mtl pass-throughs).
 
-;; ----- EnvT r m runtime -----------------------------------------
-
-(define (run-env-t e) (match e [(MkEnvT f) f]))
-
-(define/curried ($pure:EnvT inner-pure a)
-  (MkEnvT (lambda (_) (inner-pure a))))
-
-;; ask-t is 0-user-arg (just takes the dict).
-(define (ask-t inner-pure) (MkEnvT (lambda (r) (inner-pure r))))
-(define/curried (local-t f e) (MkEnvT (lambda (r) ((run-env-t e) (f r)))))
-(register-instance-method! $dispatch:local-en '$ctor:MkEnvT local-t)
-(define (lift-env-t ma) (MkEnvT (lambda (_) ma)))
-
-(define (env-t-fmap f e)
-  (MkEnvT (lambda (r) (fmap f ((run-env-t e) r)))))
-(register-instance-method! $dispatch:fmap '$ctor:MkEnvT env-t-fmap)
-
-(define (env-t-ap ef ea)
-  (MkEnvT (lambda (r)
-            (flatmap (lambda (f) (fmap f ((run-env-t ea) r)))
-                     ((run-env-t ef) r)))))
-(register-instance-method! $dispatch:fapply '$ctor:MkEnvT env-t-ap)
-
-(define (env-t-liftA2 g ea eb)
-  (MkEnvT (lambda (r)
-            (flatmap (lambda (a) (fmap (lambda (b) (g a b))
-                                       ((run-env-t eb) r)))
-                     ((run-env-t ea) r)))))
-(register-instance-method! $dispatch:liftA2 '$ctor:MkEnvT env-t-liftA2)
-
-(define (env-t-flatmap f e)
-  (MkEnvT (lambda (r)
-            (flatmap (lambda (a) ((run-env-t (f a)) r))
-                     ((run-env-t e) r)))))
-(register-instance-method! $dispatch:flatmap '$ctor:MkEnvT env-t-flatmap)
+;; EnvT r m runtime moved to rackton/control/monad/reader (pure Rackton).
 
 ;; ----- Applicative instances ------------------------------------
 
@@ -1731,16 +1691,8 @@
 (define/curried (|$liftA2:WriterT| inner-pure inner-mempty g wa wb)
   (writer-t-liftA2 g wa wb))
 
-;; EnvT class-method impls also become reachable through the
-;; compile-time-direct dispatch path because their instances carry
-;; `(Monad m) =>`.  The runtime bodies don't actually need the dict
-;; args (built using only inner fmap/flatmap), but the named impls
-;; accept them to match the elaborator's uniform insertion rule.
-;; (StateT's equivalents are regenerated in rackton/control/monad/state.)
-
-(define/curried (|$flatmap:EnvT| inner-pure f e)      (env-t-flatmap f e))
-(define/curried (|$fapply:EnvT|  inner-pure ef ea)    (env-t-ap ef ea))
-(define/curried (|$liftA2:EnvT|  inner-pure g ea eb)  (env-t-liftA2 g ea eb))
+;; (StateT/EnvT class-method impls are regenerated in
+;; rackton/control/monad/{state,reader}.)
 
 ;; ----- ExceptT e m runtime ---------------------------------------
 
@@ -1845,19 +1797,8 @@
 ;; $get-st/$put-st/$modify-st for State and StateT moved to
 ;; rackton/control/monad/state.
 
-;; EnvT r m: lifts the inner MonadState dict through lift-env-t.
-;; Dict-arg order matches collect-dict-method-args: methods of the
-;; class sorted alphabetically, then superclass closure (Monad's
-;; `pure`).  For MonadState that's (get-st, modify-st, put-st, pure).
-(define/curried (|$get-st:EnvT|
-                  inner-get inner-modify inner-put inner-pure)
-  (lift-env-t inner-get))
-(define/curried (|$put-st:EnvT|
-                  inner-get inner-modify inner-put inner-pure x)
-  (lift-env-t (inner-put x)))
-(define/curried (|$modify-st:EnvT|
-                  inner-get inner-modify inner-put inner-pure f)
-  (lift-env-t (inner-modify f)))
+;; ($get-st/$put-st/$modify-st:EnvT moved to
+;; rackton/control/monad/reader.)
 
 ;; WriterT w m: also gets Monoid w's mempty dict appended after the
 ;; MonadState dicts (own-methods sorted, then super-closure: pure,
@@ -1885,13 +1826,8 @@
 
 ;; ----- MonadEnv r X ---------------------------------------------
 
-;; $ask-en:Env / $local-en:Env moved to rackton/control/monad/reader.
-(define |$ask-en:EnvT|      ask-t)
-;; $local-en:EnvT accepts the inner-pure dict (from the
-;; EnvT MonadEnv instance's `(Monad m)` qual) as a leading arg, even
-;; though local-t itself doesn't use it.  Without this slot the dict
-;; layout would mis-shift the user args.
-(define/curried (|$local-en:EnvT| inner-pure f e) (local-t f e))
+;; $ask-en/$local-en for Env and EnvT moved to
+;; rackton/control/monad/reader.
 
 ;; MonadEnv's `local-en` is positional (not return-typed), so it never
 ;; appears in the dict-args.  Dict-arg order for MonadEnv is own
@@ -1937,9 +1873,8 @@
 
 ;; MonadWriter dict-arg order: own (tell-w), then super closure of
 ;; ((Monoid w) (Monad m)) → (mempty, pure).
-;; ($tell-w:StateT moved to rackton/control/monad/state.)
-(define/curried (|$tell-w:EnvT| inner-tell inner-mempty inner-pure x)
-  (lift-env-t (inner-tell x)))
+;; ($tell-w:StateT moved to rackton/control/monad/state;
+;; $tell-w:EnvT to rackton/control/monad/reader.)
 (define/curried (|$tell-w:ExceptT|
                   inner-tell inner-mempty inner-pure x)
   (lift-except-t (inner-tell x)))
@@ -1956,14 +1891,8 @@
 ;; That lets deeper qual chains (e.g. ExceptT-over-ExceptT-over-IO)
 ;; resolve correctly — the inner catch is whatever instance is
 ;; registered for the inner value's ctor.
-;; ($throw-e/$catch-e:StateT moved to rackton/control/monad/state.)
-
-(define/curried (|$throw-e:EnvT| inner-throw inner-pure ev)
-  (lift-env-t (inner-throw ev)))
-(define/curried (|$catch-e:EnvT| inner-throw inner-pure em h)
-  (MkEnvT (lambda (r)
-            (catch-e ((run-env-t em) r)
-                     (lambda (e) ((run-env-t (h e)) r))))))
+;; ($throw-e/$catch-e:StateT moved to rackton/control/monad/state;
+;; $throw-e/$catch-e:EnvT to rackton/control/monad/reader.)
 
 (define/curried (|$throw-e:WriterT|
                   inner-throw inner-pure mempty-w ev)
@@ -1989,12 +1918,8 @@
 ;; the curried `$method:T` impls; this just adds a parallel path.
 
 ;; catch-e on transformer-wrapped values.
-;; (catch-e for MkStateT registered in rackton/control/monad/state.)
-(register-instance-method! $dispatch:catch-e '$ctor:MkEnvT
-  (lambda (em h)
-    (MkEnvT (lambda (r)
-              (catch-e ((run-env-t em) r)
-                       (lambda (e) ((run-env-t (h e)) r)))))))
+;; (catch-e for MkStateT/MkEnvT registered in
+;; rackton/control/monad/{state,reader}.)
 (register-instance-method! $dispatch:catch-e '$ctor:MkWriterT
   (lambda (wm h)
     (MkWriterT
