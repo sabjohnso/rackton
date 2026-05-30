@@ -137,6 +137,10 @@ instances available.
   @racket[num-from-integral].  Exports are @racket[num-]-prefixed so
   they don't shadow racket/base's @racket[gcd]/@racket[even?] inside
   @racket[(racket …)] escapes.}
+@item{@racketmodname[rackton/numeric/real] — Floating/RealFrac extras:
+  @racket[num-asin]/@racket[num-acos]/@racket[num-atan],
+  @racket[num-sinh]/@racket[num-cosh]/@racket[num-tanh],
+  @racket[num-log-base], @racket[num-proper-fraction].}
 ]
 
 The mtl-style classes themselves (@racket[MonadState], @racket[MonadEnv],
