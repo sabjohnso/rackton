@@ -54,9 +54,12 @@ instances available.
   @racket[ne-to-list]/@racket[ne-from-list], @racket[ne-cons],
   @racket[ne-map], @racket[ne-length].}
 @item{@racketmodname[rackton/data/ratio] — derived @racket[Rational]
-  ops: @racket[ratio], @racket[recip], @racket[to-float] (the type and
+  ops: @racket[ratio], @racket[recip], @racket[to-float], and
+  @racket[approx-rational] (the simplest @racket[Rational] within a
+  given tolerance of a @racket[Float], i.e. Numeric's
+  @tt{approxRational}).  (The type and
   @racket[make-rational]/@racket[numerator]/@racket[denominator] are in
-  the prelude).}
+  the prelude.)}
 @item{@racketmodname[rackton/data/complex] — derived @racket[Complex]
   ops: @racket[conjugate], @racket[phase], @racket[mk-polar],
   @racket[cis], @racket[polar] (the type and @racket[make-complex] /
