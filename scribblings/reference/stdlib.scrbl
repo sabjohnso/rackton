@@ -31,6 +31,12 @@ instances available.
   @racket[either] eliminator, @racket[is-ok]/@racket[is-err],
   @racket[from-ok]/@racket[from-err], @racket[oks]/@racket[errs],
   @racket[partition-results], and @racket[Maybe] interop.}
+@item{@racketmodname[rackton/data/char] — Data.Char predicates
+  (@racket[digit?], @racket[upper?], @racket[lower?], @racket[alpha?],
+  @racket[alpha-num?], @racket[hex-digit?], @racket[space?],
+  @racket[control?], @racket[punctuation?]) and conversions
+  (@racket[ord], @racket[chr], @racket[to-upper], @racket[to-lower],
+  @racket[digit->int], @racket[int->digit]).}
 @item{@racketmodname[rackton/data/monoid] — the @racket[Sum] and
   @racket[Product] @racket[Monoid] newtypes over numbers.}
 @item{@racketmodname[rackton/data/list] — the extended list combinators
