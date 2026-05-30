@@ -113,3 +113,124 @@
   (check-equal? r-zipwith (Cons 11 (Cons 22 Nil)))
   (check-equal? r-unzip   (MkPair (Cons 1 (Cons 2 Nil)) (Cons "a" (Cons "b" Nil))))
   (check-equal? r-nub     (Cons 1 (Cons 2 (Cons 3 Nil)))))
+
+;; ===== finishing batch ==============================================
+
+(rackton
+  (require rackton/data/list)
+
+  ;; scans
+  (: q-scanl (List Integer))
+  (define q-scanl (scanl (lambda (acc x) (+ acc x)) 0 (list 1 2 3)))
+  (: q-scanr (List Integer))
+  (define q-scanr (scanr (lambda (x acc) (+ x acc)) 0 (list 1 2 3)))
+
+  ;; grouping / sublists
+  (: q-group (List (List Integer)))
+  (define q-group (group (list 1 1 2 3 3)))
+  (: q-inits (List (List Integer)))
+  (define q-inits (inits (list 1 2)))
+  (: q-tails (List (List Integer)))
+  (define q-tails (tails (list 1 2)))
+
+  ;; prefix / suffix / infix / strip
+  (: q-prefix Boolean) (define q-prefix (prefix? (list 1 2) (list 1 2 3)))
+  (: q-suffix Boolean) (define q-suffix (suffix? (list 2 3) (list 1 2 3)))
+  (: q-infix Boolean)  (define q-infix  (infix?  (list 2 3) (list 1 2 3 4)))
+  (: q-strip (Maybe (List Integer)))
+  (define q-strip (strip-prefix (list 1 2) (list 1 2 3)))
+
+  ;; transpose
+  (: q-transpose (List (List Integer)))
+  (define q-transpose (transpose (list (list 1 2 3) (list 4 5 6))))
+
+  ;; set-like
+  (: q-delete (List Integer)) (define q-delete (delete 2 (list 1 2 3 2)))
+  (: q-insert (List Integer)) (define q-insert (insert 3 (list 1 2 4 5)))
+  (: q-diff (List Integer))   (define q-diff (list-difference (list 1 2 3 2) (list 2)))
+  (: q-union (List Integer))  (define q-union (union (list 1 2 3) (list 2 4)))
+  (: q-intersect (List Integer)) (define q-intersect (intersect (list 1 2 3 4) (list 2 4 6)))
+
+  ;; sorting
+  (: q-sortby (List Integer))
+  (define q-sortby (sort-by (lambda (a b) (> a b)) (list 3 1 2)))
+  (: q-sorton (List Integer))
+  (define q-sorton (sort-on (lambda (x) (- 10 x)) (list 1 2 3)))
+
+  ;; folds
+  (: q-foldl1 (Maybe Integer))
+  (define q-foldl1 (foldl1 (lambda (a b) (- a b)) (list 10 1 2)))
+  (: q-foldr1 (Maybe Integer))
+  (define q-foldr1 (foldr1 (lambda (a b) (- a b)) (list 10 1 2)))
+
+  ;; generation
+  (: q-iterate (List Integer))
+  (define q-iterate (iterate-n 4 (lambda (x) (* x 2)) 1))
+  (: q-cycle (List Integer))
+  (define q-cycle (cycle-n 3 (list 1 2)))
+  (: q-unfoldr (List Integer))
+  (define q-unfoldr (unfoldr (lambda (n) (if (> n 0) (Some (MkPair n (- n 1))) None)) 3))
+
+  ;; nub-by / combinatorial / mapAccumL
+  (: q-nubby (List Integer))
+  (define q-nubby (nub-by (lambda (a b) (== (mod a 3) (mod b 3))) (list 1 4 2 5)))
+  (: q-subseq (List (List Integer)))
+  (define q-subseq (subsequences (list 1 2)))
+  (: q-perms (List (List Integer)))
+  (define q-perms (permutations (list 1 2)))
+  (: q-mapaccum (Pair Integer (List Integer)))
+  (define q-mapaccum
+    (map-accum-l (lambda (s x) (MkPair (+ s x) (* x 10))) 0 (list 1 2 3))))
+
+;; ---------- assertions (finishing batch) ----------------------------
+
+;; racket helpers that build a rackton List from racket values
+;; (can't use rackton's `foldr` here — it dispatches on a rackton
+;; container, not a racket list).
+(define (lst . xs)
+  (let loop ([xs xs]) (if (null? xs) Nil (Cons (car xs) (loop (cdr xs))))))
+(define llst lst)
+
+(test-case "scans"
+  (check-equal? q-scanl (lst 0 1 3 6))
+  (check-equal? q-scanr (lst 6 5 3 0)))
+
+(test-case "grouping / sublists"
+  (check-equal? q-group (llst (lst 1 1) (lst 2) (lst 3 3)))
+  (check-equal? q-inits (llst Nil (lst 1) (lst 1 2)))
+  (check-equal? q-tails (llst (lst 1 2) (lst 2) Nil)))
+
+(test-case "prefix / suffix / infix / strip"
+  (check-equal? q-prefix #t)
+  (check-equal? q-suffix #t)
+  (check-equal? q-infix  #t)
+  (check-equal? q-strip  (Some (lst 3))))
+
+(test-case "transpose"
+  (check-equal? q-transpose (llst (lst 1 4) (lst 2 5) (lst 3 6))))
+
+(test-case "set-like"
+  (check-equal? q-delete    (lst 1 3 2))
+  (check-equal? q-insert    (lst 1 2 3 4 5))
+  (check-equal? q-diff      (lst 1 3 2))
+  (check-equal? q-union     (lst 1 2 3 4))
+  (check-equal? q-intersect (lst 2 4)))
+
+(test-case "sorting"
+  (check-equal? q-sortby (lst 3 2 1))
+  (check-equal? q-sorton (lst 3 2 1)))
+
+(test-case "folds with seed-from-list"
+  (check-equal? q-foldl1 (Some 7))     ; (10-1)-2
+  (check-equal? q-foldr1 (Some 11)))   ; 10-(1-2)
+
+(test-case "generation"
+  (check-equal? q-iterate (lst 1 2 4 8))
+  (check-equal? q-cycle   (lst 1 2 1 2 1 2))
+  (check-equal? q-unfoldr (lst 3 2 1)))
+
+(test-case "nub-by / combinatorial / mapAccumL"
+  (check-equal? q-nubby   (lst 1 2))
+  (check-equal? q-subseq  (llst Nil (lst 2) (lst 1) (lst 1 2)))
+  (check-equal? q-perms   (llst (lst 1 2) (lst 2 1)))
+  (check-equal? q-mapaccum (MkPair 6 (lst 10 20 30))))

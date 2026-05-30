@@ -245,3 +245,215 @@
   (match xs
     [(Nil)      Nil]
     [(Cons h t) (Cons h (nub (filter (lambda (y) (not (== h y))) t)))]))
+
+(: nub-by (-> (-> a (-> a Boolean)) (-> (List a) (List a))))
+(define (nub-by eq? xs)
+  (match xs
+    [(Nil)      Nil]
+    [(Cons h t) (Cons h (nub-by eq? (filter (lambda (y) (not (eq? h y))) t)))]))
+
+;; --- scans ---------------------------------------------------------
+
+(: scanl (-> (-> b (-> a b)) (-> b (-> (List a) (List b)))))
+(define (scanl f z xs)
+  (Cons z (match xs
+            [(Nil)      Nil]
+            [(Cons h t) (scanl f (f z h) t)])))
+
+(: scanr (-> (-> a (-> b b)) (-> b (-> (List a) (List b)))))
+(define (scanr f z xs)
+  (match xs
+    [(Nil)      (Cons z Nil)]
+    [(Cons h t) (match (scanr f z t)
+                  [(Cons q qs) (Cons (f h q) (Cons q qs))]
+                  [(Nil)       (Cons (f h z) Nil)])]))
+
+;; --- grouping / sublists -------------------------------------------
+
+;; consecutive runs of equal elements (Haskell `group`).
+;; Uses take-while/drop-while directly rather than `let`-binding a
+;; `span` result: let-generalizing a value whose type carries the
+;; instance's own `(Eq a)` over the rigid skolem can't discharge the
+;; constraint at the let.
+(: group ((Eq a) => (-> (List a) (List (List a)))))
+(define (group xs)
+  (match xs
+    [(Nil)      Nil]
+    [(Cons h t) (Cons (Cons h (take-while (lambda (y) (== y h)) t))
+                      (group (drop-while (lambda (y) (== y h)) t)))]))
+
+(: inits (-> (List a) (List (List a))))
+(define (inits xs)
+  (Cons Nil (match xs
+              [(Nil)      Nil]
+              [(Cons h t) (fmap (lambda (i) (Cons h i)) (inits t))])))
+
+(: tails (-> (List a) (List (List a))))
+(define (tails xs)
+  (Cons xs (match xs
+             [(Nil)      Nil]
+             [(Cons _ t) (tails t)])))
+
+;; --- prefix / suffix / infix ---------------------------------------
+
+(: prefix? ((Eq a) => (-> (List a) (-> (List a) Boolean))))
+(define (prefix? ps xs)
+  (match ps
+    [(Nil)       #t]
+    [(Cons p pt) (match xs
+                   [(Nil)       #f]
+                   [(Cons x xt) (if (== p x) (prefix? pt xt) #f)])]))
+
+(: suffix? ((Eq a) => (-> (List a) (-> (List a) Boolean))))
+(define (suffix? ss xs) (prefix? (reverse ss) (reverse xs)))
+
+(: infix? ((Eq a) => (-> (List a) (-> (List a) Boolean))))
+(define (infix? ns xs) (any? (lambda (t) (prefix? ns t)) (tails xs)))
+
+(: strip-prefix ((Eq a) => (-> (List a) (-> (List a) (Maybe (List a))))))
+(define (strip-prefix ps xs)
+  (match ps
+    [(Nil)       (Some xs)]
+    [(Cons p pt) (match xs
+                   [(Nil)       None]
+                   [(Cons x xt) (if (== p x) (strip-prefix pt xt) None)])]))
+
+;; --- transpose -----------------------------------------------------
+
+(: transpose (-> (List (List a)) (List (List a))))
+(define (transpose xss)
+  (match xss
+    [(Nil)             Nil]
+    [(Cons (Nil) rest) (transpose rest)]
+    [(Cons (Cons x xs) rest)
+     (Cons (Cons x (concat-map (lambda (l) (match l [(Nil) Nil] [(Cons h _) (Cons h Nil)])) rest))
+           (transpose (Cons xs (fmap (lambda (l) (match l [(Nil) Nil] [(Cons _ t) t])) rest))))]))
+
+;; --- set-like ops (by element equality / order) -------------------
+
+(: delete ((Eq a) => (-> a (-> (List a) (List a)))))
+(define (delete x xs)
+  (match xs
+    [(Nil)      Nil]
+    [(Cons h t) (if (== x h) t (Cons h (delete x t)))]))
+
+;; insert into a sorted list, before the first strictly-greater element.
+(: insert ((Ord a) => (-> a (-> (List a) (List a)))))
+(define (insert x xs)
+  (match xs
+    [(Nil)      (Cons x Nil)]
+    [(Cons h t) (if (> h x) (Cons x xs) (Cons h (insert x t)))]))
+
+(: list-difference ((Eq a) => (-> (List a) (-> (List a) (List a)))))
+(define (list-difference xs ys)
+  (fold-left (lambda (acc y) (delete y acc)) xs ys))
+
+(: union ((Eq a) => (-> (List a) (-> (List a) (List a)))))
+(define (union xs ys)
+  (append xs (filter (lambda (y) (not (elem y xs))) (nub ys))))
+
+(: intersect ((Eq a) => (-> (List a) (-> (List a) (List a)))))
+(define (intersect xs ys)
+  (filter (lambda (x) (elem x ys)) xs))
+
+;; --- sorting by comparator / key -----------------------------------
+
+;; lt? is a strict less-than; the merge is stable (keeps left on ties).
+(: merge-by (-> (-> a (-> a Boolean)) (-> (List a) (-> (List a) (List a)))))
+(define (merge-by lt? xs ys)
+  (match xs
+    [(Nil) ys]
+    [(Cons hx tx)
+     (match ys
+       [(Nil) xs]
+       [(Cons hy ty)
+        (if (lt? hy hx)
+            (Cons hy (merge-by lt? xs ty))
+            (Cons hx (merge-by lt? tx ys)))])]))
+
+(: sort-by (-> (-> a (-> a Boolean)) (-> (List a) (List a))))
+(define (sort-by lt? xs)
+  (let ([n (length xs)])
+    (if (< n 2)
+        xs
+        (let ([halves (split-at (racket Integer (n) (quotient n 2)) xs)])
+          (merge-by lt? (sort-by lt? (fst halves)) (sort-by lt? (snd halves)))))))
+
+(: sort-on ((Ord b) => (-> (-> a b) (-> (List a) (List a)))))
+(define (sort-on key xs)
+  (sort-by (lambda (p q) (< (key p) (key q))) xs))
+
+;; --- folds with no seed (Maybe on empty) ---------------------------
+
+(: foldl1 (-> (-> a (-> a a)) (-> (List a) (Maybe a))))
+(define (foldl1 f xs)
+  (match xs
+    [(Nil)      None]
+    [(Cons h t) (Some (fold-left f h t))]))
+
+(: foldr1 (-> (-> a (-> a a)) (-> (List a) (Maybe a))))
+(define (foldr1 f xs)
+  (match xs
+    [(Nil)          None]
+    [(Cons h (Nil)) (Some h)]
+    [(Cons h t)     (match (foldr1 f t)
+                      [(Some r) (Some (f h r))]
+                      [(None)   None])]))
+
+;; --- generation ----------------------------------------------------
+
+;; bounded `iterate`: [x, f x, f (f x), …] of length n.
+(: iterate-n (-> Integer (-> (-> a a) (-> a (List a)))))
+(define (iterate-n n f x)
+  (if (<= n 0) Nil (Cons x (iterate-n (- n 1) f (f x)))))
+
+;; n copies of xs concatenated.
+(: cycle-n (-> Integer (-> (List a) (List a))))
+(define (cycle-n n xs)
+  (if (<= n 0) Nil (append xs (cycle-n (- n 1) xs))))
+
+(: unfoldr (-> (-> b (Maybe (Pair a b))) (-> b (List a))))
+(define (unfoldr f seed)
+  (match (f seed)
+    [(None)              Nil]
+    [(Some (MkPair a b)) (Cons a (unfoldr f b))]))
+
+;; --- combinatorial -------------------------------------------------
+
+(: subsequences (-> (List a) (List (List a))))
+(define (subsequences xs)
+  (match xs
+    [(Nil)      (Cons Nil Nil)]
+    [(Cons h t) (let ([rest (subsequences t)])
+                  (append rest (fmap (lambda (s) (Cons h s)) rest)))]))
+
+;; each element paired with the list of the others (order preserved).
+(: selections (-> (List a) (List (Pair a (List a)))))
+(define (selections xs)
+  (match xs
+    [(Nil)      Nil]
+    [(Cons h t) (Cons (MkPair h t)
+                      (fmap (lambda (sel)
+                              (match sel [(MkPair y ys) (MkPair y (Cons h ys))]))
+                            (selections t)))]))
+
+(: permutations (-> (List a) (List (List a))))
+(define (permutations xs)
+  (match xs
+    [(Nil) (Cons Nil Nil)]
+    [_     (concat-map (lambda (sel)
+                         (match sel
+                           [(MkPair x rest)
+                            (fmap (lambda (p) (Cons x p)) (permutations rest))]))
+                       (selections xs))]))
+
+;; --- mapAccumL -----------------------------------------------------
+
+(: map-accum-l (-> (-> s (-> a (Pair s b))) (-> s (-> (List a) (Pair s (List b))))))
+(define (map-accum-l f s xs)
+  (match xs
+    [(Nil)      (MkPair s Nil)]
+    [(Cons h t) (match (f s h)
+                  [(MkPair s2 b)
+                   (match (map-accum-l f s2 t)
+                     [(MkPair s3 bs) (MkPair s3 (Cons b bs))])])]))

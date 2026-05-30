@@ -292,6 +292,75 @@ Largest / smallest element, or @racket[None] when empty.  Require @racket[(Ord a
 @defproc[(nub [xs (List a)]) (List a)]{
 Remove duplicates, keeping first occurrences.  Requires @racket[(Eq a)].}
 
+@defproc[(nub-by [eq? (-> a (-> a Boolean))] [xs (List a)]) (List a)]{
+@racket[nub] with a caller-supplied equality.}
+
+@deftogether[(
+  @defproc[(scanl [f (-> b (-> a b))] [z b] [xs (List a)]) (List b)]
+  @defproc[(scanr [f (-> a (-> b b))] [z b] [xs (List a)]) (List b)])]{
+Left / right folds that return all intermediate accumulators.}
+
+@defproc[(group [xs (List a)]) (List (List a))]{
+Runs of consecutive equal elements.  Requires @racket[(Eq a)].}
+
+@deftogether[(
+  @defproc[(inits [xs (List a)]) (List (List a))]
+  @defproc[(tails [xs (List a)]) (List (List a))])]{
+All prefixes (shortest first) / all suffixes (longest first).}
+
+@deftogether[(
+  @defproc[(prefix? [ps (List a)] [xs (List a)]) Boolean]
+  @defproc[(suffix? [ss (List a)] [xs (List a)]) Boolean]
+  @defproc[(infix?  [ns (List a)] [xs (List a)]) Boolean])]{
+Sublist tests (Haskell @tt{isPrefixOf} / @tt{isSuffixOf} / @tt{isInfixOf}).
+Require @racket[(Eq a)].}
+
+@defproc[(strip-prefix [ps (List a)] [xs (List a)]) (Maybe (List a))]{
+Drop @racket[ps] from the front of @racket[xs], or @racket[None] if it
+isn't a prefix.  Requires @racket[(Eq a)].}
+
+@defproc[(transpose [xss (List (List a))]) (List (List a))]{
+Transpose rows and columns (ragged-aware).}
+
+@deftogether[(
+  @defproc[(delete          [x a] [xs (List a)]) (List a)]
+  @defproc[(list-difference [xs (List a)] [ys (List a)]) (List a)]
+  @defproc[(union           [xs (List a)] [ys (List a)]) (List a)]
+  @defproc[(intersect       [xs (List a)] [ys (List a)]) (List a)])]{
+Remove the first occurrence / list difference / union / intersection,
+by element equality.  Require @racket[(Eq a)].}
+
+@defproc[(insert [x a] [xs (List a)]) (List a)]{
+Insert @racket[x] into a sorted list before the first greater element.
+Requires @racket[(Ord a)].}
+
+@deftogether[(
+  @defproc[(sort-by [lt? (-> a (-> a Boolean))] [xs (List a)]) (List a)]
+  @defproc[(sort-on [key (-> a b)] [xs (List a)]) (List a)])]{
+Stable merge sort by a strict-less-than comparator / by an @racket[(Ord b)] key.}
+
+@deftogether[(
+  @defproc[(foldl1 [f (-> a (-> a a))] [xs (List a)]) (Maybe a)]
+  @defproc[(foldr1 [f (-> a (-> a a))] [xs (List a)]) (Maybe a)])]{
+Seedless left / right folds; @racket[None] on the empty list.}
+
+@deftogether[(
+  @defproc[(iterate-n [n Integer] [f (-> a a)] [x a]) (List a)]
+  @defproc[(cycle-n   [n Integer] [xs (List a)]) (List a)])]{
+Bounded @tt{iterate} (@racket[n] applications of @racket[f] from
+@racket[x]) / @racket[n] copies of @racket[xs].}
+
+@defproc[(unfoldr [f (-> b (Maybe (Pair a b)))] [seed b]) (List a)]{
+Dual of a fold: build a list from a seed until @racket[f] yields @racket[None].}
+
+@deftogether[(
+  @defproc[(subsequences [xs (List a)]) (List (List a))]
+  @defproc[(permutations [xs (List a)]) (List (List a))])]{
+All subsequences (the power set) / all orderings.}
+
+@defproc[(map-accum-l [f (-> s (-> a (Pair s b)))] [s s] [xs (List a)]) (Pair s (List b))]{
+Left-to-right map threading an accumulator (Haskell @tt{mapAccumL}).}
+
 @section[#:tag "pairs"]{Pairs}
 
 @defproc[(fst  [p (Pair a b)]) a]{First projection.}
