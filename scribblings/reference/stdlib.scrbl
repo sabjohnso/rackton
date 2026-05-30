@@ -145,6 +145,10 @@ instances available.
   newtype (non-negative @racket[Integer]) with @racket[Eq]/@racket[Ord]/
   @racket[Show]/@racket[Num] instances, @racket[num-to-natural]
   (checked) and @racket[num-from-natural].}
+@item{@racketmodname[rackton/numeric/show] — integer radix conversion:
+  @racket[num-show-hex]/@racket[num-show-oct]/@racket[num-show-bin] and
+  @racket[num-read-hex]/@racket[num-read-oct]/@racket[num-read-dec]
+  (the read direction returns @racket[(Maybe Integer)]).}
 ]
 
 The mtl-style classes themselves (@racket[MonadState], @racket[MonadEnv],
