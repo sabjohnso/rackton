@@ -46,6 +46,11 @@ instances available.
 @item{@racketmodname[rackton/data/foldable] — generic folds over any
   @racket[Foldable]: @racket[fold-map] (foldMap), @racket[fold],
   @racket[any-of], @racket[all-of], @racket[elem-of].}
+@item{@racketmodname[rackton/data/traversable] — @racket[sequence-a]
+  (sequenceA) and @racket[for-t] (@racket[traverse] is the prelude
+  class method).}
+@item{@racketmodname[rackton/control/applicative] — @racket[lift-a3]
+  (pure / fapply / liftA2 / when / unless are in the prelude).}
 @item{@racketmodname[rackton/data/char] — Data.Char predicates
   (@racket[digit?], @racket[upper?], @racket[lower?], @racket[alpha?],
   @racket[alpha-num?], @racket[hex-digit?], @racket[space?],
