@@ -49,6 +49,14 @@ instances available.
 @item{@racketmodname[rackton/data/traversable] — @racket[sequence-a]
   (sequenceA) and @racket[for-t] (@racket[traverse] is the prelude
   class method).}
+@item{@racketmodname[rackton/data/list/nonempty] — the @racket[NonEmpty]
+  type (total @racket[ne-head]/@racket[ne-tail]) with @racket[nonempty],
+  @racket[ne-to-list]/@racket[ne-from-list], @racket[ne-cons],
+  @racket[ne-map], @racket[ne-length].}
+@item{@racketmodname[rackton/data/ratio] — derived @racket[Rational]
+  ops: @racket[ratio], @racket[recip], @racket[to-float] (the type and
+  @racket[make-rational]/@racket[numerator]/@racket[denominator] are in
+  the prelude).}
 @item{@racketmodname[rackton/data/complex] — derived @racket[Complex]
   ops: @racket[conjugate], @racket[phase], @racket[mk-polar],
   @racket[cis], @racket[polar] (the type and @racket[make-complex] /

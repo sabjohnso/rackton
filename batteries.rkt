@@ -16,6 +16,8 @@
          rackton/data/foldable
          rackton/data/traversable
          rackton/data/complex
+         rackton/data/ratio
+         rackton/data/list/nonempty
          rackton/data/monoid
          rackton/data/semigroup
          rackton/data/lens
@@ -44,6 +46,8 @@
          (all-from-out rackton/data/foldable)
          (all-from-out rackton/data/traversable)
          (all-from-out rackton/data/complex)
+         (all-from-out rackton/data/ratio)
+         (all-from-out rackton/data/list/nonempty)
          (all-from-out rackton/data/monoid)
          (all-from-out rackton/data/semigroup)
          (all-from-out rackton/data/lens)
