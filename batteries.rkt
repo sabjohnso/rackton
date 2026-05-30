@@ -17,6 +17,7 @@
          rackton/control/concurrent
          rackton/control/monad/state
          rackton/control/monad/reader
+         rackton/control/monad/writer
          rackton/system)
 
 (provide (all-from-out rackton/data/maybe)
@@ -30,4 +31,5 @@
          (all-from-out rackton/control/concurrent)
          (all-from-out rackton/control/monad/state)
          (all-from-out rackton/control/monad/reader)
+         (all-from-out rackton/control/monad/writer)
          (all-from-out rackton/system))

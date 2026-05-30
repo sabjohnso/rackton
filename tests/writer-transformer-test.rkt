@@ -11,6 +11,7 @@
          "../main.rkt")
 
 (rackton
+  (require rackton/control/monad/writer)
   ;; ----- WriterT String IO ----------------------------------
   ;; Accumulates a String log alongside an IO action.
 

@@ -454,30 +454,10 @@
     ;; rackton/control/monad/reader (Phase 2 slim, pure Rackton).  That
     ;; module owns every mtl instance where EnvT is the outer transformer.
 
-    ;; --- WriterT w m: accumulating writer over an inner monad ---
-    ;;
-    ;; WriterT pairs an inner-monad action with a `Monoid w` log that
-    ;; gets accumulated via `<>`.  pure inserts mempty, tell writes
-    ;; one log entry, and lift hoists an arbitrary m-action.
-
-    (newtype (WriterT w m a)
-      (MkWriterT (m (Pair w a))))
-
-    (: run-writer-t  (-> (WriterT w m a) (m (Pair w a))))
-    (: eval-writer-t ((Functor m) => (-> (WriterT w m a) (m a))))
-    (: exec-writer-t ((Functor m) => (-> (WriterT w m a) (m w))))
-    (: tell          ((Applicative m) => (-> w (WriterT w m Unit))))
-    (: lift-writer-t ((Functor m) (Monoid w) => (-> (m a) (WriterT w m a))))
-
-    (instance ((Functor m) => (Functor (WriterT w m)))
-      (define (fmap f wa) (racket (WriterT w m b) (f wa) #f)))
-
-    (instance ((Monad m) (Monoid w) => (Applicative (WriterT w m)))
-      (define (pure  a)     (racket (WriterT w m a) (a) #f))
-      (define (fapply wf wa) (racket (WriterT w m b) (wf wa) #f)))
-
-    (instance ((Monad m) (Semigroup w) => (Monad (WriterT w m)))
-      (define (flatmap f wa) (racket (WriterT w m b) (wa f) #f)))
+    ;; WriterT w m (accumulating writer over an inner monad) moved to
+    ;; rackton/control/monad/writer (Phase 2 slim, pure Rackton).  That
+    ;; module owns every mtl instance where WriterT is the outer
+    ;; transformer.
 
     ;; --- ExceptT e m: typed exceptions over an inner monad ------
 
@@ -523,10 +503,7 @@
 
     ;; (MonadState (EnvT r m) moved to rackton/control/monad/reader)
 
-    (instance ((MonadState s m) (Monoid w) => (MonadState s (WriterT w m)))
-      (define get-st        (lift-writer-t get-st))
-      (define (put-st x)    (lift-writer-t (put-st x)))
-      (define (modify-st f) (lift-writer-t (modify-st f))))
+    ;; (MonadState (WriterT w m) moved to rackton/control/monad/writer)
 
     (instance ((MonadState s m) => (MonadState s (ExceptT e m)))
       (define get-st        (lift-except-t get-st))
@@ -544,10 +521,7 @@
     ;; rackton/control/monad/reader; MonadEnv (StateT s m) to
     ;; rackton/control/monad/state)
 
-    (instance ((MonadEnv r m) (Monoid w) => (MonadEnv r (WriterT w m)))
-      (define ask-en     (lift-writer-t ask-en))
-      (define (local-en f wm)
-        (racket (WriterT w m a) (f wm) #f)))
+    ;; (MonadEnv (WriterT w m) moved to rackton/control/monad/writer)
 
     (instance ((MonadEnv r m) => (MonadEnv r (ExceptT e m)))
       (define ask-en     (lift-except-t ask-en))
@@ -562,10 +536,7 @@
       (: listen (-> (m a) (m (Pair a w))))
       (: censor (-> (-> w w) (-> (m a) (m a)))))
 
-    (instance ((Monoid w) (Monad m) => (MonadWriter w (WriterT w m)))
-      (define (tell-w x)    (tell x))
-      (define (listen wm)   (racket (WriterT w m (Pair a w))    (wm)   #f))
-      (define (censor f wm) (racket (WriterT w m a)             (f wm) #f)))
+    ;; (MonadWriter (WriterT w m) moved to rackton/control/monad/writer)
 
     ;; (MonadWriter (StateT s m) moved to rackton/control/monad/state)
 
@@ -591,11 +562,7 @@
 
     ;; (MonadError (EnvT r m) moved to rackton/control/monad/reader)
 
-    (instance ((MonadError e m) (Monoid w) =>
-                      (MonadError e (WriterT w m)))
-      (define (throw-e ev)   (lift-writer-t (throw-e ev)))
-      (define (catch-e wm h)
-        (racket (WriterT w m a) (wm h) #f)))
+    ;; (MonadError (WriterT w m) moved to rackton/control/monad/writer)
 
     ;; ----- mtl-style combinators ---------------------
     ;;

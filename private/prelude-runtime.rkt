@@ -98,8 +98,8 @@
  ;; and its $pure / $flatmap / mtl impls) moved to
  ;; rackton/control/monad/state — authored there as pure Rackton.
  ;; EnvT runtime moved to rackton/control/monad/reader.
- MkWriterT MkExceptT MkIdentity
- run-writer-t eval-writer-t exec-writer-t tell lift-writer-t
+ ;; WriterT runtime moved to rackton/control/monad/writer.
+ MkExceptT MkIdentity
  run-except-t throw-error catch-error lift-except-t
 
  ;; Class methods
@@ -127,27 +127,22 @@
  ;; Return-typed class methods (resolved at compile time per call site;
  ;; the `$pure:TCon` names are what the codegen emits after resolution).
  |$pure:Maybe| |$pure:List| |$pure:Result| |$pure:IO|
- |$pure:WriterT| |$pure:ExceptT|
+ |$pure:ExceptT|
  ;; Per-instance class-method impls for compile-time direct
  ;; dispatch.  Receive instance-qual dict args as
  ;; leading parameters; the elaborator inserts them at each call
  ;; site where the dispatch arg's inferred type matches the
  ;; instance.
  |$flatmap:ExceptT| |$fapply:ExceptT| |$liftA2:ExceptT|
- |$flatmap:WriterT| |$fapply:WriterT| |$liftA2:WriterT|
  |$mempty:String| |$mempty:List|
  ;; Mtl-style class impls.  Base instances are 0-dict; lifted
  ;; instances over a transformer take per-method dict args from the
  ;; inner monad's instance (order matches the class's return-typed
  ;; method declaration order — see build-dict-skolems in infer.rkt).
- |$get-st:WriterT|  |$put-st:WriterT|  |$modify-st:WriterT|
  |$get-st:ExceptT|  |$put-st:ExceptT|  |$modify-st:ExceptT|
- |$ask-en:WriterT| |$local-en:WriterT|
  |$ask-en:ExceptT| |$local-en:ExceptT|
- |$tell-w:WriterT| |$tell-w:ExceptT|
- |$listen:WriterT| |$censor:WriterT|
+ |$tell-w:ExceptT|
  |$throw-e:ExceptT| |$catch-e:ExceptT|
- |$throw-e:WriterT| |$catch-e:WriterT|
  ;; Runtime dispatchers for the positional class methods
  ;; introduced by mtl polish (local-en already covered above).
  ;; catch-e is exported so carved transformer modules
@@ -315,7 +310,7 @@
 ;; MkStateT moved to rackton/control/monad/state.
 ;; MkEnvT moved to rackton/control/monad/reader.
 
-(define-data-ctor MkWriterT 1)
+;; MkWriterT moved to rackton/control/monad/writer.
 (define-data-ctor MkExceptT 1)
 ;; Identity for the Mock Concurrent demo.
 (define-data-ctor MkIdentity 1)
@@ -421,15 +416,8 @@
     ;; recurse here now resolve StateT's pure via the dict path.)
     ;; (MkEnvT witness case moved with EnvT to rackton/control/monad/
     ;; reader.)
-    [($ctor:MkWriterT)
-     ;; WriterT's pure needs both inner-pure AND the log Monoid's
-     ;; mempty.  The witness alone doesn't carry the monoid type;
-     ;; punt and fall through to the table lookup which will fail
-     ;; loudly if hit.
-     (hash-ref $pure-by-tag tag
-               (lambda ()
-                 (error 'pure-via-witness
-                        "pure for WriterT not derivable from witness alone")))]
+    ;; (MkWriterT witness case moved with WriterT to
+    ;; rackton/control/monad/writer.)
     [else
      (hash-ref $pure-by-tag tag
                (lambda ()
@@ -1596,81 +1584,9 @@
   (register-instance-method! $dispatch:length  tag default-length)
   (register-instance-method! $dispatch:to-list tag default-to-list))
 
-;; ----- WriterT w m runtime ---------------------------------------
-;; Dict-arg order (matches the order of constraints in each
-;; instance's qual context):
-;;   Applicative (WriterT w m) needs  (Monad m, Monoid w) =>
-;;     dict args:  inner-pure  inner-mempty
-;;   Monad      (WriterT w m) needs  (Monad m, Semigroup w) =>
-;;     dict args:  inner-pure
-;;   Functor    (WriterT w m) needs  (Functor m) => (no dict)
-
-(define (run-writer-t w) (match w [(MkWriterT m) m]))
-
-;; pure for WriterT receives inner-pure then inner-mempty then a.
-(define/curried (|$pure:WriterT| inner-pure inner-mempty a)
-  (MkWriterT (inner-pure (MkPair inner-mempty a))))
-
-;; tell w = MkWriterT (pure (MkPair w MkUnit)) — dict: inner-pure.
-(define/curried (tell inner-pure w)
-  (MkWriterT (inner-pure (MkPair w MkUnit))))
-
-;; lift-writer-t needs (Functor m, Monoid w) => — but `(Functor m)`
-;; has no return-typed methods, so only `inner-mempty` flows in as
-;; a dict arg.
-(define/curried (lift-writer-t inner-mempty ma)
-  (MkWriterT (fmap (lambda (a) (MkPair inner-mempty a)) ma)))
-
-(define/curried (eval-writer-t w)
-  (fmap (lambda (p) (match p [(MkPair _ a) a])) (run-writer-t w)))
-(define/curried (exec-writer-t w)
-  (fmap (lambda (p) (match p [(MkPair w _) w])) (run-writer-t w)))
-
-(define (writer-t-fmap f w)
-  (MkWriterT
-   (fmap (lambda (p) (match p [(MkPair w0 a) (MkPair w0 (f a))]))
-         (run-writer-t w))))
-(register-instance-method! $dispatch:fmap '$ctor:MkWriterT writer-t-fmap)
-
-;; fapply, liftA2, flatmap, fmap: all dispatched at runtime on the
-;; WriterT struct.  Their bodies use inner `flatmap` and inner `fmap`
-;; (also runtime-dispatched on the m-value), so they take NO dict
-;; args — only the user-facing arguments.
-(define (writer-t-ap wf wa)
-  (MkWriterT
-   (flatmap (lambda (p1)
-              (match p1
-                [(MkPair w1 f)
-                 (fmap (lambda (p2)
-                         (match p2
-                           [(MkPair w2 a) (MkPair (<> w1 w2) (f a))]))
-                       (run-writer-t wa))]))
-            (run-writer-t wf))))
-(register-instance-method! $dispatch:fapply '$ctor:MkWriterT writer-t-ap)
-
-(define (writer-t-liftA2 g wa wb)
-  (MkWriterT
-   (flatmap (lambda (p1)
-              (match p1
-                [(MkPair w1 a)
-                 (fmap (lambda (p2)
-                         (match p2
-                           [(MkPair w2 b) (MkPair (<> w1 w2) (g a b))]))
-                       (run-writer-t wb))]))
-            (run-writer-t wa))))
-(register-instance-method! $dispatch:liftA2 '$ctor:MkWriterT writer-t-liftA2)
-
-(define (writer-t-flatmap f wa)
-  (MkWriterT
-   (flatmap (lambda (p1)
-              (match p1
-                [(MkPair w1 a)
-                 (fmap (lambda (p2)
-                         (match p2
-                           [(MkPair w2 b) (MkPair (<> w1 w2) b)]))
-                       (run-writer-t (f a)))]))
-            (run-writer-t wa))))
-(register-instance-method! $dispatch:flatmap '$ctor:MkWriterT writer-t-flatmap)
+;; WriterT w m runtime moved to rackton/control/monad/writer (pure
+;; Rackton — value-dispatched fmap/fapply/flatmap combine logs via
+;; runtime-dispatched <>; pure/tell thread inner pure + the log mempty).
 
 ;; ----- Per-instance compile-time-direct impls ---------
 ;;
@@ -1680,19 +1596,8 @@
 ;; args (resolved from the instance qual context, in declaration
 ;; order) as leading parameters, followed by the user's args.
 ;;
-;; The WriterT variants accept the dict args even though their
-;; bodies don't use them — uniformity with the elaborator's
-;; insertion rules outweighs the few ignored bindings.
-
-(define/curried (|$flatmap:WriterT| inner-pure f wa)
-  (writer-t-flatmap f wa))
-(define/curried (|$fapply:WriterT| inner-pure inner-mempty wf wa)
-  (writer-t-ap wf wa))
-(define/curried (|$liftA2:WriterT| inner-pure inner-mempty g wa wb)
-  (writer-t-liftA2 g wa wb))
-
-;; (StateT/EnvT class-method impls are regenerated in
-;; rackton/control/monad/{state,reader}.)
+;; (StateT/EnvT/WriterT class-method impls are regenerated in
+;; rackton/control/monad/{state,reader,writer}.)
 
 ;; ----- ExceptT e m runtime ---------------------------------------
 
@@ -1800,18 +1705,8 @@
 ;; ($get-st/$put-st/$modify-st:EnvT moved to
 ;; rackton/control/monad/reader.)
 
-;; WriterT w m: also gets Monoid w's mempty dict appended after the
-;; MonadState dicts (own-methods sorted, then super-closure: pure,
-;; then per-extra-constraint Monoid's mempty).
-(define/curried (|$get-st:WriterT|
-                  inner-get inner-modify inner-put inner-pure mempty-w)
-  (lift-writer-t mempty-w inner-get))
-(define/curried (|$put-st:WriterT|
-                  inner-get inner-modify inner-put inner-pure mempty-w x)
-  (lift-writer-t mempty-w (inner-put x)))
-(define/curried (|$modify-st:WriterT|
-                  inner-get inner-modify inner-put inner-pure mempty-w f)
-  (lift-writer-t mempty-w (inner-modify f)))
+;; ($get-st/$put-st/$modify-st:WriterT moved to
+;; rackton/control/monad/writer.)
 
 ;; ExceptT e m: lifts via lift-except-t.
 (define/curried (|$get-st:ExceptT|
@@ -1834,10 +1729,7 @@
 ;; return-typed sorted (ask-en) + Monad super closure (pure).
 ;; ($ask-en/$local-en:StateT moved to rackton/control/monad/state.)
 
-(define/curried (|$ask-en:WriterT| inner-ask inner-pure mempty-w)
-  (lift-writer-t mempty-w inner-ask))
-(define/curried (|$local-en:WriterT| inner-ask inner-pure mempty-w f wm)
-  (MkWriterT (local-en f (run-writer-t wm))))
+;; ($ask-en/$local-en:WriterT moved to rackton/control/monad/writer.)
 
 (define/curried (|$ask-en:ExceptT| inner-ask inner-pure)
   (lift-except-t inner-ask))
@@ -1846,30 +1738,8 @@
 
 ;; ----- MonadWriter w X ------------------------------------------
 
-;; Base: WriterT is the canonical writer.  Dict-arg order matches
-;; the qual context `((Monoid w) (Monad m) =>)` — mempty first, then
-;; pure.  $tell-w only uses pure but accepts mempty as a dummy slot
-;; so the call-site dict layout aligns.
-(define/curried (|$tell-w:WriterT| inner-mempty inner-pure w)
-  (MkWriterT (inner-pure (MkPair w MkUnit))))
-
-;; $listen:WriterT — wrap each (Pair w a) inside the inner monad so
-;; the user observes the accumulated log.  Uses runtime-dispatched
-;; fmap on the inner monadic value, so neither inner-mempty nor
-;; inner-pure are touched (they exist solely to match the dict
-;; layout the call site passes).
-(define/curried (|$listen:WriterT| inner-mempty inner-pure wm)
-  (MkWriterT
-   (fmap (lambda (p)
-           (match p [(MkPair w a) (MkPair w (MkPair a w))]))
-         (run-writer-t wm))))
-
-;; $censor:WriterT — apply `f` to the accumulated `w`.
-(define/curried (|$censor:WriterT| inner-mempty inner-pure f wm)
-  (MkWriterT
-   (fmap (lambda (p)
-           (match p [(MkPair w a) (MkPair (f w) a)]))
-         (run-writer-t wm))))
+;; ($tell-w/$listen/$censor:WriterT moved to
+;; rackton/control/monad/writer.)
 
 ;; MonadWriter dict-arg order: own (tell-w), then super closure of
 ;; ((Monoid w) (Monad m)) → (mempty, pure).
@@ -1894,14 +1764,7 @@
 ;; ($throw-e/$catch-e:StateT moved to rackton/control/monad/state;
 ;; $throw-e/$catch-e:EnvT to rackton/control/monad/reader.)
 
-(define/curried (|$throw-e:WriterT|
-                  inner-throw inner-pure mempty-w ev)
-  (lift-writer-t mempty-w (inner-throw ev)))
-(define/curried (|$catch-e:WriterT|
-                  inner-throw inner-pure mempty-w wm h)
-  (MkWriterT
-   (catch-e (run-writer-t wm)
-            (lambda (e) (run-writer-t (h e))))))
+;; ($throw-e/$catch-e:WriterT moved to rackton/control/monad/writer.)
 
 ;; ----- runtime registrations for transformer-side -----
 ;;
@@ -1918,35 +1781,17 @@
 ;; the curried `$method:T` impls; this just adds a parallel path.
 
 ;; catch-e on transformer-wrapped values.
-;; (catch-e for MkStateT/MkEnvT registered in
-;; rackton/control/monad/{state,reader}.)
-(register-instance-method! $dispatch:catch-e '$ctor:MkWriterT
-  (lambda (wm h)
-    (MkWriterT
-     (catch-e (run-writer-t wm)
-              (lambda (e) (run-writer-t (h e)))))))
+;; (catch-e for MkStateT/MkEnvT/MkWriterT registered in
+;; rackton/control/monad/{state,reader,writer}.)
 
-;; listen and censor on WriterT.
-(register-instance-method! $dispatch:listen '$ctor:MkWriterT
-  (lambda (wm)
-    (MkWriterT
-     (fmap (lambda (p)
-             (match p [(MkPair w a) (MkPair w (MkPair a w))]))
-           (run-writer-t wm)))))
-(register-instance-method! $dispatch:censor '$ctor:MkWriterT
-  (lambda (f wm)
-    (MkWriterT
-     (fmap (lambda (p)
-             (match p [(MkPair w a) (MkPair (f w) a)]))
-           (run-writer-t wm)))))
+;; listen / censor on WriterT registered in
+;; rackton/control/monad/writer.
 
 ;; local-en on transformer-wrapped values.  These all recurse via
 ;; runtime local-en on the inner value, so register the same impl
 ;; without the unused dict slots.
-;; (local-en for MkStateT registered in rackton/control/monad/state.)
-(register-instance-method! $dispatch:local-en '$ctor:MkWriterT
-  (lambda (f wm)
-    (MkWriterT (local-en f (run-writer-t wm)))))
+;; (local-en for MkStateT/MkWriterT registered in
+;; rackton/control/monad/{state,writer}.)
 (register-instance-method! $dispatch:local-en '$ctor:MkExceptT
   (lambda (f em)
     (MkExceptT (local-en f (run-except-t em)))))
