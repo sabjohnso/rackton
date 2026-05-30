@@ -13,6 +13,7 @@
          rackton/data/function
          rackton/data/ord
          rackton/data/functor
+         rackton/data/foldable
          rackton/data/monoid
          rackton/data/lens
          rackton/data/list
@@ -35,6 +36,7 @@
          (all-from-out rackton/data/function)
          (all-from-out rackton/data/ord)
          (all-from-out rackton/data/functor)
+         (all-from-out rackton/data/foldable)
          (all-from-out rackton/data/monoid)
          (all-from-out rackton/data/lens)
          (all-from-out rackton/data/list)

@@ -43,6 +43,9 @@ instances available.
   prelude Ord methods).}
 @item{@racketmodname[rackton/data/functor] — @racket[const-map]
   (@tt{<$}) and @racket[fmap-flipped] (@tt{<&>}).}
+@item{@racketmodname[rackton/data/foldable] — generic folds over any
+  @racket[Foldable]: @racket[fold-map] (foldMap), @racket[fold],
+  @racket[any-of], @racket[all-of], @racket[elem-of].}
 @item{@racketmodname[rackton/data/char] — Data.Char predicates
   (@racket[digit?], @racket[upper?], @racket[lower?], @racket[alpha?],
   @racket[alpha-num?], @racket[hex-digit?], @racket[space?],
