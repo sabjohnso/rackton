@@ -88,4 +88,6 @@
  ;; `sort` excluded — it reaches here via #lang racket/base and now
  ;; lives in rackton/data/list (Phase 2 slim); leaving it would collide
  ;; with that module in any #lang rackton file that requires it.
+ ;; (Other Data.List additions avoid racket/base names — e.g. `empty?`,
+ ;; `fold-left` — so racket/base's `null?` / `foldl` stay usable here.)
  (except-out (all-from-out racket/base) sort))

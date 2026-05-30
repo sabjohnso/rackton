@@ -105,6 +105,9 @@
          ;; (the explicit except-in above only covers the explicit
          ;; require), and it now lives in rackton/data/list — leaving it
          ;; in would collide with that module for any client of both.
+         ;; (Other Data.List additions use non-racket/base names — e.g.
+         ;; `empty?`, `fold-left` — precisely so racket/base's `null?` /
+         ;; `foldl` stay available for `(racket …)` escapes.)
          (except-out (all-from-out racket/base) #%module-begin sort)
 
          ;; prelude — class methods, ADTs, and combinators.  Names that

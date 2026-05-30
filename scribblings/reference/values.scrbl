@@ -215,6 +215,83 @@ Maps then flattens.}
 
 Buckets @racket[xs] by @racket[(key x)].  Requires @racket[(Eq k)].}
 
+@subsection{More Data.List combinators}
+
+Also in @racketmodname[rackton/data/list].  The partial accessors are
+total, returning @racket[Maybe]; @racket[empty?] and @racket[fold-left]
+avoid colliding with @racket[racket/base]'s @racket[null?] / @racket[foldl]
+(which stay available for @racket[(racket …)] escapes).
+
+@deftogether[(
+  @defproc[(head [xs (List a)]) (Maybe a)]
+  @defproc[(tail [xs (List a)]) (Maybe (List a))]
+  @defproc[(last [xs (List a)]) (Maybe a)]
+  @defproc[(init [xs (List a)]) (Maybe (List a))])]{
+Safe first / rest / final / all-but-last; @racket[None] on the empty list.}
+
+@defproc[(empty? [xs (List a)]) Boolean]{@racket[#t] iff @racket[xs] is @racket[Nil].}
+
+@deftogether[(
+  @defproc[(elem     [x a] [xs (List a)]) Boolean]
+  @defproc[(not-elem [x a] [xs (List a)]) Boolean])]{
+Membership / non-membership.  Require @racket[(Eq a)].}
+
+@defproc[(lookup [k k] [xs (List (Pair k v))]) (Maybe v)]{
+First value paired with @racket[k] in an association list.  Requires @racket[(Eq k)].}
+
+@deftogether[(
+  @defproc[(elem-index [x a] [xs (List a)]) (Maybe Integer)]
+  @defproc[(find-index [p (-> a Boolean)] [xs (List a)]) (Maybe Integer)])]{
+Index of the first matching element.  @racket[elem-index] requires @racket[(Eq a)].}
+
+@defproc[(concat [xss (List (List a))]) (List a)]{Flatten one level.}
+
+@defproc[(intersperse [sep a] [xs (List a)]) (List a)]{Insert @racket[sep] between elements.}
+
+@defproc[(intercalate [sep (List a)] [xss (List (List a))]) (List a)]{
+@racket[concat] of @racket[xss] with @racket[sep] between members.}
+
+@defproc[(replicate [n Integer] [x a]) (List a)]{@racket[n] copies of @racket[x].}
+
+@defproc[(range [lo Integer] [hi Integer]) (List Integer)]{
+The inclusive integer range @racket[lo]..@racket[hi] (empty if @racket[lo] > @racket[hi]).}
+
+@deftogether[(
+  @defproc[(take-while [p (-> a Boolean)] [xs (List a)]) (List a)]
+  @defproc[(drop-while [p (-> a Boolean)] [xs (List a)]) (List a)])]{
+Longest satisfying prefix / its complement.}
+
+@deftogether[(
+  @defproc[(span      [p (-> a Boolean)] [xs (List a)]) (Pair (List a) (List a))]
+  @defproc[(break     [p (-> a Boolean)] [xs (List a)]) (Pair (List a) (List a))]
+  @defproc[(partition [p (-> a Boolean)] [xs (List a)]) (Pair (List a) (List a))])]{
+@racket[span] splits at the first failure; @racket[break] at the first
+success; @racket[partition] separates matches from non-matches (order
+preserved).}
+
+@defproc[(fold-left [f (-> b (-> a b))] [z b] [xs (List a)]) b]{
+Left fold (Haskell's @tt{foldl}); the prelude's @racket[foldr] is the right fold.}
+
+@deftogether[(
+  @defproc[(all?     [p (-> a Boolean)] [xs (List a)]) Boolean]
+  @defproc[(any?     [p (-> a Boolean)] [xs (List a)]) Boolean]
+  @defproc[(and-list [xs (List Boolean)]) Boolean]
+  @defproc[(or-list  [xs (List Boolean)]) Boolean])]{
+Universal / existential quantification and Boolean-list conjunction / disjunction.}
+
+@deftogether[(
+  @defproc[(maximum [xs (List a)]) (Maybe a)]
+  @defproc[(minimum [xs (List a)]) (Maybe a)])]{
+Largest / smallest element, or @racket[None] when empty.  Require @racket[(Ord a)].}
+
+@defproc[(zip-with [f (-> a (-> b c))] [as (List a)] [bs (List b)]) (List c)]{
+@racket[zip] generalised with a combining function; truncates to the shorter list.}
+
+@defproc[(unzip [xs (List (Pair a b))]) (Pair (List a) (List b))]{Inverse of @racket[zip].}
+
+@defproc[(nub [xs (List a)]) (List a)]{
+Remove duplicates, keeping first occurrences.  Requires @racket[(Eq a)].}
+
 @section[#:tag "pairs"]{Pairs}
 
 @defproc[(fst  [p (Pair a b)]) a]{First projection.}
