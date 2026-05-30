@@ -71,8 +71,10 @@ instances available.
   (@racket[ord], @racket[chr], @racket[to-upper], @racket[to-lower],
   @racket[digit->int], @racket[int->digit]).}
 @item{@racketmodname[rackton/data/monoid] — the @racket[Sum] /
-  @racket[Product] (numeric) and @racket[All] / @racket[Any] (Boolean)
-  @racket[Monoid] newtypes.}
+  @racket[Product] (numeric), @racket[All] / @racket[Any] (Boolean),
+  @racket[Endo] (functions under composition, via @racket[app-endo]),
+  and @racket[Dual] (a Semigroup with its arguments flipped, via
+  @racket[get-dual]) @racket[Monoid] newtypes.}
 @item{@racketmodname[rackton/data/semigroup] — the @racket[Min] /
   @racket[Max] / @racket[First] / @racket[Last] selection
   @racket[Semigroup] newtypes.}
