@@ -78,6 +78,13 @@ instances available.
 @item{@racketmodname[rackton/data/semigroup] — the @racket[Min] /
   @racket[Max] / @racket[First] / @racket[Last] selection
   @racket[Semigroup] newtypes.}
+@item{@racketmodname[rackton/data/bits] — bitwise operations over
+  @racket[Integer]: @racket[bit-and]/@racket[bit-or]/@racket[bit-xor]/
+  @racket[bit-not], @racket[bit-shift-left]/@racket[bit-shift-right],
+  @racket[bit-test]/@racket[bit-set]/@racket[bit-clear],
+  @racket[bit-count].  @racket[bit-]-prefixed so racket/base's
+  @racket[bitwise-and] stays reachable inside @racket[(racket …)]
+  escapes.}
 @item{@racketmodname[rackton/data/list] — the extended list combinators
   (@racket[sort], @racket[zip], @racket[take], @racket[drop],
   @racket[find], @racket[concat-map], @racket[group-by], …).  The core

@@ -20,6 +20,7 @@
          rackton/data/list/nonempty
          rackton/data/monoid
          rackton/data/semigroup
+         rackton/data/bits
          rackton/data/lens
          rackton/data/list
          rackton/data/tuple
@@ -56,6 +57,7 @@
          (all-from-out rackton/data/list/nonempty)
          (all-from-out rackton/data/monoid)
          (all-from-out rackton/data/semigroup)
+         (all-from-out rackton/data/bits)
          (all-from-out rackton/data/lens)
          (all-from-out rackton/data/list)
          (all-from-out rackton/data/tuple)
