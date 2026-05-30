@@ -133,7 +133,9 @@
                      ;; rackton/system/io
                      stdin stdout stderr open-file-with-mode h-close
                      h-put-str h-put-str-ln h-flush h-get-contents
-                     h-get-line)
+                     h-get-line
+                     ;; rackton/numeric/show (float formatters)
+                     show-f-float show-e-float show-g-float)
 
          ;; Surface-form / type-ctor / class / return-typed-method
          ;; stubs.  Bound so (for-label rackton) in scribble docs can

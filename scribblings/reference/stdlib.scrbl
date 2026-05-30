@@ -176,7 +176,10 @@ instances available.
 @item{@racketmodname[rackton/numeric/show] — integer radix conversion:
   @racket[num-show-hex]/@racket[num-show-oct]/@racket[num-show-bin] and
   @racket[num-read-hex]/@racket[num-read-oct]/@racket[num-read-dec]
-  (the read direction returns @racket[(Maybe Integer)]).}
+  (the read direction returns @racket[(Maybe Integer)]), and the float
+  formatters @racket[num-show-f-float] (fixed), @racket[num-show-e-float]
+  (scientific), @racket[num-show-g-float] (general) — precision is a
+  @racket[(Maybe Integer)] digit count (@racket[None] = full).}
 @item{@racketmodname[rackton/numeric/conversions] — coercions across
   the tower: @racket[num-integer->float], @racket[num-float->integer],
   @racket[num-to-rational], @racket[num-rational->float], and

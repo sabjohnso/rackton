@@ -264,7 +264,9 @@
  exit-with-code
  ;; System.IO
  stdin stdout stderr open-file-with-mode h-close
- h-put-str h-put-str-ln h-flush h-get-contents h-get-line)
+ h-put-str h-put-str-ln h-flush h-get-contents h-get-line
+ ;; Numeric float formatting
+ show-f-float show-e-float show-g-float)
 
 ;; ----- monomorphization log -----------------------------
 
@@ -1465,6 +1467,42 @@
   ($io (lambda ()
          (define line (rkt:read-line h))
          (if (eof-object? line) None (Some line)))))
+
+;; ----- Numeric: float formatting ------------------------------
+;; showFFloat / showEFloat / showGFloat.  `prec` is the number of
+;; digits after the point, or negative for full precision (the Rackton
+;; wrapper maps None -> -1).  These are pure String -> String
+;; computations (not IO), built on racket/format's ~r.
+
+;; ~r renders an exponent as "e+02"; Haskell writes "e2" / "e-2"
+;; (no '+', no leading zeros).  Reformat the exponent to match.
+(define (normalize-exp s)
+  (define m (regexp-match #rx"^(.*)e([-+]?[0-9]+)$" s))
+  (if m
+      (rkt:string-append (cadr m) "e"
+                         (rkt:number->string (rkt:string->number (caddr m))))
+      s))
+
+(define/curried (show-f-float prec x)
+  (if (rkt:< prec 0)
+      (~r x #:notation 'positional)
+      (~r x #:notation 'positional #:precision (list '= prec))))
+
+(define/curried (show-e-float prec x)
+  (normalize-exp
+   (if (rkt:< prec 0)
+       (~r x #:notation 'exponential)
+       (~r x #:notation 'exponential #:precision (list '= prec)))))
+
+;; General: fixed notation inside [0.1, 1e7), scientific outside
+;; (matching Haskell's showGFloat); zero is rendered fixed.
+(define/curried (show-g-float prec x)
+  (define ax (rkt:abs x))
+  (cond
+    [(rkt:= x 0.0)             (show-f-float prec x)]
+    [(rkt:< ax 0.1)            (show-e-float prec x)]
+    [(rkt:>= ax 10000000.0)    (show-e-float prec x)]
+    [else                      (show-f-float prec x)]))
 
 ;; ----- Functor / Monad instance impls ------------------------
 

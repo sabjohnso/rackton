@@ -8,9 +8,9 @@
 ;; @racket[Maybe] in the escape and returns @racket[None] when the
 ;; string isn't a valid integer in that base.
 ;;
-;; (showFFloat / showEFloat / showGFloat — fixed/scientific float
-;; formatting — are NOT provided: they need racket/format's @racket[~r],
-;; which isn't reachable from the escape scope.  See PLAN.org.)
+;; The float formatters (showFFloat / showEFloat / showGFloat) need
+;; racket/format's @racket[~r], which isn't reachable from an escape, so
+;; they come in through @racket[foreign] runtime primitives instead.
 
 (provide (all-defined-out))
 
@@ -45,3 +45,30 @@
   (racket (Maybe Integer) (s)
     (let ([v (string->number s 10)])
       (if (and v (exact-integer? v)) (Some v) None))))
+
+;; --- float formatting (Numeric showFFloat / showEFloat / showGFloat) -
+;; The precision is the number of digits after the decimal point;
+;; None requests full precision.  The runtime primitives take a plain
+;; Integer (negative = full), so the wrappers map the Maybe to it.
+
+(foreign show-f-float (-> Integer (-> Float String))
+         #:from rackton/private/prelude-runtime)
+(foreign show-e-float (-> Integer (-> Float String))
+         #:from rackton/private/prelude-runtime)
+(foreign show-g-float (-> Integer (-> Float String))
+         #:from rackton/private/prelude-runtime)
+
+(: prec->int (-> (Maybe Integer) Integer))
+(define (prec->int p) (match p [(None) -1] [(Some n) n]))
+
+;; fixed-point notation, e.g. (num-show-f-float (Some 2) 3.14159) = "3.14".
+(: num-show-f-float (-> (Maybe Integer) (-> Float String)))
+(define (num-show-f-float p x) (show-f-float (prec->int p) x))
+
+;; scientific notation, e.g. (num-show-e-float (Some 3) 245.7) = "2.457e2".
+(: num-show-e-float (-> (Maybe Integer) (-> Float String)))
+(define (num-show-e-float p x) (show-e-float (prec->int p) x))
+
+;; general: fixed inside [0.1, 1e7), scientific outside.
+(: num-show-g-float (-> (Maybe Integer) (-> Float String)))
+(define (num-show-g-float p x) (show-g-float (prec->int p) x))
