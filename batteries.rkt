@@ -36,6 +36,7 @@
          rackton/control/monad/trans
          rackton/numeric/integer
          rackton/numeric/real
+         rackton/numeric/natural
          rackton/system
          rackton/text/string)
 
@@ -69,5 +70,6 @@
          (all-from-out rackton/control/monad/trans)
          (all-from-out rackton/numeric/integer)
          (all-from-out rackton/numeric/real)
+         (all-from-out rackton/numeric/natural)
          (all-from-out rackton/text/string)
          (all-from-out rackton/system))

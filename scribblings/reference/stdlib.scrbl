@@ -141,6 +141,10 @@ instances available.
   @racket[num-asin]/@racket[num-acos]/@racket[num-atan],
   @racket[num-sinh]/@racket[num-cosh]/@racket[num-tanh],
   @racket[num-log-base], @racket[num-proper-fraction].}
+@item{@racketmodname[rackton/numeric/natural] — the @racket[Natural]
+  newtype (non-negative @racket[Integer]) with @racket[Eq]/@racket[Ord]/
+  @racket[Show]/@racket[Num] instances, @racket[num-to-natural]
+  (checked) and @racket[num-from-natural].}
 ]
 
 The mtl-style classes themselves (@racket[MonadState], @racket[MonadEnv],
