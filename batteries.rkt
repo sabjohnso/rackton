@@ -7,6 +7,7 @@
 ;; (Enabler C).
 
 (require rackton/data/maybe
+         rackton/data/either
          rackton/data/monoid
          rackton/data/lens
          rackton/data/list
@@ -22,6 +23,7 @@
          rackton/system)
 
 (provide (all-from-out rackton/data/maybe)
+         (all-from-out rackton/data/either)
          (all-from-out rackton/data/monoid)
          (all-from-out rackton/data/lens)
          (all-from-out rackton/data/list)

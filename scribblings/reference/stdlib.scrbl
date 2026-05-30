@@ -26,6 +26,11 @@ instances available.
 @itemlist[
 @item{@racketmodname[rackton/data/maybe] — @racket[Maybe] eliminators
   and helpers beyond the @secref["classes"] methods.}
+@item{@racketmodname[rackton/data/either] — Data.Either over
+  @racket[Result] (@racket[Err] = Left, @racket[Ok] = Right): the
+  @racket[either] eliminator, @racket[is-ok]/@racket[is-err],
+  @racket[from-ok]/@racket[from-err], @racket[oks]/@racket[errs],
+  @racket[partition-results], and @racket[Maybe] interop.}
 @item{@racketmodname[rackton/data/monoid] — the @racket[Sum] and
   @racket[Product] @racket[Monoid] newtypes over numbers.}
 @item{@racketmodname[rackton/data/list] — the extended list combinators
