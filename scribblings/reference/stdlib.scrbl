@@ -50,9 +50,19 @@ instances available.
 @item{@racketmodname[rackton/data/tuple] — @racket[Pair] helpers such as
   @racket[swap].}
 @item{@racketmodname[rackton/data/map] — the immutable @racket[Map] type
-  and its operations.}
+  and its operations (@racket[map-insert]/@racket[map-lookup]/…,
+  @racket[map-member?], @racket[map-singleton], @racket[map-from-list]/
+  @racket[map-to-list], @racket[map-adjust], @racket[map-insert-with],
+  @racket[map-union]/@racket[map-union-with], @racket[map-difference],
+  @racket[map-intersection-with], @racket[map-map]/@racket[map-map-with-key],
+  @racket[map-filter]/@racket[map-filter-with-key],
+  @racket[map-find-with-default]).}
 @item{@racketmodname[rackton/data/set] — the immutable @racket[Set] type
-  and its operations.}
+  and its operations (@racket[set-insert]/@racket[set-member?]/…,
+  @racket[set-singleton], @racket[set-from-list],
+  @racket[set-union]/@racket[set-intersection]/@racket[set-difference],
+  @racket[set-subset?]/@racket[set-disjoint?],
+  @racket[set-map]/@racket[set-filter]/@racket[set-foldr]).}
 @item{@racketmodname[rackton/data/lens] — the optics primitives:
   @racket[Lens], @racket[Prism], @racket[Traversal] and their
   combinators.}
