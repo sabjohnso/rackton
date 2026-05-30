@@ -459,27 +459,11 @@
     ;; module owns every mtl instance where WriterT is the outer
     ;; transformer.
 
-    ;; --- ExceptT e m: typed exceptions over an inner monad ------
-
-    (newtype (ExceptT e m a)
-      (MkExceptT (m (Result e a))))
-
-    (: run-except-t  (-> (ExceptT e m a) (m (Result e a))))
-    (: throw-error   ((Applicative m) => (-> e (ExceptT e m a))))
-    (: catch-error   ((Monad m) => (-> (ExceptT e m a)
-                                       (-> (-> e (ExceptT e m a))
-                                           (ExceptT e m a)))))
-    (: lift-except-t ((Functor m) => (-> (m a) (ExceptT e m a))))
-
-    (instance ((Functor m) => (Functor (ExceptT e m)))
-      (define (fmap f ea) (racket (ExceptT e m b) (f ea) #f)))
-
-    (instance ((Monad m) => (Applicative (ExceptT e m)))
-      (define (pure  a)     (racket (ExceptT e m a) (a) #f))
-      (define (fapply ef ea) (racket (ExceptT e m b) (ef ea) #f)))
-
-    (instance ((Monad m) => (Monad (ExceptT e m)))
-      (define (flatmap f ea) (racket (ExceptT e m b) (ea f) #f)))
+    ;; ExceptT e m (typed exceptions over an inner monad) moved to
+    ;; rackton/control/monad/except (Phase 2 slim, pure Rackton — its
+    ;; value-dispatched methods derive the inner pure from a witness).
+    ;; That module owns every mtl instance where ExceptT is the outer
+    ;; transformer.
 
     ;; --- mtl-style classes ---------------------------
     ;;
@@ -505,10 +489,7 @@
 
     ;; (MonadState (WriterT w m) moved to rackton/control/monad/writer)
 
-    (instance ((MonadState s m) => (MonadState s (ExceptT e m)))
-      (define get-st        (lift-except-t get-st))
-      (define (put-st x)    (lift-except-t (put-st x)))
-      (define (modify-st f) (lift-except-t (modify-st f))))
+    ;; (MonadState (ExceptT e m) moved to rackton/control/monad/except)
 
     ;; ----- MonadEnv (Reader) ------------------------------------
 
@@ -523,10 +504,7 @@
 
     ;; (MonadEnv (WriterT w m) moved to rackton/control/monad/writer)
 
-    (instance ((MonadEnv r m) => (MonadEnv r (ExceptT e m)))
-      (define ask-en     (lift-except-t ask-en))
-      (define (local-en f em)
-        (racket (ExceptT e m a) (f em) #f)))
+    ;; (MonadEnv (ExceptT e m) moved to rackton/control/monad/except)
 
     ;; ----- MonadWriter ------------------------------------------
 
@@ -542,10 +520,7 @@
 
     ;; (MonadWriter (EnvT r m) moved to rackton/control/monad/reader)
 
-    (instance ((MonadWriter w m) => (MonadWriter w (ExceptT e m)))
-      (define (tell-w x)    (lift-except-t (tell-w x)))
-      (define (listen ex)   (racket (ExceptT e m (Pair a w))    (ex)   #f))
-      (define (censor f ex) (racket (ExceptT e m a)             (f ex) #f)))
+    ;; (MonadWriter (ExceptT e m) moved to rackton/control/monad/except)
 
     ;; ----- MonadError -------------------------------------------
 
@@ -554,9 +529,7 @@
       (: throw-e (-> e (m a)))
       (: catch-e (-> (m a) (-> (-> e (m a)) (m a)))))
 
-    (instance ((Monad m) => (MonadError e (ExceptT e m)))
-      (define (throw-e e)    (throw-error e))
-      (define (catch-e ea h) (catch-error ea h)))
+    ;; (MonadError (ExceptT e m) moved to rackton/control/monad/except)
 
     ;; (MonadError (StateT s m) moved to rackton/control/monad/state)
 

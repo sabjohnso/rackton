@@ -99,8 +99,8 @@
  ;; rackton/control/monad/state — authored there as pure Rackton.
  ;; EnvT runtime moved to rackton/control/monad/reader.
  ;; WriterT runtime moved to rackton/control/monad/writer.
- MkExceptT MkIdentity
- run-except-t throw-error catch-error lift-except-t
+ ;; ExceptT runtime moved to rackton/control/monad/except.
+ MkIdentity
 
  ;; Class methods
  +  -  *
@@ -127,22 +127,9 @@
  ;; Return-typed class methods (resolved at compile time per call site;
  ;; the `$pure:TCon` names are what the codegen emits after resolution).
  |$pure:Maybe| |$pure:List| |$pure:Result| |$pure:IO|
- |$pure:ExceptT|
- ;; Per-instance class-method impls for compile-time direct
- ;; dispatch.  Receive instance-qual dict args as
- ;; leading parameters; the elaborator inserts them at each call
- ;; site where the dispatch arg's inferred type matches the
- ;; instance.
- |$flatmap:ExceptT| |$fapply:ExceptT| |$liftA2:ExceptT|
+ ;; (transformer $pure / $flatmap / mtl impls are regenerated in the
+ ;; carved rackton/control/monad/* modules.)
  |$mempty:String| |$mempty:List|
- ;; Mtl-style class impls.  Base instances are 0-dict; lifted
- ;; instances over a transformer take per-method dict args from the
- ;; inner monad's instance (order matches the class's return-typed
- ;; method declaration order — see build-dict-skolems in infer.rkt).
- |$get-st:ExceptT|  |$put-st:ExceptT|  |$modify-st:ExceptT|
- |$ask-en:ExceptT| |$local-en:ExceptT|
- |$tell-w:ExceptT|
- |$throw-e:ExceptT| |$catch-e:ExceptT|
  ;; Runtime dispatchers for the positional class methods
  ;; introduced by mtl polish (local-en already covered above).
  ;; catch-e is exported so carved transformer modules
@@ -152,6 +139,14 @@
  ;; Mtl-style combinators (derived from class methods).
  asks gets void when unless
 
+ ;; pure-via-witness registry + helper — exposed so carved transformer
+ ;; modules can register how to derive their `pure` from a runtime
+ ;; witness (needed for needs-dict value-dispatched methods, e.g.
+ ;; ExceptT's flatmap/catch-e, and for nesting one transformer in
+ ;; another).  inner-pure-from-witness is what codegen emits at those
+ ;; registrations' call sites.
+ register-pure-witness-deriver! inner-pure-from-witness inner-pure-from-args
+ pure-via-witness
  ;; Dispatch tables — exposed so user modules that declare new
  ;; instances (including derived ones) can register against them.
  $dispatch:+  $dispatch:-  $dispatch:*
@@ -311,7 +306,7 @@
 ;; MkEnvT moved to rackton/control/monad/reader.
 
 ;; MkWriterT moved to rackton/control/monad/writer.
-(define-data-ctor MkExceptT 1)
+;; MkExceptT moved to rackton/control/monad/except.
 ;; Identity for the Mock Concurrent demo.
 (define-data-ctor MkIdentity 1)
 ;; MkLens / MkPrism / MkTraversal moved to rackton/data/lens (Phase 2).
@@ -394,35 +389,59 @@
 ;; pure-via-witness resolves `pure :: a -> m a` from any
 ;; m-value at runtime by walking the ctor chain.  Used by needs-dict
 ;; instance method closures (ExceptT's flatmap, catch-e, ...) which need
-;; the inner monad's `pure` to lift / rewrap values.  Bottoms out at
-;; non-needs-dict bases registered in $pure-by-tag.
+;; the inner monad's `pure` to lift / rewrap values.
 ;;
-;; For wrapper ctors (MkExceptT, MkStateT, MkEnvT, MkWriterT) we
-;; unwrap the inner value, recurse on its tag, and build a curried
-;; pure that re-wraps.  Concrete `m`s (IO, Maybe, List, ...) have
-;; their pures registered directly.
+;; Two registries feed it:
+;;   $pure-by-tag         — concrete bases (IO, Maybe, List, ...): the
+;;                          pure impl directly.
+;;   $pure-witness-derivers — wrapper transformers (MkExceptT, ...):
+;;                          a (witness -> pure-impl) that unwraps the
+;;                          inner value, recurses, and re-wraps.  Carved
+;;                          transformer modules register their own here
+;;                          (the re-wrap needs the module-local ctor), so
+;;                          pure-via-witness stays extensible without the
+;;                          prelude knowing every transformer.
 (define $pure-by-tag (make-hasheq))
 (define (register-pure-impl! tag impl)
   (hash-set! $pure-by-tag tag impl))
 
+(define $pure-witness-derivers (make-hasheq))
+(define (register-pure-witness-deriver! tag deriver)
+  (hash-set! $pure-witness-derivers tag deriver))
+
 (define (pure-via-witness witness)
   (define tag (dispatch-tag witness))
-  (case tag
-    [($ctor:MkExceptT)
-     (define inner-pure (pure-via-witness (run-except-t witness)))
-     (lambda (a) (MkExceptT (inner-pure (Ok a))))]
-    ;; (MkStateT witness case moved with StateT to
-    ;; rackton/control/monad/state; ExceptT/EnvT-over-StateT that would
-    ;; recurse here now resolve StateT's pure via the dict path.)
-    ;; (MkEnvT witness case moved with EnvT to rackton/control/monad/
-    ;; reader.)
-    ;; (MkWriterT witness case moved with WriterT to
-    ;; rackton/control/monad/writer.)
+  (cond
+    [(hash-ref $pure-witness-derivers tag #f) => (lambda (d) (d witness))]
+    [(hash-ref $pure-by-tag tag #f) => (lambda (impl) impl)]
     [else
-     (hash-ref $pure-by-tag tag
-               (lambda ()
-                 (error 'pure-via-witness
-                        "no pure-via-witness impl for tag: ~v" tag)))]))
+     (error 'pure-via-witness
+            "no pure-via-witness impl for tag: ~v" tag)]))
+
+;; Derive the INNER monad's pure from a transformer witness whose single
+;; field IS the inner monad value (e.g. MkExceptT holding (m (Result e
+;; a))).  Codegen emits calls to this from the runtime registrations of
+;; value-dispatched needs-dict methods (ExceptT's flatmap/catch-e/...).
+(define (inner-pure-from-witness wrapped)
+  (pure-via-witness (vector-ref (struct->vector wrapped) 1)))
+
+;; Find the witness among a method's runtime args: the first arg that is
+;; a struct with the given ctor tag (the value the method dispatched
+;; on), then derive its inner monad's pure.  Codegen emits a call to
+;; this from a value-dispatched needs-dict method's runtime
+;; registration — picking the witness by tag avoids depending on the
+;; method's dispatch-arg POSITION (which differs between the class's
+;; find-dispatch-pos and the runtime dispatcher for e.g. flatmap).
+;; Variadic so codegen passes args directly (NOT via `list`, which a
+;; #lang rackton module rebinds to the List ctor).
+(define (inner-pure-from-args tag . args)
+  (let loop ([as args])
+    (cond
+      [(null? as)
+       (error 'inner-pure-from-args "no witness with tag ~v in args" tag)]
+      [(and (struct? (car as)) (eq? (dispatch-tag (car as)) tag))
+       (inner-pure-from-witness (car as))]
+      [else (loop (cdr as))])))
 
 ;; ----- Num Integer ------------------------------------------------
 
@@ -1599,97 +1618,10 @@
 ;; (StateT/EnvT/WriterT class-method impls are regenerated in
 ;; rackton/control/monad/{state,reader,writer}.)
 
-;; ----- ExceptT e m runtime ---------------------------------------
-
-(define (run-except-t e) (match e [(MkExceptT m) m]))
-
-(define/curried (|$pure:ExceptT| inner-pure a)
-  (MkExceptT (inner-pure (Ok a))))
-
-(define/curried (throw-error inner-pure e)
-  (MkExceptT (inner-pure (Err e))))
-
-(define/curried (catch-error inner-pure ea handler)
-  (MkExceptT
-   (flatmap (lambda (r)
-              (match r
-                [(Err e) (run-except-t (handler e))]
-                [(Ok  v) (inner-pure (Ok v))]))
-            (run-except-t ea))))
-
-(define (lift-except-t ma)
-  (MkExceptT (fmap Ok ma)))
-
-;; Functor's fmap on ExceptT needs no dict.
-(define (except-t-fmap f e)
-  (MkExceptT
-   (fmap (lambda (r) (match r
-                       [(Err x) (Err x)]
-                       [(Ok  v) (Ok (f v))]))
-         (run-except-t e))))
-(register-instance-method! $dispatch:fmap '$ctor:MkExceptT except-t-fmap)
-
-;; Applicative fapply short-circuits on Err — needs inner pure to lift
-;; the Err back into m.
-(define/curried (|$fapply:ExceptT| inner-pure ef ea)
-  (MkExceptT
-   (flatmap (lambda (rf)
-              (match rf
-                [(Err x) (inner-pure (Err x))]
-                [(Ok  f)
-                 (fmap (lambda (ra)
-                         (match ra
-                           [(Err x) (Err x)]
-                           [(Ok  a) (Ok (f a))]))
-                       (run-except-t ea))]))
-            (run-except-t ef))))
-
-(define/curried (|$liftA2:ExceptT| inner-pure g ea eb)
-  (MkExceptT
-   (flatmap (lambda (ra)
-              (match ra
-                [(Err x) (inner-pure (Err x))]
-                [(Ok  a)
-                 (fmap (lambda (rb)
-                         (match rb
-                           [(Err x) (Err x)]
-                           [(Ok  b) (Ok (g a b))]))
-                       (run-except-t eb))]))
-            (run-except-t ea))))
-
-(define/curried (|$flatmap:ExceptT| inner-pure f ea)
-  (MkExceptT
-   (flatmap (lambda (r)
-              (match r
-                [(Err x) (inner-pure (Err x))]
-                [(Ok  a) (run-except-t (f a))]))
-            (run-except-t ea))))
-
-;; Register ExceptT's needs-dict methods at runtime,
-;; deriving the inner-pure dict via pure-via-witness on the
-;; passed-in m-value's tag.  This lets polymorphic-monad code that
-;; reaches MkExceptT values at runtime work without the call site
-;; having to resolve the inst-dispatch chain at compile time.
-;;
-;; pure-via-witness inspects the wrapped m's ctor tag and walks
-;; needs-dict layers until it bottoms out at a registered base
-;; (IO, Maybe, List, Result).
-(register-instance-method! $dispatch:flatmap '$ctor:MkExceptT
-  (lambda (f ea)
-    (|$flatmap:ExceptT| (pure-via-witness (run-except-t ea)) f ea)))
-(register-instance-method! $dispatch:fapply '$ctor:MkExceptT
-  (lambda (ef ea)
-    (|$fapply:ExceptT| (pure-via-witness (run-except-t ef)) ef ea)))
-(register-instance-method! $dispatch:liftA2 '$ctor:MkExceptT
-  (lambda (g ea eb)
-    (|$liftA2:ExceptT| (pure-via-witness (run-except-t ea)) g ea eb)))
-;; Register catch-e on MkExceptT.  The base impl is
-;; `catch-error`; we wrap it with pure-via-witness so callers that
-;; reach the runtime dispatcher (e.g. lifted $catch-e:StateT calling
-;; `catch-e` on the inner value) don't have to thread inner-pure.
-(register-instance-method! $dispatch:catch-e '$ctor:MkExceptT
-  (lambda (ea handler)
-    (catch-error (pure-via-witness (run-except-t ea)) ea handler)))
+;; ExceptT e m runtime moved to rackton/control/monad/except (pure
+;; Rackton — its value-dispatched fapply/flatmap/catch-e derive the
+;; inner pure from the dispatch-arg witness, and it registers a
+;; pure-via-witness deriver for MkExceptT so nested ExceptT works).
 
 ;; ----- mtl-style class instance impls ------------------
 ;; Naming: `$<method>:<head-tcon>`.  Lifted instances over a
@@ -1708,16 +1640,8 @@
 ;; ($get-st/$put-st/$modify-st:WriterT moved to
 ;; rackton/control/monad/writer.)
 
-;; ExceptT e m: lifts via lift-except-t.
-(define/curried (|$get-st:ExceptT|
-                  inner-get inner-modify inner-put inner-pure)
-  (lift-except-t inner-get))
-(define/curried (|$put-st:ExceptT|
-                  inner-get inner-modify inner-put inner-pure x)
-  (lift-except-t (inner-put x)))
-(define/curried (|$modify-st:ExceptT|
-                  inner-get inner-modify inner-put inner-pure f)
-  (lift-except-t (inner-modify f)))
+;; ($get-st/$put-st/$modify-st:ExceptT moved to
+;; rackton/control/monad/except.)
 
 ;; ----- MonadEnv r X ---------------------------------------------
 
@@ -1731,10 +1655,7 @@
 
 ;; ($ask-en/$local-en:WriterT moved to rackton/control/monad/writer.)
 
-(define/curried (|$ask-en:ExceptT| inner-ask inner-pure)
-  (lift-except-t inner-ask))
-(define/curried (|$local-en:ExceptT| inner-ask inner-pure f em)
-  (MkExceptT (local-en f (run-except-t em))))
+;; ($ask-en/$local-en:ExceptT moved to rackton/control/monad/except.)
 
 ;; ----- MonadWriter w X ------------------------------------------
 
@@ -1743,28 +1664,13 @@
 
 ;; MonadWriter dict-arg order: own (tell-w), then super closure of
 ;; ((Monoid w) (Monad m)) → (mempty, pure).
-;; ($tell-w:StateT moved to rackton/control/monad/state;
-;; $tell-w:EnvT to rackton/control/monad/reader.)
-(define/curried (|$tell-w:ExceptT|
-                  inner-tell inner-mempty inner-pure x)
-  (lift-except-t (inner-tell x)))
+;; ($tell-w:StateT moved to rackton/control/monad/state; $tell-w:EnvT
+;; to reader; $tell-w:ExceptT to except.)
 
 ;; ----- MonadError e X -------------------------------------------
 
-(define |$throw-e:ExceptT|    throw-error)
-(define |$catch-e:ExceptT|    catch-error)
-
-;; MonadError: catch-e is positional (drops out of dict-args). Order:
-;; own return-typed (throw-e), then Monad super closure (pure).
-;; Lifted catch-e impls call the runtime-dispatched `catch-e` on
-;; the inner monad value rather than hard-coding `catch-error`.
-;; That lets deeper qual chains (e.g. ExceptT-over-ExceptT-over-IO)
-;; resolve correctly — the inner catch is whatever instance is
-;; registered for the inner value's ctor.
-;; ($throw-e/$catch-e:StateT moved to rackton/control/monad/state;
-;; $throw-e/$catch-e:EnvT to rackton/control/monad/reader.)
-
-;; ($throw-e/$catch-e:WriterT moved to rackton/control/monad/writer.)
+;; ($throw-e/$catch-e for StateT/EnvT/WriterT/ExceptT moved to their
+;; respective rackton/control/monad/* modules.)
 
 ;; ----- runtime registrations for transformer-side -----
 ;;
@@ -1790,11 +1696,8 @@
 ;; local-en on transformer-wrapped values.  These all recurse via
 ;; runtime local-en on the inner value, so register the same impl
 ;; without the unused dict slots.
-;; (local-en for MkStateT/MkWriterT registered in
-;; rackton/control/monad/{state,writer}.)
-(register-instance-method! $dispatch:local-en '$ctor:MkExceptT
-  (lambda (f em)
-    (MkExceptT (local-en f (run-except-t em)))))
+;; (local-en for MkStateT/MkWriterT/MkExceptT registered in their
+;; rackton/control/monad/* modules.)
 
 ;; ----- default `join` and `product` for prelude instances ----------
 ;;

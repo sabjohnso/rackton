@@ -728,6 +728,14 @@
                   [tn (in-list head-tcon-names-raw)]
                   #:unless (set-member? determined p))
          tn)]))
+  ;; Cross-method tracking for the pure-via-witness deriver (approach
+  ;; (1) for ExceptT): if any value-dispatched method of this instance
+  ;; witness-routes its inner `pure`, and the instance also defines a
+  ;; return-typed `pure`, we emit a register-pure-witness-deriver! so
+  ;; nesting (ExceptT-over-ExceptT) and runtime dispatch resolve the
+  ;; inner pure from a witness.
+  (define witness-routed? (box #f))
+  (define pure-impl-name  (box #f))
   (define register-forms
     (apply
      append
@@ -769,6 +777,7 @@
             ;; cross-module call sites to bind.
             [(and dict-args (not (null? dict-args)))
              (record-exported-impl! impl-name-sym)
+             (when (eq? name 'pure) (set-box! pure-impl-name impl-name-sym))
              (list def-form)]
             ;; plain return-typed instance: ALSO register into the
             ;; per-method dispatch table so a call site in another module
@@ -818,34 +827,75 @@
              (define expr* (prepend-lambda-params body dict-args stx))
              (define impl-name-sym (return-impl-symbol name head-tcon-names))
              (record-exported-impl! impl-name-sym)
+             (define named-def
+               (with-syntax ([impl-name (datum->syntax stx impl-name-sym stx)]
+                             [impl (compile-expr expr*)])
+                 #'(define impl-name impl)))
              ;; ALSO register a runtime dispatcher so POLYMORPHIC call
              ;; sites (where the dispatch type is an abstract tvar, e.g.
              ;; `flatmap` inside a `(MonadState s m) =>` body) reach the
-             ;; instance by runtime tag.  A positional method's body
-             ;; resolves the inner monad's impl by dispatching on the
-             ;; inner value's tag, so it doesn't use the instance-qual
-             ;; dicts — register the body carrying only method-qual
-             ;; dicts (which the runtime wrapper inserts).  This mirrors
-             ;; the prelude's hand-written dual (named $method:T +
-             ;; register-instance-method!).
+             ;; instance by runtime tag.
+             ;;
+             ;; Most positional method bodies resolve the inner monad's
+             ;; impl by runtime dispatch on the inner value's tag, so
+             ;; they don't use the instance-qual dicts — register the
+             ;; plain body (carrying only method-qual dicts).  But
+             ;; ExceptT's flatmap/catch-e DO use the inner `pure` (to
+             ;; rewrap Ok/Err).  There the runtime dispatcher derives the
+             ;; inner pure from the dispatch-arg WITNESS and routes
+             ;; through the named dict-carrying impl.
              (define rt-body
                (cond
                  [(and method-args (not (null? method-args)))
                   (prepend-lambda-params body method-args stx)]
                  [else body]))
+             (define rt-impl-stx (compile-expr rt-body))
+             (define uses-inst-dict?
+               (syntax-mentions-any? rt-impl-stx (list->seteq inst-args)))
              (define register-forms
-               (for/list ([tag (in-list tags)])
-                 (with-syntax ([table   (datum->syntax stx
-                                                       (method-dispatch-symbol name)
-                                                       stx)]
-                               [tag-sym (datum->syntax stx tag stx)]
-                               [rt-impl (compile-expr rt-body)])
-                   #'(register-instance-method! table 'tag-sym rt-impl))))
-             (cons
-              (with-syntax ([impl-name (datum->syntax stx impl-name-sym stx)]
-                            [impl (compile-expr expr*)])
-                #'(define impl-name impl))
-              register-forms)]
+               (cond
+                 [(not uses-inst-dict?)
+                  ;; plain body — inst-qual dicts unused (StateT/EnvT/
+                  ;; WriterT value-dispatched methods).
+                  (for/list ([tag (in-list tags)])
+                    (with-syntax ([table   (datum->syntax stx (method-dispatch-symbol name) stx)]
+                                  [tag-sym (datum->syntax stx tag stx)]
+                                  [rt-impl rt-impl-stx])
+                      #'(register-instance-method! table 'tag-sym rt-impl)))]
+                 [(andmap pure-dict-name? inst-args)
+                  ;; ExceptT-style: the body uses the inner monad's
+                  ;; `pure` (all inst dicts are pure).  At a runtime
+                  ;; dispatch there is no compile-time dict, so derive
+                  ;; the inner pure from the WITNESS — the arg whose
+                  ;; runtime tag is this instance's ctor — and route
+                  ;; through the named dict-carrying impl.  Picking the
+                  ;; witness by tag (not by position) sidesteps the
+                  ;; class-vs-runtime dispatch-index mismatch (flatmap).
+                  ;; (method-args must be empty here — no transformer-
+                  ;; stack method needs both a runtime-inserted method
+                  ;; dict and a witness-derived inst dict.)
+                  (set-box! witness-routed? #t)
+                  (define n      (length (e:lam-params body)))
+                  (define disp   (monad-dispatch-index cinfo name))
+                  (define params (for/list ([i (in-range n)])
+                                   (datum->syntax stx (string->symbol (format "$w~a" i)) stx)))
+                  (define witness (list-ref params disp))
+                  (with-syntax ([impl-name (datum->syntax stx impl-name-sym stx)]
+                                [(p ...)   params]
+                                [wit       witness])
+                    (for/list ([tag (in-list tags)])
+                      (with-syntax ([table   (datum->syntax stx (method-dispatch-symbol name) stx)]
+                                    [tag-sym (datum->syntax stx tag stx)]
+                                    [(ip ...) (for/list ([_ (in-list inst-args)]) #'ipv)])
+                        #'(register-instance-method! table 'tag-sym
+                            (lambda (p ...)
+                              (let ([ipv (inner-pure-from-witness wit)])
+                                (impl-name ip ... p ...)))))))]
+                 [else
+                  (error 'compile-instance
+                         "needs-dict value-dispatched method ~s uses a non-pure instance dict; witness derivation unsupported"
+                         name)]))
+             (cons named-def register-forms)]
             ;; For an overlap-group instance (any class
             ;; whose instance set has at least one pair related by
             ;; "strictly more specific"), emit a deep-fingerprint
@@ -898,7 +948,24 @@
                                [tag-sym   (datum->syntax stx tag stx)])
                    #'(register-instance-method! table 'tag-sym impl-name))))
              (cons def-form register-forms)])]))))
-  (with-syntax ([(register ...) register-forms])
+  ;; If a value-dispatched method witness-routed its inner pure AND this
+  ;; instance defines a return-typed `pure`, register a pure-via-witness
+  ;; deriver for the type's ctor so nested stacks (e.g. ExceptT over
+  ;; ExceptT) and runtime dispatch can reconstruct the inner pure from a
+  ;; witness.  The deriver reuses the named `$pure:T` impl, feeding it
+  ;; the once-unwrapped witness's inner pure.
+  (define deriver-forms
+    (cond
+      [(and (unbox witness-routed?) (unbox pure-impl-name) (pair? tags))
+       (with-syntax ([pure-impl (datum->syntax stx (unbox pure-impl-name) stx)]
+                     [tag       (datum->syntax stx (car tags) stx)])
+         (list
+          #'(register-pure-witness-deriver! 'tag
+              (lambda (w)
+                (let ([ip (inner-pure-from-witness w)])
+                  (lambda (a) (pure-impl ip a)))))))]
+      [else '()]))
+  (with-syntax ([(register ...) (append register-forms deriver-forms)])
     (syntax/loc stx (begin register ...))))
 
 ;; Mirror of the dict-class-return-methods registry in
@@ -945,6 +1012,51 @@
   (define box* (current-instance-exported-impls))
   (when box*
     (set-box! box* (cons sym (unbox box*)))))
+
+;; Does compiled syntax `s` mention any identifier whose symbol is in
+;; `syms`?  Used to tell whether a value-dispatched method body actually
+;; uses its instance-qual dict args (ExceptT's flatmap/catch-e do — to
+;; rewrap via the inner `pure`; StateT/EnvT/WriterT's don't).
+(define (syntax-mentions-any? s syms)
+  (let loop ([s s])
+    (cond
+      [(identifier? s) (set-member? syms (syntax->datum s))]
+      [(syntax? s)     (loop (syntax-e s))]
+      [(pair? s)       (or (loop (car s)) (loop (cdr s)))]
+      [(vector? s)     (loop (vector->list s))]
+      [else            #f])))
+
+;; A dict-arg name for an inner `pure` (vs mempty/get-st/…).  Only pure
+;; dicts are derivable from a runtime witness (pure-via-witness).
+(define (pure-dict-name? sym)
+  (string-prefix? (symbol->string sym) "$dict-pure-"))
+
+;; Head name (tcon or tvar) of a possibly-applied type; #f otherwise
+;; (e.g. an arrow).  Used to locate a method's monad-value argument.
+(define (type-head-name t)
+  (match t
+    [(tapp h _) (type-head-name h)]
+    [(tcon n) n]
+    [(tvar n) n]
+    [_ #f]))
+
+;; The RUNTIME dispatch position of a value-dispatched method: the index
+;; of the first curried argument whose head matches the method's return-
+;; type head (the monad/functor param `m`).  This is what the generic
+;; dispatcher keys on at runtime — and differs from the class's
+;; find-dispatch-pos for `flatmap` (whose first arg `(-> a (m b))`
+;; merely MENTIONS m).  Codegen needs it to pick the witness argument
+;; for an ExceptT-style needs-dict method's runtime registration.
+(define (monad-dispatch-index cinfo method-name)
+  (define sch  (hash-ref (class-info-methods cinfo) method-name))
+  (define body (qual-body-type (scheme-body sch)))
+  (define ret  (let loop ([t body]) (if (arrow? t) (loop (arrow-cod t)) t)))
+  (define dpar (type-head-name ret))
+  (let loop ([t body] [i 0])
+    (cond
+      [(not (arrow? t)) 0]
+      [(and dpar (eq? (type-head-name (arrow-dom t)) dpar)) i]
+      [else (loop (arrow-cod t) (add1 i))])))
 
 (define (head-tcon-name t)
   (match t

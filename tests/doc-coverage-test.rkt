@@ -73,6 +73,13 @@
     define-class-method
     register-instance-method!
     lookup-return-method
+    ;; pure-via-witness registry + helper — runtime internals the carved
+    ;; transformer modules register against (see ExceptT); never written
+    ;; in user surface code.
+    register-pure-witness-deriver!
+    inner-pure-from-witness
+    inner-pure-from-args
+    pure-via-witness
     ;; Re-export of racket/match's `match` for use inside `(racket ...)`
     ;; escapes.  Documented as the surface form `match`, not separately.
     match

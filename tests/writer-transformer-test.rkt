@@ -12,6 +12,7 @@
 
 (rackton
   (require rackton/control/monad/writer)
+  (require rackton/control/monad/except)
   ;; ----- WriterT String IO ----------------------------------
   ;; Accumulates a String log alongside an IO action.
 

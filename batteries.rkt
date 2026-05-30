@@ -18,6 +18,7 @@
          rackton/control/monad/state
          rackton/control/monad/reader
          rackton/control/monad/writer
+         rackton/control/monad/except
          rackton/system)
 
 (provide (all-from-out rackton/data/maybe)
@@ -32,4 +33,5 @@
          (all-from-out rackton/control/monad/state)
          (all-from-out rackton/control/monad/reader)
          (all-from-out rackton/control/monad/writer)
+         (all-from-out rackton/control/monad/except)
          (all-from-out rackton/system))

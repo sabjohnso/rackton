@@ -6,6 +6,7 @@
          "../main.rkt")
 
 (rackton
+  (require rackton/control/monad/except)
   ;; ----- ExceptT String IO --------------------------------
 
   (: divide-safely (-> Integer (-> Integer (ExceptT String IO Integer))))
