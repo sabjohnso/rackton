@@ -129,7 +129,11 @@
                      random-integer random-float current-time-seconds
                      getenv argv
                      ;; rackton/system/exit
-                     exit-with-code)
+                     exit-with-code
+                     ;; rackton/system/io
+                     stdin stdout stderr open-file-with-mode h-close
+                     h-put-str h-put-str-ln h-flush h-get-contents
+                     h-get-line)
 
          ;; Surface-form / type-ctor / class / return-typed-method
          ;; stubs.  Bound so (for-label rackton) in scribble docs can

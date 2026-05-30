@@ -17,7 +17,8 @@
          rackton/system/random
          rackton/system/time
          rackton/system/environment
-         rackton/system/exit)
+         rackton/system/exit
+         rackton/system/io)
 
 (provide (all-from-out rackton/system/ref)
          (all-from-out rackton/system/file)
@@ -26,4 +27,5 @@
          (all-from-out rackton/system/random)
          (all-from-out rackton/system/time)
          (all-from-out rackton/system/environment)
-         (all-from-out rackton/system/exit))
+         (all-from-out rackton/system/exit)
+         (all-from-out rackton/system/io))

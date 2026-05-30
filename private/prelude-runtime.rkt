@@ -76,6 +76,7 @@
          racket/format
          racket/match
          racket/file
+         (only-in racket/port port->string)
          racket/async-channel
          "adt.rkt"
          "dict.rkt")
@@ -260,7 +261,10 @@
  random-integer random-float current-time-seconds
  list-directory getenv argv delete-file make-directory
  ;; System.Exit
- exit-with-code)
+ exit-with-code
+ ;; System.IO
+ stdin stdout stderr open-file-with-mode h-close
+ h-put-str h-put-str-ln h-flush h-get-contents h-get-line)
 
 ;; ----- monomorphization log -----------------------------
 
@@ -1420,6 +1424,47 @@
 ;; `exit` does not return, so the IO action's result type is free.
 (define (exit-with-code code)
   ($io (lambda () (exit code))))
+
+;; ----- System.IO: handles -------------------------------------
+;; A Handle is a Racket port (input or output); operations that don't
+;; match the port's direction error at runtime, matching Haskell.  The
+;; std handles are captured at module load.
+
+(define stdin  (current-input-port))
+(define stdout (current-output-port))
+(define stderr (current-error-port))
+
+;; open-file-with-mode: 0 = read, 1 = write (truncate), 2 = append.
+;; The Rackton wrapper maps an IOMode to the integer code.
+(define/curried (open-file-with-mode path mode)
+  ($io (lambda ()
+         (cond
+           [(rkt:= mode 0) (open-input-file path)]
+           [(rkt:= mode 1) (open-output-file path #:exists 'truncate/replace)]
+           [else           (open-output-file path #:exists 'append)]))))
+
+(define (h-close h)
+  ($io (lambda ()
+         (if (input-port? h) (close-input-port h) (close-output-port h))
+         MkUnit)))
+
+(define/curried (h-put-str h s)
+  ($io (lambda () (write-string s h) MkUnit)))
+
+(define/curried (h-put-str-ln h s)
+  ($io (lambda () (write-string s h) (newline h) MkUnit)))
+
+(define (h-flush h)
+  ($io (lambda () (flush-output h) MkUnit)))
+
+(define (h-get-contents h)
+  ($io (lambda () (port->string h))))
+
+;; h-get-line: (Some line) or None at end-of-file.
+(define (h-get-line h)
+  ($io (lambda ()
+         (define line (rkt:read-line h))
+         (if (eof-object? line) None (Some line)))))
 
 ;; ----- Functor / Monad instance impls ------------------------
 

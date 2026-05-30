@@ -144,9 +144,14 @@ instances available.
   @racket[random-float]),
   @racketmodname[rackton/system/time] (@racket[current-time-seconds]),
   @racketmodname[rackton/system/environment] (@racket[getenv] /
-  @racket[argv]), and @racketmodname[rackton/system/exit]
+  @racket[argv]), @racketmodname[rackton/system/exit]
   (@racket[exit-success] / @racket[exit-failure] / @racket[exit-with]
-  over the @racket[ExitCode] type).}
+  over the @racket[ExitCode] type), and @racketmodname[rackton/system/io]
+  (the @racket[Handle] type, @racket[open-file] over @racket[IOMode],
+  @racket[h-put-str] / @racket[h-put-str-ln] / @racket[h-get-contents] /
+  @racket[h-get-line] / @racket[h-close] / @racket[h-flush], the
+  @racket[stdin] / @racket[stdout] / @racket[stderr] handles, and
+  @racket[get-contents]).}
 @item{@racketmodname[rackton/text/string] — String operations:
   @racket[null-string?], @racket[reverse-string],
   @racket[to-upper-string]/@racket[to-lower-string],
