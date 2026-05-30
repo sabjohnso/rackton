@@ -8,6 +8,7 @@
 
 (rackton
   (require rackton/control/stm)
+  (require rackton/control/concurrent)
   ;; ----- 41.A single-threaded mutation ------------------------
 
   (: simple-mutate (IO Integer))

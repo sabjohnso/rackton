@@ -8,6 +8,7 @@
          "../main.rkt")
 
 (rackton
+  (require rackton/control/concurrent)
   ;; ----- 36.A simple fork + MVar handoff ----------------------
 
   (: child-writes (IO Integer))

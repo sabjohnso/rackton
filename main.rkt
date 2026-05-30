@@ -114,7 +114,10 @@
          (except-out (all-from-out "private/prelude-runtime.rkt")
                      ;; rackton/control/stm
                      new-tvar read-tvar write-tvar retry or-else atomically
-                     stm-fmap stm-pure stm-ap stm-bind)
+                     stm-fmap stm-pure stm-ap stm-bind
+                     ;; rackton/control/concurrent
+                     fork-io wait-thread new-mvar new-empty-mvar take-mvar
+                     put-mvar read-mvar modify-mvar new-chan send-chan recv-chan)
 
          ;; Surface-form / type-ctor / class / return-typed-method
          ;; stubs.  Bound so (for-label rackton) in scribble docs can
