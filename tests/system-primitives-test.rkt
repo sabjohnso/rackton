@@ -7,6 +7,7 @@
          "../main.rkt")
 
 (rackton
+  (require rackton/system)
   ;; A dice roll constrained between 1 and 6 inclusive.
   (: roll-die (IO Integer))
   (define roll-die (random-integer 1 7))

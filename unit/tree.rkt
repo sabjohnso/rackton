@@ -17,7 +17,8 @@
 ;; generator, and check surfaces so a consumer requires only this module.
 
 (require "property.rkt"
-         "check.rkt")
+         "check.rkt"
+         rackton/system)   ;; `try` (runs a Property, catching panics)
 
 (provide (data-out Test)
          (data-out Outcome)

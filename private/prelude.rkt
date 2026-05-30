@@ -829,18 +829,9 @@
     (: run-io    (-> (IO a) a))
     (define (run-io io) (racket a (io) #f))
 
-    ;; --- Mutable references ----------------------------------
-
-    (data (Ref a))
-
-    (: make-ref  (-> a (IO (Ref a))))
-    (define (make-ref v) (racket (IO (Ref a)) (v) #f))
-
-    (: read-ref  (-> (Ref a) (IO a)))
-    (define (read-ref r) (racket (IO a) (r) #f))
-
-    (: write-ref (-> (Ref a) (-> a (IO Unit))))
-    (define (write-ref r v) (racket (IO Unit) (r v) #f))
+    ;; Mutable references (Ref), file I/O, try/raise-io, and the System
+    ;; surface moved to rackton/system (Phase 2 slim; runtime in
+    ;; private/prelude-runtime via `foreign`).
 
     ;; Concurrency primitives (ThreadId/MVar/Chan + fork-io/mvar/chan
     ;; ops) moved to rackton/control/concurrent (Phase 2 slim; runtime in
@@ -913,16 +904,7 @@
     ;; Optics (Lens / Prism / Traversal) moved to rackton/data/lens
     ;; (Phase 2 slim).
 
-    ;; --- File I/O --------------------------------------------
-
-    (: read-file    (-> String (IO String)))
-    (define (read-file path) (racket (IO String) (path) #f))
-
-    (: write-file   (-> String (-> String (IO Unit))))
-    (define (write-file path contents) (racket (IO Unit) (path contents) #f))
-
-    (: file-exists? (-> String (IO Boolean)))
-    (define (file-exists? path) (racket (IO Boolean) (path) #f))
+    ;; (File I/O moved to rackton/system)
 
     ;; --- List & pair helpers ---------------------------------
 
@@ -1140,39 +1122,9 @@
       (define (is-infinite? x)   (racket Boolean (x)   #f))
       (define (atan2        y x) (racket Float   (y x) 0.0)))
 
-    ;; --- try / raise-io ------------------------------------
-
-    (: try (-> (IO a) (IO (Result String a))))
-    (define (try io) (racket (IO (Result String a)) (io) #f))
-
-    (: raise-io (-> String (IO a)))
-    (define (raise-io msg) (racket (IO a) (msg) #f))
-
-    ;; --- System surface ------------------------------------
-
-    (: random-integer (-> Integer (-> Integer (IO Integer))))
-    (define (random-integer lo hi) (racket (IO Integer) (lo hi) #f))
-
-    (: random-float (IO Float))
-    (define random-float (racket (IO Float) () #f))
-
-    (: current-time-seconds (IO Integer))
-    (define current-time-seconds (racket (IO Integer) () #f))
-
-    (: list-directory (-> String (IO (List String))))
-    (define (list-directory path) (racket (IO (List String)) (path) #f))
-
-    (: getenv (-> String (IO (Maybe String))))
-    (define (getenv name) (racket (IO (Maybe String)) (name) #f))
-
-    (: argv (IO (List String)))
-    (define argv (racket (IO (List String)) () #f))
-
-    (: delete-file (-> String (IO Unit)))
-    (define (delete-file path) (racket (IO Unit) (path) #f))
-
-    (: make-directory (-> String (IO Unit)))
-    (define (make-directory path) (racket (IO Unit) (path) #f))))
+    ;; try / raise-io and the System surface (random / time / env /
+    ;; directories) moved to rackton/system (Phase 2 slim).
+    ))
 
 (define prelude-env
   (parameterize ([current-prelude-build? #t])

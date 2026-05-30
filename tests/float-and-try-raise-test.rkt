@@ -8,6 +8,7 @@
          "../main.rkt")
 
 (rackton
+  (require rackton/system)
   ;; Float literals + arithmetic.  Use values whose binary repr is
   ;; exact to avoid floating-point round-off in assertions.
   (define half 0.5)

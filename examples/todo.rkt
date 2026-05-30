@@ -12,6 +12,8 @@
 ;;   The file at $TODO_FILE if set, otherwise ./todos.txt.  One
 ;;   item per line: "[ ] task" (pending) or "[x] task" (done).
 
+(require rackton/system)
+
 ;; ----- Item: one row of the todo file ---------------------------
 
 (data Item

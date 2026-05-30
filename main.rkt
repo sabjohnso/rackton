@@ -117,7 +117,14 @@
                      stm-fmap stm-pure stm-ap stm-bind
                      ;; rackton/control/concurrent
                      fork-io wait-thread new-mvar new-empty-mvar take-mvar
-                     put-mvar read-mvar modify-mvar new-chan send-chan recv-chan)
+                     put-mvar read-mvar modify-mvar new-chan send-chan recv-chan
+                     ;; rackton/system
+                     make-ref read-ref write-ref
+                     read-file write-file file-exists? delete-file
+                     make-directory list-directory
+                     try raise-io
+                     random-integer random-float current-time-seconds
+                     getenv argv)
 
          ;; Surface-form / type-ctor / class / return-typed-method
          ;; stubs.  Bound so (for-label rackton) in scribble docs can
