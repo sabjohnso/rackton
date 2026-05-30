@@ -118,6 +118,9 @@ instances available.
   transformer.}
 @item{@racketmodname[rackton/control/monad/except] — the @racket[ExceptT]
   transformer.}
+@item{@racketmodname[rackton/control/monad/trans] — @racket[MonadTrans]
+  (@racket[lift]) and @racket[MonadIO] (@racket[lift-io]) instances for
+  the four transformers; re-exports the whole transformer stack.}
 @item{@racketmodname[rackton/system] — the system interface: mutable
   references (@racket[Ref]), files, @racket[try] / @racket[raise-io],
   and process/environment access.}

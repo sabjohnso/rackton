@@ -380,3 +380,32 @@ Superclass: @racket[Monad m].
 @racket[await-c] and @racket[yield-c] are return-typed.  Built-in
 instances: @racket[IO] (real OS threads via @racket[fork-io]),
 @racket[Identity] (deterministic, single-threaded).}}
+
+@defidform[#:kind "class" MonadTrans]{
+
+@racket[(MonadTrans t)]: monad transformers — type constructors
+@racket[t] of kind @racket[(-> (-> * *) (-> * *))] that lift an inner
+monadic action one layer up the stack.
+
+@defproc[(lift [ma (m a)]) (t m a)]{
+
+@racket[lift] is return-typed: the target transformer @racket[(t m a)]
+is recovered from the expected type, so a @racket[lift] call usually
+needs a surrounding annotation.  Built-in instances:
+@racket[StateT s], @racket[EnvT r], @racket[WriterT w] (requires
+@racket[Monoid w]), and @racket[ExceptT e].  Provided by
+@racketmodname[rackton/control/monad/trans].}}
+
+@defidform[#:kind "class" MonadIO]{
+
+@racket[(MonadIO m)]: monads into which an @racket[IO] action can be
+embedded.  Superclass: @racket[Monad m].
+
+@defproc[(lift-io [io (IO a)]) (m a)]{
+
+@racket[lift-io] is return-typed.  The base instance is @racket[IO]
+itself (identity); each transformer lifts the inner monad's
+@racket[lift-io] one layer, so a multi-layer stack such as
+@racket[(StateT s (ExceptT e IO))] threads an @racket[IO] action all
+the way down.  Transformer instances are provided by
+@racketmodname[rackton/control/monad/trans].}}

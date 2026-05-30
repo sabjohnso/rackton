@@ -122,7 +122,7 @@
  $dispatch:pure $dispatch:mempty $dispatch:pi
  $dispatch:get-st $dispatch:put-st $dispatch:modify-st
  $dispatch:ask-en $dispatch:tell-w $dispatch:throw-e
- $dispatch:await-c $dispatch:yield-c
+ $dispatch:await-c $dispatch:yield-c $dispatch:lift-io $dispatch:lift
 
  ;; Return-typed class methods (resolved at compile time per call site;
  ;; the `$pure:TCon` names are what the codegen emits after resolution).
@@ -220,6 +220,9 @@
 
  ;; Concurrent
  fork-c |$await-c:IO| |$yield-c:IO|
+
+ ;; MonadIO
+ |$lift-io:IO|
 
  ;; Identity + Concurrent Identity
  run-identity |$await-c:Identity| |$yield-c:Identity| |$pure:Identity|
@@ -713,6 +716,8 @@
 (define $dispatch:throw-e   (make-hasheq))
 (define $dispatch:await-c   (make-hasheq))
 (define $dispatch:yield-c   (make-hasheq))
+(define $dispatch:lift-io   (make-hasheq))
+(define $dispatch:lift      (make-hasheq))  ; MonadTrans.lift (no base instance)
 
 (define (|$pure:Maybe|  x) (Some x))
 (define (|$pure:List|   x) (Cons x Nil))
@@ -1065,6 +1070,9 @@
 
 (define |$await-c:IO| await-c-io)
 (define |$yield-c:IO| ($io (lambda () (sleep 0) MkUnit)))
+
+;; MonadIO IO: lift-io is the identity on IO actions.
+(define (|$lift-io:IO| io) io)
 
 ;; ----- Identity monad + Concurrent Identity -------
 
@@ -1751,4 +1759,5 @@
 (register-instance-method! $dispatch:await-c 'IO       |$await-c:IO|)
 (register-instance-method! $dispatch:await-c 'Identity |$await-c:Identity|)
 (register-instance-method! $dispatch:yield-c 'IO       |$yield-c:IO|)
+(register-instance-method! $dispatch:lift-io 'IO       |$lift-io:IO|)
 (register-instance-method! $dispatch:yield-c 'Identity |$yield-c:Identity|)

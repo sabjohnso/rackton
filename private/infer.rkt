@@ -861,12 +861,22 @@
           [cinfo
            (define-values (t sub) (instantiate/subst sch))
            (define dispatchpos (hash-ref (class-info-dispatchpos cinfo) x #f))
+           (define reqs (hash-ref (class-info-dictreqs cinfo) x '()))
            (cond
              [(eq? dispatchpos 'return)
+              ;; A return-typed method may ALSO carry a method-level dict
+              ;; requirement (e.g. MonadTrans.lift's `(Monad m) =>`).
+              ;; Fold those dict-entries into the single 'return entry so
+              ;; the separate record-dict-use! below doesn't clobber the
+              ;; dispatch resolution on the same stx.
               (define class-param-tvars
                 (for/list ([p (in-list (class-info-params cinfo))])
                   (hash-ref sub p)))
-              (record-method-use! x stx env class-param-tvars)]
+              (define method-dict-entries
+                (for/list ([req (in-list reqs)])
+                  (cons (car req)
+                        (for/list ([a (in-list (cdr req))]) (apply-subst sub a)))))
+              (record-method-use! x stx env class-param-tvars method-dict-entries)]
              [(integer? dispatchpos)
               ;; Positional class-method call.  The resolver routes
               ;; to a per-instance impl after the dispatch arg's
@@ -878,11 +888,10 @@
               (define class-param-tvars
                 (for/list ([p (in-list (class-info-params cinfo))])
                   (hash-ref sub p)))
-              (record-inst-dispatch-use! x stx class-param-tvars)]
-             [else (void)])
-           (define reqs (hash-ref (class-info-dictreqs cinfo) x '()))
-           (unless (null? reqs)
-             (record-dict-use! x stx reqs sub))
+              (record-inst-dispatch-use! x stx class-param-tvars)
+              (unless (null? reqs) (record-dict-use! x stx reqs sub))]
+             [else
+              (unless (null? reqs) (record-dict-use! x stx reqs sub))])
            (values empty-subst t)]
           [else
            ;; A free function may itself be needs-dict: if its scheme's
@@ -2933,14 +2942,21 @@
      (define cinfo (env-ref-class env owner))
      (eq? (hash-ref (class-info-dispatchpos cinfo) name #f) 'return)]))
 
-;; Stash a return-typed-method entry under `stx`.  The
-;; entry shape is `(list 'return method-name class-param-tvars)`.
-(define (record-method-use! method-name stx env class-param-tvars)
+;; Stash a return-typed-method entry under `stx`.  The entry shape is
+;; `(list 'return method-name class-param-tvars method-dict-entries)`.
+;; method-dict-entries (usually empty) holds the method's OWN qual
+;; context, for return-typed methods that also carry a method-level
+;; dict requirement (e.g. MonadTrans.lift's `(Monad m) =>`) — so the
+;; single entry resolves both the dispatch impl and the dict args
+;; without the two recordings clobbering each other on `stx`.
+(define (record-method-use! method-name stx env class-param-tvars
+                            [method-dict-entries '()])
   (define table (current-method-uses))
   (when table
     (hash-set! table stx (list 'return
                                method-name
-                               class-param-tvars))))
+                               class-param-tvars
+                               method-dict-entries))))
 
 ;; A positional class-method call on a class that has at
 ;; least one needs-dict instance.  Entry shape:
@@ -3073,6 +3089,28 @@
 ;;     single impl-name symbol the codegen substitutes for the e:var.
 ;;   * `'dict`   entries land in `current-method-dict-resolutions` as
 ;;     a list of impl-name symbols the codegen prepends to e:app args.
+;; Resolve a list of dict-entries — `(cons class-name arg-types)` — into
+;; the impl names to prepend at a call site.  Expands each constraint
+;; over its superclass closure, dedups by method, drops fully-concrete
+;; pairs (resolved to per-type globals directly), and resolves the rest.
+;; Shared by the 'dict and 'return method-use branches.
+(define (resolve-dict-entries dict-entries final-subst stx env)
+  (define all-pairs
+    (apply append
+           (for/list ([entry (in-list dict-entries)])
+             (collect-dict-method-args (car entry) (cdr entry) env))))
+  (define dedup-pairs
+    (let loop ([ps all-pairs] [seen (seteq)] [acc '()])
+      (cond
+        [(null? ps) (reverse acc)]
+        [(set-member? seen (car (car ps))) (loop (cdr ps) seen acc)]
+        [else (loop (cdr ps) (set-add seen (car (car ps))) (cons (car ps) acc))])))
+  (define active-pairs
+    (filter (lambda (pair) (pair-has-tvar-at-undetermined-position? pair env))
+            dedup-pairs))
+  (for/list ([pair (in-list active-pairs)])
+    (resolve-impl-with-quals (car pair) (cdr pair) final-subst stx env)))
+
 (define (resolve-method-uses! final-subst env)
   (define uses (current-method-uses))
   (define resolutions (current-method-resolutions))
@@ -3080,19 +3118,24 @@
   (when (and uses resolutions)
     (for ([(stx entry) (in-hash uses)])
       (match entry
-        [(list 'return method-name class-param-tvars)
+        [(list 'return method-name class-param-tvars method-dict-entries)
          (define impl (resolve-return-impl method-name class-param-tvars
                                            final-subst stx env))
          (hash-set! resolutions stx impl)
-         ;; When the matching instance carries a qual
-         ;; context with return-typed-method-bearing constraints, the
-         ;; impl needs those impls as dict args.  Compute and store
-         ;; alongside (codegen prepends them at e:app).
+         ;; Dict args the impl needs prepended at the call site, from two
+         ;; sources: the matching INSTANCE's qual context (return-typed-
+         ;; bearing constraints), and the METHOD's own qual context
+         ;; (e.g. MonadTrans.lift's `(Monad m) =>`).  A return-typed
+         ;; method can have BOTH a dispatch on its result AND a
+         ;; method-level dict requirement (lift is the first such).
          (define inst-dict-impls
            (instance-qual-return-impls env method-name
                                        class-param-tvars final-subst stx))
-         (unless (null? inst-dict-impls)
-           (hash-set! dict-resolutions stx inst-dict-impls))]
+         (define method-dict-impls
+           (resolve-dict-entries method-dict-entries final-subst stx env))
+         (define all-dict-impls (append inst-dict-impls method-dict-impls))
+         (unless (null? all-dict-impls)
+           (hash-set! dict-resolutions stx all-dict-impls))]
         [(list 'dict method-name dict-entries)
          ;; For each constraint, expand into (method . arg-types) pairs
          ;; following the class's superclass hierarchy so inherited
@@ -3108,29 +3151,8 @@
          ;; dropped: the function's body resolves those references to
          ;; per-type globals (e.g. `$mempty:String`) directly, with no
          ;; corresponding dict-arg slot.
-         (define all-pairs
-           (apply append
-                  (for/list ([entry (in-list dict-entries)])
-                    (collect-dict-method-args (car entry) (cdr entry) env))))
-         (define dedup-pairs
-           (let loop ([ps all-pairs] [seen (seteq)] [acc '()])
-             (cond
-               [(null? ps) (reverse acc)]
-               [(set-member? seen (car (car ps)))
-                (loop (cdr ps) seen acc)]
-               [else
-                (loop (cdr ps)
-                      (set-add seen (car (car ps)))
-                      (cons (car ps) acc))])))
-         (define active-pairs
-           (filter (lambda (pair)
-                     (pair-has-tvar-at-undetermined-position? pair env))
-                   dedup-pairs))
-         (define impls
-           (for/list ([pair (in-list active-pairs)])
-             (resolve-impl-with-quals (car pair) (cdr pair)
-                                      final-subst stx env)))
-         (hash-set! dict-resolutions stx impls)]
+         (hash-set! dict-resolutions stx
+                    (resolve-dict-entries dict-entries final-subst stx env))]
         [(list 'inst-dispatch method-name class-param-tvars)
          ;; Route a class-method call to a per-instance
          ;; impl if the matching instance is needs-dict; otherwise

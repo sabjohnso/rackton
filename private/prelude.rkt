@@ -612,6 +612,30 @@
     (instance (Monad IO)
       (define (flatmap f io) (racket (IO b) (io f) #f)))
 
+    ;; --- MonadIO ----------------------------------------
+    ;;
+    ;; Lift an IO action into any monad that ultimately bottoms out at
+    ;; IO.  The base instance (IO itself) is the identity; the
+    ;; transformer instances (in rackton/control/monad/trans) lift
+    ;; through one layer at a time.  lift-io is return-typed (dispatches
+    ;; on the result monad), so the class lives here in the prelude and
+    ;; instances register cross-module via the dispatch table.
+    (protocol ((Monad m) => (MonadIO (m :: (-> * *))))
+      (: lift-io (-> (IO a) (m a))))
+
+    (instance (MonadIO IO)
+      (define (lift-io io) (racket (IO a) (io) #f)))
+
+    ;; --- MonadTrans -------------------------------------
+    ;;
+    ;; A monad transformer @racket[t] can lift an action of its inner
+    ;; monad @racket[m] into @racket[t m].  @racket[t] has kind
+    ;; @racket[(* -> *) -> (* -> *)].  lift is return-typed (dispatches
+    ;; on the transformer), so the class lives here and the instances
+    ;; (one per transformer) live in rackton/control/monad/trans.
+    (protocol (MonadTrans (t :: (-> (-> * *) (-> * *))))
+      (: lift ((Monad m) => (-> (m a) (t m a)))))
+
     (: print     (-> String (IO Unit)))
     (define (print s) (racket (IO Unit) (s) #f))
 

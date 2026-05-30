@@ -124,7 +124,9 @@
   ;; Semigroup / monoid
   Semigroup Monoid
   ;; MTL-style monadic classes
-  MonadState MonadEnv MonadWriter MonadError Concurrent)
+  MonadState MonadEnv MonadWriter MonadError Concurrent
+  ;; transformer / IO lifting
+  MonadTrans MonadIO)
 
 ;; ----- return-typed class methods ----------------------------------
 
@@ -156,5 +158,7 @@
   ask-en
   ;; Concurrent
   await-c yield-c
+  ;; MonadTrans / MonadIO
+  lift lift-io
   ;; Floating
   pi)

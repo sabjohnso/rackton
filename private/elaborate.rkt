@@ -154,9 +154,9 @@
     (define inline-log (unbox (current-inlined-sites)))
     ;; Pass the logs alongside compiled forms; the
     ;; rackton macro turns them into runtime forms.
-    (define-values (final-compiled prov-stx bs dcs tcs cls insts)
+    (define-values (final-compiled prov-stx bs dcs tcs cls insts impls)
       (elaborate-finish parsed env compiled))
-    (values final-compiled prov-stx bs dcs tcs cls insts mono-log inline-log)))
+    (values final-compiled prov-stx bs dcs tcs cls insts impls mono-log inline-log)))
 
 ;; ----- export resolution ----------------------------------------------
 ;;
@@ -309,7 +309,15 @@
     (for ([e (in-list (published 'rackton-tcons))])
       (hash-set! export-tcons (car e) (car e)))
     (for ([e (in-list (published 'rackton-classes))])
-      (hash-set! export-classes (car e) (car e))))
+      (hash-set! export-classes (car e) (car e)))
+    ;; Force-exported needs-dict impls ($pure:ExceptT, $lift:StateT, …)
+    ;; are codegen-only names with no scheme, so they live in their own
+    ;; sidecar category rather than rackton-bindings.  Re-export them as
+    ;; plain Racket value bindings (they resolve through this module's
+    ;; own (require M)) so a downstream call site can bind the direct
+    ;; reference through a chain of all-from-out re-exports.
+    (for ([sym (in-list (published 'rackton-exported-impls))])
+      (hash-set! export-vars sym sym)))
 
   (define (remove-name name)
     ;; except-out: drop name from every category it appears in.
@@ -459,7 +467,8 @@
     (and provide-anchor (build-racket-provide export-vars provide-anchor)))
   (values compiled prov-stx
           export-bindings export-data-ctors-encoded
-          export-tcons-encoded export-classes-encoded export-instances))
+          export-tcons-encoded export-classes-encoded export-instances
+          exported-impls))
 
 ;; `(rackton form ...)` — embeddable form.  Splices the compiled forms
 ;; but does NOT emit a sidecar schemes submodule, so multiple
@@ -467,7 +476,7 @@
 (define-syntax (rackton stx)
   (syntax-parse stx
     [(_ form ...)
-     (define-values (compiled prov-stx _b _d _t _c _i mono-log inline-log)
+     (define-values (compiled prov-stx _b _d _t _c _i _impls mono-log inline-log)
        (rackton-elaborate #'(form ...)))
      (define out-forms
        (cond [prov-stx (append compiled (list prov-stx))]
@@ -486,7 +495,7 @@
 (define-syntax (rackton/main stx)
   (syntax-parse stx
     [(_ form ...)
-     (define-values (compiled prov-stx bs dcs tcs cls insts _mono _inline)
+     (define-values (compiled prov-stx bs dcs tcs cls insts impls _mono _inline)
        (rackton-elaborate #'(form ...)))
      (define at-module-level?
        (memq (syntax-local-context) '(module module-begin)))
@@ -498,7 +507,8 @@
                    [data-ctors   (datum->syntax stx dcs)]
                    [tcons        (datum->syntax stx tcs)]
                    [classes      (datum->syntax stx cls)]
-                   [instances    (datum->syntax stx insts)])
+                   [instances    (datum->syntax stx insts)]
+                   [impls        (datum->syntax stx impls)])
        (cond
          [at-module-level?
           (syntax/loc stx
@@ -509,11 +519,13 @@
                          rackton-data-ctors
                          rackton-tcons
                          rackton-classes
-                         rackton-instances)
-                (define rackton-bindings   'bindings)
-                (define rackton-data-ctors 'data-ctors)
-                (define rackton-tcons      'tcons)
-                (define rackton-classes    'classes)
-                (define rackton-instances  'instances))))]
+                         rackton-instances
+                         rackton-exported-impls)
+                (define rackton-bindings        'bindings)
+                (define rackton-data-ctors      'data-ctors)
+                (define rackton-tcons           'tcons)
+                (define rackton-classes         'classes)
+                (define rackton-instances       'instances)
+                (define rackton-exported-impls  'impls))))]
          [else
           (syntax/loc stx (begin out ...))]))]))
