@@ -8,6 +8,8 @@
          "../main.rkt")
 
 (rackton
+  (require rackton/control/monad/state)
+  (require rackton/control/monad/reader)
   ;; ----- MonadState polymorphic increment -----------------
   (: incr-by ((MonadState Integer m) => (-> Integer (m Unit))))
   (define (incr-by n)

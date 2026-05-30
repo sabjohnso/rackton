@@ -7,6 +7,8 @@
          "../main.rkt")
 
 (rackton
+  (require rackton/control/monad/state)
+  (require rackton/control/monad/reader)
   ;; ----- A small class with ONE return-typed method ---------
   (protocol (HasUnit (m :: (-> * *)))
     (: unit-val (m Integer)))

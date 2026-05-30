@@ -9,6 +9,7 @@
          "../main.rkt")
 
 (rackton
+  (require rackton/control/monad/reader)
   ;; ----- WriterT do-notation in a polymorphic body --------
   ;; The MonadWriter inferred body's `do` chain runtime-dispatches
   ;; `flatmap` on MkWriterT — already registered.  This is a

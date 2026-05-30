@@ -439,84 +439,10 @@
     ;; yet rewrite user-written needs-dict bodies.
     (: mconcat ((Monoid a) => (-> (List a) a)))
 
-    ;; --- State monad ----------------------------------------
-    ;;
-    ;; A computation that threads a state value through a chain of
-    ;; operations.  Internally a function `s -> (Pair s a)`.
-
-    (newtype (State s a)
-      (MkState (-> s (Pair s a))))
-
-    (: run-state    (-> (State s a) (-> s (Pair s a))))
-    (: eval-state   (-> (State s a) (-> s a)))
-    (: exec-state   (-> (State s a) (-> s s)))
-    (: get-state    (State s s))
-    (: put-state    (-> s (State s Unit)))
-    (: modify-state (-> (-> s s) (State s Unit)))
-
-    (define (run-state st)
-      (match st [(MkState f) f]))
-
-    (define (eval-state st s)
-      (match ((run-state st) s) [(MkPair _ a) a]))
-
-    (define (exec-state st s)
-      (match ((run-state st) s) [(MkPair s2 _) s2]))
-
-    (define get-state    (MkState (lambda (s) (MkPair s s))))
-    (define (put-state s) (MkState (lambda (_) (MkPair s MkUnit))))
-    (define (modify-state f) (MkState (lambda (s) (MkPair (f s) MkUnit))))
-
-    (instance (Functor (State s))
-      (define (fmap f st)
-        (MkState (lambda (s)
-                   (match ((run-state st) s)
-                     [(MkPair s2 a) (MkPair s2 (f a))])))))
-
-    (instance (Applicative (State s))
-      (define (pure a) (MkState (lambda (s) (MkPair s a))))
-      (define (fapply sf sa)
-        (MkState (lambda (s)
-                   (match ((run-state sf) s)
-                     [(MkPair s2 f)
-                      (match ((run-state sa) s2)
-                        [(MkPair s3 a) (MkPair s3 (f a))])])))))
-
-    (instance (Monad (State s))
-      (define (flatmap f st)
-        (MkState (lambda (s)
-                   (match ((run-state st) s)
-                     [(MkPair s2 a) ((run-state (f a)) s2)])))))
-
-    ;; --- Env monad (a/k/a Reader; renamed to avoid the Scheme
-    ;; reader-name collision) ----------------------------------
-
-    (newtype (Env r a)
-      (MkEnv (-> r a)))
-
-    (: run-env (-> (Env r a) (-> r a)))
-    (: ask     (Env r r))
-    (: local   (-> (-> r r) (-> (Env r a) (Env r a))))
-
-    (define (run-env e) (match e [(MkEnv f) f]))
-
-    (define ask (MkEnv (lambda (r) r)))
-
-    (define (local f e)
-      (MkEnv (lambda (r) ((run-env e) (f r)))))
-
-    (instance (Functor (Env r))
-      (define (fmap f e)
-        (MkEnv (lambda (r) (f ((run-env e) r))))))
-
-    (instance (Applicative (Env r))
-      (define (pure a) (MkEnv (lambda (_) a)))
-      (define (fapply ef ea)
-        (MkEnv (lambda (r) (((run-env ef) r) ((run-env ea) r))))))
-
-    (instance (Monad (Env r))
-      (define (flatmap f e)
-        (MkEnv (lambda (r) ((run-env (f ((run-env e) r))) r)))))
+    ;; State monad -> rackton/control/monad/state and Env (Reader) monad
+    ;; -> rackton/control/monad/reader (Phase 2 slim; pure Rackton, the
+    ;; modules regenerate their runtime).  The MonadState/MonadEnv classes
+    ;; and the StateT/EnvT transformers stay below.
 
     ;; --- StateT s m: state-passing over an inner monad m ---------
 
@@ -629,10 +555,7 @@
       (: put-st    (-> s (m Unit)))
       (: modify-st (-> (-> s s) (m Unit))))
 
-    (instance (MonadState s (State s))
-      (define get-st        get-state)
-      (define (put-st x)    (put-state x))
-      (define (modify-st f) (modify-state f)))
+    ;; (MonadState (State s) instance moved to rackton/control/monad/state)
 
     (instance ((Monad m) => (MonadState s (StateT s m)))
       (define get-st        get-state-t)
@@ -661,9 +584,7 @@
       (: ask-en   (m r))
       (: local-en (-> (-> r r) (-> (m a) (m a)))))
 
-    (instance (MonadEnv r (Env r))
-      (define ask-en     ask)
-      (define (local-en f e) (local f e)))
+    ;; (MonadEnv (Env r) instance moved to rackton/control/monad/reader)
 
     (instance ((Monad m) => (MonadEnv r (EnvT r m)))
       (define ask-en     ask-t)

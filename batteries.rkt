@@ -15,6 +15,8 @@
          rackton/data/set
          rackton/control/stm
          rackton/control/concurrent
+         rackton/control/monad/state
+         rackton/control/monad/reader
          rackton/system)
 
 (provide (all-from-out rackton/data/maybe)
@@ -26,4 +28,6 @@
          (all-from-out rackton/data/set)
          (all-from-out rackton/control/stm)
          (all-from-out rackton/control/concurrent)
+         (all-from-out rackton/control/monad/state)
+         (all-from-out rackton/control/monad/reader)
          (all-from-out rackton/system))

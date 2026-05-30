@@ -6,6 +6,8 @@
          "../main.rkt")
 
 (rackton
+  (require rackton/control/monad/state)
+  (require rackton/control/monad/reader)
   ;; ----- State: a counter ----------------------------------
   (: tick (State Integer Integer))
   (define tick

@@ -47,7 +47,7 @@
     Maybe List Pair Result
     IO Future
     Identity
-    State Env StateT EnvT WriterT ExceptT))
+    StateT EnvT WriterT ExceptT))
 
 (define classes
   '(Eq Ord Num Fractional Integral Real Floating RealFrac RealFloat

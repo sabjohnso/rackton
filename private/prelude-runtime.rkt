@@ -92,9 +92,9 @@
 
  ;; ADTs (constructors usable as expressions and as match patterns)
  None Some Nil Cons MkPair Ok Err MkUnit
- MkState MkEnv MkStateT MkEnvT MkWriterT MkExceptT MkIdentity
- run-state eval-state exec-state get-state put-state modify-state
- run-env ask local
+ ;; State/Env (run-state/get-state/run-env/ask/local + MkState/MkEnv)
+ ;; moved to rackton/control/monad/state + reader.
+ MkStateT MkEnvT MkWriterT MkExceptT MkIdentity
  run-state-t eval-state-t exec-state-t
  get-state-t put-state-t modify-state-t lift-state-t
  run-env-t ask-t local-t lift-env-t
@@ -126,7 +126,6 @@
  ;; Return-typed class methods (resolved at compile time per call site;
  ;; the `$pure:TCon` names are what the codegen emits after resolution).
  |$pure:Maybe| |$pure:List| |$pure:Result| |$pure:IO|
- |$pure:State| |$pure:Env|
  |$pure:StateT| |$pure:EnvT|
  |$pure:WriterT| |$pure:ExceptT|
  ;; Per-instance class-method impls for compile-time direct
@@ -143,12 +142,10 @@
  ;; instances over a transformer take per-method dict args from the
  ;; inner monad's instance (order matches the class's return-typed
  ;; method declaration order — see build-dict-skolems in infer.rkt).
- |$get-st:State|    |$put-st:State|    |$modify-st:State|
  |$get-st:StateT|   |$put-st:StateT|   |$modify-st:StateT|
  |$get-st:EnvT|     |$put-st:EnvT|     |$modify-st:EnvT|
  |$get-st:WriterT|  |$put-st:WriterT|  |$modify-st:WriterT|
  |$get-st:ExceptT|  |$put-st:ExceptT|  |$modify-st:ExceptT|
- |$ask-en:Env|     |$local-en:Env|
  |$ask-en:EnvT|    |$local-en:EnvT|
  |$ask-en:StateT|  |$local-en:StateT|
  |$ask-en:WriterT| |$local-en:WriterT|
@@ -188,6 +185,9 @@
  $dispatch:<>
  $dispatch:traverse
  $dispatch:float-div
+ ;; MonadEnv's positional local-en — exposed so rackton/control/monad/
+ ;; reader (and any user MonadEnv instance) can register against it.
+ $dispatch:local-en
 
  ;; Combinators
  id compose flip const
@@ -314,8 +314,7 @@
 
 ;; MkSum / MkProduct moved to rackton/data/monoid (Phase 2 slim).
 
-(define-data-ctor MkState 1)
-(define-data-ctor MkEnv   1)
+;; MkState / MkEnv moved to rackton/control/monad/state + reader.
 
 (define-data-ctor MkStateT 1)
 (define-data-ctor MkEnvT   1)
@@ -1463,73 +1462,9 @@
 (register-instance-method! $dispatch:flatmap '$ctor:Err   result-flatmap)
 (register-instance-method! $dispatch:flatmap '$ctor:Ok    result-flatmap)
 
-;; ----- State monad runtime ---------------------------------------
-
-(define (run-state st)  (match st [(MkState f) f]))
-(define (eval-state st s)
-  (match ((run-state st) s) [(MkPair _ a) a]))
-(define (exec-state st s)
-  (match ((run-state st) s) [(MkPair s2 _) s2]))
-(define get-state    (MkState (lambda (s) (MkPair s s))))
-(define (put-state s) (MkState (lambda (_) (MkPair s MkUnit))))
-(define (modify-state f) (MkState (lambda (s) (MkPair (f s) MkUnit))))
-
-(define |$pure:State|
-  (lambda (a) (MkState (lambda (s) (MkPair s a)))))
-
-(define (state-fmap f st)
-  (MkState (lambda (s)
-             (match ((run-state st) s)
-               [(MkPair s2 a) (MkPair s2 (f a))]))))
-(register-instance-method! $dispatch:fmap '$ctor:MkState state-fmap)
-
-(define (state-ap sf sa)
-  (MkState (lambda (s)
-             (match ((run-state sf) s)
-               [(MkPair s2 f)
-                (match ((run-state sa) s2)
-                  [(MkPair s3 a) (MkPair s3 (f a))])]))))
-(register-instance-method! $dispatch:fapply '$ctor:MkState state-ap)
-
-(define (state-liftA2 g sa sb)
-  (MkState (lambda (s)
-             (match ((run-state sa) s)
-               [(MkPair s2 a)
-                (match ((run-state sb) s2)
-                  [(MkPair s3 b) (MkPair s3 (g a b))])]))))
-(register-instance-method! $dispatch:liftA2 '$ctor:MkState state-liftA2)
-
-(define (state-flatmap f st)
-  (MkState (lambda (s)
-             (match ((run-state st) s)
-               [(MkPair s2 a) ((run-state (f a)) s2)]))))
-(register-instance-method! $dispatch:flatmap '$ctor:MkState state-flatmap)
-
-;; ----- Env monad runtime -----------------------------------------
-
-(define (run-env e) (match e [(MkEnv f) f]))
-(define ask (MkEnv (lambda (r) r)))
-(define/curried (local f e) (MkEnv (lambda (r) ((run-env e) (f r)))))
-(register-instance-method! $dispatch:local-en '$ctor:MkEnv local)
-
-(define |$pure:Env|
-  (lambda (a) (MkEnv (lambda (_) a))))
-
-(define (env-fmap f e)
-  (MkEnv (lambda (r) (f ((run-env e) r)))))
-(register-instance-method! $dispatch:fmap '$ctor:MkEnv env-fmap)
-
-(define (env-ap ef ea)
-  (MkEnv (lambda (r) (((run-env ef) r) ((run-env ea) r)))))
-(register-instance-method! $dispatch:fapply '$ctor:MkEnv env-ap)
-
-(define (env-liftA2 g ea eb)
-  (MkEnv (lambda (r) (g ((run-env ea) r) ((run-env eb) r)))))
-(register-instance-method! $dispatch:liftA2 '$ctor:MkEnv env-liftA2)
-
-(define (env-flatmap f e)
-  (MkEnv (lambda (r) ((run-env (f ((run-env e) r))) r))))
-(register-instance-method! $dispatch:flatmap '$ctor:MkEnv env-flatmap)
+;; State monad runtime -> rackton/control/monad/state, Env (Reader)
+;; runtime -> rackton/control/monad/reader (Phase 2 slim; the modules
+;; regenerate it from pure Rackton source).
 
 ;; ----- StateT s m runtime ----------------------------------------
 ;; Each method whose semantics need the inner monad's `pure` takes
@@ -1983,9 +1918,7 @@
 
 ;; ----- MonadState s X -------------------------------------------
 
-(define |$get-st:State|       get-state)
-(define |$put-st:State|       put-state)
-(define |$modify-st:State|    modify-state)
+;; $get-st/$put-st/$modify-st:State moved to rackton/control/monad/state.
 
 ;; StateT over inner Monad m carries the inner pure dict already
 ;; through get-state-t / put-state-t / modify-state-t.
@@ -2033,8 +1966,7 @@
 
 ;; ----- MonadEnv r X ---------------------------------------------
 
-(define |$ask-en:Env|       ask)
-(define |$local-en:Env|     local)
+;; $ask-en:Env / $local-en:Env moved to rackton/control/monad/reader.
 (define |$ask-en:EnvT|      ask-t)
 ;; $local-en:EnvT accepts the inner-pure dict (from the
 ;; EnvT MonadEnv instance's `(Monad m)` qual) as a leading arg, even
@@ -2221,9 +2153,8 @@
 (register-instance-method! $dispatch:pure 'List     |$pure:List|)
 (register-instance-method! $dispatch:pure 'Result   |$pure:Result|)
 (register-instance-method! $dispatch:pure 'IO       |$pure:IO|)
-(register-instance-method! $dispatch:pure 'State    |$pure:State|)
-(register-instance-method! $dispatch:pure 'Env      |$pure:Env|)
-;; $pure:STM registers from rackton/control/stm's Applicative instance.
+;; $pure:State / $pure:Env register from rackton/control/monad/state +
+;; reader; $pure:STM from rackton/control/stm.
 (register-instance-method! $dispatch:pure 'Identity |$pure:Identity|)
 
 (register-instance-method! $dispatch:mempty 'String  |$mempty:String|)
@@ -2237,10 +2168,8 @@
 (register-instance-method! $dispatch:pi 'Float   |$pi:Float|)
 (register-instance-method! $dispatch:pi 'Complex |$pi:Complex|)
 
-(register-instance-method! $dispatch:get-st    'State |$get-st:State|)
-(register-instance-method! $dispatch:put-st    'State |$put-st:State|)
-(register-instance-method! $dispatch:modify-st 'State |$modify-st:State|)
-(register-instance-method! $dispatch:ask-en    'Env   |$ask-en:Env|)
+;; get-st/put-st/modify-st:State register from rackton/control/monad/state;
+;; ask-en:Env from rackton/control/monad/reader.
 ;; tell-w / throw-e have only needs-dict instances — no plain base to
 ;; register; their tables stay empty.
 

@@ -659,11 +659,28 @@
   (define head-arg-types
     (for/list ([a (in-list (constraint-args head))])
       (ty-ast->type a)))
-  (define tags (tags-for-instance-head head-arg-types env))
 
   (define cinfo (env-ref-class env head-pred-class))
   (unless cinfo
     (error 'compile-instance "unknown class: ~s" head-pred-class))
+
+  ;; Positional dispatch keys on the class's DETERMINING parameter(s) —
+  ;; for a fundep class like (MonadState s m | m -> s) that is `m` (the
+  ;; monad), not the first arg `s` (which is fundep-determined and may be
+  ;; a bare tvar).  Drop determined params so tags-for-instance-head sees
+  ;; the dispatchable arg.  (Single-param classes: no fundeps, unchanged.)
+  (define determining-arg-types
+    (cond
+      [(null? (class-info-fundeps cinfo)) head-arg-types]
+      [else
+       (define determined
+         (for/fold ([acc (seteq)]) ([fd (in-list (class-info-fundeps cinfo))])
+           (set-union acc (list->seteq (cdr fd)))))
+       (for/list ([p (in-list (class-info-params cinfo))]
+                  [t (in-list head-arg-types)]
+                  #:unless (set-member? determined p))
+         t)]))
+  (define tags (tags-for-instance-head determining-arg-types env))
   (define user-impls
     (for/fold ([acc '()]) ([m (in-list methods)])
       (match m
