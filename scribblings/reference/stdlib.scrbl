@@ -143,8 +143,10 @@ instances available.
   @racketmodname[rackton/system/random] (@racket[random-integer] /
   @racket[random-float]),
   @racketmodname[rackton/system/time] (@racket[current-time-seconds]),
-  and @racketmodname[rackton/system/environment] (@racket[getenv] /
-  @racket[argv]).}
+  @racketmodname[rackton/system/environment] (@racket[getenv] /
+  @racket[argv]), and @racketmodname[rackton/system/exit]
+  (@racket[exit-success] / @racket[exit-failure] / @racket[exit-with]
+  over the @racket[ExitCode] type).}
 @item{@racketmodname[rackton/text/string] — String operations:
   @racket[null-string?], @racket[reverse-string],
   @racket[to-upper-string]/@racket[to-lower-string],

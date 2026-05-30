@@ -258,7 +258,9 @@
 
  ;; System surface
  random-integer random-float current-time-seconds
- list-directory getenv argv delete-file make-directory)
+ list-directory getenv argv delete-file make-directory
+ ;; System.Exit
+ exit-with-code)
 
 ;; ----- monomorphization log -----------------------------
 
@@ -1413,6 +1415,11 @@
 
 (define (make-directory path)
   ($io (lambda () (rkt:make-directory path) MkUnit)))
+
+;; System.Exit — terminate the process with the given status code.
+;; `exit` does not return, so the IO action's result type is free.
+(define (exit-with-code code)
+  ($io (lambda () (exit code))))
 
 ;; ----- Functor / Monad instance impls ------------------------
 

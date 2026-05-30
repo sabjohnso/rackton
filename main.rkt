@@ -127,7 +127,9 @@
                      make-directory list-directory
                      try raise-io
                      random-integer random-float current-time-seconds
-                     getenv argv)
+                     getenv argv
+                     ;; rackton/system/exit
+                     exit-with-code)
 
          ;; Surface-form / type-ctor / class / return-typed-method
          ;; stubs.  Bound so (for-label rackton) in scribble docs can
