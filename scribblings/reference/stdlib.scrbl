@@ -49,6 +49,11 @@ instances available.
 @item{@racketmodname[rackton/data/traversable] — @racket[sequence-a]
   (sequenceA) and @racket[for-t] (@racket[traverse] is the prelude
   class method).}
+@item{@racketmodname[rackton/data/complex] — derived @racket[Complex]
+  ops: @racket[conjugate], @racket[phase], @racket[mk-polar],
+  @racket[cis], @racket[polar] (the type and @racket[make-complex] /
+  @racket[real-part] / @racket[imag-part] / @racket[magnitude] are in
+  the prelude).}
 @item{@racketmodname[rackton/control/applicative] — @racket[lift-a3]
   (pure / fapply / liftA2 / when / unless are in the prelude).}
 @item{@racketmodname[rackton/data/char] — Data.Char predicates
