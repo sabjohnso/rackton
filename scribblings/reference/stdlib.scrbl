@@ -52,8 +52,12 @@ instances available.
   @racket[control?], @racket[punctuation?]) and conversions
   (@racket[ord], @racket[chr], @racket[to-upper], @racket[to-lower],
   @racket[digit->int], @racket[int->digit]).}
-@item{@racketmodname[rackton/data/monoid] — the @racket[Sum] and
-  @racket[Product] @racket[Monoid] newtypes over numbers.}
+@item{@racketmodname[rackton/data/monoid] — the @racket[Sum] /
+  @racket[Product] (numeric) and @racket[All] / @racket[Any] (Boolean)
+  @racket[Monoid] newtypes.}
+@item{@racketmodname[rackton/data/semigroup] — the @racket[Min] /
+  @racket[Max] / @racket[First] / @racket[Last] selection
+  @racket[Semigroup] newtypes.}
 @item{@racketmodname[rackton/data/list] — the extended list combinators
   (@racket[sort], @racket[zip], @racket[take], @racket[drop],
   @racket[find], @racket[concat-map], @racket[group-by], …).  The core

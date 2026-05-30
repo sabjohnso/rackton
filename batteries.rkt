@@ -15,6 +15,7 @@
          rackton/data/functor
          rackton/data/foldable
          rackton/data/monoid
+         rackton/data/semigroup
          rackton/data/lens
          rackton/data/list
          rackton/data/tuple
@@ -38,6 +39,7 @@
          (all-from-out rackton/data/functor)
          (all-from-out rackton/data/foldable)
          (all-from-out rackton/data/monoid)
+         (all-from-out rackton/data/semigroup)
          (all-from-out rackton/data/lens)
          (all-from-out rackton/data/list)
          (all-from-out rackton/data/tuple)

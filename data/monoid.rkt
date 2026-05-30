@@ -35,3 +35,28 @@
 
 (instance (Monoid Product)
   (define mempty (MkProduct 1)))
+
+;; --- Boolean monoids: All (conjunction) / Any (disjunction) --------
+
+(newtype All (MkAll Boolean))
+(newtype Any (MkAny Boolean))
+
+(: get-all (-> All Boolean))
+(define (get-all a) (match a [(MkAll b) b]))
+
+(: get-any (-> Any Boolean))
+(define (get-any a) (match a [(MkAny b) b]))
+
+(instance (Semigroup All)
+  (define (<> a b)
+    (match a [(MkAll x) (match b [(MkAll y) (MkAll (and x y))])])))
+
+(instance (Monoid All)
+  (define mempty (MkAll #t)))
+
+(instance (Semigroup Any)
+  (define (<> a b)
+    (match a [(MkAny x) (match b [(MkAny y) (MkAny (or x y))])])))
+
+(instance (Monoid Any)
+  (define mempty (MkAny #f)))
