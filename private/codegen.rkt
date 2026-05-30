@@ -764,9 +764,11 @@
           (cond
             ;; needs-dict return-typed instance (e.g. a transformer's
             ;; pure): keep the bare define only.  Its call sites carry
-            ;; dict args and resolve via the direct (prelude-provided)
-            ;; reference, not the tag table.
+            ;; dict args and resolve via the direct reference, not the
+            ;; tag table — so the defining module must export it for
+            ;; cross-module call sites to bind.
             [(and dict-args (not (null? dict-args)))
+             (record-exported-impl! impl-name-sym)
              (list def-form)]
             ;; plain return-typed instance: ALSO register into the
             ;; per-method dispatch table so a call site in another module
@@ -806,19 +808,44 @@
           (define method-args (and dict-pair (cdr dict-pair)))
           (cond
             [(and inst-args (not (null? inst-args)))
-             ;; Instance-qual dicts present → named impl,
-             ;; skip runtime registration.  Method-qual dicts (if
-             ;; any) are prepended too so the impl's parameter list
-             ;; matches what compile-time inst-dispatch supplies plus
-             ;; what the runtime wrapper inserts.
+             ;; Instance-qual dicts present.  Emit the named impl
+             ;; (dict-carrying) for compile-time inst-dispatch call
+             ;; sites.  Method-qual dicts (if any) are prepended too so
+             ;; the impl's parameter list matches what compile-time
+             ;; inst-dispatch supplies plus what the runtime wrapper
+             ;; inserts.
              (define dict-args (append inst-args method-args))
              (define expr* (prepend-lambda-params body dict-args stx))
-             (with-syntax ([impl-name (datum->syntax
-                                       stx
-                                       (return-impl-symbol name head-tcon-names)
-                                       stx)]
-                           [impl (compile-expr expr*)])
-               (list #'(define impl-name impl)))]
+             (define impl-name-sym (return-impl-symbol name head-tcon-names))
+             (record-exported-impl! impl-name-sym)
+             ;; ALSO register a runtime dispatcher so POLYMORPHIC call
+             ;; sites (where the dispatch type is an abstract tvar, e.g.
+             ;; `flatmap` inside a `(MonadState s m) =>` body) reach the
+             ;; instance by runtime tag.  A positional method's body
+             ;; resolves the inner monad's impl by dispatching on the
+             ;; inner value's tag, so it doesn't use the instance-qual
+             ;; dicts — register the body carrying only method-qual
+             ;; dicts (which the runtime wrapper inserts).  This mirrors
+             ;; the prelude's hand-written dual (named $method:T +
+             ;; register-instance-method!).
+             (define rt-body
+               (cond
+                 [(and method-args (not (null? method-args)))
+                  (prepend-lambda-params body method-args stx)]
+                 [else body]))
+             (define register-forms
+               (for/list ([tag (in-list tags)])
+                 (with-syntax ([table   (datum->syntax stx
+                                                       (method-dispatch-symbol name)
+                                                       stx)]
+                               [tag-sym (datum->syntax stx tag stx)]
+                               [rt-impl (compile-expr rt-body)])
+                   #'(register-instance-method! table 'tag-sym rt-impl))))
+             (cons
+              (with-syntax ([impl-name (datum->syntax stx impl-name-sym stx)]
+                            [impl (compile-expr expr*)])
+                #'(define impl-name impl))
+              register-forms)]
             ;; For an overlap-group instance (any class
             ;; whose instance set has at least one pair related by
             ;; "strictly more specific"), emit a deep-fingerprint
@@ -911,6 +938,13 @@
   (cond
     [(not entry) '()]
     [else (append (car entry) (cdr entry))]))
+
+;; Record a generated needs-dict return-typed impl name so the
+;; elaborator can export it (see current-instance-exported-impls).
+(define (record-exported-impl! sym)
+  (define box* (current-instance-exported-impls))
+  (when box*
+    (set-box! box* (cons sym (unbox box*)))))
 
 (define (head-tcon-name t)
   (match t

@@ -37,6 +37,7 @@
          current-monomorphized-sites
          current-inlinable-bodies
          current-inlined-sites
+         current-instance-exported-impls
          current-prelude-build?
          resolve-method-uses!)
 
@@ -112,6 +113,16 @@
 ;; accumulated as the codegen substitutes bodies in place of calls.
 ;; Same shape as current-monomorphized-sites.
 (define current-inlined-sites (make-parameter #f))
+
+;; Box holding the impl-name symbols of needs-dict return-typed
+;; instance methods generated in THIS module (e.g. '$pure:StateT,
+;; '$get-st:StateT).  These resolve cross-module via a DIRECT
+;; reference (not the runtime dispatch table — their call sites carry
+;; dict args), so the module that defines the instance must export the
+;; generated define.  compile-instance pushes names here; the
+;; elaborator folds them into the module's provide set so importing
+;; modules' call sites can reference them.  #f outside an elaborate.
+(define current-instance-exported-impls (make-parameter #f))
 
 ;; When checking a function body against a declared
 ;; signature, the body's expected return type is known up front.
@@ -3722,7 +3733,28 @@
   (define ctx-preds-sk (map (lambda (p) (apply-subst sk-subst p)) ctx-preds-raw))
   ;; Dict-arg names are saved per-method (combined
   ;; instance-qual + method-qual), inside the method loop below.
-  (define head-tcon (type-head-tcon (car inst-args-raw)))
+  ;; Key the needs-dict-defs entry by the DISPATCHING head-arg's tcon —
+  ;; for a fundep class (e.g. MonadState s m | m -> s) that is the
+  ;; determining param (m), not the determined `s` (a bare tvar whose
+  ;; type-head-tcon is #f).  This must agree byte-for-byte with the
+  ;; `(car head-tcon-names)` lookup compile-instance does in codegen.rkt;
+  ;; otherwise a needs-dict instance method in function form (put-st,
+  ;; modify-st, …) misses its dict-arg prepend and the inner-`pure` dict
+  ;; reference is left unbound.
+  (define head-tcon
+    (cond
+      [(null? (class-info-fundeps cinfo)) (type-head-tcon (car inst-args-raw))]
+      [else
+       (define determined
+         (for/fold ([acc (seteq)])
+                   ([fd (in-list (class-info-fundeps cinfo))])
+           (set-union acc (list->seteq (cdr fd)))))
+       (define kept
+         (for/list ([p (in-list (class-info-params cinfo))]
+                    [a (in-list inst-args-raw)]
+                    #:unless (set-member? determined p))
+           (type-head-tcon a)))
+       (if (null? kept) (type-head-tcon (car inst-args-raw)) (car kept))]))
   (define user-impls
     (for/fold ([acc (hasheq)]) ([m (in-list methods)])
       (match m

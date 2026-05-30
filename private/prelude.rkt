@@ -444,32 +444,11 @@
     ;; modules regenerate their runtime).  The MonadState/MonadEnv classes
     ;; and the StateT/EnvT transformers stay below.
 
-    ;; --- StateT s m: state-passing over an inner monad m ---------
-
-    (newtype (StateT s m a)
-      (MkStateT (-> s (m (Pair s a)))))
-
-    (: run-state-t    (-> (StateT s m a) (-> s (m (Pair s a)))))
-    (: eval-state-t   ((Functor m) => (-> (StateT s m a) (-> s (m a)))))
-    (: exec-state-t   ((Functor m) => (-> (StateT s m a) (-> s (m s)))))
-    (: get-state-t    ((Applicative m) => (StateT s m s)))
-    (: put-state-t    ((Applicative m) => (-> s (StateT s m Unit))))
-    (: modify-state-t ((Applicative m) => (-> (-> s s) (StateT s m Unit))))
-    (: lift-state-t   ((Functor m) => (-> (m a) (StateT s m a))))
-
-    ;; Bodies are hand-written in prelude-runtime.rkt so we can use
-    ;; inner-monad pure/fmap impls directly, avoiding the body-
-    ;; rewriting limitation the prelude inherits.
-
-    (instance ((Monad m) => (Functor (StateT s m)))
-      (define (fmap f st) (racket (StateT s m b) (f st) #f)))
-
-    (instance ((Monad m) => (Applicative (StateT s m)))
-      (define (pure  a)    (racket (StateT s m a) (a) #f))
-      (define (fapply sf sa)(racket (StateT s m b) (sf sa) #f)))
-
-    (instance ((Monad m) => (Monad (StateT s m)))
-      (define (flatmap f st) (racket (StateT s m b) (st f) #f)))
+    ;; StateT s m (state over an inner monad) moved to
+    ;; rackton/control/monad/state (Phase 2 slim, finding 2026-05-30:
+    ;; the needs-dict-body machinery makes it authorable as pure
+    ;; Rackton — no hand-written runtime needed).  That module owns
+    ;; every mtl instance where StateT is the outer transformer.
 
     ;; --- EnvT r m: env-passing over an inner monad m -------------
 
@@ -555,12 +534,8 @@
       (: put-st    (-> s (m Unit)))
       (: modify-st (-> (-> s s) (m Unit))))
 
-    ;; (MonadState (State s) instance moved to rackton/control/monad/state)
-
-    (instance ((Monad m) => (MonadState s (StateT s m)))
-      (define get-st        get-state-t)
-      (define (put-st x)    (put-state-t x))
-      (define (modify-st f) (modify-state-t f)))
+    ;; (MonadState instances for State and StateT moved to
+    ;; rackton/control/monad/state)
 
     (instance ((MonadState s m) => (MonadState s (EnvT r m)))
       (define get-st        (lift-env-t get-st))
@@ -590,10 +565,7 @@
       (define ask-en     ask-t)
       (define (local-en f e) (local-t f e)))
 
-    (instance ((MonadEnv r m) => (MonadEnv r (StateT s m)))
-      (define ask-en     (lift-state-t ask-en))
-      (define (local-en f sm)
-        (racket (StateT s m a) (f sm) #f)))
+    ;; (MonadEnv (StateT s m) moved to rackton/control/monad/state)
 
     (instance ((MonadEnv r m) (Monoid w) => (MonadEnv r (WriterT w m)))
       (define ask-en     (lift-writer-t ask-en))
@@ -618,10 +590,7 @@
       (define (listen wm)   (racket (WriterT w m (Pair a w))    (wm)   #f))
       (define (censor f wm) (racket (WriterT w m a)             (f wm) #f)))
 
-    (instance ((MonadWriter w m) => (MonadWriter w (StateT s m)))
-      (define (tell-w x)    (lift-state-t (tell-w x)))
-      (define (listen sm)   (racket (StateT s m (Pair a w))     (sm)   #f))
-      (define (censor f sm) (racket (StateT s m a)              (f sm) #f)))
+    ;; (MonadWriter (StateT s m) moved to rackton/control/monad/state)
 
     (instance ((MonadWriter w m) => (MonadWriter w (EnvT r m)))
       (define (tell-w x)    (lift-env-t (tell-w x)))
@@ -644,10 +613,7 @@
       (define (throw-e e)    (throw-error e))
       (define (catch-e ea h) (catch-error ea h)))
 
-    (instance ((MonadError e m) => (MonadError e (StateT s m)))
-      (define (throw-e ev)   (lift-state-t (throw-e ev)))
-      (define (catch-e sm h)
-        (racket (StateT s m a) (sm h) #f)))
+    ;; (MonadError (StateT s m) moved to rackton/control/monad/state)
 
     (instance ((MonadError e m) => (MonadError e (EnvT r m)))
       (define (throw-e ev)   (lift-env-t (throw-e ev)))

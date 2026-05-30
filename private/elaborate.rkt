@@ -123,7 +123,10 @@
                  ;; the monomorphization log but for actually
                  ;; substituted call sites.
                  [current-inlinable-bodies        (make-hasheq)]
-                 [current-inlined-sites           (box '())])
+                 [current-inlined-sites           (box '())]
+                 ;; Generated needs-dict return-typed impl names that
+                 ;; must be exported so cross-module call sites bind.
+                 [current-instance-exported-impls (box '())])
     (define env (infer-program parsed prelude-env))
     ;; Compile each parsed form into Racket syntax.  The emission
     ;; order must respect runtime dependencies — `instance`
@@ -392,6 +395,17 @@
     (resolve-provide-specs parsed env
                            local-vars local-data-ctors
                            local-tcons local-classes))
+  ;; Force-export generated needs-dict return-typed impls (e.g.
+  ;; $pure:StateT, $get-st:StateT).  They are codegen-only names (not
+  ;; env vars), so this affects ONLY the Racket-level provide, not the
+  ;; type sidecar — and lets an importing module's cross-module call
+  ;; site bind the direct reference.  Like instances, these escape
+  ;; regardless of the user's provide form.
+  (define exported-impls
+    (let ([b (current-instance-exported-impls)])
+      (if b (remove-duplicates (unbox b)) '())))
+  (for ([sym (in-list exported-impls)])
+    (hash-set! export-vars sym sym))
   ;; Sidecar bindings — filtered by export-vars, with renames
   ;; reflected in the published name.
   (define export-bindings

@@ -9,6 +9,7 @@
          "../main.rkt")
 
 (rackton
+  (require rackton/control/monad/state)
   ;; ----- regression: base ExceptT flatmap ----------------
   ;; The base ExceptT case has a one-line catch-e covered elsewhere;
   ;; this test pulls the flatmap path through `do`-notation directly
