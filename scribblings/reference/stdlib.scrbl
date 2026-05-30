@@ -130,9 +130,21 @@ instances available.
 @item{@racketmodname[rackton/control/monad/trans] — @racket[MonadTrans]
   (@racket[lift]) and @racket[MonadIO] (@racket[lift-io]) instances for
   the four transformers; re-exports the whole transformer stack.}
-@item{@racketmodname[rackton/system] — the system interface: mutable
-  references (@racket[Ref]), files, @racket[try] / @racket[raise-io],
-  and process/environment access.}
+@item{@racketmodname[rackton/system] — umbrella re-exporting the whole
+  System.* family in one import.  The family is split into:
+  @racketmodname[rackton/system/ref] (mutable @racket[Ref]s),
+  @racketmodname[rackton/system/file] (@racket[read-file] /
+  @racket[write-file]),
+  @racketmodname[rackton/system/directory] (@racket[file-exists?] /
+  @racket[delete-file] / @racket[make-directory] /
+  @racket[list-directory]),
+  @racketmodname[rackton/system/exception] (@racket[try] /
+  @racket[raise-io]),
+  @racketmodname[rackton/system/random] (@racket[random-integer] /
+  @racket[random-float]),
+  @racketmodname[rackton/system/time] (@racket[current-time-seconds]),
+  and @racketmodname[rackton/system/environment] (@racket[getenv] /
+  @racket[argv]).}
 @item{@racketmodname[rackton/text/string] — String operations:
   @racket[null-string?], @racket[reverse-string],
   @racket[to-upper-string]/@racket[to-lower-string],
