@@ -15,6 +15,7 @@
          rackton/data/tuple
          rackton/data/map
          rackton/data/set
+         rackton/control/monad
          rackton/control/stm
          rackton/control/concurrent
          rackton/control/monad/state
@@ -32,6 +33,7 @@
          (all-from-out rackton/data/tuple)
          (all-from-out rackton/data/map)
          (all-from-out rackton/data/set)
+         (all-from-out rackton/control/monad)
          (all-from-out rackton/control/stm)
          (all-from-out rackton/control/concurrent)
          (all-from-out rackton/control/monad/state)

@@ -66,6 +66,12 @@ instances available.
 @item{@racketmodname[rackton/data/lens] — the optics primitives:
   @racket[Lens], @racket[Prism], @racket[Traversal] and their
   combinators.}
+@item{@racketmodname[rackton/control/monad] — Control.Monad
+  combinators over any @racket[(Monad m)]: @racket[map-m] (mapM),
+  @racket[for-m], @racket[sequence-m], @racket[fold-m] (foldM),
+  @racket[replicate-m], @racket[filter-m].  (The @racket[Monad] class
+  and @racket[join]/@racket[when]/@racket[unless]/@racket[void] are in
+  the prelude.)}
 @item{@racketmodname[rackton/control/stm] — software transactional
   memory (@racket[STM], @racket[TVar]).}
 @item{@racketmodname[rackton/control/concurrent] — threads,
