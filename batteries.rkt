@@ -9,6 +9,10 @@
 (require rackton/data/maybe
          rackton/data/either
          rackton/data/char
+         rackton/data/bool
+         rackton/data/function
+         rackton/data/ord
+         rackton/data/functor
          rackton/data/monoid
          rackton/data/lens
          rackton/data/list
@@ -27,6 +31,10 @@
 (provide (all-from-out rackton/data/maybe)
          (all-from-out rackton/data/either)
          (all-from-out rackton/data/char)
+         (all-from-out rackton/data/bool)
+         (all-from-out rackton/data/function)
+         (all-from-out rackton/data/ord)
+         (all-from-out rackton/data/functor)
          (all-from-out rackton/data/monoid)
          (all-from-out rackton/data/lens)
          (all-from-out rackton/data/list)

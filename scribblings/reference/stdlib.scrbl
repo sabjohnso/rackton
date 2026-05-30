@@ -34,6 +34,15 @@ instances available.
   @racket[either] eliminator, @racket[is-ok]/@racket[is-err],
   @racket[from-ok]/@racket[from-err], @racket[oks]/@racket[errs],
   @racket[partition-results], and @racket[Maybe] interop.}
+@item{@racketmodname[rackton/data/bool] — @racket[bool] (the
+  @racket[Boolean] eliminator) and @racket[otherwise].}
+@item{@racketmodname[rackton/data/function] — @racket[on] and
+  @racket[apply-to] (id / const / flip / compose are in the prelude).}
+@item{@racketmodname[rackton/data/ord] — @racket[clamp],
+  @racket[min-by], @racket[max-by] (min / max / comparisons are
+  prelude Ord methods).}
+@item{@racketmodname[rackton/data/functor] — @racket[const-map]
+  (@tt{<$}) and @racket[fmap-flipped] (@tt{<&>}).}
 @item{@racketmodname[rackton/data/char] — Data.Char predicates
   (@racket[digit?], @racket[upper?], @racket[lower?], @racket[alpha?],
   @racket[alpha-num?], @racket[hex-digit?], @racket[space?],
