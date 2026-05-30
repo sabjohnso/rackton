@@ -23,5 +23,6 @@ For information about how the language is implemented, see
 @include-section["types.scrbl"]
 @include-section["classes.scrbl"]
 @include-section["values.scrbl"]
+@include-section["stdlib.scrbl"]
 @include-section["repl.scrbl"]
 @include-section["diagnostics.scrbl"]

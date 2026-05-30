@@ -3,12 +3,18 @@
          (for-label rackton)]
 
 @title[#:tag "values"]{Built-in values}
-This chapter documents every value binding that the Rackton prelude
-makes available without any user declaration.  Bindings are grouped by
+This chapter documents the value bindings Rackton ships, grouped by
 role: combinators, numeric helpers, strings, characters and bytes,
 lists, pairs, immutable maps and sets, optics, IO and effects, and the
 several monad-specific accessors that complement the polymorphic
 @secref["classes"] entries.
+
+Many of these groups have been moved out of the auto-prelude into
+importable modules (see @secref["stdlib"]); the prelude itself stays
+small.  Sections below whose bindings now live in a module open with a
+@racket[require] note — without that import, the bindings aren't in
+scope.  The unmarked sections (combinators, numeric helpers, strings,
+characters, core lists, pairs, core IO) are always available.
 
 @section[#:tag "prelude"]{Generic combinators}
 
@@ -173,6 +179,13 @@ instance for @racket[List]) which is the polymorphic equivalent.}
 
 Retains only the elements satisfying @racket[p].}
 
+@para{@bold{Module} — @racket[reverse], @racket[append], and
+@racket[filter] are in the prelude; the remaining combinators below
+(@racket[sort], @racket[zip], @racket[take], @racket[drop],
+@racket[find], @racket[concat-map], @racket[group-by]) live in
+@racketmodname[rackton/data/list]:
+@racket[(require rackton/data/list)].}
+
 @defproc[(sort [xs (List a)]) (List a)]{
 
 Stable merge sort.  Requires @racket[(Ord a)].}
@@ -206,9 +219,13 @@ Buckets @racket[xs] by @racket[(key x)].  Requires @racket[(Eq k)].}
 
 @defproc[(fst  [p (Pair a b)]) a]{First projection.}
 @defproc[(snd  [p (Pair a b)]) b]{Second projection.}
-@defproc[(swap [p (Pair a b)]) (Pair b a)]{Swaps the two fields.}
+@defproc[(swap [p (Pair a b)]) (Pair b a)]{Swaps the two fields.  In
+@racketmodname[rackton/data/tuple]: @racket[(require rackton/data/tuple)].
+@racket[fst] / @racket[snd] stay in the prelude.}
 
 @section[#:tag "maps"]{Immutable Map}
+
+@para{@bold{Module} — @racket[(require rackton/data/map)].}
 
 @defthing[empty-map (Map k v)]{
 
@@ -237,6 +254,8 @@ Removes @racket[k] from @racket[m] (no-op if absent).}
 Folds over the entries with @racket[f] applied curried-style.}
 
 @section[#:tag "sets"]{Immutable Set}
+
+@para{@bold{Module} — @racket[(require rackton/data/set)].}
 
 @defthing[empty-set (Set a)]{The empty set.}
 
@@ -267,6 +286,9 @@ typically called once, at the top level of a program.}
 
 @subsection{Mutable references}
 
+@para{@bold{Module} — mutable references, files, and error recovery live
+in @racketmodname[rackton/system]: @racket[(require rackton/system)].}
+
 A @racket[(Ref a)] is an opaque mutable cell.  All operations are
 @racket[IO] actions.
 
@@ -293,6 +315,11 @@ Fails an @racket[IO] action with @racket[msg].  Paired naturally with
 @racket[try].}
 
 @section[#:tag "concurrency"]{Concurrency}
+
+@para{@bold{Module} — threads, @racket[MVar]s, and async channels live
+in @racketmodname[rackton/control/concurrent]
+(@racket[(require rackton/control/concurrent)]); the
+@secref["stm-primitives"] live in @racketmodname[rackton/control/stm].}
 
 These primitives provide direct, non-polymorphic concurrency control
 for code that is fixed to @racket[IO].  They live alongside — not
@@ -339,6 +366,8 @@ empty.
 
 @subsection[#:tag "stm-primitives"]{Software transactional memory primitives}
 
+@para{@bold{Module} — @racket[(require rackton/control/stm)].}
+
 @defproc[(new-tvar    [v a])                (STM (TVar a))]{Allocate a transactional variable.}
 @defproc[(read-tvar   [t (TVar a)])         (STM a)]{Read inside a transaction.}
 @defproc[(write-tvar  [t (TVar a)] [v a])   (STM Unit)]{Write inside a transaction.}
@@ -361,6 +390,14 @@ returned exactly once.}
 The @racket[State], @racket[Env], @racket[Writer], and @racket[Except]
 families each ship a small set of non-class accessors and runners.
 These complement (but do not replace) the polymorphic class methods.
+
+@para{@bold{Modules} — these all live in
+@tt{rackton/control/monad}: @racket[State] and @racket[StateT]
+in @racketmodname[rackton/control/monad/state], @racket[Env] and
+@racket[EnvT] in @racketmodname[rackton/control/monad/reader],
+@racket[WriterT] in @racketmodname[rackton/control/monad/writer], and
+@racket[ExceptT] in @racketmodname[rackton/control/monad/except].  The
+@racket[Identity] runner stays in the prelude.}
 
 @subsection{State}
 
@@ -431,6 +468,8 @@ requires @racket[(Functor m)].
 
 @section[#:tag "optics-helpers"]{Optics primitives}
 
+@para{@bold{Module} — @racket[(require rackton/data/lens)].}
+
 @subsection{Lenses}
 
 @defproc[(view [l (Lens s a)] [s s])              a]{Read the focused value.}
@@ -467,6 +506,8 @@ Returns the list of call sites whose impl bodies the codegen
 substituted in place during the most recent elaboration.}
 
 @section[#:tag "system"]{System interface}
+
+@para{@bold{Module} — @racket[(require rackton/system)].}
 
 @defproc[(random-integer    [lo Integer] [hi Integer]) (IO Integer)]{Uniformly random integer in the half-open range from @racket[lo] (inclusive) to @racket[hi] (exclusive).}
 @defthing[random-float      (IO Float)]{Uniformly random @racket[Float] in the half-open range from @racket[0.0] (inclusive) to @racket[1.0] (exclusive).}

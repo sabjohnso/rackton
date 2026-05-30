@@ -295,6 +295,11 @@ These classes abstract over the state / reader / writer / error
 effects so a single function body can run against any transformer
 stack offering the effect.
 
+@margin-note{The classes themselves are in the prelude, but their
+@emph{instances} ship with the transformer modules under
+@tt{rackton/control/monad} — import the transformer you use
+(see @secref["stdlib"]).}
+
 @defidform[#:kind "class" MonadState]{
 
 @racket[(MonadState s m)]: monads supporting access to a single

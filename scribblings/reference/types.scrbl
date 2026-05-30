@@ -127,6 +127,9 @@ Instances: @racket[Functor], @racket[Applicative], @racket[Monad]
 
 @section{Monoid wrappers}
 
+@para{@bold{Module} — @racket[(require rackton/data/monoid)]
+(see @secref["stdlib"]).}
+
 @defidform[#:kind "type" Sum]{
 
 Newtype wrapper marking an @racket[Integer] for additive monoid
@@ -152,6 +155,10 @@ Instance: @racket[Semigroup] / @racket[Monoid] (@racket[mempty] is
 @racket[(MkProduct 1)]; @racket[<>] multiplies).}
 
 @section{IO, references, and concurrency}
+
+@para{@bold{Module} — @racket[IO] is in the prelude.  @racket[Ref] is in
+@racketmodname[rackton/system]; @racket[MVar] and @racket[Chan] are in
+@racketmodname[rackton/control/concurrent] (see @secref["stdlib"]).}
 
 @defidform[#:kind "type" IO]{
 
@@ -194,6 +201,9 @@ Read via the @racket[Concurrent] class's @racket[await-c] method.}
 
 @section{Software transactional memory}
 
+@para{@bold{Module} — @racket[(require rackton/control/stm)]
+(see @secref["stdlib"]).}
+
 @defidform[#:kind "type" TVar]{
 
 A transactional variable.  Reads and writes are deferred until commit
@@ -207,6 +217,9 @@ TVars.  Run a transaction with @racket[atomically].  Instances:
 @racket[Functor], @racket[Applicative], @racket[Monad].}
 
 @section{Optics}
+
+@para{@bold{Module} — @racket[(require rackton/data/lens)]
+(see @secref["stdlib"]).}
 
 @defidform[#:kind "type" Lens]{
 
@@ -240,6 +253,12 @@ See @racket[to-list-of], @racket[over-of], @racket[list-traversal],
 @racket[lens-as-traversal].}}
 
 @section{Monad transformers and the Identity monad}
+
+@para{@bold{Modules} — @racket[Identity] is in the prelude.  The
+transformers live under @tt{rackton/control/monad}:
+@racket[StateT] in @tt{…/state}, @racket[EnvT] in @tt{…/reader},
+@racket[WriterT] in @tt{…/writer}, @racket[ExceptT] in @tt{…/except}
+(see @secref["stdlib"]).}
 
 @defidform[#:kind "type" Identity]{
 
