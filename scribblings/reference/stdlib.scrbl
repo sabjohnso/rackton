@@ -130,6 +130,13 @@ instances available.
   @racket[strip]/@racket[strip-start]/@racket[strip-end],
   @racket[split-keep], @racket[lines]/@racket[words],
   @racket[unlines]/@racket[unwords].}
+@item{@racketmodname[rackton/numeric/integer] — Integral helpers over
+  @racket[Integer]: @racket[num-even?]/@racket[num-odd?],
+  @racket[num-signum], @racket[num-gcd]/@racket[num-lcm],
+  @racket[num-factorial], @racket[num-int-pow],
+  @racket[num-from-integral].  Exports are @racket[num-]-prefixed so
+  they don't shadow racket/base's @racket[gcd]/@racket[even?] inside
+  @racket[(racket …)] escapes.}
 ]
 
 The mtl-style classes themselves (@racket[MonadState], @racket[MonadEnv],
