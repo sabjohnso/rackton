@@ -149,6 +149,10 @@ instances available.
   @racket[num-show-hex]/@racket[num-show-oct]/@racket[num-show-bin] and
   @racket[num-read-hex]/@racket[num-read-oct]/@racket[num-read-dec]
   (the read direction returns @racket[(Maybe Integer)]).}
+@item{@racketmodname[rackton/numeric/conversions] — coercions across
+  the tower: @racket[num-integer->float], @racket[num-float->integer],
+  @racket[num-to-rational], @racket[num-rational->float], and
+  @racket[num-real-to-frac] (any @racket[Real] to @racket[Float]).}
 ]
 
 The mtl-style classes themselves (@racket[MonadState], @racket[MonadEnv],

@@ -38,6 +38,7 @@
          rackton/numeric/real
          rackton/numeric/natural
          rackton/numeric/show
+         rackton/numeric/conversions
          rackton/system
          rackton/text/string)
 
@@ -73,5 +74,6 @@
          (all-from-out rackton/numeric/real)
          (all-from-out rackton/numeric/natural)
          (all-from-out rackton/numeric/show)
+         (all-from-out rackton/numeric/conversions)
          (all-from-out rackton/text/string)
          (all-from-out rackton/system))
