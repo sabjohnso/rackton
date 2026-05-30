@@ -26,3 +26,32 @@
   (match m
     [(None)   d]
     [(Some x) x]))
+
+;; from-just: the payload, or panic on None (Haskell's @tt{fromJust}).
+;; Prefer @racket[from-maybe] / @racket[maybe] when a total result is
+;; possible.
+(: from-just (-> (Maybe a) a))
+(define (from-just m)
+  (match m
+    [(Some x) x]
+    [(None)   (panic "from-just: None")]))
+
+;; mapMaybe: map and keep only the @racket[Some] results.
+(: map-maybe (-> (-> a (Maybe b)) (-> (List a) (List b))))
+(define (map-maybe f xs)
+  (match xs
+    [(Nil)      Nil]
+    [(Cons h t) (match (f h)
+                  [(Some b) (Cons b (map-maybe f t))]
+                  [(None)   (map-maybe f t)])]))
+
+;; catMaybes: drop the @racket[None]s.
+(: cat-maybes (-> (List (Maybe a)) (List a)))
+(define (cat-maybes ms) (map-maybe (lambda (m) m) ms))
+
+;; maybeToList / listToMaybe.
+(: maybe->list (-> (Maybe a) (List a)))
+(define (maybe->list m) (match m [(None) Nil] [(Some x) (Cons x Nil)]))
+
+(: list->maybe (-> (List a) (Maybe a)))
+(define (list->maybe xs) (match xs [(Nil) None] [(Cons h _) (Some h)]))

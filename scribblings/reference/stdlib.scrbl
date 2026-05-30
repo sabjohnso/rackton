@@ -25,7 +25,10 @@ instances available.
 
 @itemlist[
 @item{@racketmodname[rackton/data/maybe] — @racket[Maybe] eliminators
-  and helpers beyond the @secref["classes"] methods.}
+  and helpers beyond the @secref["classes"] methods: @racket[maybe],
+  @racket[from-maybe], @racket[from-just], @racket[is-just]/
+  @racket[is-nothing], @racket[map-maybe], @racket[cat-maybes],
+  @racket[maybe->list], @racket[list->maybe].}
 @item{@racketmodname[rackton/data/either] — Data.Either over
   @racket[Result] (@racket[Err] = Left, @racket[Ok] = Right): the
   @racket[either] eliminator, @racket[is-ok]/@racket[is-err],
