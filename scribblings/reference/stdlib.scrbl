@@ -324,6 +324,16 @@ is no @tt{Storable} class, so reads and writes are the type-specific
 @racket[peek-int] / @racket[poke-int] / … rather than one polymorphic
 pair.
 
+@defmodule[rackton/foreign/c #:no-declare]
+A curated set of @tt{libm} functions the prelude's Floating class
+doesn't cover, bound through the @racket[foreign] form: @racket[c-cbrt],
+@racket[c-hypot], @racket[c-expm1], @racket[c-log1p], @racket[c-tgamma]
+(gamma), @racket[c-lgamma], @racket[c-erf], @racket[c-erfc].  It also
+documents the general recipe for binding your own C function — a small
+Racket @racket[get-ffi-obj] shim imported via @racket[foreign] — which
+the inline @racket[foreign-c] form (see @secref["syntax-forms"]) is
+sugar over.
+
 @section[#:tag "batteries"]{The @tt{batteries} umbrella}
 
 @defmodule[rackton/batteries #:no-declare]
