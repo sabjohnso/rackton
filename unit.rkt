@@ -15,6 +15,10 @@
          ord-laws
          semigroup-laws
          monoid-laws
+         functor-laws
+         applicative-laws
+         monad-laws
+         traversable-laws
          (data-out Test)
          (data-out Outcome)
          (data-out Summary)
