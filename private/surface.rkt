@@ -823,33 +823,32 @@
                   (fresh-stx ctx-stx))
            ctx-stx))
 
-;; Right-nested `Pair` product of `vars` as an expression:
-;;   [v0]          → v0
-;;   [v0 v1 …]     → (MkPair v0 <nested rest>)
-(define (nested-pair-expr vars stx)
-  (cond
-    [(null? (cdr vars)) (e:var (car vars) (fresh-stx stx))]
-    [else (e:app (e:var 'MkPair (fresh-stx stx))
-                 (list (e:var (car vars) (fresh-stx stx))
-                       (nested-pair-expr (cdr vars) stx))
-                 (fresh-stx stx))]))
+;; Largest flat tuple a prism can focus.  arity 2 reuses the prelude
+;; `Pair`; arity 3..MAX use `Tuple3`..`TupleMAX` from rackton/data/lens.
+(define prism-max-tuple-arity 7)
 
-;; The matching right-nested `Pair` pattern binding the same `vars`.
-(define (nested-pair-pattern vars stx)
+;; The flat product constructor for a focus of the given arity, or #f
+;; when no tuple type of that arity exists.
+(define (prism-tuple-ctor arity)
   (cond
-    [(null? (cdr vars)) (p:var (car vars) stx)]
-    [else (p:ctor 'MkPair
-                  (list (p:var (car vars) stx)
-                        (nested-pair-pattern (cdr vars) stx))
-                  stx)]))
+    [(= arity 2) 'MkPair]
+    [(<= 3 arity prism-max-tuple-arity)
+     (string->symbol (format "MkTuple~a" arity))]
+    [else #f]))
 
-;; Prism for a multi-field (arity ≥ 2) ctor.  The focus is the
-;; right-nested product of the fields:
-;;   preview: (lambda (s) (match s [(C x0 … xn) (Some <product>)] [_ None]))
-;;   review:  (lambda (p) (match p [<product-pat> (C x0 … xn)]))
-;; review's match is irrefutable — a product value always matches its
-;; one shape — so exhaustiveness is not consulted.
+;; Prism for a multi-field (arity ≥ 2) ctor.  The focus is the FLAT
+;; tuple of the fields (`Pair` at arity 2, `TupleK` above):
+;;   preview: (lambda (s) (match s [(C x0 … xn) (Some (Tup x0 … xn))] [_ None]))
+;;   review:  (lambda (p) (match p [(Tup x0 … xn) (C x0 … xn)]))
+;; review's match is irrefutable — a tuple value always matches its one
+;; shape — so exhaustiveness is not consulted.
 (define (synth-prism-n-arg tname ctor-name arity all-ctors ctx-stx)
+  (define tup-ctor (prism-tuple-ctor arity))
+  (unless tup-ctor
+    (raise-syntax-error 'data
+      (format "cannot derive Prism for ~a: constructor ~a has ~a fields — a multi-field prism focuses a flat tuple, which is defined only up to ~a fields"
+              tname ctor-name arity prism-max-tuple-arity)
+      ctx-stx))
   (define lens-name (string->symbol (format "~a-~a-prism" tname ctor-name)))
   (define vars (for/list ([i (in-range arity)]) (a-name i)))
   (define extractor
@@ -860,7 +859,9 @@
                                   (for/list ([v (in-list vars)]) (p:var v ctx-stx))
                                   ctx-stx) #f
                           (e:app (e:var 'Some (fresh-stx ctx-stx))
-                                 (list (nested-pair-expr vars ctx-stx))
+                                 (list (e:app (e:var tup-ctor (fresh-stx ctx-stx))
+                                              (for/list ([v (in-list vars)]) (e:var v (fresh-stx ctx-stx)))
+                                              (fresh-stx ctx-stx)))
                                  (fresh-stx ctx-stx))
                           ctx-stx)
                   (clause (p:wild ctx-stx) #f
@@ -872,7 +873,9 @@
     (e:lam '(p)
            (e:match
             (e:var 'p (fresh-stx ctx-stx))
-            (list (clause (nested-pair-pattern vars ctx-stx) #f
+            (list (clause (p:ctor tup-ctor
+                                  (for/list ([v (in-list vars)]) (p:var v ctx-stx))
+                                  ctx-stx) #f
                           (e:app (e:var ctor-name (fresh-stx ctx-stx))
                                  (for/list ([v (in-list vars)]) (e:var v (fresh-stx ctx-stx)))
                                  (fresh-stx ctx-stx))

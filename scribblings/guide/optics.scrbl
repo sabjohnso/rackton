@@ -82,19 +82,25 @@ focused position.
 
 The focus type follows the constructor's payload: a nullary
 constructor focuses @racket[Unit], a single-field constructor focuses
-the field's type, and a multi-field constructor focuses the
-right-nested @racket[Pair] @emph{product} of its fields —
-@racket[(C a b)] gives @racket[(Prism s (Pair a b))], and
-@racket[(C a b c)] gives @racket[(Prism s (Pair a (Pair b c)))]:
+the field's type, and a multi-field constructor focuses the flat
+@emph{tuple} of its fields — @racket[(C a b)] gives @racket[(Prism s
+(Pair a b))] and @racket[(C a b c)] gives @racket[(Prism s (Tuple3 a b
+c))].  @racket[Pair] is the 2-tuple; @racket[Tuple3] through
+@racket[Tuple7] (defined in @racketmodname[rackton/data/lens], so no
+extra import) cover arities 3–7.  A constructor with more than seven
+fields is a compile error.
 
 @codeblock|{
 (data Shape
   (Circle Integer)
   (Rect   Integer Integer)
+  (Tri    Integer Integer Integer)
   #:deriving Prism)
 
-(preview Shape-Rect-prism (Rect 3 4))   ;; ⇒ (Some (MkPair 3 4))
-(review  Shape-Rect-prism (MkPair 7 8)) ;; ⇒ (Rect 7 8)
+(preview Shape-Rect-prism (Rect 3 4))     ;; ⇒ (Some (MkPair 3 4))
+(review  Shape-Rect-prism (MkPair 7 8))   ;; ⇒ (Rect 7 8)
+(preview Shape-Tri-prism  (Tri 1 2 3))    ;; ⇒ (Some (MkTuple3 1 2 3))
+(review  Shape-Tri-prism  (MkTuple3 4 5 6)) ;; ⇒ (Tri 4 5 6)
 }|
 
 (Prism deriving is unavailable on @racket[struct] — a
