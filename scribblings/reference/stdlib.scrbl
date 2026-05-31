@@ -168,6 +168,10 @@ instances available.
   @racket[fmt-str] / @racket[fmt-show], composition with
   @racket[fmt-cat], and @racket[sprintf] to run a format.  Argument
   types and arity are checked at compile time.}
+@item{@racketmodname[rackton/text/read] — parse Strings to typed
+  values: @racket[read-int], @racket[read-float], @racket[read-bool]
+  (each @racket[(Maybe a)]; @racket[read-bool] accepts @racket["True"] /
+  @racket["False"]).}
 @item{@racketmodname[rackton/numeric/integer] — Integral helpers over
   @racket[Integer]: @racket[num-even?]/@racket[num-odd?],
   @racket[num-signum], @racket[num-gcd]/@racket[num-lcm],
