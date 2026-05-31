@@ -42,7 +42,8 @@ instances available.
   @racket[min-by], @racket[max-by] (min / max / comparisons are
   prelude Ord methods).}
 @item{@racketmodname[rackton/data/functor] — @racket[const-map]
-  (@tt{<$}) and @racket[fmap-flipped] (@tt{<&>}).}
+  (@tt{<$}), @racket[fmap-flipped] (@tt{<&>}), and
+  @racket[const-replace-flipped] (@tt{$>}).}
 @item{@racketmodname[rackton/data/foldable] — generic folds over any
   @racket[Foldable]: @racket[fold-map] (foldMap), @racket[fold],
   @racket[any-of], @racket[all-of], @racket[elem-of].}
@@ -93,8 +94,8 @@ instances available.
   @racket[find], @racket[concat-map], @racket[group-by], …).  The core
   list operations (@racket[reverse], @racket[append], @racket[filter])
   stay in the prelude.}
-@item{@racketmodname[rackton/data/tuple] — @racket[Pair] helpers such as
-  @racket[swap].}
+@item{@racketmodname[rackton/data/tuple] — @racket[Pair] helpers:
+  @racket[swap], @racket[curry], @racket[uncurry].}
 @item{@racketmodname[rackton/data/map] — the immutable @racket[Map] type
   and its operations (@racket[map-insert]/@racket[map-lookup]/…,
   @racket[map-member?], @racket[map-singleton], @racket[map-from-list]/

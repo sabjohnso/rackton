@@ -12,3 +12,8 @@
 ;; (fmap-flipped fa f) = (fmap f fa) (Haskell `<&>`).
 (: fmap-flipped ((Functor f) => (-> (f a) (-> (-> a b) (f b)))))
 (define (fmap-flipped fa f) (fmap f fa))
+
+;; (const-replace-flipped fa b) — replace every value in fa with b, with
+;; the arguments flipped relative to const-map (Haskell `$>`).
+(: const-replace-flipped ((Functor f) => (-> (f a) (-> b (f b)))))
+(define (const-replace-flipped fa b) (const-map b fa))
