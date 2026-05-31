@@ -754,19 +754,11 @@
 ;; (a tuple-focused prism would need a product encoding we don't
 ;; offer in this phase).
 (define (synthesize-prism-defs tname tparams ctors ctx-stx)
-  ;; Prism deriving supports only nullary and single-field ctors.  A
-  ;; multi-field ctor would need a product-focused prism — `Prism s
-  ;; (Pair a b)` for `(C a b)` — which isn't implemented yet (see
-  ;; ISSUES.org).  Reject it up front with a clear error rather than
-  ;; silently skipping the offending ctor and leaving its prism
-  ;; undefined (which surfaced later as an opaque "unbound identifier").
-  (for ([c (in-list ctors)])
-    (define arity (length (data-ctor-field-types c)))
-    (when (>= arity 2)
-      (raise-syntax-error 'data
-        (format "cannot derive Prism for ~a: constructor ~a has ~a fields — Prism deriving supports only nullary and single-field constructors (a multi-field constructor needs a product-focused prism, not yet implemented)"
-                tname (data-ctor-name c) arity)
-        ctx-stx)))
+  ;; One prism per constructor.  The focus type is the constructor's
+  ;; payload: `Unit` for a nullary ctor, the field's type for a
+  ;; single-field ctor, and the right-nested product of the fields for
+  ;; a multi-field ctor — `(Pair a b)` for `(C a b)`, `(Pair a (Pair b
+  ;; c))` for `(C a b c)`.
   (apply append
          (for/list ([c (in-list ctors)])
            (define name (data-ctor-name c))
@@ -774,7 +766,7 @@
            (cond
              [(= arity 0) (list (synth-prism-0-arg tname name ctors ctx-stx))]
              [(= arity 1) (list (synth-prism-1-arg tname name ctors ctx-stx))]
-             [else '()]))))
+             [else (list (synth-prism-n-arg tname name arity ctors ctx-stx))]))))
 
 (define (synth-prism-0-arg tname ctor-name all-ctors ctx-stx)
   (define lens-name (string->symbol (format "~a-~a-prism" tname ctor-name)))
@@ -825,6 +817,68 @@
   ;; Builder is just a reference to the ctor — auto-curry makes
   ;; `(Foo x)` and `Foo` interchangeable for arity-1 ctors.
   (define builder (e:var ctor-name (fresh-stx ctx-stx)))
+  (top:def lens-name
+           (e:app (e:var 'MkPrism (fresh-stx ctx-stx))
+                  (list extractor builder)
+                  (fresh-stx ctx-stx))
+           ctx-stx))
+
+;; Right-nested `Pair` product of `vars` as an expression:
+;;   [v0]          → v0
+;;   [v0 v1 …]     → (MkPair v0 <nested rest>)
+(define (nested-pair-expr vars stx)
+  (cond
+    [(null? (cdr vars)) (e:var (car vars) (fresh-stx stx))]
+    [else (e:app (e:var 'MkPair (fresh-stx stx))
+                 (list (e:var (car vars) (fresh-stx stx))
+                       (nested-pair-expr (cdr vars) stx))
+                 (fresh-stx stx))]))
+
+;; The matching right-nested `Pair` pattern binding the same `vars`.
+(define (nested-pair-pattern vars stx)
+  (cond
+    [(null? (cdr vars)) (p:var (car vars) stx)]
+    [else (p:ctor 'MkPair
+                  (list (p:var (car vars) stx)
+                        (nested-pair-pattern (cdr vars) stx))
+                  stx)]))
+
+;; Prism for a multi-field (arity ≥ 2) ctor.  The focus is the
+;; right-nested product of the fields:
+;;   preview: (lambda (s) (match s [(C x0 … xn) (Some <product>)] [_ None]))
+;;   review:  (lambda (p) (match p [<product-pat> (C x0 … xn)]))
+;; review's match is irrefutable — a product value always matches its
+;; one shape — so exhaustiveness is not consulted.
+(define (synth-prism-n-arg tname ctor-name arity all-ctors ctx-stx)
+  (define lens-name (string->symbol (format "~a-~a-prism" tname ctor-name)))
+  (define vars (for/list ([i (in-range arity)]) (a-name i)))
+  (define extractor
+    (e:lam '(s)
+           (e:match
+            (e:var 's (fresh-stx ctx-stx))
+            (list (clause (p:ctor ctor-name
+                                  (for/list ([v (in-list vars)]) (p:var v ctx-stx))
+                                  ctx-stx) #f
+                          (e:app (e:var 'Some (fresh-stx ctx-stx))
+                                 (list (nested-pair-expr vars ctx-stx))
+                                 (fresh-stx ctx-stx))
+                          ctx-stx)
+                  (clause (p:wild ctx-stx) #f
+                          (e:var 'None (fresh-stx ctx-stx))
+                          ctx-stx))
+            #f ctx-stx)
+           (fresh-stx ctx-stx)))
+  (define builder
+    (e:lam '(p)
+           (e:match
+            (e:var 'p (fresh-stx ctx-stx))
+            (list (clause (nested-pair-pattern vars ctx-stx) #f
+                          (e:app (e:var ctor-name (fresh-stx ctx-stx))
+                                 (for/list ([v (in-list vars)]) (e:var v (fresh-stx ctx-stx)))
+                                 (fresh-stx ctx-stx))
+                          ctx-stx))
+            #t ctx-stx)
+           (fresh-stx ctx-stx)))
   (top:def lens-name
            (e:app (e:var 'MkPrism (fresh-stx ctx-stx))
                   (list extractor builder)

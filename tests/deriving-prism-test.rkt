@@ -67,6 +67,28 @@
 (: prev-one-on-one (Maybe Integer))
 (define prev-one-on-one (preview Tri-One-prism (One 7)))
 
+;; ----- multi-field ctors: product-focused prisms -----------
+;; A 2-field ctor focuses (Pair a b); a 3-field ctor focuses the
+;; right-nested product (Pair a (Pair b c)).
+
+(data Shape
+  (Circle Integer)                      ; arity 1 → Integer
+  (Rect   Integer Integer)              ; arity 2 → (Pair Integer Integer)
+  (Tri3   Integer Integer Integer)      ; arity 3 → (Pair Integer (Pair Integer Integer))
+  #:deriving Prism Eq Show)
+
+(: prev-rect (Maybe (Pair Integer Integer)))
+(define prev-rect (preview Shape-Rect-prism (Rect 3 4)))
+(: prev-rect-miss (Maybe (Pair Integer Integer)))
+(define prev-rect-miss (preview Shape-Rect-prism (Circle 1)))
+(: rev-rect Shape)
+(define rev-rect (review Shape-Rect-prism (MkPair 7 8)))
+
+(: prev-tri3 (Maybe (Pair Integer (Pair Integer Integer))))
+(define prev-tri3 (preview Shape-Tri3-prism (Tri3 1 2 3)))
+(: rev-tri3 Shape)
+(define rev-tri3 (review Shape-Tri3-prism (MkPair 1 (MkPair 2 3))))
+
 (: suite (List Test))
 (define suite
   (list
@@ -88,7 +110,16 @@
    (it "nullary + single-field ctors both get prisms"
        (all-checks
         (list (check-equal? prev-empty-on-empty (Some MkUnit))
-              (check-equal? prev-one-on-one     (Some 7)))))))
+              (check-equal? prev-one-on-one     (Some 7)))))
+   (it "2-field ctor focuses a Pair"
+       (all-checks
+        (list (check-equal? prev-rect      (Some (MkPair 3 4)))
+              (check-equal? prev-rect-miss None)
+              (check-equal? rev-rect       (Rect 7 8)))))
+   (it "3-field ctor focuses a right-nested product"
+       (all-checks
+        (list (check-equal? prev-tri3 (Some (MkPair 1 (MkPair 2 3))))
+              (check-equal? rev-tri3  (Tri3 1 2 3)))))))
 
 (: _ran Unit)
 (define _ran (run-io (run-suite "deriving Prism" suite)))
