@@ -30,3 +30,16 @@
 ;; getCurrentDirectory.
 (foreign get-current-directory (IO String)
          #:from rackton/private/prelude-runtime)
+
+;; renameFile: move/rename, replacing an existing destination.
+(foreign rename-file (-> String (-> String (IO Unit)))
+         #:from rackton/private/prelude-runtime)
+
+;; copyFile: copy contents, replacing an existing destination.
+(foreign copy-file (-> String (-> String (IO Unit)))
+         #:from rackton/private/prelude-runtime #:as copy-file-io)
+
+;; createDirectoryIfMissing: create the directory and any parents,
+;; with no error if it already exists.
+(foreign create-directory-if-missing (-> String (IO Unit))
+         #:from rackton/private/prelude-runtime)

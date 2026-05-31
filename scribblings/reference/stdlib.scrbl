@@ -141,7 +141,8 @@ instances available.
   @racketmodname[rackton/system/directory] (@racket[file-exists?] /
   @racket[delete-file] / @racket[make-directory] /
   @racket[list-directory] / @racket[does-directory-exist?] /
-  @racket[get-current-directory]),
+  @racket[get-current-directory] / @racket[rename-file] /
+  @racket[copy-file] / @racket[create-directory-if-missing]),
   @racketmodname[rackton/system/exception] (@racket[try] /
   @racket[raise-io]),
   @racketmodname[rackton/system/random] (@racket[random-integer] /
@@ -149,7 +150,8 @@ instances available.
   @racket[random-r-float], and a pure splittable SplitMix64
   @racket[StdGen]: @racket[mk-std-gen] / @racket[next-word] /
   @racket[random-r] / @racket[split]),
-  @racketmodname[rackton/system/time] (@racket[current-time-seconds]),
+  @racketmodname[rackton/system/time] (@racket[current-time-seconds] /
+  @racket[get-current-time-millis] / @racket[get-cpu-time-millis]),
   @racketmodname[rackton/system/environment] (@racket[getenv] /
   @racket[argv] / @racket[get-prog-name] / @racket[set-env]),
   @racketmodname[rackton/system/exit]

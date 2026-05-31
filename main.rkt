@@ -64,7 +64,7 @@
                     read-line print println
                     file-exists? sqrt compose
                     random getenv path->string
-                    delete-file make-directory directory-list
+                    delete-file make-directory directory-list copy-file
                     current-seconds
                     char-upcase char-downcase
                     char-alphabetic? char-numeric? char-whitespace?
@@ -108,7 +108,7 @@
          ;; (Other Data.List additions use non-racket/base names — e.g.
          ;; `empty?`, `fold-left` — precisely so racket/base's `null?` /
          ;; `foldl` stay available for `(racket …)` escapes.)
-         (except-out (all-from-out racket/base) #%module-begin sort)
+         (except-out (all-from-out racket/base) #%module-begin sort copy-file)
 
          ;; prelude — class methods, ADTs, and combinators.  Names that
          ;; have been slimmed out to stdlib modules (which foreign-import
@@ -130,6 +130,8 @@
                      getenv argv
                      append-file does-directory-exist? get-current-directory
                      get-prog-name set-env
+                     rename-file copy-file-io create-directory-if-missing
+                     get-current-time-millis get-cpu-time-millis
                      ;; rackton/system/exit
                      exit-with-code
                      ;; rackton/system/io

@@ -43,7 +43,7 @@
                     read-line print println
                     file-exists? sqrt compose
                     random getenv path->string
-                    delete-file make-directory directory-list
+                    delete-file make-directory directory-list copy-file
                     current-seconds
                     char-upcase char-downcase
                     char-alphabetic? char-numeric? char-whitespace?

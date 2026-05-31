@@ -43,6 +43,7 @@
                     [current-command-line-arguments rkt:argv]
                     [path->string rkt:path->string]
                     [delete-file rkt:delete-file]
+                    [copy-file rkt:copy-file]
                     [make-directory rkt:make-directory]
                     [directory-list rkt:directory-list]
                     [string-ref     rkt:string-ref]
@@ -262,6 +263,8 @@
  list-directory getenv argv delete-file make-directory
  append-file does-directory-exist? get-current-directory
  get-prog-name set-env
+ rename-file copy-file-io create-directory-if-missing
+ get-current-time-millis get-cpu-time-millis
  ;; System.Exit
  exit-with-code
  ;; System.IO
@@ -1447,6 +1450,30 @@
 ;; dropped — Haskell's setEnv returns ()).
 (define/curried (set-env name val)
   ($io (lambda () (putenv name val) MkUnit)))
+
+;; renameFile: move/rename, replacing an existing destination.
+(define/curried (rename-file old new)
+  ($io (lambda () (rename-file-or-directory old new #t) MkUnit)))
+
+;; copyFile: copy contents, replacing an existing destination.  Named
+;; copy-file-io (not copy-file) so prelude-runtime doesn't re-provide a
+;; racket/base name into modules that import both; the Rackton-facing
+;; name `copy-file` is bound via the foreign decl's #:as.
+(define/curried (copy-file-io src dst)
+  ($io (lambda () (rkt:copy-file src dst #t) MkUnit)))
+
+;; createDirectoryIfMissing: create the directory (and any parents),
+;; with no error if it already exists.
+(define (create-directory-if-missing path)
+  ($io (lambda () (make-directory* path) MkUnit)))
+
+;; getCurrentTime: wall-clock milliseconds since the Unix epoch.
+(define get-current-time-millis
+  ($io (lambda () (rkt:inexact->exact (floor (current-inexact-milliseconds))))))
+
+;; getCPUTime: CPU milliseconds consumed by this process.
+(define get-cpu-time-millis
+  ($io (lambda () (current-process-milliseconds))))
 
 ;; System.Exit — terminate the process with the given status code.
 ;; `exit` does not return, so the IO action's result type is free.
