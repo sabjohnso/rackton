@@ -65,6 +65,7 @@
                     file-exists? sqrt compose
                     random getenv path->string
                     delete-file make-directory directory-list copy-file
+                    peek-byte
                     current-seconds
                     char-upcase char-downcase
                     char-alphabetic? char-numeric? char-whitespace?
@@ -108,13 +109,16 @@
          ;; (Other Data.List additions use non-racket/base names — e.g.
          ;; `empty?`, `fold-left` — precisely so racket/base's `null?` /
          ;; `foldl` stay available for `(racket …)` escapes.)
-         (except-out (all-from-out racket/base) #%module-begin sort copy-file)
+         (except-out (all-from-out racket/base) #%module-begin sort copy-file peek-byte)
 
          ;; prelude — class methods, ADTs, and combinators.  Names that
          ;; have been slimmed out to stdlib modules (which foreign-import
          ;; them from prelude-runtime directly) are excluded here so they
          ;; are not auto-available — users must require the stdlib module.
          (except-out (all-from-out "private/prelude-runtime.rkt")
+                     ;; internal IO-action constructor (used by
+                     ;; private/ffi-runtime); never user-facing
+                     $io
                      ;; rackton/control/stm
                      new-tvar read-tvar write-tvar retry or-else atomically
                      stm-fmap stm-pure stm-ap stm-bind

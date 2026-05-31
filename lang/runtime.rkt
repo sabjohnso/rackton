@@ -44,6 +44,7 @@
                     file-exists? sqrt compose
                     random getenv path->string
                     delete-file make-directory directory-list copy-file
+                    peek-byte
                     current-seconds
                     char-upcase char-downcase
                     char-alphabetic? char-numeric? char-whitespace?
@@ -90,4 +91,4 @@
  ;; with that module in any #lang rackton file that requires it.
  ;; (Other Data.List additions avoid racket/base names — e.g. `empty?`,
  ;; `fold-left` — so racket/base's `null?` / `foldl` stay usable here.)
- (except-out (all-from-out racket/base) sort))
+ (except-out (all-from-out racket/base) sort copy-file peek-byte))

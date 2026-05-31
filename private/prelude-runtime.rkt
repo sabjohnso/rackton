@@ -94,6 +94,10 @@
 
  ;; ADTs (constructors usable as expressions and as match patterns)
  None Some Nil Cons MkPair Ok Err MkUnit
+ ;; IO-action constructor — exposed so sibling runtime modules (e.g.
+ ;; private/ffi-runtime) can build IO actions sharing run-io's struct.
+ ;; Excepted from main.rkt's re-export, so it stays internal.
+ $io
  ;; State/Env (run-state/get-state/run-env/ask/local + MkState/MkEnv)
  ;; moved to rackton/control/monad/state + reader.
  ;; StateT runtime (MkStateT, run/eval/exec/get/put/modify/lift-state-t,

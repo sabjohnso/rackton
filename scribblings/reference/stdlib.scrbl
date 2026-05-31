@@ -301,6 +301,29 @@ The @racket[Handle] type, @racket[open-file] over @racket[IOMode],
 @racket[get-contents], and @racket[with-file] (an exception-safe
 open/run/close bracket).
 
+@section[#:tag "stdlib-foreign"]{@tt{rackton/foreign} — raw memory (unsafe)}
+
+@defmodule[rackton/foreign/ptr #:no-declare]
+The Foreign.Ptr / Foreign.Marshal core: the opaque @racket[Ptr] type
+(and @racket[CString] = @racket[(Ptr Char)]), raw allocation
+(@racket[malloc-bytes] / @racket[free-ptr]), @racket[null-ptr] /
+@racket[ptr-null?], byte-offset arithmetic (@racket[ptr-plus]) and the
+size constants @racket[size-of-int] / @racket[size-of-double] /
+@racket[size-of-ptr], type-specific peek/poke
+(@racket[peek-int]/@racket[poke-int],
+@racket[peek-double]/@racket[poke-double],
+@racket[peek-byte]/@racket[poke-byte]), and C strings
+(@racket[string->c-string] / @racket[c-string->string]).
+
+This module is @bold{unsafe}: it does no bounds checking and requires
+manual @racket[free-ptr] — a stray offset, a double free, or a
+use-after-free corrupts memory or crashes the process, exactly as
+Haskell's @tt{Foreign} does.  It is @emph{not} part of @tt{batteries};
+require it explicitly, and only when you must touch raw memory.  There
+is no @tt{Storable} class, so reads and writes are the type-specific
+@racket[peek-int] / @racket[poke-int] / … rather than one polymorphic
+pair.
+
 @section[#:tag "batteries"]{The @tt{batteries} umbrella}
 
 @defmodule[rackton/batteries #:no-declare]
