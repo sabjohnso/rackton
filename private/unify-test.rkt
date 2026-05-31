@@ -15,29 +15,8 @@
            rackcheck
            racket/match
            "types.rkt"
+           (submod "type-gen.rkt" test)   ; shared gen:type / gen:tcon-name / …
            "unify.rkt")
-
-  ;; ----- generators --------------------------------------------------
-
-  (define gen:tcon-name
-    (gen:choice (gen:const 'Integer) (gen:const 'Boolean)
-                (gen:const 'String) (gen:const 'List) (gen:const 'Maybe)))
-
-  (define gen:tvar-name
-    (gen:choice (gen:const 'a) (gen:const 'b) (gen:const 'c)))
-
-  (define (gen:type depth)
-    (cond
-      [(<= depth 0)
-       (gen:choice (gen:let ([n gen:tvar-name]) (tvar n))
-                   (gen:let ([n gen:tcon-name]) (tcon n)))]
-      [else
-       (gen:choice
-        (gen:let ([n gen:tvar-name]) (tvar n))
-        (gen:let ([n gen:tcon-name]) (tcon n))
-        (gen:let ([n gen:tcon-name]
-                  [args (gen:list (gen:type (sub1 depth)) #:max-length 2)])
-          (make-tapp (tcon n) args)))]))
 
   ;; ----- examples ----------------------------------------------------
 

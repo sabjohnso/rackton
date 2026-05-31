@@ -15,42 +15,8 @@
   (require rackunit
            rackcheck
            racket/set
-           "types.rkt")
-
-  ;; ----- generators --------------------------------------------------
-
-  (define gen:tcon-name
-    (gen:choice (gen:const 'Integer)
-                (gen:const 'Boolean)
-                (gen:const 'String)
-                (gen:const 'Unit)
-                (gen:const 'List)
-                (gen:const 'Maybe)
-                (gen:const '->)))
-
-  (define gen:tvar-name
-    (gen:choice (gen:const 'a) (gen:const 'b) (gen:const 'c) (gen:const 'd)))
-
-  (define (gen:type depth)
-    (cond
-      [(<= depth 0)
-       (gen:choice (gen:let ([n gen:tvar-name]) (tvar n))
-                   (gen:let ([n gen:tcon-name]) (tcon n)))]
-      [else
-       (gen:choice
-        (gen:let ([n gen:tvar-name]) (tvar n))
-        (gen:let ([n gen:tcon-name]) (tcon n))
-        (gen:let ([n gen:tcon-name]
-                  [args (gen:list (gen:type (sub1 depth)) #:max-length 3)])
-          (make-tapp (tcon n) args)))]))
-
-  (define (gen:subst depth)
-    (gen:let ([entries (gen:list (gen:let ([n gen:tvar-name]
-                                           [t (gen:type depth)])
-                                   (cons n t))
-                                 #:max-length 4)])
-      (for/fold ([s empty-subst]) ([kv (in-list entries)])
-        (subst-extend s (car kv) (cdr kv)))))
+           "types.rkt"
+           (submod "type-gen.rkt" test))   ; shared gen:type / gen:subst / …
 
   ;; ----- examples ----------------------------------------------------
 
