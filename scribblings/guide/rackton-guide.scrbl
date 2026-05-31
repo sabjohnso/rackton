@@ -27,6 +27,7 @@ signatures when needed.
 @include-section["advanced-types.scrbl"]
 @include-section["do-and-monads.scrbl"]
 @include-section["io-and-mutation.scrbl"]
+@include-section["standard-library.scrbl"]
 @include-section["effects.scrbl"]
 @include-section["concurrency.scrbl"]
 @include-section["optics.scrbl"]

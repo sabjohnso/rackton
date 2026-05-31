@@ -4,7 +4,7 @@
 
 @title[#:tag "examples"]{Worked examples}
 
-Two complete programs live in @filepath{examples/}.  Both are written
+Three complete programs live in @filepath{examples/}.  All are written
 in idiomatic Rackton and exercise most of the features covered in
 this guide.
 
@@ -67,6 +67,40 @@ Run it:
 
 Both examples are short enough to read in a sitting — they double as
 working code and as worked exercises in style.
+
+@section{word-count.rkt — the standard library across families}
+
+@filepath{examples/word-count.rkt} counts word frequencies and prints
+the five most common.  Where @filepath{calc.rkt} and
+@filepath{todo.rkt} lean on the language core, this one is about the
+@seclink["stdlib"]{standard library}: it pulls several families
+together through the @racketmodname[rackton/batteries] umbrella.
+
+@itemlist[
+@item{@racketmodname[rackton/text/string]: @racket[words] and
+      @racket[to-lower-string] to tokenise, @racket[pad-left] and
+      @racket[unlines] to format.}
+@item{@racketmodname[rackton/data/map]: @racket[map-insert-with] to
+      accumulate counts and @racket[map-to-list] to read them back.}
+@item{@racketmodname[rackton/data/list]: @racket[sort-on] and
+      @racket[take] to pick the top entries.}
+@item{@racket[fmap] / @racket[foldr] over @racket[List], and
+      @racket[do]-notation to sequence the @racket[IO].}
+@item{@racketmodname[rackton/system]: @racket[argv] and
+      @racket[read-file] for input.}]
+
+Run it (built-in sample, or a file):
+
+@commandline{racket examples/word-count.rkt}
+@commandline{racket examples/word-count.rkt some-file.txt}
+
+@codeblock|{
+    5  the
+    2  fox
+    2  dog
+    1  end
+    1  sleeps
+}|
 
 @section{Other source to learn from}
 
