@@ -63,6 +63,7 @@
          (struct-out inst-type-fam)
          (struct-out top:require)
          (struct-out top:foreign)
+         (struct-out top:foreign-c)
          (struct-out top:provide)
          (struct-out top:alias)
          (struct-out top:struct-fields)
@@ -198,6 +199,16 @@
 ;; bare `(: …)` dec at the type level (mconcat is the prelude precedent),
 ;; plus a Racket-level `require` emitted by codegen for the binding.
 (struct top:foreign    (name type module-path racket-id stx) #:transparent)
+;; An inline C-function import:
+;;   (foreign-c name τ #:lib L #:symbol S #:sig (cty ... -> cty))
+;; Binds `name` of Rackton type `type` to the C function `symbol` in
+;; shared library `lib` (a string, or #f for the running process), with
+;; the C signature given by `arg-tags` / `result-tag` (ctype keywords:
+;; double int string pointer void byte).  `io?` (computed from τ: does
+;; the result, after the C arity's arrows, sit in IO?) selects whether
+;; the binding is a pure function or an IO action.  Trusted boundary,
+;; like `foreign` — lowers to get-ffi-obj via private/ffi-runtime.
+(struct top:foreign-c  (name type lib symbol arg-tags result-tag io? stx) #:transparent)
 ;; A user-level export declaration: `(provide spec ...)` inside a
 ;; rackton block.  `specs` is the raw list of syntax objects — the
 ;; elaborator resolves each spec against the final env into four
@@ -1417,11 +1428,47 @@
      (k:arr (parse-kind-stx (car kind-stxs))
             (build-arrow-kind (cdr kind-stxs)))]))
 
+;; ----- foreign-c helpers --------------------------------------------
+
+;; Split a C signature datum `(cty ... -> cty)` into (values arg-tags
+;; result-tag) on the single `->`.  `(-> int)` yields no args.
+(define (split-c-sig parts stx)
+  (unless (list? parts)
+    (raise-syntax-error 'foreign-c "#:sig must be a list (cty ... -> cty)" stx))
+  (let loop ([xs parts] [args '()])
+    (cond
+      [(null? xs)
+       (raise-syntax-error 'foreign-c "#:sig must contain ->" stx)]
+      [(eq? (car xs) '->)
+       (define after (cdr xs))
+       (unless (and (pair? after) (null? (cdr after)))
+         (raise-syntax-error 'foreign-c
+                             "#:sig must have exactly one result type after ->" stx))
+       (values (reverse args) (car after))]
+      [else (loop (cdr xs) (cons (car xs) args))])))
+
+;; Is the source type `t`, after peeling `n` argument arrows, headed by
+;; IO?  Used to decide whether a foreign-c binding is a pure function or
+;; an IO action.
+(define (foreign-c-io-headed? t)
+  (and (ty:app? t)
+       (let ([h (ty:app-head t)])
+         (and (ty:con? h) (eq? (ty:con-name h) 'IO)))))
+
+(define (type-result-io? t n)
+  (if (<= n 0)
+      (foreign-c-io-headed? t)
+      (and (ty:app? t)
+           (let ([h (ty:app-head t)]
+                 [args (ty:app-args t)])
+             (and (ty:con? h) (eq? (ty:con-name h) '->) (= 2 (length args))
+                  (type-result-io? (cadr args) (sub1 n)))))))
+
 ;; ----- top-level forms ----------------------------------------------
 
 (define (parse-top stx)
   (syntax-parse stx
-    #:datum-literals (define data newtype struct protocol instance define-alias define-effect require provide foreign : =>)
+    #:datum-literals (define data newtype struct protocol instance define-alias define-effect require provide foreign foreign-c : =>)
     [(require spec ...)
      (top:require (syntax->list #'(spec ...)) stx)]
 
@@ -1435,6 +1482,18 @@
     [(foreign name:id ty #:from mod)
      (top:foreign (syntax->datum #'name) (parse-type #'ty)
                   (syntax->datum #'mod) (syntax->datum #'name) stx)]
+
+    ;; (foreign-c name τ #:lib L #:symbol S #:sig (cty ... -> cty))
+    ;; Inline C-function import.  L is a string or #f; S a string; the
+    ;; sig is C type keywords with a single `->` splitting args / result.
+    [(foreign-c name:id ty #:lib lib #:symbol sym #:sig sig)
+     (let*-values ([(t)             (parse-type #'ty)]
+                   [(arg-tags res)  (split-c-sig (syntax->datum #'sig) #'sig)])
+       (top:foreign-c (syntax->datum #'name) t
+                      (syntax->datum #'lib) (syntax->datum #'sym)
+                      arg-tags res
+                      (type-result-io? t (length arg-tags))
+                      stx))]
 
     [(provide spec ...)
      (top:provide (syntax->list #'(spec ...)) stx)]

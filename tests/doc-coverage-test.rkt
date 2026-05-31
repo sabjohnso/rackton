@@ -55,7 +55,7 @@
      protocol instance define-alias define-effect
      lambda λ let let& let% let+ letrec match-let where
      if cond match do list ann update escape racket handle
-     require provide foreign
+     require provide foreign foreign-c
      All))
 
 ;; Provide-spec heads recognised in (provide ...) bodies.

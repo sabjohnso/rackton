@@ -20,7 +20,35 @@
 (provide malloc-bytes free-ptr null-ptr ptr-null? ptr-plus
          size-of-int size-of-double size-of-ptr
          peek-int poke-int peek-double poke-double peek-byte poke-byte
-         string->c-string c-string->string)
+         string->c-string c-string->string
+         rackton-ffi-bind)
+
+;; --- inline foreign-c support --------------------------------------
+
+;; Map a Rackton C-type keyword to a Racket ctype.
+(define (tag->ctype t)
+  (cond
+    [(eq? t 'double)  _double]
+    [(eq? t 'int)     _int]
+    [(eq? t 'string)  _string]
+    [(eq? t 'pointer) _pointer]
+    [(eq? t 'void)    _void]
+    [(eq? t 'byte)    _byte]
+    [else (error 'foreign-c "unknown C type: ~a" t)]))
+
+;; Bind a C function: build the function ctype from the arg/result tags,
+;; fetch the symbol from the library (lib is a string, or #f for the
+;; running process), and return either the raw n-ary procedure (pure) or
+;; an IO-wrapping form.  For io? with no args the binding IS an IO action
+;; (a value); with args it is a function returning an IO action.
+(define (rackton-ffi-bind lib sym arg-tags res-tag io? arity)
+  (define proc
+    (get-ffi-obj sym (ffi-lib lib)
+                 (_cprocedure (map tag->ctype arg-tags) (tag->ctype res-tag))))
+  (cond
+    [(not io?)        proc]
+    [(= arity 0)      ($io (lambda () (proc)))]
+    [else             (lambda args ($io (lambda () (apply proc args))))]))
 
 ;; --- sizes (pure) --------------------------------------------------
 

@@ -581,6 +581,23 @@
                    [rid (datum->syntax stx racket-id stx)]
                    [nm  (datum->syntax stx name stx)])
        (syntax/loc stx (require (only-in mp [rid nm]))))]
+    [(top:foreign-c name type lib symbol arg-tags result-tag io? stx)
+     ;; Bind `name` to the C function via the ffi-runtime helper, which
+     ;; builds the function ctype from the tag lists and calls
+     ;; get-ffi-obj.  ffi/unsafe stays in ffi-runtime; here we emit only
+     ;; a require of the helper plus the binding.  The declared type was
+     ;; the (unchecked) trust boundary at inference time.
+     (with-syntax ([nm      (datum->syntax stx name stx)]
+                   [lib-e   (datum->syntax stx lib stx)]
+                   [sym-e   (datum->syntax stx symbol stx)]
+                   [args-e  (datum->syntax stx (list 'quote arg-tags) stx)]
+                   [res-e   (datum->syntax stx (list 'quote result-tag) stx)]
+                   [io-e    (datum->syntax stx io? stx)]
+                   [arity-e (datum->syntax stx (length arg-tags) stx)])
+       (syntax/loc stx
+         (begin
+           (require (only-in rackton/private/ffi-runtime rackton-ffi-bind))
+           (define nm (rackton-ffi-bind lib-e sym-e args-e res-e io-e arity-e)))))]
     [(top:provide _ _)
      ;; The elaborator resolves the union of all provide-specs and
      ;; emits a single Racket-level (provide …) form afterwards, so

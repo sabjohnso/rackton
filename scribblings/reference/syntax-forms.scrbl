@@ -509,3 +509,37 @@ applying a strict host function will raise at runtime).
          #:from racket/string)
 (foreign str-replace (-> String (-> String (-> String String)))
          #:from racket/string #:as string-replace)]}
+
+@defform[#:literals (->)
+         (foreign-c name type #:lib lib #:symbol symbol
+                    #:sig (ctype ... -> ctype))]{
+
+Imports an external C function directly, lowering to
+@racket[get-ffi-obj] from @racketmodname[ffi/unsafe] (it is sugar for a
+hand-written @racket[ffi/unsafe] shim imported via @racket[foreign]).
+@racket[lib] is the shared library: @racket[#f] for the running process
+(libc, and whatever it already links such as libm), or a @racket[_string]
+passed to @racket[ffi-lib].  @racket[symbol] is the C symbol name (a
+@racket[_string]).  @racket[#:sig] gives the C signature as type keywords
+(@racketidfont{double}, @racketidfont{int}, @racketidfont{string},
+@racketidfont{pointer}, @racketidfont{byte}, @racketidfont{void}) with a
+single @racket[->] splitting the argument types from the result.
+
+The Rackton @racket[type] is the trust boundary, exactly as for
+@racket[foreign].  Whether the binding is a pure function or an
+@racket[IO] action is read from @racket[type]: if the result (after the
+signature's argument arrows) sits in @racket[IO], the binding is an
+@racket[IO] action (a value when there are no arguments); otherwise it is
+a pure function.
+
+@racketblock[
+(foreign-c c-cbrt (-> Float Float)
+           #:lib #f #:symbol "cbrt" #:sig (double -> double))
+(foreign-c c-getpid (IO Integer)
+           #:lib #f #:symbol "getpid" #:sig (-> int))]
+
+Like @racket[foreign] this is @bold{unsafe}: a wrong signature or library
+crashes the process.  Versioned shared-library sonames (e.g.
+@tt{libm.so.6}) are awkward to name with a single @racket[#:lib] string;
+for those, prefer a @racket[get-ffi-obj] shim with a version list (see
+@racketmodname[rackton/foreign/c]) imported via @racket[foreign].}

@@ -1825,9 +1825,15 @@
   ;; binding comes from the Racket require codegen emits).
   (define env-A9
     (parameterize ([current-aliases (env-aliases env-A8)])
-      (for/fold ([e env-A8]) ([f (in-list forms)] #:when (top:foreign? f))
-        (env-extend-var e (top:foreign-name f)
-                        (resolve-scheme (top:foreign-type f))))))
+      (for/fold ([e env-A8]) ([f (in-list forms)])
+        (cond
+          [(top:foreign? f)
+           (env-extend-var e (top:foreign-name f)
+                           (resolve-scheme (top:foreign-type f)))]
+          [(top:foreign-c? f)
+           (env-extend-var e (top:foreign-c-name f)
+                           (resolve-scheme (top:foreign-c-type f)))]
+          [else e]))))
   (values env-A9 declared))
 
 ;; Pre-register every top:data's tcon header in env: name + arity +
