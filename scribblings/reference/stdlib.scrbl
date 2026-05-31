@@ -172,6 +172,10 @@ instances available.
   values: @racket[read-int], @racket[read-float], @racket[read-bool]
   (each @racket[(Maybe a)]; @racket[read-bool] accepts @racket["True"] /
   @racket["False"]).}
+@item{@racketmodname[rackton/text/show] — ShowS difference-list
+  helpers: @racket[show-string], @racket[show-char], @racket[shows],
+  @racket[show-paren], and @racket[run-shows] (the @racket[Show] class
+  and @racket[show] are in the prelude).}
 @item{@racketmodname[rackton/numeric/integer] — Integral helpers over
   @racket[Integer]: @racket[num-even?]/@racket[num-odd?],
   @racket[num-signum], @racket[num-gcd]/@racket[num-lcm],
