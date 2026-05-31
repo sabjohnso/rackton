@@ -11,6 +11,6 @@
     ("scribblings/reference/rackton-reference.scrbl"           (multi-page) (language))
     ("scribblings/developer/rackton-developer.scrbl"           (multi-page))))
 (define pkg-desc "A Racket adaptation of the Coalton statically-typed functional language")
-(define version "0.10.0")
+(define version "0.11.0")
 (define pkg-authors '(sbj))
 (define license '(Apache-2.0 OR MIT))
