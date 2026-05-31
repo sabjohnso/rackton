@@ -137,24 +137,27 @@ instances available.
   System.* family in one import.  The family is split into:
   @racketmodname[rackton/system/ref] (mutable @racket[Ref]s),
   @racketmodname[rackton/system/file] (@racket[read-file] /
-  @racket[write-file]),
+  @racket[write-file] / @racket[append-file]),
   @racketmodname[rackton/system/directory] (@racket[file-exists?] /
   @racket[delete-file] / @racket[make-directory] /
-  @racket[list-directory]),
+  @racket[list-directory] / @racket[does-directory-exist?] /
+  @racket[get-current-directory]),
   @racketmodname[rackton/system/exception] (@racket[try] /
   @racket[raise-io]),
   @racketmodname[rackton/system/random] (@racket[random-integer] /
   @racket[random-float]),
   @racketmodname[rackton/system/time] (@racket[current-time-seconds]),
   @racketmodname[rackton/system/environment] (@racket[getenv] /
-  @racket[argv]), @racketmodname[rackton/system/exit]
+  @racket[argv] / @racket[get-prog-name] / @racket[set-env]),
+  @racketmodname[rackton/system/exit]
   (@racket[exit-success] / @racket[exit-failure] / @racket[exit-with]
   over the @racket[ExitCode] type), and @racketmodname[rackton/system/io]
   (the @racket[Handle] type, @racket[open-file] over @racket[IOMode],
   @racket[h-put-str] / @racket[h-put-str-ln] / @racket[h-get-contents] /
   @racket[h-get-line] / @racket[h-close] / @racket[h-flush], the
-  @racket[stdin] / @racket[stdout] / @racket[stderr] handles, and
-  @racket[get-contents]).}
+  @racket[stdin] / @racket[stdout] / @racket[stderr] handles,
+  @racket[get-contents], and @racket[with-file] (an exception-safe
+  open/run/close bracket)).}
 @item{@racketmodname[rackton/text/string] — String operations:
   @racket[null-string?], @racket[reverse-string],
   @racket[to-upper-string]/@racket[to-lower-string],

@@ -260,6 +260,8 @@
  ;; System surface
  random-integer random-float current-time-seconds
  list-directory getenv argv delete-file make-directory
+ append-file does-directory-exist? get-current-directory
+ get-prog-name set-env
  ;; System.Exit
  exit-with-code
  ;; System.IO
@@ -1421,6 +1423,30 @@
 
 (define (make-directory path)
   ($io (lambda () (rkt:make-directory path) MkUnit)))
+
+;; appendFile: append to a file (creating it if absent).
+(define/curried (append-file path contents)
+  ($io (lambda ()
+         (with-output-to-file path #:exists 'append
+           (lambda () (display contents)))
+         MkUnit)))
+
+(define (does-directory-exist? path)
+  ($io (lambda () (directory-exists? path))))
+
+(define get-current-directory
+  ($io (lambda () (rkt:path->string (current-directory)))))
+
+;; getProgName: the running file's name (without its directory).
+(define get-prog-name
+  ($io (lambda ()
+         (let-values ([(base name dir?) (split-path (find-system-path 'run-file))])
+           (rkt:path->string name)))))
+
+;; setEnv: set an environment variable (putenv's boolean result is
+;; dropped — Haskell's setEnv returns ()).
+(define/curried (set-env name val)
+  ($io (lambda () (putenv name val) MkUnit)))
 
 ;; System.Exit — terminate the process with the given status code.
 ;; `exit` does not return, so the IO action's result type is free.

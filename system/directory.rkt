@@ -22,3 +22,11 @@
 ;; listDirectory.
 (foreign list-directory (-> String (IO (List String)))
          #:from rackton/private/prelude-runtime)
+
+;; doesDirectoryExist.
+(foreign does-directory-exist? (-> String (IO Boolean))
+         #:from rackton/private/prelude-runtime)
+
+;; getCurrentDirectory.
+(foreign get-current-directory (IO String)
+         #:from rackton/private/prelude-runtime)

@@ -128,6 +128,8 @@
                      try raise-io
                      random-integer random-float current-time-seconds
                      getenv argv
+                     append-file does-directory-exist? get-current-directory
+                     get-prog-name set-env
                      ;; rackton/system/exit
                      exit-with-code
                      ;; rackton/system/io

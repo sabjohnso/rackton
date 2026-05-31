@@ -13,3 +13,11 @@
 ;; getArgs: the command-line arguments.
 (foreign argv (IO (List String))
          #:from rackton/private/prelude-runtime)
+
+;; getProgName: the running program's name (without directory).
+(foreign get-prog-name (IO String)
+         #:from rackton/private/prelude-runtime)
+
+;; setEnv: set an environment variable.
+(foreign set-env (-> String (-> String (IO Unit)))
+         #:from rackton/private/prelude-runtime)

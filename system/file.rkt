@@ -13,3 +13,7 @@
 ;; writeFile: replace a file's contents with the given String.
 (foreign write-file (-> String (-> String (IO Unit)))
          #:from rackton/private/prelude-runtime)
+
+;; appendFile: append to a file, creating it if it doesn't exist.
+(foreign append-file (-> String (-> String (IO Unit)))
+         #:from rackton/private/prelude-runtime)

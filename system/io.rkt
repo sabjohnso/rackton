@@ -10,6 +10,7 @@
 ;; at runtime, exactly as Haskell's does.  The runtime primitives live
 ;; in private/prelude-runtime and are reached via `foreign`.
 
+(require rackton/system/exception)
 (provide (all-defined-out))
 
 ;; Opaque handle type.
@@ -71,3 +72,15 @@
 ;; getContents: the rest of standard input as one String.
 (: get-contents (IO String))
 (define get-contents (h-get-contents stdin))
+
+;; withFile: open a handle, run the action, and close the handle even
+;; if the action raises (Haskell's withFile bracket).  Implemented over
+;; `try` so the close always runs; a captured error is re-raised after.
+(: with-file (-> String (-> IOMode (-> (-> Handle (IO r)) (IO r)))))
+(define (with-file path mode action)
+  (do [h <- (open-file path mode)]
+      [r <- (try (action h))]
+      [_ <- (h-close h)]
+      (match r
+        [(Ok v)  (pure v)]
+        [(Err e) (raise-io e)])))
