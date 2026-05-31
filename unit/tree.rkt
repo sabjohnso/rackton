@@ -27,6 +27,8 @@
          it-prop
          group-of
          run-tests
+         run-tests-quiet
+         run-suite
          summary-passed
          summary-failed
          ;; Re-exports (single import path keeps instance coherence happy).
@@ -190,3 +192,73 @@
 
 (: run-tests (-> Test (IO Summary)))
 (define (run-tests t) (run-at 0 t))
+
+;; ----- Quiet runner + panic gate (the #lang rackton entry point) ----
+;;
+;; `run-tests` prints an ok/FAIL line per leaf, which floods the output
+;; when many suites run under `raco test`.  `run-tests-quiet` runs the
+;; same tree but prints only FAILING leaves, tagged with their group
+;; path — so a passing suite is silent, matching how a rackunit harness
+;; behaves.  `run-suite` wraps it: run quietly under a top-level group
+;; name, then `panic` (which makes `raco test` report a non-zero result)
+;; if any leaf failed.  A `#lang rackton` test file ends with
+;; `(define _ (run-io (run-suite "name" (list ...))))`.
+
+(: qreport-unit (-> String (-> String (-> Assertion (IO Summary)))))
+(define (qreport-unit path name a)
+  (match (assertion-result a)
+    [(CheckPass)   (pure-io one-pass)]
+    [(CheckFail m)
+     (do [_ <- (println (string-append "FAIL - "
+                          (string-append path
+                            (string-append name (string-append ": " m)))))]
+       (pure-io one-fail))]))
+
+(: qreport-prop (-> String (-> String (-> Property (IO Summary)))))
+(define (qreport-prop path name p)
+  (do [res <- (try (defer-io (lambda (u) (run-property prop-cases default-seed p))))]
+    (match res
+      [(Err emsg)
+       (do [_ <- (println (string-append "FAIL - "
+                            (string-append path
+                              (string-append name (string-append ": panicked: " emsg)))))]
+         (pure-io one-fail))]
+      [(Ok (PropPassed _)) (pure-io one-pass)]
+      [(Ok (PropFailed shown seed))
+       (do [_ <- (println (string-append "FAIL - "
+                            (string-append path
+                              (string-append name
+                                (string-append ": counterexample="
+                                  (string-append shown
+                                    (string-append " seed="
+                                      (integer->string seed))))))))]
+         (pure-io one-fail))])))
+
+(: qrun-at (-> String (-> Test (IO Summary))))
+(define (qrun-at path t)
+  (match t
+    [(TLeaf name (Unit-test a)) (qreport-unit path name a)]
+    [(TLeaf name (Prop-test p)) (qreport-prop path name p)]
+    [(TGroup name kids)
+     (qrun-group (string-append path (string-append name " > ")) kids)]))
+
+(: qrun-group (-> String (-> (List Test) (IO Summary))))
+(define (qrun-group path kids)
+  (match kids
+    [(Nil) (pure-io (MkSummary 0 0))]
+    [(Cons t rest)
+     (do [s1 <- (qrun-at path t)]
+         [s2 <- (qrun-group path rest)]
+       (pure-io (summary-add s1 s2)))]))
+
+(: run-tests-quiet (-> Test (IO Summary)))
+(define (run-tests-quiet t) (qrun-at "" t))
+
+(: run-suite (-> String (-> (List Test) (IO Unit))))
+(define (run-suite name tests)
+  (do [s <- (run-tests-quiet (group-of name tests))]
+    (if (> (summary-failed s) 0)
+        (panic (string-append name
+                 (string-append ": "
+                   (string-append (integer->string (summary-failed s)) " failure(s)"))))
+        (pure-io MkUnit))))

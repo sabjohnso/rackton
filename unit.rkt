@@ -26,6 +26,8 @@
          it-prop
          group-of
          run-tests
+         run-tests-quiet
+         run-suite
          summary-passed
          summary-failed
          (data-out Property)
