@@ -161,6 +161,13 @@ instances available.
   @racket[strip]/@racket[strip-start]/@racket[strip-end],
   @racket[split-keep], @racket[lines]/@racket[words],
   @racket[unlines]/@racket[unwords].}
+@item{@racketmodname[rackton/text/printf] — type-safe string formatting
+  (the @tt{formatting}/functional-unparsing technique, not a runtime
+  format string): the @racket[Format] type, the directives
+  @racket[fmt-lit] / @racket[fmt-int] / @racket[fmt-flt] /
+  @racket[fmt-str] / @racket[fmt-show], composition with
+  @racket[fmt-cat], and @racket[sprintf] to run a format.  Argument
+  types and arity are checked at compile time.}
 @item{@racketmodname[rackton/numeric/integer] — Integral helpers over
   @racket[Integer]: @racket[num-even?]/@racket[num-odd?],
   @racket[num-signum], @racket[num-gcd]/@racket[num-lcm],
