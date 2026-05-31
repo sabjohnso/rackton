@@ -44,7 +44,8 @@
          rackton/text/string
          rackton/text/printf
          rackton/text/read
-         rackton/text/show)
+         rackton/text/show
+         rackton/text/bytes)
 
 (provide (all-from-out rackton/data/maybe)
          (all-from-out rackton/data/either)
@@ -84,4 +85,5 @@
          (all-from-out rackton/text/printf)
          (all-from-out rackton/text/read)
          (all-from-out rackton/text/show)
+         (all-from-out rackton/text/bytes)
          (all-from-out rackton/system))
