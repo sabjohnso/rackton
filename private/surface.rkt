@@ -754,6 +754,19 @@
 ;; (a tuple-focused prism would need a product encoding we don't
 ;; offer in this phase).
 (define (synthesize-prism-defs tname tparams ctors ctx-stx)
+  ;; Prism deriving supports only nullary and single-field ctors.  A
+  ;; multi-field ctor would need a product-focused prism — `Prism s
+  ;; (Pair a b)` for `(C a b)` — which isn't implemented yet (see
+  ;; ISSUES.org).  Reject it up front with a clear error rather than
+  ;; silently skipping the offending ctor and leaving its prism
+  ;; undefined (which surfaced later as an opaque "unbound identifier").
+  (for ([c (in-list ctors)])
+    (define arity (length (data-ctor-field-types c)))
+    (when (>= arity 2)
+      (raise-syntax-error 'data
+        (format "cannot derive Prism for ~a: constructor ~a has ~a fields — Prism deriving supports only nullary and single-field constructors (a multi-field constructor needs a product-focused prism, not yet implemented)"
+                tname (data-ctor-name c) arity)
+        ctx-stx)))
   (apply append
          (for/list ([c (in-list ctors)])
            (define name (data-ctor-name c))

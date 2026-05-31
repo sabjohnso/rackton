@@ -78,9 +78,17 @@ named @racketidfont{T}@racketidfont{-}@racket[_Ctor]@racketidfont{-prism}:
 }|
 
 @racket[preview] tries to focus; @racket[review] builds a value at the
-focused position.  (Prism deriving is unavailable on
-@racket[struct] — a single-constructor record has nothing to
-discriminate; use @racket[Lens] instead.)
+focused position.
+
+Each constructor must be nullary (focus @racket[Unit]) or
+single-field (focus the field's type).  Deriving @racket[Prism] on a
+type with a @emph{multi-field} constructor is a compile error — its
+prism would focus the @emph{product} of the fields (@racket[(Prism s
+(Pair a b))] for @racket[(C a b)]), which is not yet implemented.
+
+(Prism deriving is also unavailable on @racket[struct] — a
+single-constructor record has nothing to discriminate; use
+@racket[Lens] instead.)
 
 @section{Traversals}
 

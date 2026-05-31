@@ -52,16 +52,13 @@
 (define rev-lft (review Either2-Lft-prism "boom"))
 
 ;; ----- mixed-arity skipping ----------------------------
-;; ADT with one 0-arg ctor, one 1-arg ctor, one 2-arg ctor.
-;; Prism deriving emits prisms for the 0/1-arg ones and silently
-;; skips the 2-arg one.  Test verifies the 0/1-arg prisms exist
-;; and work; the 2-arg ctor still works as a value but has no
-;; prism.
+;; ADT mixing a nullary and a single-field ctor — both get prisms.
+;; (A 2+-field ctor in a Prism-derived type is a compile error; see
+;; tests/deriving-prism-arity-error-test.rkt.)
 
 (data Tri
   Empty
   (One Integer)
-  (Two Integer Integer)
   #:deriving Prism Eq Show)
 
 (: prev-empty-on-empty (Maybe Unit))
@@ -69,10 +66,6 @@
 
 (: prev-one-on-one (Maybe Integer))
 (define prev-one-on-one (preview Tri-One-prism (One 7)))
-
-;; Two-arg ctor still constructs values fine even without prism.
-(: a-two Tri)
-(define a-two (Two 1 2))
 
 (: suite (List Test))
 (define suite
@@ -92,11 +85,10 @@
         (list (check-equal? prev-lft-on-lft (Some "err"))
               (check-equal? prev-rgt-on-rgt (Some 42))
               (check-equal? rev-lft         (Lft "boom")))))
-   (it "Mixed-arity: 0/1-arg derived; 2-arg skipped"
+   (it "nullary + single-field ctors both get prisms"
        (all-checks
         (list (check-equal? prev-empty-on-empty (Some MkUnit))
-              (check-equal? prev-one-on-one     (Some 7))
-              (check-equal? a-two               (Two 1 2)))))))
+              (check-equal? prev-one-on-one     (Some 7)))))))
 
 (: _ran Unit)
 (define _ran (run-io (run-suite "deriving Prism" suite)))
