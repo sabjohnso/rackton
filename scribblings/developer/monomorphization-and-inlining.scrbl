@@ -93,5 +93,5 @@ tests.
       class's impl) can be monomorphized only when the inner class is
       itself resolved at compile time.  When the inner class is
       polymorphic, the call falls back to the runtime dispatcher
-      that consults the @racket[pure-via-witness] machinery (see
+      that consults the @racketidfont{pure-via-witness} machinery (see
       @filepath{private/prelude-runtime.rkt}).}]

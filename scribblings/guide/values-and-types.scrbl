@@ -111,7 +111,7 @@ The @racket[:] form still pre-registers the name in the typing
 environment.  Most code doesn't need it; it remains useful for
 documentation, to constrain the inferred scheme, or to declare a
 binding that would otherwise be ambiguous (see the @racket[pure]
-case in @secref["Return-typed_methods___racket_pure__and__racket_mempty_"]).
+case in @secref["return-typed-methods"]).
 
 @section{Function types}
 

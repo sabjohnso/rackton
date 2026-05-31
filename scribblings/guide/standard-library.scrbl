@@ -10,12 +10,13 @@ hierarchy (@racket[Eq], @racket[Ord], @racket[Functor], @racket[Monad],
 @racket[Result]), the numeric tower, and a handful of combinators.
 Everything else lives in modules you @racket[require] explicitly, laid
 out to mirror Haskell's @tt{base}:
-@racketmodname[rackton/data], @racketmodname[rackton/control],
-@racketmodname[rackton/numeric], @racketmodname[rackton/text], and
-@racketmodname[rackton/system].
+@tt{rackton/data}, @tt{rackton/control}, @tt{rackton/numeric},
+@tt{rackton/text}, and @tt{rackton/system}.
 
 This section is a tour.  For the exhaustive module-by-module list, see
-@secref["stdlib"] in the reference.
+@secref["stdlib"
+        #:doc '(lib "rackton/scribblings/reference/rackton-reference.scrbl")]
+in the reference.
 
 @section{Importing}
 
@@ -92,7 +93,7 @@ module — @racketmodname[rackton/control/monad/state],
 
 The numeric @emph{tower} (the @racket[Num] / @racket[Integral] /
 @racket[Floating] / … classes and their instances) is in the prelude;
-the derived operations are in @racketmodname[rackton/numeric].
+the derived operations are in @tt{rackton/numeric}.
 @racketmodname[rackton/numeric/integer] has @racket[num-gcd] /
 @racket[num-lcm] / @racket[num-factorial], @racketmodname[rackton/numeric/real]
 the extra trig, @racketmodname[rackton/numeric/show] radix and

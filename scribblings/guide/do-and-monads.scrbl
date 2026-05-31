@@ -81,7 +81,7 @@ enumerates the cartesian product of the bound generators.  The
 standalone @racket[concat-map] function is the same operation with its
 arguments in list-comprehension order.
 
-@section{Return-typed methods: @racket[pure] and @racket[mempty]}
+@section[#:tag "return-typed-methods"]{Return-typed methods: @racket[pure] and @racket[mempty]}
 
 @racket[pure] (in @racket[Applicative]) has type @racket[(-> a (f a))]:
 its single argument fixes @racket[a], but the outer constructor

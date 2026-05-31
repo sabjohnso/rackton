@@ -73,7 +73,9 @@ working code and as worked exercises in style.
 @filepath{examples/word-count.rkt} counts word frequencies and prints
 the five most common.  Where @filepath{calc.rkt} and
 @filepath{todo.rkt} lean on the language core, this one is about the
-@seclink["stdlib"]{standard library}: it pulls several families
+@seclink["stdlib"
+         #:doc '(lib "rackton/scribblings/reference/rackton-reference.scrbl")]{standard
+library}: it pulls several families
 together through the @racketmodname[rackton/batteries] umbrella.
 
 @itemlist[
