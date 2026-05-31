@@ -50,6 +50,7 @@
          "unify.rkt"
          "surface.rkt"
          "entail.rkt"
+         "impl-symbols.rkt"
          "scheme-codec.rkt")
 
 ;; ----- fresh type variables -----------------------------------------
@@ -3220,11 +3221,7 @@
            (cond
              [(and matching (instance-needs-dict? env (car matching)))
               (define impl
-                (string->symbol
-                 (format "$~a:~a"
-                         method-name
-                         (string-join (map symbol->string keep-tcon-names)
-                                      "-"))))
+                (return-impl-symbol method-name keep-tcon-names))
               (hash-set! resolutions stx impl)
               (define inst-dict-impls
                 (instance-qual-return-impls env method-name
@@ -3255,11 +3252,7 @@
                    (instance-has-monomorphizable-impl?
                     (car matching) method-name))
               (define impl
-                (string->symbol
-                 (format "$~a:~a"
-                         method-name
-                         (string-join (map symbol->string keep-tcon-names)
-                                      "-"))))
+                (return-impl-symbol method-name keep-tcon-names))
               (hash-set! resolutions stx impl)
               (when (current-monomorphized-sites)
                 (define b (current-monomorphized-sites))
@@ -3302,31 +3295,8 @@
 ;; `current-prelude-build?` is true.
 (define prelude-instances-table (make-weak-hash))
 
-;; Must agree byte-for-byte with overlap-impl-symbol in
-;; codegen.rkt — encodes nested ctors deeply so two same-outer-ctor
-;; overlap-group instances get distinct impl names.
-(define (overlap-impl-symbol method-name head-arg-types)
-  (string->symbol
-   (format "$~a:~a"
-           method-name
-           (apply string-append
-                  (let loop ([ts head-arg-types])
-                    (cond
-                      [(null? ts) '()]
-                      [(null? (cdr ts)) (list (head-fingerprint (car ts)))]
-                      [else (cons (head-fingerprint (car ts))
-                                  (cons "-" (loop (cdr ts))))]))))))
-
-(define (head-fingerprint t)
-  (match t
-    [(tcon n) (symbol->string n)]
-    [(tvar _) "*"]
-    [(tapp h args)
-     (string-append (head-fingerprint h)
-                    (apply string-append
-                           (for/list ([a (in-list args)])
-                             (string-append "_" (head-fingerprint a)))))]
-    [_ "*"]))
+;; overlap-impl-symbol and head-fingerprint — the instance impl-name
+;; contract shared with codegen — live in "impl-symbols.rkt".
 
 ;; Predicate matching build-dict-skolems' filter-skolems —
 ;; a `(method . arg-types)` pair contributes a dict slot only when
@@ -3469,10 +3439,7 @@
      (cond
        [skolem-local skolem-local]
        [else
-        (string->symbol
-         (format "$~a:~a"
-                 method-name
-                 (string-join (map symbol->string keep-tcon-names) "-")))])]
+        (return-impl-symbol method-name keep-tcon-names)])]
     [else
      (raise-syntax-error 'infer
        (format "ambiguous use of ~s: cannot determine target type at this call site"

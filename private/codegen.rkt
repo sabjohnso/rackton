@@ -67,6 +67,7 @@
          "surface.rkt"
          "match.rkt"
          "entail.rkt"
+         "impl-symbols.rkt"
          "infer.rkt")
 
 ;; Prepend `dict-arg-names` to an expression's outermost lambda
@@ -1084,53 +1085,9 @@
     ;; those positions, so we can safely report #f here.
     [_ #f]))
 
-;; Deep fingerprint of a head argument, encoding nested
-;; ctors so e.g. (Box Integer) → "Box_Integer" and (Box a) → "Box_*".
-;; Used as the impl-name suffix for instances in an overlap group so
-;; two same-outer-ctor instances don't clobber each other.  Tvars
-;; render as "*" — overlap means the specific instance always wins at
-;; compile time for monomorphic call sites, and tvar positions in a
-;; less-specific match show up as wildcards.
-(define (head-fingerprint t)
-  (match t
-    [(tcon n) (symbol->string n)]
-    [(tvar _) "*"]
-    [(tapp h args)
-     (string-append (head-fingerprint h)
-                    (apply string-append
-                           (for/list ([a (in-list args)])
-                             (string-append "_" (head-fingerprint a)))))]
-    [_ "*"]))
-
-;; Impl name for an overlap-group instance, using a
-;; deep-fingerprint of each head arg.  Must agree byte-for-byte with
-;; the resolver path in infer.rkt.
-(define (overlap-impl-symbol method-name head-arg-types)
-  (string->symbol
-   (format "$~a:~a"
-           method-name
-           (apply string-append
-                  (let loop ([ts head-arg-types])
-                    (cond
-                      [(null? ts) '()]
-                      [(null? (cdr ts)) (list (head-fingerprint (car ts)))]
-                      [else (cons (head-fingerprint (car ts))
-                                  (cons "-" (loop (cdr ts))))]))))))
-
-;; Build the impl name the codegen emits for a return-typed method on
-;; an instance whose head args are `tcon-names`.  Must agree byte-for-
-;; byte with the resolver in private/infer.rkt's `resolve-method-uses!`.
-(define (return-impl-symbol method-name tcon-names)
-  (string->symbol
-   (format "$~a:~a"
-           method-name
-           (apply string-append
-                  (let loop ([xs tcon-names])
-                    (cond
-                      [(null? xs) '()]
-                      [(null? (cdr xs)) (list (symbol->string (car xs)))]
-                      [else (cons (symbol->string (car xs))
-                                  (cons "-" (loop (cdr xs))))]))))))
+;; head-fingerprint, overlap-impl-symbol, and return-impl-symbol — the
+;; instance impl-name contract shared with inference — live in
+;; "impl-symbols.rkt" so the two stages cannot drift apart.
 
 (define (method-dispatch-symbol method-name)
   (string->symbol (format "$dispatch:~a" method-name)))
