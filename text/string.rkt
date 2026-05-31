@@ -162,3 +162,56 @@
       (chars->string (replace-chars (string->chars from)
                                     (string->chars to)
                                     (string->chars s)))))
+
+;; --- substring splitting -------------------------------------------
+
+;; break at the first occurrence of `sep`: (chars-before, chars-from-sep).
+;; When `sep` is absent the second component is Nil (so callers can tell
+;; "found at the end" from "not found").
+(: break-on-chars (-> (List Char) (-> (List Char) (Pair (List Char) (List Char)))))
+(define (break-on-chars sep s)
+  (if (chars-prefix? sep s)
+      (MkPair Nil s)
+      (match s
+        [(Nil) (MkPair Nil Nil)]
+        [(Cons h t)
+         (match (break-on-chars sep t)
+           [(MkPair before after) (MkPair (Cons h before) after)])])))
+
+;; breakOn: split at the first occurrence of `needle`; the second
+;; component starts WITH needle (or is "" when needle is absent).
+(: break-on (-> String (-> String (Pair String String))))
+(define (break-on needle s)
+  (match (break-on-chars (string->chars needle) (string->chars s))
+    [(MkPair before after) (MkPair (chars->string before) (chars->string after))]))
+
+(: split-on-chars (-> (List Char) (-> (List Char) (List (List Char)))))
+(define (split-on-chars sep s)
+  (match (break-on-chars sep s)
+    [(MkPair before after)
+     (match after
+       [(Nil) (Cons before Nil)]
+       [_     (Cons before (split-on-chars sep (drop (length sep) after)))])]))
+
+;; splitOn: split on every occurrence of `sep`, KEEPING empty segments
+;; (n separators -> n+1 segments).  An empty `sep` yields the whole
+;; string as one segment.
+(: split-on (-> String (-> String (List String))))
+(define (split-on sep s)
+  (if (null-string? sep)
+      (Cons s Nil)
+      (fmap chars->string (split-on-chars (string->chars sep) (string->chars s)))))
+
+;; index of the first occurrence of `needle`, or None.  An empty needle
+;; matches at index 0.
+(: index-of-chars (-> Integer (-> (List Char) (-> (List Char) (Maybe Integer)))))
+(define (index-of-chars i needle s)
+  (if (chars-prefix? needle s)
+      (Some i)
+      (match s
+        [(Nil)      None]
+        [(Cons _ t) (index-of-chars (+ i 1) needle t)])))
+
+(: index-of (-> String (-> String (Maybe Integer))))
+(define (index-of needle s)
+  (index-of-chars 0 (string->chars needle) (string->chars s)))
