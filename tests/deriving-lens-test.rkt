@@ -46,14 +46,10 @@
 
 ;; ----- 47.C composed lenses through nesting ------------------
 
-;; Segment derives only Lens: deriving Eq alongside Lens on a struct
-;; whose fields are themselves structs trips a lens-deriving codegen
-;; bug, so Segment results are checked field-by-field via lenses
-;; rather than with structural `check-equal?`.
 (struct Segment
   [start : Point]
   [end   : Point]
-  #:deriving Lens)
+  #:deriving Eq Show Lens)
 
 (: start-x-lens (Lens Segment Integer))
 (define start-x-lens (lens-compose Segment-start-lens Point-x-lens))
@@ -70,15 +66,6 @@
 (: seg-doubled Segment)
 (define seg-doubled
   (over start-x-lens (lambda (n) (* n 2)) seg))
-
-;; Field projections for verifying whole-Segment results without an
-;; Eq instance on Segment.
-(: start-y-lens (Lens Segment Integer))
-(define start-y-lens (lens-compose Segment-start-lens Point-y-lens))
-(: end-x-lens (Lens Segment Integer))
-(define end-x-lens (lens-compose Segment-end-lens Point-x-lens))
-(: end-y-lens (Lens Segment Integer))
-(define end-y-lens (lens-compose Segment-end-lens Point-y-lens))
 
 (: suite (List Test))
 (define suite
@@ -98,16 +85,8 @@
    (it "composed derived lenses through nesting"
        (all-checks
         (list (check-equal? seg-start-x 1)
-              ;; seg-shifted == (Segment (Point 42 2) (Point 10 20))
-              (check-equal? (view start-x-lens seg-shifted) 42)
-              (check-equal? (view start-y-lens seg-shifted) 2)
-              (check-equal? (view end-x-lens   seg-shifted) 10)
-              (check-equal? (view end-y-lens   seg-shifted) 20)
-              ;; seg-doubled == (Segment (Point 2 2) (Point 10 20))
-              (check-equal? (view start-x-lens seg-doubled) 2)
-              (check-equal? (view start-y-lens seg-doubled) 2)
-              (check-equal? (view end-x-lens   seg-doubled) 10)
-              (check-equal? (view end-y-lens   seg-doubled) 20))))))
+              (check-equal? seg-shifted (Segment (Point 42 2) (Point 10 20)))
+              (check-equal? seg-doubled (Segment (Point 2 2)  (Point 10 20))))))))
 
 (: _ran Unit)
 (define _ran (run-io (run-suite "deriving Lens" suite)))

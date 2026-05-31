@@ -281,19 +281,24 @@
           stx))
 
 ;; `(== a0 b0)` then `(== a1 b1)` … chained as nested ifs.
+;; Every reference gets its OWN syntax object: method/dict resolution is
+;; keyed by stx, so a `==` reference sharing a stx with a value
+;; reference (e.g. the match subject) would make the resolved dict
+;; overwrite that value at codegen — see `fresh-stx`.
 (define (chained-eq arity stx)
   (cond
-    [(zero? arity) (e:literal #t stx)]
+    [(zero? arity) (e:literal #t (fresh-stx stx))]
     [else
      (foldr
       (lambda (i acc)
-        (e:if (e:app (e:var '== stx)
-                     (list (e:var (a-name i) stx) (e:var (b-name i) stx))
-                     stx)
+        (e:if (e:app (e:var '== (fresh-stx stx))
+                     (list (e:var (a-name i) (fresh-stx stx))
+                           (e:var (b-name i) (fresh-stx stx)))
+                     (fresh-stx stx))
               acc
-              (e:literal #f stx)
-              stx))
-      (e:literal #t stx)
+              (e:literal #f (fresh-stx stx))
+              (fresh-stx stx)))
+      (e:literal #t (fresh-stx stx))
       (build-list arity values))]))
 
 (define (synthesize-eq-instance tname tparams ctors stx)
@@ -304,21 +309,21 @@
   ;; Outer match on x; for each ctor, inner match on y.
   (define eq-body
     (e:match
-     (e:var 'x stx)
+     (e:var 'x (fresh-stx stx))
      (for/list ([c (in-list ctors)])
        (define name (data-ctor-name c))
        (define arity (length (data-ctor-field-types c)))
        (clause (ctor-x-pattern name arity stx) #f
-               (e:match (e:var 'y stx)
+               (e:match (e:var 'y (fresh-stx stx))
                         (list (clause (ctor-y-pattern name arity stx) #f
                                       (chained-eq arity stx)
                                       stx)
                               (clause (p:wild stx) #f
-                                      (e:literal #f stx)
+                                      (e:literal #f (fresh-stx stx))
                                       stx))
-                        #f stx)
+                        #f (fresh-stx stx))
                stx))
-     #f stx))
+     #f (fresh-stx stx)))
   (top:instance ctx head
                 (list (top:def '== (e:lam '(x y) eq-body stx) stx))
                 stx))
@@ -333,14 +338,14 @@
   (define head (constraint 'Ord (list head-ty) stx))
   (define lt-body
     (e:match
-     (e:var 'x stx)
+     (e:var 'x (fresh-stx stx))
      (for/list ([c (in-list ctors)] [i (in-naturals)])
        (clause (ctor-x-pattern (data-ctor-name c)
                                (length (data-ctor-field-types c))
                                stx) #f
                (synthesize-ord-inner-match ctors c i stx)
                stx))
-     #f stx))
+     #f (fresh-stx stx)))
   (top:instance ctx head
                 (list (top:def '< (e:lam '(x y) lt-body stx) stx))
                 stx))
@@ -363,28 +368,30 @@
                    (chained-lex-less current-arity stx)
                    stx))
      ;; Later ctors caught by wildcard — x < y is #t.
-     (list (clause (p:wild stx) #f (e:literal #t stx) stx))))
-  (e:match (e:var 'y stx) clauses #f stx))
+     (list (clause (p:wild stx) #f (e:literal #t (fresh-stx stx)) stx))))
+  (e:match (e:var 'y (fresh-stx stx)) clauses #f (fresh-stx stx)))
 
 (define (chained-lex-less arity stx)
   (cond
-    [(zero? arity) (e:literal #f stx)]
+    [(zero? arity) (e:literal #f (fresh-stx stx))]
     [else
      (foldr
       (lambda (i acc)
         ;; (if (< ai bi) #t (if (== ai bi) <recurse> #f))
-        (e:if (e:app (e:var '< stx)
-                     (list (e:var (a-name i) stx) (e:var (b-name i) stx))
-                     stx)
-              (e:literal #t stx)
-              (e:if (e:app (e:var '== stx)
-                           (list (e:var (a-name i) stx) (e:var (b-name i) stx))
-                           stx)
+        (e:if (e:app (e:var '< (fresh-stx stx))
+                     (list (e:var (a-name i) (fresh-stx stx))
+                           (e:var (b-name i) (fresh-stx stx)))
+                     (fresh-stx stx))
+              (e:literal #t (fresh-stx stx))
+              (e:if (e:app (e:var '== (fresh-stx stx))
+                           (list (e:var (a-name i) (fresh-stx stx))
+                                 (e:var (b-name i) (fresh-stx stx)))
+                           (fresh-stx stx))
                     acc
-                    (e:literal #f stx)
-                    stx)
-              stx))
-      (e:literal #f stx)
+                    (e:literal #f (fresh-stx stx))
+                    (fresh-stx stx))
+              (fresh-stx stx)))
+      (e:literal #f (fresh-stx stx))
       (build-list arity values))]))
 
 ;; Derived Functor: synthesize `fmap` for an ADT whose LAST type

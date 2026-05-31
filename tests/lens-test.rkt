@@ -9,7 +9,8 @@
 
 (struct Point
   [x : Integer]
-  [y : Integer])
+  [y : Integer]
+  #:deriving Eq Show)
 
 ;; Hand-written field lenses for Point.
 (: x-lens (Lens Point Integer))
@@ -39,7 +40,8 @@
 ;; reach the start-point's x.
 (struct Segment
   [start  : Point]
-  [end    : Point])
+  [end    : Point]
+  #:deriving Eq Show)
 
 (: start-lens (Lens Segment Point))
 (define start-lens
@@ -66,20 +68,6 @@
 (: seg-over    Segment)
 (define seg-over (over start-x-lens (lambda (n) (* n 100)) seg))
 
-;; Structural comparison via accessors, so we never need Eq on the
-;; record types themselves.
-(: point= (-> Point (-> Point Boolean)))
-(define (point= a b)
-  (if (== (Point-x a) (Point-x b))
-      (== (Point-y a) (Point-y b))
-      #f))
-
-(: segment= (-> Segment (-> Segment Boolean)))
-(define (segment= a b)
-  (if (point= (Segment-start a) (Segment-start b))
-      (point= (Segment-end a) (Segment-end b))
-      #f))
-
 ;; ---------- assertions ---------------------------------------
 
 (: suite (List Test))
@@ -88,18 +76,15 @@
    (it "view returns the focused field"
        (check-equal? x-val 3))
    (it "set replaces the focused field"
-       (all-checks
-        (list (check-true (point= p-set-x (Point 99 7)))
-              (check-equal? (Point-x p-set-x) 99)
-              (check-equal? (Point-y p-set-x) 7))))
+       (check-equal? p-set-x (Point 99 7)))
    (it "over transforms the focused field"
-       (check-true (point= p-bump-y (Point 3 8))))
+       (check-equal? p-bump-y (Point 3 8)))
    (it "composed lens views through nesting"
        (check-equal? seg-start-x 1))
    (it "composed lens sets only the focused position"
-       (check-true (segment= seg-shifted (Segment (Point 42 2) (Point 10 20)))))
+       (check-equal? seg-shifted (Segment (Point 42 2) (Point 10 20))))
    (it "composed lens over transforms only the focused position"
-       (check-true (segment= seg-over (Segment (Point 100 2) (Point 10 20)))))))
+       (check-equal? seg-over (Segment (Point 100 2) (Point 10 20))))))
 
 (: _ran Unit)
 (define _ran (run-io (run-suite "lens" suite)))
