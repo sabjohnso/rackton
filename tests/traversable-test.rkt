@@ -1,73 +1,68 @@
-#lang racket/base
+#lang rackton
 
 ;; Traversable via dict-passing.
 
-(require rackunit
-         "../main.rkt")
+(require "../unit.rkt")
 
-(rackton
-  ;; ----- traverse over Maybe, into Maybe ------------------------
-  (: parse-positive (-> Integer (Maybe Integer)))
-  (define (parse-positive n)
-    (if (> n 0) (Some n) None))
+;; ----- traverse over Maybe, into Maybe ------------------------
+(: parse-positive (-> Integer (Maybe Integer)))
+(define (parse-positive n)
+  (if (> n 0) (Some n) None))
 
-  (: maybe-of-maybe-some (Maybe (Maybe Integer)))
-  (define maybe-of-maybe-some (traverse parse-positive (Some 5)))
+(: maybe-of-maybe-some (Maybe (Maybe Integer)))
+(define maybe-of-maybe-some (traverse parse-positive (Some 5)))
 
-  (: maybe-of-maybe-none (Maybe (Maybe Integer)))
-  (define maybe-of-maybe-none (traverse parse-positive None))
+(: maybe-of-maybe-none (Maybe (Maybe Integer)))
+(define maybe-of-maybe-none (traverse parse-positive None))
 
-  (: maybe-of-maybe-fail (Maybe (Maybe Integer)))
-  (define maybe-of-maybe-fail (traverse parse-positive (Some -1)))
+(: maybe-of-maybe-fail (Maybe (Maybe Integer)))
+(define maybe-of-maybe-fail (traverse parse-positive (Some -1)))
 
-  ;; ----- traverse over List, into Maybe -------------------------
-  (: maybe-of-list-all (Maybe (List Integer)))
-  (define maybe-of-list-all
-    (traverse parse-positive (Cons 1 (Cons 2 (Cons 3 Nil)))))
+;; ----- traverse over List, into Maybe -------------------------
+(: maybe-of-list-all (Maybe (List Integer)))
+(define maybe-of-list-all
+  (traverse parse-positive (Cons 1 (Cons 2 (Cons 3 Nil)))))
 
-  (: maybe-of-list-fail (Maybe (List Integer)))
-  (define maybe-of-list-fail
-    (traverse parse-positive (Cons 1 (Cons -2 (Cons 3 Nil)))))
+(: maybe-of-list-fail (Maybe (List Integer)))
+(define maybe-of-list-fail
+  (traverse parse-positive (Cons 1 (Cons -2 (Cons 3 Nil)))))
 
-  (: maybe-of-list-empty (Maybe (List Integer)))
-  (define maybe-of-list-empty (traverse parse-positive Nil))
+(: maybe-of-list-empty (Maybe (List Integer)))
+(define maybe-of-list-empty (traverse parse-positive Nil))
 
-  ;; ----- traverse over List, into Result ------------------------
-  (: keep-or-err (-> Integer (Result String Integer)))
-  (define (keep-or-err n)
-    (if (> n 0) (Ok n) (Err "non-positive")))
+;; ----- traverse over List, into Result ------------------------
+(: keep-or-err (-> Integer (Result String Integer)))
+(define (keep-or-err n)
+  (if (> n 0) (Ok n) (Err "non-positive")))
 
-  (: result-of-list-all (Result String (List Integer)))
-  (define result-of-list-all
-    (traverse keep-or-err (Cons 5 (Cons 6 Nil))))
+(: result-of-list-all (Result String (List Integer)))
+(define result-of-list-all
+  (traverse keep-or-err (Cons 5 (Cons 6 Nil))))
 
-  (: result-of-list-fail (Result String (List Integer)))
-  (define result-of-list-fail
-    (traverse keep-or-err (Cons 5 (Cons -6 Nil)))))
+(: result-of-list-fail (Result String (List Integer)))
+(define result-of-list-fail
+  (traverse keep-or-err (Cons 5 (Cons -6 Nil))))
 
-;; ---------- assertions ----------------------------------------
+(: suite (List Test))
+(define suite
+  (list
+   (it "traverse Maybe into Maybe (Some, success)"
+       (check-equal? maybe-of-maybe-some (Some (Some 5))))
+   (it "traverse Maybe into Maybe (None preserved)"
+       (check-equal? maybe-of-maybe-none (Some None)))
+   (it "traverse Maybe into Maybe (short-circuit on inner None)"
+       (check-equal? maybe-of-maybe-fail None))
+   (it "traverse List into Maybe (all succeed)"
+       (check-equal? maybe-of-list-all
+                     (Some (Cons 1 (Cons 2 (Cons 3 Nil))))))
+   (it "traverse List into Maybe (short-circuit on inner None)"
+       (check-equal? maybe-of-list-fail None))
+   (it "traverse List into Maybe (empty list -> pure Nil)"
+       (check-equal? maybe-of-list-empty (Some Nil)))
+   (it "traverse List into Result (all succeed)"
+       (check-equal? result-of-list-all (Ok (Cons 5 (Cons 6 Nil)))))
+   (it "traverse List into Result (short-circuit on Err)"
+       (check-equal? result-of-list-fail (Err "non-positive")))))
 
-(test-case "traverse Maybe into Maybe (Some, success)"
-  (check-equal? maybe-of-maybe-some (Some (Some 5))))
-
-(test-case "traverse Maybe into Maybe (None preserved)"
-  (check-equal? maybe-of-maybe-none (Some None)))
-
-(test-case "traverse Maybe into Maybe (short-circuit on inner None)"
-  (check-equal? maybe-of-maybe-fail None))
-
-(test-case "traverse List into Maybe (all succeed)"
-  (check-equal? maybe-of-list-all
-                (Some (Cons 1 (Cons 2 (Cons 3 Nil))))))
-
-(test-case "traverse List into Maybe (short-circuit on inner None)"
-  (check-equal? maybe-of-list-fail None))
-
-(test-case "traverse List into Maybe (empty list -> pure Nil)"
-  (check-equal? maybe-of-list-empty (Some Nil)))
-
-(test-case "traverse List into Result (all succeed)"
-  (check-equal? result-of-list-all (Ok (Cons 5 (Cons 6 Nil)))))
-
-(test-case "traverse List into Result (short-circuit on Err)"
-  (check-equal? result-of-list-fail (Err "non-positive")))
+(: _ran Unit)
+(define _ran (run-io (run-suite "traversable" suite)))

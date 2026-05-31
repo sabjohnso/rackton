@@ -1,104 +1,89 @@
-#lang racket/base
+#lang rackton
 
 ;; End-to-end: refs in IO, file I/O, list helpers, sort, pair
 ;; helpers, and `#:deriving Functor`.
 
-(require rackunit
-         racket/file
-         "../main.rkt")
+(require rackton/data/list
+         rackton/data/tuple
+         rackton/system
+         "../unit.rkt")
 
-(rackton
-  (require rackton/data/list)
-  (require rackton/data/tuple)
-  (require rackton/system)
-  ;; Mutable counter via Ref.  loop-step must precede its caller.
-  (: loop-step (-> (Ref Integer) (-> Integer (IO Unit))))
-  (define (loop-step r stop)
-    (do [n <- (read-ref r)]
-      (if (< n stop)
-          (do [_ <- (write-ref r (+ n 1))]
-            (loop-step r stop))
-          (pure-io MkUnit))))
+;; Mutable counter via Ref.  loop-step must precede its caller.
+(: loop-step (-> (Ref Integer) (-> Integer (IO Unit))))
+(define (loop-step r stop)
+  (do [n <- (read-ref r)]
+    (if (< n stop)
+        (do [_ <- (write-ref r (+ n 1))]
+          (loop-step r stop))
+        (pure-io MkUnit))))
 
-  (: count-from-to (-> Integer (-> Integer (IO Integer))))
-  (define (count-from-to start stop)
-    (do [r <- (make-ref start)]
-        [_ <- (loop-step r stop)]
-      (read-ref r)))
+(: count-from-to (-> Integer (-> Integer (IO Integer))))
+(define (count-from-to start stop)
+  (do [r <- (make-ref start)]
+      [_ <- (loop-step r stop)]
+    (read-ref r)))
 
-  ;; List helpers
-  (define xs       (Cons 3 (Cons 1 (Cons 4 (Cons 1 (Cons 5 (Cons 9 Nil)))))))
-  (define rev      (reverse xs))
-  (define first-3  (take 3 xs))
-  (define last-3   (drop 3 xs))
-  (define sorted-xs (sort xs))
-  (define found    (find (lambda (n) (== n 5)) xs))
-  (define missing  (find (lambda (n) (== n 99)) xs))
+;; List helpers
+(define xs       (Cons 3 (Cons 1 (Cons 4 (Cons 1 (Cons 5 (Cons 9 Nil)))))))
+(define rev      (reverse xs))
+(define first-3  (take 3 xs))
+(define last-3   (drop 3 xs))
+(define sorted-xs (sort xs))
+(define found    (find (lambda (n) (== n 5)) xs))
+(define missing  (find (lambda (n) (== n 99)) xs))
 
-  ;; Pair helpers
-  (define p     (MkPair "key" 42))
-  (define p-fst (fst p))
-  (define p-snd (snd p))
-  (define p-sw  (swap p))
+;; Pair helpers
+(define p     (MkPair "key" 42))
+(define p-fst (fst p))
+(define p-snd (snd p))
+(define p-sw  (swap p))
 
-  ;; #:deriving Functor on a single-tparam tree
-  (data (Tree a)
-    Leaf
-    (Node (Tree a) a (Tree a))
-    #:deriving Functor)
+;; #:deriving Functor on a single-tparam tree
+(data (Tree a)
+  Leaf
+  (Node (Tree a) a (Tree a))
+  #:deriving Functor Eq Show)
 
-  (define t1     (Node Leaf 1 (Node Leaf 2 (Node Leaf 3 Leaf))))
-  (define t1-x2  (fmap (lambda (n) (* n 2)) t1))
+(define t1     (Node Leaf 1 (Node Leaf 2 (Node Leaf 3 Leaf))))
+(define t1-x2  (fmap (lambda (n) (* n 2)) t1))
 
-  ;; Bridges so Racket-side tests can call file I/O on temp paths.
-  (: rackton-runtime-write (-> String (-> String (IO Unit))))
-  (define (rackton-runtime-write path s) (write-file path s))
+;; File round-trip on a fixed temp path.
+(: file-roundtrip (IO String))
+(define file-roundtrip
+  (do [_ <- (write-file "/tmp/rackton-fileio-test.txt" "rackton file io rules")]
+    (read-file "/tmp/rackton-fileio-test.txt")))
 
-  (: rackton-runtime-read (-> String (IO String)))
-  (define (rackton-runtime-read path) (read-file path)))
+;; ----- assertions -------------------------------------------------
 
-;; ----- mutable refs run via run-io --------------------------------
+(: suite (List Test))
+(define suite
+  (list
+   (it "Ref counter loops 5 → 10"
+       (check-equal? (run-io (count-from-to 5 10)) 10))
+   (it "reverse"
+       (check-equal? rev (Cons 9 (Cons 5 (Cons 1 (Cons 4 (Cons 1 (Cons 3 Nil))))))))
+   (it "take / drop"
+       (all-checks
+        (list (check-equal? first-3 (Cons 3 (Cons 1 (Cons 4 Nil))))
+              (check-equal? last-3  (Cons 1 (Cons 5 (Cons 9 Nil)))))))
+   (it "sort"
+       (check-equal? sorted-xs
+                     (Cons 1 (Cons 1 (Cons 3 (Cons 4 (Cons 5 (Cons 9 Nil))))))))
+   (it "find"
+       (all-checks
+        (list (check-equal? found   (Some 5))
+              (check-equal? missing None))))
+   (it "fst / snd / swap"
+       (all-checks
+        (list (check-equal? p-fst "key")
+              (check-equal? p-snd 42)
+              (check-equal? p-sw  (MkPair 42 "key")))))
+   (it "fmap over a tree (derived)"
+       (check-equal?
+        t1-x2
+        (Node Leaf 2 (Node Leaf 4 (Node Leaf 6 Leaf)))))
+   (it "round-trip file write / read"
+       (check-equal? (run-io file-roundtrip) "rackton file io rules"))))
 
-(test-case "Ref counter loops 5 → 10"
-  (check-equal? (run-io (count-from-to 5 10)) 10))
-
-;; ----- list helpers -----------------------------------------------
-
-(test-case "reverse"
-  (check-equal? rev (Cons 9 (Cons 5 (Cons 1 (Cons 4 (Cons 1 (Cons 3 Nil))))))))
-
-(test-case "take / drop"
-  (check-equal? first-3 (Cons 3 (Cons 1 (Cons 4 Nil))))
-  (check-equal? last-3  (Cons 1 (Cons 5 (Cons 9 Nil)))))
-
-(test-case "sort"
-  (check-equal? sorted-xs
-                (Cons 1 (Cons 1 (Cons 3 (Cons 4 (Cons 5 (Cons 9 Nil))))))))
-
-(test-case "find"
-  (check-equal? found   (Some 5))
-  (check-equal? missing None))
-
-;; ----- pair helpers -----------------------------------------------
-
-(test-case "fst / snd / swap"
-  (check-equal? p-fst "key")
-  (check-equal? p-snd 42)
-  (check-equal? p-sw  (MkPair 42 "key")))
-
-;; ----- derived Functor --------------------------------------------
-
-(test-case "fmap over a tree (derived)"
-  (check-equal?
-   t1-x2
-   (Node Leaf 2 (Node Leaf 4 (Node Leaf 6 Leaf)))))
-
-;; ----- file I/O ---------------------------------------------------
-
-(test-case "round-trip file write / read"
-  (define tmp (make-temporary-file "rackton-fileio-~a"))
-  (run-io
-   (rackton-runtime-write tmp "rackton file io rules"))
-  (check-equal? (run-io (rackton-runtime-read tmp)) "rackton file io rules")
-  (delete-file tmp))
-
+(: _ran Unit)
+(define _ran (run-io (run-suite "io-refs-and-files" suite)))

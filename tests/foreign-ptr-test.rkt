@@ -1,77 +1,79 @@
-#lang racket/base
+#lang rackton
 
 ;; rackton/foreign/ptr — Foreign.Ptr / Foreign.Marshal core: opaque Ptr,
 ;; raw allocation, typed peek/poke, pointer arithmetic, C strings.
 ;; UNSAFE by design (manual free, no bounds checks) — mirrors Haskell's
 ;; Foreign.
 
-(require rackunit
-         "../main.rkt")
+(require rackton/foreign/ptr
+         "../unit.rkt")
 
-(rackton
-  (require rackton/foreign/ptr)
+;; int write/read round-trip
+(: int-rt (IO Integer))
+(define int-rt
+  (do [p <- (malloc-bytes size-of-int)]
+      [_ <- (poke-int p 4242)]
+      [v <- (peek-int p)]
+      [_ <- (free-ptr p)]
+      (pure v)))
 
-  ;; int write/read round-trip
-  (: int-rt (IO Integer))
-  (define int-rt
-    (do [p <- (malloc-bytes size-of-int)]
-        [_ <- (poke-int p 4242)]
-        [v <- (peek-int p)]
-        [_ <- (free-ptr p)]
-        (pure v)))
+;; pointer arithmetic: a two-int buffer
+(: arith (IO Integer))
+(define arith
+  (do [p <- (malloc-bytes (* 2 size-of-int))]
+      [_ <- (poke-int p 10)]
+      [_ <- (poke-int (ptr-plus p size-of-int) 20)]
+      [a <- (peek-int p)]
+      [b <- (peek-int (ptr-plus p size-of-int))]
+      [_ <- (free-ptr p)]
+      (pure (+ a b))))
 
-  ;; pointer arithmetic: a two-int buffer
-  (: arith (IO Integer))
-  (define arith
-    (do [p <- (malloc-bytes (* 2 size-of-int))]
-        [_ <- (poke-int p 10)]
-        [_ <- (poke-int (ptr-plus p size-of-int) 20)]
-        [a <- (peek-int p)]
-        [b <- (peek-int (ptr-plus p size-of-int))]
-        [_ <- (free-ptr p)]
-        (pure (+ a b))))
+;; double round-trip
+(: dbl-rt (IO Float))
+(define dbl-rt
+  (do [p <- (malloc-bytes size-of-double)]
+      [_ <- (poke-double p 3.5)]
+      [v <- (peek-double p)]
+      [_ <- (free-ptr p)]
+      (pure v)))
 
-  ;; double round-trip
-  (: dbl-rt (IO Float))
-  (define dbl-rt
-    (do [p <- (malloc-bytes size-of-double)]
-        [_ <- (poke-double p 3.5)]
-        [v <- (peek-double p)]
-        [_ <- (free-ptr p)]
-        (pure v)))
+;; single-byte round-trip
+(: byte-rt (IO Integer))
+(define byte-rt
+  (do [p <- (malloc-bytes 1)]
+      [_ <- (poke-byte p 200)]
+      [v <- (peek-byte p)]
+      [_ <- (free-ptr p)]
+      (pure v)))
 
-  ;; single-byte round-trip
-  (: byte-rt (IO Integer))
-  (define byte-rt
-    (do [p <- (malloc-bytes 1)]
-        [_ <- (poke-byte p 200)]
-        [v <- (peek-byte p)]
-        [_ <- (free-ptr p)]
-        (pure v)))
+;; NULL pointer
+(: is-null Boolean) (define is-null (ptr-null? null-ptr))
 
-  ;; NULL pointer
-  (: is-null Boolean) (define is-null (ptr-null? null-ptr))
-
-  ;; C string round-trip
-  (: cstr-rt (IO String))
-  (define cstr-rt
-    (do [p <- (string->c-string "hello")]
-        [s <- (c-string->string p)]
-        [_ <- (free-ptr p)]
-        (pure s))))
+;; C string round-trip
+(: cstr-rt (IO String))
+(define cstr-rt
+  (do [p <- (string->c-string "hello")]
+      [s <- (c-string->string p)]
+      [_ <- (free-ptr p)]
+      (pure s)))
 
 ;; ---------- assertions ---------------------------------------
 
-(test-case "int / arithmetic"
-  (check-equal? (run-io int-rt) 4242)
-  (check-equal? (run-io arith) 30))
+(: suite (List Test))
+(define suite
+  (list
+   (it "int / arithmetic"
+       (all-checks
+        (list (check-equal? (run-io int-rt) 4242)
+              (check-equal? (run-io arith) 30))))
+   (it "double / byte"
+       (all-checks
+        (list (check-true (< (abs (- (run-io dbl-rt) 3.5)) 1e-9))
+              (check-equal? (run-io byte-rt) 200))))
+   (it "null pointer"
+       (check-true is-null))
+   (it "C string round-trip"
+       (check-equal? (run-io cstr-rt) "hello"))))
 
-(test-case "double / byte"
-  (check-= (run-io dbl-rt) 3.5 1e-9)
-  (check-equal? (run-io byte-rt) 200))
-
-(test-case "null pointer"
-  (check-true is-null))
-
-(test-case "C string round-trip"
-  (check-equal? (run-io cstr-rt) "hello"))
+(: _ran Unit)
+(define _ran (run-io (run-suite "foreign-ptr" suite)))

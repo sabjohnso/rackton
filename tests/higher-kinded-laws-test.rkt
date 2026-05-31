@@ -105,26 +105,7 @@
    (traversable-laws eq-maybe-maybe render-maybe gen-maybe-int)
    (traversable-laws eq-maybe-list  render-list  gen-list-int)))
 
-;; ----- run, accumulate failures, panic if any -----------------------
-
-(: run-all (-> (List Test) (IO Integer)))
-(define (run-all tests)
-  (foldr (lambda (t acc-io)
-           (flatmap (lambda (s)
-                      (flatmap (lambda (rest)
-                                 (pure (+ (summary-failed s) rest)))
-                               acc-io))
-                    (run-tests t)))
-         (pure 0)
-         tests))
-
-(: main (IO Unit))
-(define main
-  (flatmap (lambda (fails)
-             (if (> fails 0)
-                 (panic "higher-kinded laws failed")
-                 (pure MkUnit)))
-           (run-all suite)))
+;; ----- run quietly; panic (failing raco test) on any failure --------
 
 (: _ran Unit)
-(define _ran (run-io main))
+(define _ran (run-io (run-suite "higher-kinded laws" suite)))
