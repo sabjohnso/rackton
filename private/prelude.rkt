@@ -958,6 +958,105 @@
       (define (is-infinite? x)   (racket Boolean (x)   #f))
       (define (atan2        y x) (racket Float   (y x) 0.0)))
 
+    ;; --- Eq / Ord / Show for the core containers ----------------
+    ;;
+    ;; Structural instances for Maybe / List / Pair / Result / Unit,
+    ;; defined in pure Rackton (element ops come from the element
+    ;; constraints).  Placed late so the `Show` bodies can use
+    ;; `string-append`.  These let `==`, comparison, and `show` (and
+    ;; the native test framework's `check-equal?`) work on the
+    ;; containers that pervade user programs, matching Coalton.
+
+    (instance ((Eq a) => (Eq (Maybe a)))
+      (define (== m1 m2)
+        (match m1
+          [(None)   (match m2 [(None) #t] [(Some _) #f])]
+          [(Some x) (match m2 [(None) #f] [(Some y) (== x y)])])))
+
+    (instance ((Eq a) => (Eq (List a)))
+      (define (== xs ys)
+        (match xs
+          [(Nil)      (match ys [(Nil) #t] [(Cons _ _) #f])]
+          [(Cons h t) (match ys
+                        [(Nil)        #f]
+                        [(Cons h2 t2) (if (== h h2) (== t t2) #f)])])))
+
+    (instance ((Eq a) (Eq b) => (Eq (Pair a b)))
+      (define (== p1 p2)
+        (match p1
+          [(MkPair x1 y1)
+           (match p2 [(MkPair x2 y2) (if (== x1 x2) (== y1 y2) #f)])])))
+
+    (instance ((Eq e) (Eq a) => (Eq (Result e a)))
+      (define (== r1 r2)
+        (match r1
+          [(Err x) (match r2 [(Err y) (== x y)] [(Ok  _) #f])]
+          [(Ok  x) (match r2 [(Err _) #f]        [(Ok  y) (== x y)])])))
+
+    (instance (Eq Unit)
+      (define (== _u1 _u2) #t))
+
+    ;; Ord: only `<` is primitive; >, <=, >=, min, max derive.  None
+    ;; sorts before Some; lists and pairs compare lexicographically.
+    (instance ((Ord a) => (Ord (Maybe a)))
+      (define (< m1 m2)
+        (match m1
+          [(None)   (match m2 [(None) #f] [(Some _) #t])]
+          [(Some x) (match m2 [(None) #f] [(Some y) (< x y)])])))
+
+    (instance ((Ord a) => (Ord (List a)))
+      (define (< xs ys)
+        (match xs
+          [(Nil)      (match ys [(Nil) #f] [(Cons _ _) #t])]
+          [(Cons h t) (match ys
+                        [(Nil)        #f]
+                        [(Cons h2 t2) (if (< h h2)
+                                          #t
+                                          (if (== h h2) (< t t2) #f))])])))
+
+    (instance ((Ord a) (Ord b) => (Ord (Pair a b)))
+      (define (< p1 p2)
+        (match p1
+          [(MkPair x1 y1)
+           (match p2
+             [(MkPair x2 y2)
+              (if (< x1 x2) #t (if (== x1 x2) (< y1 y2) #f))])])))
+
+    ;; Show: human-readable renderings; used in check-equal? failure
+    ;; messages and `show`.
+    (instance ((Show a) => (Show (Maybe a)))
+      (define (show m)
+        (match m
+          [(None)   "None"]
+          [(Some x) (string-append "(Some " (string-append (show x) ")"))])))
+
+    (instance ((Show a) => (Show (List a)))
+      (define (show xs)
+        (letrec ([elems (lambda (ys)
+                          (match ys
+                            [(Nil)          ""]
+                            [(Cons h (Nil)) (show h)]
+                            [(Cons h t)     (string-append
+                                             (show h)
+                                             (string-append ", " (elems t)))]))])
+          (string-append "[" (string-append (elems xs) "]")))))
+
+    (instance ((Show a) (Show b) => (Show (Pair a b)))
+      (define (show p)
+        (match p
+          [(MkPair x y)
+           (string-append "(" (string-append (show x)
+                            (string-append ", " (string-append (show y) ")"))))])))
+
+    (instance ((Show e) (Show a) => (Show (Result e a)))
+      (define (show r)
+        (match r
+          [(Err x) (string-append "(Err " (string-append (show x) ")"))]
+          [(Ok  x) (string-append "(Ok " (string-append (show x) ")"))])))
+
+    (instance (Show Unit)
+      (define (show _u) "Unit"))
+
     ;; try / raise-io and the System surface (random / time / env /
     ;; directories) moved to rackton/system (Phase 2 slim).
     ))

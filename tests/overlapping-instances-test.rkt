@@ -35,24 +35,29 @@
   (define show-str-box (show (MkBox "hi")))
 
   ;; ----- 37.B nested specificity ------------------------------
-  ;; Declare a generic `Show (List a)` and a specific `Show (List Char)`
-  ;; locally.  Show (List Char) takes precedence at concrete Char,
-  ;; while the generic still applies at other types.
+  ;; Declare a generic `Show (Seq a)` and a specific `Show (Seq Char)`
+  ;; on a local container type.  Show (Seq Char) takes precedence at
+  ;; concrete Char, while the generic still applies at other types.
+  ;; (A custom type rather than List, since the prelude now ships a
+  ;; `Show (List a)` that this generic instance would otherwise
+  ;; duplicate — a same-head registration error.)
 
-  (instance ((Show a) => (Show (List a)))
+  (data (Seq a) SNil (SCons a (Seq a)))
+
+  (instance ((Show a) => (Show (Seq a)))
     (define (show xs)
       (match xs
-        [(Nil)      "list[]"]
-        [(Cons h _) (<> "list[" (<> (show h) "]"))])))
+        [(SNil)      "seq[]"]
+        [(SCons h _) (<> "seq[" (<> (show h) "]"))])))
 
-  (instance (Show (List Char))
+  (instance (Show (Seq Char))
     (define (show _) "<chars>"))
 
   (: show-chars  String)
-  (define show-chars  (show (Cons #\a (Cons #\b Nil))))
+  (define show-chars  (show (SCons #\a (SCons #\b SNil))))
 
   (: show-ints   String)
-  (define show-ints   (show (Cons 1 (Cons 2 Nil)))))
+  (define show-ints   (show (SCons 1 (SCons 2 SNil)))))
 
 ;; ---------- assertions ---------------------------------------
 
@@ -60,9 +65,9 @@
   (check-equal? show-int-box "specific-integer-box")
   (check-equal? show-str-box "generic-box(\"hi\")"))
 
-(test-case "specific (Show (List Char)) overrides generic (Show (List a))"
+(test-case "specific (Show (Seq Char)) overrides generic (Show (Seq a))"
   (check-equal? show-chars "<chars>")
-  (check-equal? show-ints "list[1]"))
+  (check-equal? show-ints "seq[1]"))
 
 ;; ----- 37.C duplicate instance registration --------------------
 

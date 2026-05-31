@@ -1765,6 +1765,126 @@
   (register-instance-method! $dispatch:length  tag default-length)
   (register-instance-method! $dispatch:to-list tag default-to-list))
 
+;; ----- Eq / Ord / Show for the core containers ------------------
+;;
+;; Runtime counterparts of the structural instances added to
+;; prelude.rkt.  Element comparison and rendering go through the
+;; generic ==, <, show (so they dispatch on the element type);
+;; recursion on the container goes through the per-impl helper
+;; directly.  Eq's /= and Ord's derived methods (>, <=, >=, min, max)
+;; are expressed once in terms of the generics and registered for every
+;; container tag, mirroring how the scalar instances register each
+;; method explicitly (the runtime has no default-method fallback).
+
+;; -- Eq --
+(define (maybe-eq m1 m2)
+  (match m1
+    [(None)   (match m2 [(None) #t] [(Some _) #f])]
+    [(Some x) (match m2 [(None) #f] [(Some y) (== x y)])]))
+(register-instance-method! $dispatch:== '$ctor:None maybe-eq)
+(register-instance-method! $dispatch:== '$ctor:Some maybe-eq)
+
+(define (list-eq xs ys)
+  (match xs
+    [(Nil)      (match ys [(Nil) #t] [(Cons _ _) #f])]
+    [(Cons h t) (match ys
+                  [(Nil)        #f]
+                  [(Cons h2 t2) (if (== h h2) (list-eq t t2) #f)])]))
+(register-instance-method! $dispatch:== '$ctor:Nil  list-eq)
+(register-instance-method! $dispatch:== '$ctor:Cons list-eq)
+
+(define (pair-eq p1 p2)
+  (match p1
+    [(MkPair x1 y1)
+     (match p2 [(MkPair x2 y2) (if (== x1 x2) (== y1 y2) #f)])]))
+(register-instance-method! $dispatch:== '$ctor:MkPair pair-eq)
+
+(define (result-eq r1 r2)
+  (match r1
+    [(Err x) (match r2 [(Err y) (== x y)] [(Ok  _) #f])]
+    [(Ok  x) (match r2 [(Err _) #f]        [(Ok  y) (== x y)])]))
+(register-instance-method! $dispatch:== '$ctor:Err result-eq)
+(register-instance-method! $dispatch:== '$ctor:Ok  result-eq)
+
+(define (unit-eq _u1 _u2) #t)
+(register-instance-method! $dispatch:== '$ctor:MkUnit unit-eq)
+
+(for ([tag (in-list '($ctor:None $ctor:Some $ctor:Nil $ctor:Cons
+                      $ctor:MkPair $ctor:Err $ctor:Ok $ctor:MkUnit))])
+  (register-instance-method! $dispatch:/= tag (lambda (x y) (rkt:not (== x y)))))
+
+;; -- Ord (< is primitive; the rest derive from generic < and ==) --
+(define (maybe-lt m1 m2)
+  (match m1
+    [(None)   (match m2 [(None) #f] [(Some _) #t])]
+    [(Some x) (match m2 [(None) #f] [(Some y) (< x y)])]))
+
+(define (list-lt xs ys)
+  (match xs
+    [(Nil)      (match ys [(Nil) #f] [(Cons _ _) #t])]
+    [(Cons h t) (match ys
+                  [(Nil)        #f]
+                  [(Cons h2 t2) (if (< h h2)
+                                    #t
+                                    (if (== h h2) (list-lt t t2) #f))])]))
+
+(define (pair-lt p1 p2)
+  (match p1
+    [(MkPair x1 y1)
+     (match p2
+       [(MkPair x2 y2)
+        (if (< x1 x2) #t (if (== x1 x2) (< y1 y2) #f))])]))
+
+(define (register-ord-derived! tag)
+  (register-instance-method! $dispatch:>  tag (lambda (x y) (< y x)))
+  (register-instance-method! $dispatch:<= tag (lambda (x y) (if (< x y) #t (== x y))))
+  (register-instance-method! $dispatch:>= tag (lambda (x y) (if (< y x) #t (== x y))))
+  (register-instance-method! $dispatch:min tag (lambda (x y) (if (< x y) x y)))
+  (register-instance-method! $dispatch:max tag (lambda (x y) (if (< x y) y x))))
+
+(register-instance-method! $dispatch:< '$ctor:None   maybe-lt)
+(register-instance-method! $dispatch:< '$ctor:Some   maybe-lt)
+(register-instance-method! $dispatch:< '$ctor:Nil    list-lt)
+(register-instance-method! $dispatch:< '$ctor:Cons   list-lt)
+(register-instance-method! $dispatch:< '$ctor:MkPair pair-lt)
+(for ([tag (in-list '($ctor:None $ctor:Some $ctor:Nil $ctor:Cons $ctor:MkPair))])
+  (register-ord-derived! tag))
+
+;; -- Show --
+(define (maybe-show m)
+  (match m
+    [(None)   "None"]
+    [(Some x) (string-append "(Some " (string-append (show x) ")"))]))
+(register-instance-method! $dispatch:show '$ctor:None maybe-show)
+(register-instance-method! $dispatch:show '$ctor:Some maybe-show)
+
+(define (list-show xs)
+  (define (elems ys)
+    (match ys
+      [(Nil)          ""]
+      [(Cons h (Nil)) (show h)]
+      [(Cons h t)     (string-append (show h) (string-append ", " (elems t)))]))
+  (string-append "[" (string-append (elems xs) "]")))
+(register-instance-method! $dispatch:show '$ctor:Nil  list-show)
+(register-instance-method! $dispatch:show '$ctor:Cons list-show)
+
+(define (pair-show p)
+  (match p
+    [(MkPair x y)
+     (string-append "(" (string-append (show x)
+                      (string-append ", " (string-append (show y) ")"))))]))
+(register-instance-method! $dispatch:show '$ctor:MkPair pair-show)
+
+(define (result-show r)
+  (match r
+    [(Err x) (string-append "(Err " (string-append (show x) ")"))]
+    [(Ok  x) (string-append "(Ok " (string-append (show x) ")"))]))
+(register-instance-method! $dispatch:show '$ctor:Err result-show)
+(register-instance-method! $dispatch:show '$ctor:Ok  result-show)
+
+(define (unit-show _u) "Unit")
+(register-instance-method! $dispatch:show '$ctor:MkUnit unit-show)
+
 ;; WriterT w m runtime moved to rackton/control/monad/writer (pure
 ;; Rackton — value-dispatched fmap/fapply/flatmap combine logs via
 ;; runtime-dispatched <>; pure/tell thread inner pure + the log mempty).
