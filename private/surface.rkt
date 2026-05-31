@@ -259,6 +259,23 @@
 
 (define (a-name i) (string->symbol (format "a~a" i)))
 (define (b-name i) (string->symbol (format "b~a" i)))
+(define (c-name i) (string->symbol (format "c~a" i)))
+
+;; Build a fully-curried wrapper around an n-ary constructor:
+;;   (lambda (c0) (lambda (c1) … (Ctor c0 c1 …)))
+;; Used by Traversable deriving so the applicative composition
+;; `Ctor <$> l0 <*> l1 <*> …` feeds the constructor one lifted field at
+;; a time — Rackton constructors are n-ary, so `(fmap Ctor …)` /
+;; `(liftA2 Ctor …)` only fully apply at arity 1 / 2 and would
+;; arity-mismatch for arity ≥ 3.  Each emitted node gets a fresh stx
+;; (resolution is keyed by stx).
+(define (curried-ctor-lambda ctor-name arity stx)
+  (define applied
+    (e:app (e:var ctor-name (fresh-stx stx))
+           (for/list ([i (in-range arity)]) (e:var (c-name i) (fresh-stx stx)))
+           (fresh-stx stx)))
+  (for/foldr ([body applied]) ([i (in-range arity)])
+    (e:lam (list (c-name i)) body (fresh-stx stx))))
 
 ;; fresh-stx creates a new syntax object sharing `base`'s
 ;; lexical context but distinct as a struct.  Synthesizers that emit
@@ -413,7 +430,7 @@
   (define head (constraint 'Functor (list head-ty) stx))
   (define fmap-body
     (e:match
-     (e:var 'x stx)
+     (e:var 'x (fresh-stx stx))
      (for/list ([c (in-list ctors)])
        (define name (data-ctor-name c))
        (define field-types (data-ctor-field-types c))
@@ -421,7 +438,7 @@
        (clause (ctor-x-pattern name arity stx) #f
                (synthesize-functor-rebuild name field-types fparam tname stx)
                stx))
-     #f stx))
+     #f (fresh-stx stx)))
   (top:instance '() head
                 (list (top:def 'fmap
                                (e:lam '(f x) fmap-body stx)
@@ -432,24 +449,24 @@
   (cond
     [(null? field-types)
      ;; Nullary constructors are values — emit the bare reference.
-     (e:var ctor-name stx)]
+     (e:var ctor-name (fresh-stx stx))]
     [else
      (define transformed
        (for/list ([ft (in-list field-types)] [i (in-naturals)])
          (transform-functor-field ft (a-name i) fparam tname stx)))
-     (e:app (e:var ctor-name stx) transformed stx)]))
+     (e:app (e:var ctor-name (fresh-stx stx)) transformed (fresh-stx stx))]))
 
 (define (transform-functor-field ft arg-name fparam tname stx)
-  (define arg-var (e:var arg-name stx))
+  (define arg-var (e:var arg-name (fresh-stx stx)))
   (match ft
     ;; field is exactly the functor parameter: apply `f`
     [(ty:var n _) #:when (eq? n fparam)
-     (e:app (e:var 'f stx) (list arg-var) stx)]
+     (e:app (e:var 'f (fresh-stx stx)) (list arg-var) (fresh-stx stx))]
     ;; field is a recursive use of the same data type — recurse via fmap
     [(ty:app (ty:con t _) _ _) #:when (eq? t tname)
-     (e:app (e:var 'fmap stx) (list (e:var 'f stx) arg-var) stx)]
+     (e:app (e:var 'fmap (fresh-stx stx)) (list (e:var 'f (fresh-stx stx)) arg-var) (fresh-stx stx))]
     [(ty:con t _) #:when (eq? t tname)
-     (e:app (e:var 'fmap stx) (list (e:var 'f stx) arg-var) stx)]
+     (e:app (e:var 'fmap (fresh-stx stx)) (list (e:var 'f (fresh-stx stx)) arg-var) (fresh-stx stx))]
     ;; otherwise leave the field unchanged
     [_ arg-var]))
 
@@ -473,7 +490,7 @@
   (define head (constraint 'Foldable (list head-ty) stx))
   (define foldr-body
     (e:match
-     (e:var 'x stx)
+     (e:var 'x (fresh-stx stx))
      (for/list ([c (in-list ctors)])
        (define name (data-ctor-name c))
        (define field-types (data-ctor-field-types c))
@@ -481,7 +498,7 @@
        (clause (ctor-x-pattern name arity stx) #f
                (synthesize-foldable-combine field-types fparam tname stx)
                stx))
-     #f stx))
+     #f (fresh-stx stx)))
   (top:instance '() head
                 (list (top:def 'foldr
                                (e:lam '(f z x) foldr-body stx)
@@ -491,23 +508,23 @@
 ;; Build right-to-left combine of `f` over the ctor's fields, starting
 ;; from `z`.  Returns the body expression (`z` if no fields contribute).
 (define (synthesize-foldable-combine field-types fparam tname stx)
-  (for/foldr ([acc (e:var 'z stx)])
+  (for/foldr ([acc (e:var 'z (fresh-stx stx))])
              ([ft (in-list field-types)]
               [i  (in-naturals)])
-    (define arg (e:var (a-name i) stx))
+    (define arg (e:var (a-name i) (fresh-stx stx)))
     (cond
       ;; field is exactly the foldable parameter — combine directly.
       [(and (ty:var? ft) (eq? (ty:var-name ft) fparam))
-       (e:app (e:var 'f stx) (list arg acc) stx)]
+       (e:app (e:var 'f (fresh-stx stx)) (list arg acc) (fresh-stx stx))]
       ;; recursive use of the same data type — recurse via foldr.
       [(or (and (ty:app? ft)
                 (ty:con? (ty:app-head ft))
                 (eq? (ty:con-name (ty:app-head ft)) tname))
            (and (ty:con? ft)
                 (eq? (ty:con-name ft) tname)))
-       (e:app (e:var 'foldr stx)
-              (list (e:var 'f stx) acc arg)
-              stx)]
+       (e:app (e:var 'foldr (fresh-stx stx))
+              (list (e:var 'f (fresh-stx stx)) acc arg)
+              (fresh-stx stx))]
       ;; otherwise the field carries no `a`, skip.
       [else acc])))
 
@@ -540,7 +557,7 @@
   (define head (constraint 'Traversable (list head-ty) stx))
   (define traverse-body
     (e:match
-     (e:var 'x stx)
+     (e:var 'x (fresh-stx stx))
      (for/list ([c (in-list ctors)])
        (define name (data-ctor-name c))
        (define field-types (data-ctor-field-types c))
@@ -548,7 +565,7 @@
        (clause (ctor-x-pattern name arity stx) #f
                (synthesize-traverse-rebuild name field-types fparam tname stx)
                stx))
-     #f stx))
+     #f (fresh-stx stx)))
   (top:instance '() head
                 (list (top:def 'traverse
                                (e:lam '(f x) traverse-body stx)
@@ -562,34 +579,35 @@
   (define arity (length field-types))
   (cond
     [(zero? arity)
-     (e:app (e:var 'pure stx) (list (e:var ctor-name stx)) stx)]
+     (e:app (e:var 'pure (fresh-stx stx)) (list (e:var ctor-name (fresh-stx stx))) (fresh-stx stx))]
     [(= arity 1)
-     (e:app (e:var 'fmap stx)
-            (list (e:var ctor-name stx) (car lifted-fields))
-            stx)]
+     (e:app (e:var 'fmap (fresh-stx stx))
+            (list (e:var ctor-name (fresh-stx stx)) (car lifted-fields))
+            (fresh-stx stx))]
     [else
-     ;; (liftA2 Ctor lift0 lift1) then chain (fapply acc liftN) for N≥2.
-     (for/fold ([acc (e:app (e:var 'liftA2 stx)
-                            (list (e:var ctor-name stx)
-                                  (car lifted-fields)
-                                  (cadr lifted-fields))
-                            stx)])
-               ([lf (in-list (cddr lifted-fields))])
-       (e:app (e:var 'fapply stx) (list acc lf) stx))]))
+     ;; arity ≥ 3: Ctor <$> l0 <*> l1 <*> … <*> l_{N-1}, with Ctor
+     ;; curried so each fmap/fapply supplies exactly one field (a bare
+     ;; n-ary Ctor would arity-mismatch — liftA2 only reaches arity 2).
+     (for/fold ([acc (e:app (e:var 'fmap (fresh-stx stx))
+                            (list (curried-ctor-lambda ctor-name arity stx)
+                                  (car lifted-fields))
+                            (fresh-stx stx))])
+               ([lf (in-list (cdr lifted-fields))])
+       (e:app (e:var 'fapply (fresh-stx stx)) (list acc lf) (fresh-stx stx)))]))
 
 (define (transform-traverse-field ft arg-name fparam tname stx)
-  (define arg (e:var arg-name stx))
+  (define arg (e:var arg-name (fresh-stx stx)))
   (cond
     [(and (ty:var? ft) (eq? (ty:var-name ft) fparam))
-     (e:app (e:var 'f stx) (list arg) stx)]
+     (e:app (e:var 'f (fresh-stx stx)) (list arg) (fresh-stx stx))]
     [(or (and (ty:app? ft)
               (ty:con? (ty:app-head ft))
               (eq? (ty:con-name (ty:app-head ft)) tname))
          (and (ty:con? ft)
               (eq? (ty:con-name ft) tname)))
-     (e:app (e:var 'traverse stx) (list (e:var 'f stx) arg) stx)]
+     (e:app (e:var 'traverse (fresh-stx stx)) (list (e:var 'f (fresh-stx stx)) arg) (fresh-stx stx))]
     [else
-     (e:app (e:var 'pure stx) (list arg) stx)]))
+     (e:app (e:var 'pure (fresh-stx stx)) (list arg) (fresh-stx stx))]))
 
 ;; ----- Bifunctor deriving ----------------------------
 ;; For an ADT with at least TWO tparams.  The penultimate is the
@@ -617,7 +635,7 @@
   (define head (constraint 'Bifunctor (list head-ty) stx))
   (define bimap-body
     (e:match
-     (e:var 'x stx)
+     (e:var 'x (fresh-stx stx))
      (for/list ([c (in-list ctors)])
        (define name (data-ctor-name c))
        (define field-types (data-ctor-field-types c))
@@ -626,7 +644,7 @@
                (synthesize-bifunctor-rebuild name field-types
                                              f1 f2 tname stx)
                stx))
-     #f stx))
+     #f (fresh-stx stx)))
   (top:instance '() head
                 (list (top:def 'bimap
                                (e:lam '(f g x) bimap-body stx)
@@ -635,26 +653,28 @@
 
 (define (synthesize-bifunctor-rebuild ctor-name field-types f1 f2 tname stx)
   (cond
-    [(null? field-types) (e:var ctor-name stx)]
+    [(null? field-types) (e:var ctor-name (fresh-stx stx))]
     [else
      (define transformed
        (for/list ([ft (in-list field-types)] [i (in-naturals)])
          (transform-bifunctor-field ft (a-name i) f1 f2 tname stx)))
-     (e:app (e:var ctor-name stx) transformed stx)]))
+     (e:app (e:var ctor-name (fresh-stx stx)) transformed (fresh-stx stx))]))
 
 (define (transform-bifunctor-field ft arg-name f1 f2 tname stx)
-  (define arg (e:var arg-name stx))
+  (define arg (e:var arg-name (fresh-stx stx)))
   (cond
     [(and (ty:var? ft) (eq? (ty:var-name ft) f1))
-     (e:app (e:var 'f stx) (list arg) stx)]
+     (e:app (e:var 'f (fresh-stx stx)) (list arg) (fresh-stx stx))]
     [(and (ty:var? ft) (eq? (ty:var-name ft) f2))
-     (e:app (e:var 'g stx) (list arg) stx)]
+     (e:app (e:var 'g (fresh-stx stx)) (list arg) (fresh-stx stx))]
     [(or (and (ty:app? ft)
               (ty:con? (ty:app-head ft))
               (eq? (ty:con-name (ty:app-head ft)) tname))
          (and (ty:con? ft)
               (eq? (ty:con-name ft) tname)))
-     (e:app (e:var 'bimap stx) (list (e:var 'f stx) (e:var 'g stx) arg) stx)]
+     (e:app (e:var 'bimap (fresh-stx stx))
+            (list (e:var 'f (fresh-stx stx)) (e:var 'g (fresh-stx stx)) arg)
+            (fresh-stx stx))]
     [else arg]))
 
 ;; ----- Semigroup deriving ----------------------------
