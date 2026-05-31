@@ -2846,6 +2846,27 @@
 ;; those args; the method falls through to return-typed dispatch.
 ;; For single-param classes (no fundeps), the determined set is
 ;; empty and the behaviour is unchanged.
+;; A class parameter `p` is *dispatchable* in an argument type `dom`
+;; only when the runtime value of `dom` carries `p`'s identity as its
+;; head constructor — i.e. `dom` is `p` itself (a bare type variable), or
+;; `dom` is an application whose spine head is `p` (like `f` in `(f a)`).
+;; A `p` that merely appears as a NESTED argument of some other
+;; constructor — e.g. `a` in `(Ptr a)` — is a phantom there: the runtime
+;; value (a raw pointer) does not tag its element type, so it cannot
+;; drive single dispatch.  Such a method falls through to return-typed
+;; resolution.  (This is what lets Storable's `peek :: Ptr a -> IO a` be
+;; return-typed while `poke :: Ptr a -> a -> IO ()` dispatches on its
+;; bare `a` value argument rather than the opaque pointer.)
+(define (type-spine-head d)
+  (if (tapp? d) (type-spine-head (tapp-head d)) d))
+
+(define (param-dispatchable-in? p d)
+  (cond
+    [(and (tvar? d) (eq? (tvar-name d) p)) #t]
+    [(tapp? d) (let ([h (type-spine-head d)])
+                 (and (tvar? h) (eq? (tvar-name h) p)))]
+    [else #f]))
+
 (define (find-dispatch-pos t class-params [fundeps '()])
   (define determined
     (for/fold ([acc (seteq)]) ([fd (in-list fundeps)])
@@ -2855,7 +2876,7 @@
       [(arrow? t)
        (define dom (arrow-dom t))
        (define mentions
-         (filter (lambda (p) (set-member? (type-vars dom) p)) class-params))
+         (filter (lambda (p) (param-dispatchable-in? p dom)) class-params))
        (cond
          [(and (not (null? mentions))
                (not (andmap (lambda (p) (set-member? determined p))

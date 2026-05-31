@@ -636,6 +636,20 @@
     (protocol (MonadTrans (t :: (-> (-> * *) (-> * *))))
       (: lift ((Monad m) => (-> (m a) (t m a)))))
 
+    ;; --- Ptr + Storable (raw memory) --------------------
+    ;; The opaque pointer type lives here (rather than in
+    ;; rackton/foreign/ptr) because Storable.peek is return-typed
+    ;; (its element type appears only in the result), so the class —
+    ;; and the type its methods mention — must be in the prelude, like
+    ;; the MonadIO precedent.  No prelude instances: the Storable
+    ;; instances (with ffi peek/poke bodies) live in rackton/foreign/ptr.
+    ;; `peek` is return-typed; `poke` dispatches on its value argument.
+    (data (Ptr a))
+
+    (protocol (Storable a)
+      (: peek (-> (Ptr a) (IO a)))
+      (: poke (-> (Ptr a) (-> a (IO Unit)))))
+
     (: print     (-> String (IO Unit)))
     (define (print s) (racket (IO Unit) (s) #f))
 

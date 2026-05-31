@@ -374,3 +374,12 @@ returns a new map.  See @racket[empty-map], @racket[map-insert],
 @racket[(Set a)] is an immutable set of @racket[a].  See
 @racket[empty-set], @racket[set-insert], @racket[set-member?],
 @racket[set-delete], @racket[set-size], @racket[set-to-list].}
+
+@defidform[#:kind "type" Ptr]{
+
+@racket[(Ptr a)] is an opaque, typed pointer to raw memory holding a
+value of type @racket[a] (the @racket[a] is a phantom tag).  It lives in
+the prelude because @racket[Storable]'s @racket[peek] is return-typed,
+but its operations — allocation, @racket[peek]/@racket[poke], pointer
+arithmetic, C strings — are in @racketmodname[rackton/foreign/ptr] and
+are @bold{unsafe}.}

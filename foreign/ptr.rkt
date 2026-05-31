@@ -18,8 +18,9 @@
 
 (provide (all-defined-out))
 
-;; An opaque, typed pointer.
-(data (Ptr a))
+;; The opaque pointer type `(Ptr a)` and the `Storable` class are in the
+;; prelude (Storable.peek is return-typed, so the class must be); the
+;; Storable instances are below.
 
 ;; A C string is a pointer to NUL-terminated bytes.
 (define-alias (CString) (Ptr Char))
@@ -77,3 +78,17 @@
 ;; read a NUL-terminated UTF-8 C string back into a String.
 (foreign c-string->string (-> CString (IO String))
          #:from rackton/private/ffi-runtime)
+
+;; --- Storable instances --------------------------------------------
+;; The polymorphic peek / poke (declared in the prelude) over the
+;; scalar C types, in terms of the type-specific operations above.
+;; (Bytes use peek-byte / poke-byte directly — a Byte isn't a distinct
+;; Rackton type, so it can't have its own Storable Integer instance.)
+
+(instance (Storable Integer)
+  (define (peek p)   (peek-int p))
+  (define (poke p v) (poke-int p v)))
+
+(instance (Storable Float)
+  (define (peek p)   (peek-double p))
+  (define (poke p v) (poke-double p v)))

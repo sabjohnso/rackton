@@ -94,7 +94,9 @@
   ;; Identity and monad transformers
   Identity State Env StateT EnvT WriterT ExceptT
   ;; Containers
-  Map Set)
+  Map Set
+  ;; Raw memory (rackton/foreign/ptr)
+  Ptr)
 
 ;; ----- classes -----------------------------------------------------
 
@@ -127,7 +129,9 @@
   ;; MTL-style monadic classes
   MonadState MonadEnv MonadWriter MonadError Concurrent
   ;; transformer / IO lifting
-  MonadTrans MonadIO)
+  MonadTrans MonadIO
+  ;; raw memory
+  Storable)
 
 ;; ----- return-typed class methods ----------------------------------
 
@@ -161,5 +165,7 @@
   await-c yield-c
   ;; MonadTrans / MonadIO
   lift lift-io
+  ;; Storable (peek is return-typed; poke is an ordinary dispatched method)
+  peek
   ;; Floating
   pi)

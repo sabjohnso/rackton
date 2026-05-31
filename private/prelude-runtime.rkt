@@ -116,6 +116,7 @@
  fmap
  fapply liftA2 product
  flatmap join
+ poke
  bimap first second
  foldr length to-list sum
  <>
@@ -167,6 +168,8 @@
  $dispatch:product
  $dispatch:flatmap
  $dispatch:join
+ $dispatch:poke
+ $dispatch:peek
  $dispatch:bimap
  $dispatch:first
  $dispatch:second
@@ -365,6 +368,9 @@
 ;; join dispatches on the FIRST argument (the m (m a)).
 (define $dispatch:flatmap (make-hasheq))(define-class-method flatmap $dispatch:flatmap 1 2)
 (define $dispatch:join    (make-hasheq))(define-class-method join    $dispatch:join    0 1)
+;; Storable's poke dispatches on the value being written (arg 1); the
+;; first argument is the (Ptr a).  (peek is return-typed — see below.)
+(define $dispatch:poke    (make-hasheq))(define-class-method poke    $dispatch:poke    1 2)
 ;; Bifunctor's bimap/first/second dispatch on the value (the `p a b`).
 ;; bimap takes 3 args, value is arg 2.  first/second take 2 args, value is arg 1.
 (define $dispatch:bimap  (make-hasheq))(define-class-method bimap  $dispatch:bimap  2 3)
@@ -735,6 +741,7 @@
 (define $dispatch:yield-c   (make-hasheq))
 (define $dispatch:lift-io   (make-hasheq))
 (define $dispatch:lift      (make-hasheq))  ; MonadTrans.lift (no base instance)
+(define $dispatch:peek      (make-hasheq))  ; Storable.peek (no base instance)
 
 (define (|$pure:Maybe|  x) (Some x))
 (define (|$pure:List|   x) (Cons x Nil))

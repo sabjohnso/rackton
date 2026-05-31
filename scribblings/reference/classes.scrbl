@@ -409,3 +409,20 @@ itself (identity); each transformer lifts the inner monad's
 @racket[(StateT s (ExceptT e IO))] threads an @racket[IO] action all
 the way down.  Transformer instances are provided by
 @racketmodname[rackton/control/monad/trans].}}
+
+@defidform[#:kind "class" Storable]{
+
+@racket[(Storable a)]: types that can be read from and written to raw
+memory through a @racket[Ptr] (Haskell's @tt{Storable}).  The class is in
+the prelude because @racket[peek] is return-typed; the instances live in
+@racketmodname[rackton/foreign/ptr].
+
+@deftogether[(
+  @defproc[(peek [p (Ptr a)])          (IO a)]
+  @defproc[(poke [p (Ptr a)] [v a])    (IO Unit)])]{
+
+@racket[peek] reads the value at @racket[p]; it is return-typed, so the
+element type is recovered from the expected result (often via an
+annotation).  @racket[poke] writes @racket[v] and dispatches on that
+value.  Built-in instances: @racket[Integer] and @racket[Float].  These
+operations are @bold{unsafe} — see @racketmodname[rackton/foreign/ptr].}}
