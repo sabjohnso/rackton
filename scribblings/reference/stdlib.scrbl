@@ -166,7 +166,11 @@ instances available.
   @racket[to-upper-string]/@racket[to-lower-string],
   @racket[strip]/@racket[strip-start]/@racket[strip-end],
   @racket[split-keep], @racket[lines]/@racket[words],
-  @racket[unlines]/@racket[unwords].}
+  @racket[unlines]/@racket[unwords], the affix predicates
+  @racket[is-prefix?]/@racket[is-suffix?]/@racket[is-infix?],
+  @racket[take-string]/@racket[drop-string],
+  @racket[pad-left]/@racket[pad-right], @racket[repeat-string], and
+  @racket[replace].}
 @item{@racketmodname[rackton/text/printf] — type-safe string formatting
   (the @tt{formatting}/functional-unparsing technique, not a runtime
   format string): the @racket[Format] type, the directives

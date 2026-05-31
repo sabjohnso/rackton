@@ -81,3 +81,84 @@
 (: unlines (-> (List String) String))
 (define (unlines ls)
   (foldr (lambda (l acc) (<> l (<> "\n" acc))) "" ls))
+
+;; --- affix predicates ----------------------------------------------
+
+;; is the first char list a prefix of the second?
+(: chars-prefix? (-> (List Char) (-> (List Char) Boolean)))
+(define (chars-prefix? p s)
+  (match p
+    [(Nil) #t]
+    [(Cons ph pt)
+     (match s
+       [(Nil)        #f]
+       [(Cons sh st) (if (== ph sh) (chars-prefix? pt st) #f)])]))
+
+(: is-prefix? (-> String (-> String Boolean)))
+(define (is-prefix? p s) (string-prefix? p s))
+
+(: is-suffix? (-> String (-> String Boolean)))
+(define (is-suffix? p s) (string-prefix? (reverse-string p) (reverse-string s)))
+
+;; does `needle` occur anywhere in the char list?
+(: chars-infix? (-> (List Char) (-> (List Char) Boolean)))
+(define (chars-infix? needle s)
+  (if (chars-prefix? needle s)
+      #t
+      (match s
+        [(Nil)       #f]
+        [(Cons _ st) (chars-infix? needle st)])))
+
+(: is-infix? (-> String (-> String Boolean)))
+(define (is-infix? needle s)
+  (chars-infix? (string->chars needle) (string->chars s)))
+
+;; --- slicing -------------------------------------------------------
+
+;; the first n characters.
+(: take-string (-> Integer (-> String String)))
+(define (take-string n s) (chars->string (take n (string->chars s))))
+
+;; all but the first n characters.
+(: drop-string (-> Integer (-> String String)))
+(define (drop-string n s) (chars->string (drop n (string->chars s))))
+
+;; --- padding / repetition ------------------------------------------
+
+;; pad to width w by prepending copies of c (no-op if already wide enough).
+(: pad-left (-> Integer (-> Char (-> String String))))
+(define (pad-left w c s)
+  (if (>= (string-length s) w)
+      s
+      (<> (chars->string (replicate (- w (string-length s)) c)) s)))
+
+;; pad to width w by appending copies of c.
+(: pad-right (-> Integer (-> Char (-> String String))))
+(define (pad-right w c s)
+  (if (>= (string-length s) w)
+      s
+      (<> s (chars->string (replicate (- w (string-length s)) c)))))
+
+;; concatenate n copies of s.
+(: repeat-string (-> Integer (-> String String)))
+(define (repeat-string n s) (string-join "" (replicate n s)))
+
+;; --- substitution --------------------------------------------------
+
+;; replace every occurrence of the char list `from` with `to`.
+(: replace-chars (-> (List Char) (-> (List Char) (-> (List Char) (List Char)))))
+(define (replace-chars from to s)
+  (if (chars-prefix? from s)
+      (<> to (replace-chars from to (drop (length from) s)))
+      (match s
+        [(Nil)       Nil]
+        [(Cons h t)  (Cons h (replace-chars from to t))])))
+
+;; replace every (non-empty) occurrence of substring `from` with `to`.
+(: replace (-> String (-> String (-> String String))))
+(define (replace from to s)
+  (if (null-string? from)
+      s
+      (chars->string (replace-chars (string->chars from)
+                                    (string->chars to)
+                                    (string->chars s)))))
