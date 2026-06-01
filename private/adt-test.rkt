@@ -12,8 +12,10 @@
   ;; A nullary constructor (like Maybe's `None`).
   (define-data-ctor None 0)
 
-  ;; `None` can be used as a value reference.
-  (check-pred procedure? (lambda () None))
+  ;; A nullary constructor's bare reference is the singleton VALUE, not
+  ;; a procedure (contrast `Some`/`Pair` below, whose bare references
+  ;; ARE constructor procedures).
+  (check-false (procedure? None))
   ;; Two `None`s are equal because the struct is transparent.
   (check-equal? None None)
 
