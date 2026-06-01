@@ -96,3 +96,44 @@
   (check-rackton-compile-error
    (struct Point [x : Integer] [y : Integer])
    (define bad (update (Point 1 2) [x "not-int"]))))
+
+;; ----- superclass obligations on instances -------------------------
+
+(test-case "instance missing a superclass instance is rejected (Ord needs Eq)"
+  (check-rackton-compile-error
+   (data Foo MkFoo)
+   ;; No (instance (Eq Foo)) — Ord's Eq superclass is unsatisfied.
+   (instance (Ord Foo)
+     (define (< x y) #f))))
+
+(test-case "instance missing a #:requires superclass is rejected"
+  (check-rackton-compile-error
+   (data (Box a) (MkBox a))
+   (protocol (Pointed (w :: (-> * *)))
+     (#:requires (Functor w))
+     (: point (-> a (w a))))
+   ;; No (instance (Functor Box)) — the #:requires constraint fails.
+   (instance (Pointed Box)
+     (define (point x) (MkBox x)))))
+
+(test-case "instance with its superclass present is accepted"
+  (check-not-exn
+   (lambda ()
+     (eval #'(rackton
+              (data Foo MkFoo)
+              (instance (Eq Foo)
+                (define (== x y) #t))
+              (instance (Ord Foo)
+                (define (< x y) #f)))
+           (variable-reference->namespace (#%variable-reference))))))
+
+(test-case "parametric instance discharges its superclass via context"
+  (check-not-exn
+   (lambda ()
+     (eval #'(rackton
+              (data (Box a) (MkBox a))
+              (instance ((Eq a) => (Eq (Box a)))
+                (define (== x y) #t))
+              (instance ((Ord a) => (Ord (Box a)))
+                (define (< x y) #f)))
+           (variable-reference->namespace (#%variable-reference))))))

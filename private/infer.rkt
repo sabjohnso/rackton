@@ -1772,11 +1772,49 @@
     (run-phase-B env-after-A declared forms))
   ;; ---- Phase C: instance registration (+ method body inference) ----
   (define env-after-C (run-phase-C env-after-B declared forms))
+  ;; ---- Superclass obligations ----
+  ;; Now that every instance — local, later-declared, and imported — is
+  ;; in env, require each declared instance to satisfy its class's
+  ;; superclasses.  Done here (not per-instance in Phase C) so the check
+  ;; is order-independent: a superclass instance may be declared after
+  ;; the subclass instance that needs it.
+  (check-superclass-obligations env-after-C forms)
   ;; ---- Phase D: SCC-based body inference for top:defs ----
   (define env-after-D (run-phase-D env-after-C declared def-tvars forms))
   (values env-after-D
           (for/fold ([d prior-declared]) ([f (in-list forms)] #:when (top:def? f))
             (hash-remove d (top:def-name f)))))
+
+;; Verify that every instance declared in `forms` satisfies the
+;; superclass constraints of its class.  For an instance `C T₁…Tₙ` with
+;; context `ctx`, substitute the instance args for `C`'s parameters in
+;; each superclass predicate and require the result to be entailed by
+;; the full instance set (in `env`) together with `ctx` as hypotheses.
+;; The instance's own type variables are rigid: `match-pred` binds only
+;; a candidate instance's head variables, treating the target as ground,
+;; so the obligation reads "for all the instance's variables, the
+;; superclass holds" — exactly the coherence requirement.
+(define (check-superclass-obligations env forms)
+  (parameterize ([current-aliases (env-aliases env)])
+    (for ([f (in-list forms)] #:when (top:instance? f))
+      (define head  (resolve-constraint (top:instance-head f)))
+      (define cinfo (env-ref-class env (pred-class head) #f))
+      (when cinfo
+        (define ctx
+          (for/list ([c (in-list (top:instance-context f))])
+            (resolve-constraint c)))
+        (define σ
+          (for/fold ([s empty-subst])
+                    ([p (in-list (class-info-params cinfo))]
+                     [a (in-list (pred-args head))])
+            (subst-extend s p a)))
+        (for ([sp (in-list (class-info-supers cinfo))])
+          (define target (apply-subst σ sp))
+          (unless (entail? env ctx target)
+            (raise-syntax-error 'infer
+              (format "instance ~a requires ~a, which has no instance"
+                      (pred->datum head) (pred->datum target))
+              (top:instance-stx f))))))))
 
 ;; Phase A — process forms that build the type-level env, in the
 ;; order described above.  Returns the post-A env and the `declared`
