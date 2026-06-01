@@ -844,12 +844,31 @@
 (define (infer-expr/fresh e [env initial-env])
   (with-fresh (infer-expr e env)))
 
+;; infer-expr dispatches on the expression form; each non-trivial arm is
+;; its own `infer-<form>` helper below, mutually recursive with this
+;; dispatcher.  Keeping the dispatch flat and the arms named makes each
+;; form's inference rule readable (and testable) in isolation.
 (define (infer-expr e env)
   (match e
+    [(e:literal v _)                 (values empty-subst (literal-type v))]
+    [(e:var x stx)                   (infer-var x stx env)]
+    [(e:lam params body _)           (infer-lam params body env)]
+    [(e:app head args stx)           (infer-app head args stx env)]
+    [(e:let bindings body _)         (infer-let bindings body env)]
+    [(e:letrec bindings body _)      (infer-letrec bindings body env)]
+    [(e:if c t els stx)              (infer-if c t els stx env)]
+    [(e:ann expr ty-ast stx)         (infer-ann expr ty-ast stx env)]
+    [(e:escape ty-ast vars _ stx)    (infer-escape ty-ast vars stx env)]
+    [(e:update record updates stx)   (infer-update record updates stx env)]
+    [(e:handle expr clauses ret stx) (infer-handle expr clauses ret stx env)]
+    [(e:match scrut clauses irrefutable? stx)
+     (infer-match scrut clauses irrefutable? stx env)]
+    [(e:match* scrutinees clauses _irrefutable? stx)
+     (infer-match* scrutinees clauses stx env)]))
 
-    [(e:literal v _) (values empty-subst (literal-type v))]
+;; ----- per-form inference (the arms of infer-expr) ------------------
 
-    [(e:var x stx)
+(define (infer-var x stx env)
      (define sch
        (or (env-ref-var env x)
            (let ([info (env-ref-data env x)])
@@ -924,9 +943,9 @@
         (raise-syntax-error 'infer
                             (format "unbound identifier: ~s~a"
                                     x (suggest-similar x env))
-                            stx)])]
+                            stx)]))
 
-    [(e:lam params body _)
+(define (infer-lam params body env)
      (define param-tvars
        (for/list ([_ (in-list params)]) (fresh-tvar)))
      (define env*
@@ -936,9 +955,9 @@
      (values s
              (foldr make-arrow body-type
                     (for/list ([t (in-list param-tvars)])
-                      (apply-subst s t))))]
+                      (apply-subst s t)))))
 
-    [(e:app head args stx)
+(define (infer-app head args stx env)
      (define-values (s-head t-head) (infer-expr head env))
      ;; Sequentially walk args.  At each step, after inferring the
      ;; arg's type, unify the current head-type's domain with the
@@ -997,9 +1016,9 @@
                      (subst-compose s-u s-now)
                      (apply-subst s-u β)
                      (apply-subst/env s-arg env))])])))
-     (values s-final result-type)]
+     (values s-final result-type))
 
-    [(e:let bindings body _)
+(define (infer-let bindings body env)
      ;; Parallel let: each rhs is typed in the env at let-entry (with
      ;; substitutions threaded), generalized, then made available.
      (define-values (s-acc env-after)
@@ -1016,9 +1035,9 @@
                                  (car b) sch))))
      (define-values (s-body t-body)
        (infer-expr body env-after))
-     (values (subst-compose s-body s-acc) t-body)]
+     (values (subst-compose s-body s-acc) t-body))
 
-    [(e:letrec bindings body _)
+(define (infer-letrec bindings body env)
      ;; Mutual recursion: pre-bind each name with a fresh monomorphic
      ;; tvar so each rhs can reference every other binding (and itself).
      ;; After inferring all rhs's, unify each tvar with the inferred
@@ -1048,9 +1067,9 @@
          (env-extend-var e (car b)
                          (generalize (apply-subst/env s-final env) t))))
      (define-values (s-body t-body) (infer-expr body env-after))
-     (values (subst-compose s-body s-final) t-body)]
+     (values (subst-compose s-body s-final) t-body))
 
-    [(e:if c t e stx)
+(define (infer-if c t e stx env)
      (define-values (s-c t-c) (infer-expr c env))
      (define s-cb
        (with-handlers
@@ -1078,9 +1097,9 @@
               (apply-subst s3 t-else)))])
         (unify (apply-subst s3 t-then) (apply-subst s3 t-else))))
      (define s-final (subst-compose s-branches s3))
-     (values s-final (apply-subst s-final t-then))]
+     (values s-final (apply-subst s-final t-then)))
 
-    [(e:ann expr ty-ast stx)
+(define (infer-ann expr ty-ast stx env)
      (define-values (s-e t-e) (infer-expr expr env))
      (define declared (qual-body-type (resolve-type ty-ast)))
      (define s-u
@@ -1092,24 +1111,18 @@
               declared
               (apply-subst s-e t-e)))])
         (unify (apply-subst s-e t-e) declared)))
-     (values (subst-compose s-u s-e) (apply-subst s-u declared))]
+     (values (subst-compose s-u s-e) (apply-subst s-u declared)))
 
-    [(e:escape ty-ast vars _ stx)
+(define (infer-escape ty-ast vars stx env)
      (define expected (qual-body-type (resolve-type ty-ast)))
      (for ([v (in-list vars)])
        (unless (env-ref-var env v)
          (raise-syntax-error 'infer
            (format "(racket …) escape references unbound name: ~s" v)
            stx)))
-     (values empty-subst expected)]
+     (values empty-subst expected))
 
-    [(e:update record updates stx)
-     (infer-update record updates stx env)]
-
-    [(e:handle expr clauses ret stx)
-     (infer-handle expr clauses ret stx env)]
-
-    [(e:match scrut clauses irrefutable? stx)
+(define (infer-match scrut clauses irrefutable? stx env)
      (define-values (s-scrut t-scrut) (infer-expr scrut env))
      ;; If we've been handed an expected result type
      ;; from the surrounding context (typically a checked
@@ -1133,9 +1146,9 @@
      ;; exhaustiveness check — the user has asserted the pattern fits.
      (unless irrefutable?
        (check-exhaustive! (apply-subst s-final t-scrut) clauses stx env))
-     (values s-final (apply-subst s-final result-tv))]
+     (values s-final (apply-subst s-final result-tv)))
 
-    [(e:match* scrutinees clauses _irrefutable? stx)
+(define (infer-match* scrutinees clauses stx env)
      ;; Multi-scrutinee match (emitted by the multi-clause `define`
      ;; combiner in private/surface.rkt).  Infer each scrutinee's
      ;; type, then for each clause walk its pattern list against the
@@ -1163,7 +1176,7 @@
                           (apply-subst/env s env)
                           (> i 0)))
          (values (subst-compose s-cl s) _t)))
-     (values s-final (apply-subst s-final result-tv))]))
+     (values s-final (apply-subst s-final result-tv)))
 
 ;; Type a single match clause.  Pattern bindings extend the env for the
 ;; clause body.  The body type is unified with the running result type
