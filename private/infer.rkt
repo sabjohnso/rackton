@@ -861,39 +861,51 @@
         (cond
           [cinfo
            (define-values (t sub) (instantiate/subst sch))
-           (define dispatchpos (hash-ref (class-info-dispatchpos cinfo) x #f))
-           (define reqs (hash-ref (class-info-dictreqs cinfo) x '()))
+           ;; `x` is genuinely this class's method only if its scheme
+           ;; quantifies over the class parameters — instantiating it
+           ;; must bind each of them in `sub`.  A LOCAL binding that
+           ;; merely shares a method's name (e.g. an effect operation
+           ;; named `peek`, colliding with the prelude Storable class's
+           ;; `peek`) has its own scheme, so some class param is absent
+           ;; from `sub`.  Such an `x` is an ordinary variable that
+           ;; shadows the method, not the method itself — it must not
+           ;; drive dispatch (and looking the param up without a default
+           ;; used to crash with `hash-ref: no value found for key`).
+           (define class-param-tvars
+             (for/list ([p (in-list (class-info-params cinfo))])
+               (hash-ref sub p #f)))
            (cond
-             [(eq? dispatchpos 'return)
-              ;; A return-typed method may ALSO carry a method-level dict
-              ;; requirement (e.g. MonadTrans.lift's `(Monad m) =>`).
-              ;; Fold those dict-entries into the single 'return entry so
-              ;; the separate record-dict-use! below doesn't clobber the
-              ;; dispatch resolution on the same stx.
-              (define class-param-tvars
-                (for/list ([p (in-list (class-info-params cinfo))])
-                  (hash-ref sub p)))
-              (define method-dict-entries
-                (for/list ([req (in-list reqs)])
-                  (cons (car req)
-                        (for/list ([a (in-list (cdr req))]) (apply-subst sub a)))))
-              (record-method-use! x stx env class-param-tvars method-dict-entries)]
-             [(integer? dispatchpos)
-              ;; Positional class-method call.  The resolver routes
-              ;; to a per-instance impl after the dispatch arg's
-              ;; type settles.  Overlapping instances are handled
-              ;; the same way.  Recording fires for ALL positional
-              ;; method calls so any concrete-type call site can be
-              ;; monomorphized (direct impl call instead of runtime
-              ;; dispatch).
-              (define class-param-tvars
-                (for/list ([p (in-list (class-info-params cinfo))])
-                  (hash-ref sub p)))
-              (record-inst-dispatch-use! x stx class-param-tvars)
-              (unless (null? reqs) (record-dict-use! x stx reqs sub))]
+             [(memv #f class-param-tvars)
+              ;; Shadowed method name — treat as an ordinary variable.
+              (values empty-subst t)]
              [else
-              (unless (null? reqs) (record-dict-use! x stx reqs sub))])
-           (values empty-subst t)]
+              (define dispatchpos (hash-ref (class-info-dispatchpos cinfo) x #f))
+              (define reqs (hash-ref (class-info-dictreqs cinfo) x '()))
+              (cond
+                [(eq? dispatchpos 'return)
+                 ;; A return-typed method may ALSO carry a method-level dict
+                 ;; requirement (e.g. MonadTrans.lift's `(Monad m) =>`).
+                 ;; Fold those dict-entries into the single 'return entry so
+                 ;; the separate record-dict-use! below doesn't clobber the
+                 ;; dispatch resolution on the same stx.
+                 (define method-dict-entries
+                   (for/list ([req (in-list reqs)])
+                     (cons (car req)
+                           (for/list ([a (in-list (cdr req))]) (apply-subst sub a)))))
+                 (record-method-use! x stx env class-param-tvars method-dict-entries)]
+                [(integer? dispatchpos)
+                 ;; Positional class-method call.  The resolver routes
+                 ;; to a per-instance impl after the dispatch arg's
+                 ;; type settles.  Overlapping instances are handled
+                 ;; the same way.  Recording fires for ALL positional
+                 ;; method calls so any concrete-type call site can be
+                 ;; monomorphized (direct impl call instead of runtime
+                 ;; dispatch).
+                 (record-inst-dispatch-use! x stx class-param-tvars)
+                 (unless (null? reqs) (record-dict-use! x stx reqs sub))]
+                [else
+                 (unless (null? reqs) (record-dict-use! x stx reqs sub))])
+              (values empty-subst t)])]
           [else
            ;; A free function may itself be needs-dict: if its scheme's
            ;; qual context includes a constraint over a class with
