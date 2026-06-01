@@ -50,12 +50,13 @@ text file.  It exercises:
 
 @itemlist[
 @item{@racket[IO] for file I/O via @racket[read-file] /
-      @racket[write-file] / @racket[file-exists?].}
-@item{@racket[try] for graceful handling of missing files.}
+      @racket[write-file].}
+@item{@racket[try] for graceful handling of a missing file (rather
+      than a pre-flight @racket[file-exists?] check).}
 @item{@racket[String] manipulation through
       @racket[string-split] / @racket[string-join] / @racket[string-prefix?].}
 @item{@racket[List] processing with @racket[map] (via @racket[fmap]),
-      @racket[filter], and @racket[reverse].}
+      @racket[filter], and @racket[snoc] (append on the right).}
 @item{Pattern matching on @racket[argv] to dispatch by subcommand.}
 @item{Module-level @racket[main] action driven by @racket[run-io].}]
 
