@@ -672,6 +672,50 @@
 
 ;; An instance compiles to a sequence of `register-instance-method!`
 ;; calls — one per (method × tag) pair.
+;; Keep only the elements of `values` (a list aligned with the class's
+;; type parameters) at positions that are NOT functionally determined.
+;; For a fundep class like (MonadState s m | m -> s) this drops `s`,
+;; leaving the dispatchable `m`; single-param classes (no fundeps) pass
+;; `values` through unchanged.  Shared by the positional-dispatch tag
+;; computation and the per-method impl-name suffix.
+(define (drop-fundep-determined cinfo values)
+  (cond
+    [(null? (class-info-fundeps cinfo)) values]
+    [else
+     (define determined
+       (for/fold ([acc (seteq)]) ([fd (in-list (class-info-fundeps cinfo))])
+         (set-union acc (list->seteq (cdr fd)))))
+     (for/list ([p (in-list (class-info-params cinfo))]
+                [v (in-list values)]
+                #:unless (set-member? determined p))
+       v)]))
+
+;; Resolve each class method to its impl body for this instance: the
+;; user-supplied impl if present, else the class default relocated to
+;; the instance's lexical context, else an error.
+(define (instance-method-bodies cinfo user-impls head-pred-class stx)
+  (let loop ([rest (hash-keys (class-info-methods cinfo))]
+             [acc  '()])
+    (cond
+      [(null? rest) acc]
+      [else
+       (define m (car rest))
+       (define body
+         (cond
+           [(assq m user-impls) => cdr]
+           [(hash-ref (class-info-defaults cinfo) m #f)
+            => (lambda (default)
+                 ;; A class default was originally parsed in the
+                 ;; defining module's lexical context.  Relocate its
+                 ;; syntax handles to the *instance* site so identifier
+                 ;; references resolve via the user module's imports.
+                 (relocate-ast default stx))]
+           [else
+            (error 'compile-instance
+                   "no impl or default for ~s in instance ~s"
+                   m head-pred-class)]))
+       (loop (cdr rest) (cons (cons m body) acc))])))
+
 (define (compile-instance head methods stx env)
   (define head-pred-class (constraint-class head))
   (define head-arg-types
@@ -687,18 +731,8 @@
   ;; monad), not the first arg `s` (which is fundep-determined and may be
   ;; a bare tvar).  Drop determined params so tags-for-instance-head sees
   ;; the dispatchable arg.  (Single-param classes: no fundeps, unchanged.)
-  (define determining-arg-types
-    (cond
-      [(null? (class-info-fundeps cinfo)) head-arg-types]
-      [else
-       (define determined
-         (for/fold ([acc (seteq)]) ([fd (in-list (class-info-fundeps cinfo))])
-           (set-union acc (list->seteq (cdr fd)))))
-       (for/list ([p (in-list (class-info-params cinfo))]
-                  [t (in-list head-arg-types)]
-                  #:unless (set-member? determined p))
-         t)]))
-  (define tags (tags-for-instance-head determining-arg-types env))
+  (define tags
+    (tags-for-instance-head (drop-fundep-determined cinfo head-arg-types) env))
   (define user-impls
     (for/fold ([acc '()]) ([m (in-list methods)])
       (match m
@@ -707,45 +741,15 @@
         ;; runtime code is emitted for an associated-type binding.
         [(inst-type-fam _ _ _) acc])))
   (define all-method-bodies
-    (let loop ([rest (hash-keys (class-info-methods cinfo))]
-               [acc  '()])
-      (cond
-        [(null? rest) acc]
-        [else
-         (define m (car rest))
-         (define body
-           (cond
-             [(assq m user-impls) => cdr]
-             [(hash-ref (class-info-defaults cinfo) m #f)
-              => (lambda (default)
-                   ;; A class default was originally parsed in the
-                   ;; defining module's lexical context.  Relocate its
-                   ;; syntax handles to the *instance* site so identifier
-                   ;; references resolve via the user module's imports.
-                   (relocate-ast default stx))]
-             [else
-              (error 'compile-instance
-                     "no impl or default for ~s in instance ~s"
-                     m head-pred-class)]))
-         (loop (cdr rest) (cons (cons m body) acc))])))
+    (instance-method-bodies cinfo user-impls head-pred-class stx))
 
-  (define head-tcon-names-raw
-    (for/list ([t (in-list head-arg-types)]) (head-tcon-name t)))
   ;; Filter out tcons at fundep-determined positions so the per-method
   ;; impl name matches what `resolve-return-impl` synthesizes in
   ;; infer.rkt.  Single-param classes have no fundeps and pass through.
   (define head-tcon-names
-    (cond
-      [(null? (class-info-fundeps cinfo)) head-tcon-names-raw]
-      [else
-       (define determined
-         (for/fold ([acc (seteq)])
-                   ([fd (in-list (class-info-fundeps cinfo))])
-           (set-union acc (list->seteq (cdr fd)))))
-       (for/list ([p (in-list (class-info-params cinfo))]
-                  [tn (in-list head-tcon-names-raw)]
-                  #:unless (set-member? determined p))
-         tn)]))
+    (drop-fundep-determined
+     cinfo
+     (for/list ([t (in-list head-arg-types)]) (head-tcon-name t))))
   ;; Cross-method tracking for the pure-via-witness deriver (approach
   ;; (1) for ExceptT): if any value-dispatched method of this instance
   ;; witness-routes its inner `pure`, and the instance also defines a
@@ -762,210 +766,12 @@
        (define body (cdr mb))
        (cond
          [(eq? (hash-ref (class-info-dispatchpos cinfo) name #f) 'return)
-          ;; Return-typed methods don't dispatch on a runtime value;
-          ;; emit one top-level `(define $method:Tcon impl)` whose
-          ;; name matches what `infer.rkt` synthesizes in
-          ;; current-method-resolutions.  If the instance
-          ;; is needs-dict, prepend dict-arg parameters so the impl
-          ;; can accept them (and use them in the body via the
-          ;; current-dict-skolems-driven local references).
-          (define dict-pair
-            (and (current-needs-dict-defs)
-                 (hash-ref (current-needs-dict-defs)
-                           (list head-pred-class
-                                 (car head-tcon-names)
-                                 name)
-                           #f)))
-          (define dict-args (combined-dict-args dict-pair))
-          (define body*
-            (cond
-              [(and dict-args (not (null? dict-args)))
-               (prepend-lambda-params body dict-args stx)]
-              [else body]))
-          (define impl-name-sym (return-impl-symbol name head-tcon-names))
-          (define def-form
-            (with-syntax ([impl-name (datum->syntax stx impl-name-sym stx)]
-                          [impl (compile-expr body*)])
-              #'(define impl-name impl)))
-          (cond
-            ;; needs-dict return-typed instance (e.g. a transformer's
-            ;; pure): keep the bare define only.  Its call sites carry
-            ;; dict args and resolve via the direct reference, not the
-            ;; tag table — so the defining module must export it for
-            ;; cross-module call sites to bind.
-            [(and dict-args (not (null? dict-args)))
-             (record-exported-impl! impl-name-sym)
-             (when (eq? name 'pure) (set-box! pure-impl-name impl-name-sym))
-             (list def-form)]
-            ;; plain return-typed instance: ALSO register into the
-            ;; per-method dispatch table so a call site in another module
-            ;; can find it.  The tag is the impl-name suffix (after
-            ;; "$<name>:"), matching what the call site extracts.
-            [else
-             (define tag-sym
-               (string->symbol
-                (substring (symbol->string impl-name-sym)
-                           (+ 2 (string-length (symbol->string name))))))
-             (define reg-form
-               (with-syntax ([table     (datum->syntax stx (method-dispatch-symbol name) stx)]
-                             [tag       (datum->syntax stx tag-sym stx)]
-                             [impl-name (datum->syntax stx impl-name-sym stx)])
-                 #'(register-instance-method! table 'tag impl-name)))
-             (list def-form reg-form)])]
+          (compile-instance-return-method
+           name body head-pred-class head-tcon-names pure-impl-name stx)]
          [else
-          ;; Positional class-method instance impls have two kinds of
-          ;; dict-args, stored as a (inst-args . method-args) pair
-          ;; under current-needs-dict-defs.  Two cases:
-          ;;   - instance-qual: the runtime wrapper can't insert these
-          ;;     dicts, so we use compile-time inst-dispatch + a named
-          ;;     impl.
-          ;;   - method-qual ONLY: the runtime wrapper already inserts
-          ;;     method-qual dicts at the call site (per class-info-
-          ;;     dictreqs at compile-class time), so we can register
-          ;;     the impl in the runtime dispatch table with method-
-          ;;     qual dicts as leading lambda params.
-          (define dict-pair
-            (and (current-needs-dict-defs)
-                 (hash-ref (current-needs-dict-defs)
-                           (list head-pred-class
-                                 (car head-tcon-names)
-                                 name)
-                           #f)))
-          (define inst-args   (and dict-pair (car dict-pair)))
-          (define method-args (and dict-pair (cdr dict-pair)))
-          (cond
-            [(and inst-args (not (null? inst-args)))
-             ;; Instance-qual dicts present.  Emit the named impl
-             ;; (dict-carrying) for compile-time inst-dispatch call
-             ;; sites.  Method-qual dicts (if any) are prepended too so
-             ;; the impl's parameter list matches what compile-time
-             ;; inst-dispatch supplies plus what the runtime wrapper
-             ;; inserts.
-             (define dict-args (append inst-args method-args))
-             (define expr* (prepend-lambda-params body dict-args stx))
-             (define impl-name-sym (return-impl-symbol name head-tcon-names))
-             (record-exported-impl! impl-name-sym)
-             (define named-def
-               (with-syntax ([impl-name (datum->syntax stx impl-name-sym stx)]
-                             [impl (compile-expr expr*)])
-                 #'(define impl-name impl)))
-             ;; ALSO register a runtime dispatcher so POLYMORPHIC call
-             ;; sites (where the dispatch type is an abstract tvar, e.g.
-             ;; `flatmap` inside a `(MonadState s m) =>` body) reach the
-             ;; instance by runtime tag.
-             ;;
-             ;; Most positional method bodies resolve the inner monad's
-             ;; impl by runtime dispatch on the inner value's tag, so
-             ;; they don't use the instance-qual dicts — register the
-             ;; plain body (carrying only method-qual dicts).  But
-             ;; ExceptT's flatmap/catch-e DO use the inner `pure` (to
-             ;; rewrap Ok/Err).  There the runtime dispatcher derives the
-             ;; inner pure from the dispatch-arg WITNESS and routes
-             ;; through the named dict-carrying impl.
-             (define rt-body
-               (cond
-                 [(and method-args (not (null? method-args)))
-                  (prepend-lambda-params body method-args stx)]
-                 [else body]))
-             (define rt-impl-stx (compile-expr rt-body))
-             (define uses-inst-dict?
-               (syntax-mentions-any? rt-impl-stx (list->seteq inst-args)))
-             (define register-forms
-               (cond
-                 [(not uses-inst-dict?)
-                  ;; plain body — inst-qual dicts unused (StateT/EnvT/
-                  ;; WriterT value-dispatched methods).
-                  (for/list ([tag (in-list tags)])
-                    (with-syntax ([table   (datum->syntax stx (method-dispatch-symbol name) stx)]
-                                  [tag-sym (datum->syntax stx tag stx)]
-                                  [rt-impl rt-impl-stx])
-                      #'(register-instance-method! table 'tag-sym rt-impl)))]
-                 [(andmap pure-dict-name? inst-args)
-                  ;; ExceptT-style: the body uses the inner monad's
-                  ;; `pure` (all inst dicts are pure).  At a runtime
-                  ;; dispatch there is no compile-time dict, so derive
-                  ;; the inner pure from the WITNESS — the arg whose
-                  ;; runtime tag is this instance's ctor — and route
-                  ;; through the named dict-carrying impl.  Picking the
-                  ;; witness by tag (not by position) sidesteps the
-                  ;; class-vs-runtime dispatch-index mismatch (flatmap).
-                  ;; (method-args must be empty here — no transformer-
-                  ;; stack method needs both a runtime-inserted method
-                  ;; dict and a witness-derived inst dict.)
-                  (set-box! witness-routed? #t)
-                  (define n      (length (e:lam-params body)))
-                  (define disp   (monad-dispatch-index cinfo name))
-                  (define params (for/list ([i (in-range n)])
-                                   (datum->syntax stx (string->symbol (format "$w~a" i)) stx)))
-                  (define witness (list-ref params disp))
-                  (with-syntax ([impl-name (datum->syntax stx impl-name-sym stx)]
-                                [(p ...)   params]
-                                [wit       witness])
-                    (for/list ([tag (in-list tags)])
-                      (with-syntax ([table   (datum->syntax stx (method-dispatch-symbol name) stx)]
-                                    [tag-sym (datum->syntax stx tag stx)]
-                                    [(ip ...) (for/list ([_ (in-list inst-args)]) #'ipv)])
-                        #'(register-instance-method! table 'tag-sym
-                            (lambda (p ...)
-                              (let ([ipv (inner-pure-from-witness wit)])
-                                (impl-name ip ... p ...)))))))]
-                 [else
-                  (error 'compile-instance
-                         "needs-dict value-dispatched method ~s uses a non-pure instance dict; witness derivation unsupported"
-                         name)]))
-             (cons named-def register-forms)]
-            ;; For an overlap-group instance (any class
-            ;; whose instance set has at least one pair related by
-            ;; "strictly more specific"), emit a deep-fingerprint
-            ;; impl name and skip runtime-table registration — two
-            ;; instances with the same outer ctor would clobber each
-            ;; other in the table, and call sites are routed to the
-            ;; right fingerprint at compile time by inst-dispatch.
-            [(env-class-has-overlap? env head-pred-class)
-             (with-syntax ([impl-name
-                            (datum->syntax
-                             stx
-                             (overlap-impl-symbol name head-arg-types)
-                             stx)]
-                           [impl (compile-expr body)])
-               (list #'(define impl-name impl)))]
-            [else
-             ;; Method-qual dicts (if any) become leading lambda
-             ;; params of the runtime-registered impl.  Emit a NAMED
-             ;; `(define $method:Tcon impl)` alongside the dispatch-
-             ;; table registration so that compile-time
-             ;; monomorphization at call sites can reference the impl
-             ;; directly without going through the table.
-             (define body*
-               (cond
-                 [(and method-args (not (null? method-args)))
-                  (prepend-lambda-params body method-args stx)]
-                 [else body]))
-             (define impl-name-sym
-               (return-impl-symbol name head-tcon-names))
-             ;; Classify the body for inlining.  Only
-             ;; full e:lam bodies whose inner expr is small and
-             ;; calls no class methods get registered; the e:app
-             ;; codegen reads this hash at call sites.
-             (when (and (current-inlinable-bodies)
-                        (e:lam? body*)
-                        (inlinable-body? (e:lam-body body*)))
-               (hash-set! (current-inlinable-bodies)
-                          impl-name-sym
-                          body*))
-             (define def-form
-               (with-syntax ([impl-name (datum->syntax stx impl-name-sym stx)]
-                             [impl      (compile-expr body*)])
-                 #'(define impl-name impl)))
-             (define register-forms
-               (for/list ([tag (in-list tags)])
-                 (with-syntax ([table     (datum->syntax stx
-                                                         (method-dispatch-symbol name)
-                                                         stx)]
-                               [impl-name (datum->syntax stx impl-name-sym stx)]
-                               [tag-sym   (datum->syntax stx tag stx)])
-                   #'(register-instance-method! table 'tag-sym impl-name))))
-             (cons def-form register-forms)])]))))
+          (compile-instance-positional-method
+           name body cinfo head-pred-class head-tcon-names head-arg-types
+           tags witness-routed? stx env)]))))
   ;; If a value-dispatched method witness-routed its inner pure AND this
   ;; instance defines a return-typed `pure`, register a pure-via-witness
   ;; deriver for the type's ctor so nested stacks (e.g. ExceptT over
@@ -985,6 +791,226 @@
       [else '()]))
   (with-syntax ([(register ...) (append register-forms deriver-forms)])
     (syntax/loc stx (begin register ...))))
+
+;; Compile a return-typed instance method (one whose class dispatch
+;; position is 'return — e.g. pure/mempty).  Such methods don't dispatch
+;; on a runtime value; we emit one named impl and, for plain (non-needs-
+;; dict) instances, also register it in the per-method dispatch table so
+;; cross-module call sites can find it.  Returns a list of forms.
+(define (compile-instance-return-method
+         name body head-pred-class head-tcon-names pure-impl-name stx)
+  ;; Return-typed methods don't dispatch on a runtime value;
+  ;; emit one top-level `(define $method:Tcon impl)` whose
+  ;; name matches what `infer.rkt` synthesizes in
+  ;; current-method-resolutions.  If the instance
+  ;; is needs-dict, prepend dict-arg parameters so the impl
+  ;; can accept them (and use them in the body via the
+  ;; current-dict-skolems-driven local references).
+  (define dict-pair
+    (and (current-needs-dict-defs)
+         (hash-ref (current-needs-dict-defs)
+                   (list head-pred-class
+                         (car head-tcon-names)
+                         name)
+                   #f)))
+  (define dict-args (combined-dict-args dict-pair))
+  (define body*
+    (cond
+      [(and dict-args (not (null? dict-args)))
+       (prepend-lambda-params body dict-args stx)]
+      [else body]))
+  (define impl-name-sym (return-impl-symbol name head-tcon-names))
+  (define def-form
+    (with-syntax ([impl-name (datum->syntax stx impl-name-sym stx)]
+                  [impl (compile-expr body*)])
+      #'(define impl-name impl)))
+  (cond
+    ;; needs-dict return-typed instance (e.g. a transformer's
+    ;; pure): keep the bare define only.  Its call sites carry
+    ;; dict args and resolve via the direct reference, not the
+    ;; tag table — so the defining module must export it for
+    ;; cross-module call sites to bind.
+    [(and dict-args (not (null? dict-args)))
+     (record-exported-impl! impl-name-sym)
+     (when (eq? name 'pure) (set-box! pure-impl-name impl-name-sym))
+     (list def-form)]
+    ;; plain return-typed instance: ALSO register into the
+    ;; per-method dispatch table so a call site in another module
+    ;; can find it.  The tag is the impl-name suffix (after
+    ;; "$<name>:"), matching what the call site extracts.
+    [else
+     (define tag-sym
+       (string->symbol
+        (substring (symbol->string impl-name-sym)
+                   (+ 2 (string-length (symbol->string name))))))
+     (define reg-form
+       (with-syntax ([table     (datum->syntax stx (method-dispatch-symbol name) stx)]
+                     [tag       (datum->syntax stx tag-sym stx)]
+                     [impl-name (datum->syntax stx impl-name-sym stx)])
+         #'(register-instance-method! table 'tag impl-name)))
+     (list def-form reg-form)]))
+
+;; Compile a positional (value-dispatched) instance method.  These key
+;; on a runtime argument's tag.  Handles three sub-cases: instance-qual
+;; needs-dict (named impl + runtime dispatcher, possibly witness-routed),
+;; overlap-group (fingerprinted name, no table), and the plain case
+;; (named impl + table registration).  Returns a list of forms.
+(define (compile-instance-positional-method
+         name body cinfo head-pred-class head-tcon-names head-arg-types
+         tags witness-routed? stx env)
+  ;; Positional class-method instance impls have two kinds of
+  ;; dict-args, stored as a (inst-args . method-args) pair
+  ;; under current-needs-dict-defs.  Two cases:
+  ;;   - instance-qual: the runtime wrapper can't insert these
+  ;;     dicts, so we use compile-time inst-dispatch + a named
+  ;;     impl.
+  ;;   - method-qual ONLY: the runtime wrapper already inserts
+  ;;     method-qual dicts at the call site (per class-info-
+  ;;     dictreqs at compile-class time), so we can register
+  ;;     the impl in the runtime dispatch table with method-
+  ;;     qual dicts as leading lambda params.
+  (define dict-pair
+    (and (current-needs-dict-defs)
+         (hash-ref (current-needs-dict-defs)
+                   (list head-pred-class
+                         (car head-tcon-names)
+                         name)
+                   #f)))
+  (define inst-args   (and dict-pair (car dict-pair)))
+  (define method-args (and dict-pair (cdr dict-pair)))
+  (cond
+    [(and inst-args (not (null? inst-args)))
+     ;; Instance-qual dicts present.  Emit the named impl
+     ;; (dict-carrying) for compile-time inst-dispatch call
+     ;; sites.  Method-qual dicts (if any) are prepended too so
+     ;; the impl's parameter list matches what compile-time
+     ;; inst-dispatch supplies plus what the runtime wrapper
+     ;; inserts.
+     (define dict-args (append inst-args method-args))
+     (define expr* (prepend-lambda-params body dict-args stx))
+     (define impl-name-sym (return-impl-symbol name head-tcon-names))
+     (record-exported-impl! impl-name-sym)
+     (define named-def
+       (with-syntax ([impl-name (datum->syntax stx impl-name-sym stx)]
+                     [impl (compile-expr expr*)])
+         #'(define impl-name impl)))
+     ;; ALSO register a runtime dispatcher so POLYMORPHIC call
+     ;; sites (where the dispatch type is an abstract tvar, e.g.
+     ;; `flatmap` inside a `(MonadState s m) =>` body) reach the
+     ;; instance by runtime tag.
+     ;;
+     ;; Most positional method bodies resolve the inner monad's
+     ;; impl by runtime dispatch on the inner value's tag, so
+     ;; they don't use the instance-qual dicts — register the
+     ;; plain body (carrying only method-qual dicts).  But
+     ;; ExceptT's flatmap/catch-e DO use the inner `pure` (to
+     ;; rewrap Ok/Err).  There the runtime dispatcher derives the
+     ;; inner pure from the dispatch-arg WITNESS and routes
+     ;; through the named dict-carrying impl.
+     (define rt-body
+       (cond
+         [(and method-args (not (null? method-args)))
+          (prepend-lambda-params body method-args stx)]
+         [else body]))
+     (define rt-impl-stx (compile-expr rt-body))
+     (define uses-inst-dict?
+       (syntax-mentions-any? rt-impl-stx (list->seteq inst-args)))
+     (define register-forms
+       (cond
+         [(not uses-inst-dict?)
+          ;; plain body — inst-qual dicts unused (StateT/EnvT/
+          ;; WriterT value-dispatched methods).
+          (for/list ([tag (in-list tags)])
+            (with-syntax ([table   (datum->syntax stx (method-dispatch-symbol name) stx)]
+                          [tag-sym (datum->syntax stx tag stx)]
+                          [rt-impl rt-impl-stx])
+              #'(register-instance-method! table 'tag-sym rt-impl)))]
+         [(andmap pure-dict-name? inst-args)
+          ;; ExceptT-style: the body uses the inner monad's
+          ;; `pure` (all inst dicts are pure).  At a runtime
+          ;; dispatch there is no compile-time dict, so derive
+          ;; the inner pure from the WITNESS — the arg whose
+          ;; runtime tag is this instance's ctor — and route
+          ;; through the named dict-carrying impl.  Picking the
+          ;; witness by tag (not by position) sidesteps the
+          ;; class-vs-runtime dispatch-index mismatch (flatmap).
+          ;; (method-args must be empty here — no transformer-
+          ;; stack method needs both a runtime-inserted method
+          ;; dict and a witness-derived inst dict.)
+          (set-box! witness-routed? #t)
+          (define n      (length (e:lam-params body)))
+          (define disp   (monad-dispatch-index cinfo name))
+          (define params (for/list ([i (in-range n)])
+                           (datum->syntax stx (string->symbol (format "$w~a" i)) stx)))
+          (define witness (list-ref params disp))
+          (with-syntax ([impl-name (datum->syntax stx impl-name-sym stx)]
+                        [(p ...)   params]
+                        [wit       witness])
+            (for/list ([tag (in-list tags)])
+              (with-syntax ([table   (datum->syntax stx (method-dispatch-symbol name) stx)]
+                            [tag-sym (datum->syntax stx tag stx)]
+                            [(ip ...) (for/list ([_ (in-list inst-args)]) #'ipv)])
+                #'(register-instance-method! table 'tag-sym
+                    (lambda (p ...)
+                      (let ([ipv (inner-pure-from-witness wit)])
+                        (impl-name ip ... p ...)))))))]
+         [else
+          (error 'compile-instance
+                 "needs-dict value-dispatched method ~s uses a non-pure instance dict; witness derivation unsupported"
+                 name)]))
+     (cons named-def register-forms)]
+    ;; For an overlap-group instance (any class
+    ;; whose instance set has at least one pair related by
+    ;; "strictly more specific"), emit a deep-fingerprint
+    ;; impl name and skip runtime-table registration — two
+    ;; instances with the same outer ctor would clobber each
+    ;; other in the table, and call sites are routed to the
+    ;; right fingerprint at compile time by inst-dispatch.
+    [(env-class-has-overlap? env head-pred-class)
+     (with-syntax ([impl-name
+                    (datum->syntax
+                     stx
+                     (overlap-impl-symbol name head-arg-types)
+                     stx)]
+                   [impl (compile-expr body)])
+       (list #'(define impl-name impl)))]
+    [else
+     ;; Method-qual dicts (if any) become leading lambda
+     ;; params of the runtime-registered impl.  Emit a NAMED
+     ;; `(define $method:Tcon impl)` alongside the dispatch-
+     ;; table registration so that compile-time
+     ;; monomorphization at call sites can reference the impl
+     ;; directly without going through the table.
+     (define body*
+       (cond
+         [(and method-args (not (null? method-args)))
+          (prepend-lambda-params body method-args stx)]
+         [else body]))
+     (define impl-name-sym
+       (return-impl-symbol name head-tcon-names))
+     ;; Classify the body for inlining.  Only
+     ;; full e:lam bodies whose inner expr is small and
+     ;; calls no class methods get registered; the e:app
+     ;; codegen reads this hash at call sites.
+     (when (and (current-inlinable-bodies)
+                (e:lam? body*)
+                (inlinable-body? (e:lam-body body*)))
+       (hash-set! (current-inlinable-bodies)
+                  impl-name-sym
+                  body*))
+     (define def-form
+       (with-syntax ([impl-name (datum->syntax stx impl-name-sym stx)]
+                     [impl      (compile-expr body*)])
+         #'(define impl-name impl)))
+     (define register-forms
+       (for/list ([tag (in-list tags)])
+         (with-syntax ([table     (datum->syntax stx
+                                                 (method-dispatch-symbol name)
+                                                 stx)]
+                       [impl-name (datum->syntax stx impl-name-sym stx)]
+                       [tag-sym   (datum->syntax stx tag stx)])
+           #'(register-instance-method! table 'tag-sym impl-name))))
+     (cons def-form register-forms)]))
 
 ;; Mirror of the dict-class-return-methods registry in
 ;; private/infer.rkt — kept terse and local so both phases can compute
