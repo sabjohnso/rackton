@@ -114,7 +114,8 @@ private/      type AST, unifier, env, surface parser,
 lang/         #lang rackton reader & lang module
 tests/        per-feature tests + cross-cutting end-to-end
               + doc-coverage-test.rkt
-examples/     calc.rkt (typed interpreter), todo.rkt (CLI)
+examples/     calc.rkt (typed interpreter), todo.rkt (CLI),
+              word-count.rkt (stdlib across type-class families)
 scribblings/  rackton.scrbl (landing) + guide/ + reference/
               + developer/
 ```
@@ -130,6 +131,13 @@ Or the todo CLI:
 ```bash
 racket examples/todo.rkt add buy milk
 racket examples/todo.rkt list
+```
+
+Or the word-count demo (built-in sample, or a file):
+
+```bash
+racket examples/word-count.rkt
+racket examples/word-count.rkt some-file.txt
 ```
 
 ## License
