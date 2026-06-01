@@ -186,9 +186,13 @@ body, listing the constraints directly.
 
 Class parameters may carry an explicit kind annotation
 (@racket[(param :: kind)]); without one the kind defaults to
-@racket[*], unless a bound determines it (a parameter bounded by a
-class whose corresponding parameter is higher-kinded inherits that
-kind).  Kinds are written as @racket[*] for ordinary types or
+@racket[*], unless a superclass determines it.  Wherever a parameter
+appears directly as an argument of a superclass constraint — whether
+as a bound's subject (@racket[[w => Functor]], i.e. @racket[(Functor
+w)]) or mentioned inside another parameter's bound (@racket[[g =>
+(Pairing f)]], i.e. @racket[(Pairing f g)], which pins @racket[f] as
+well) — it inherits the kind of the corresponding parameter of that
+superclass.  Kinds are written as @racket[*] for ordinary types or
 @racket[(-> k1 k2)] for type-constructor kinds.
 
 A class may declare one or more functional dependencies via

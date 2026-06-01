@@ -2683,23 +2683,24 @@
               "class head arguments must be (kind-annotated) type variables"
               stx)])))
   ;; A parameter with no explicit `::` kind may still be higher-kinded by
-  ;; virtue of a superclass bound: if `name` is the FINAL argument of some
-  ;; super-constraint, it occupies that superclass's last parameter, so it
-  ;; inherits that parameter's (already-core) kind.  This is the Variant-A
-  ;; "kind from bound" rule; `[w => Functor]` gives `w` the kind `* -> *`
-  ;; without an explicit annotation.  Superclasses are always declared
-  ;; before their subclasses, so the lookup is resolved in `env`.
+  ;; virtue of a superclass: wherever `name` appears as a direct argument
+  ;; of a super-constraint `(C … name …)`, it occupies the corresponding
+  ;; parameter of `C` and inherits that parameter's (already-core) kind.
+  ;; This covers both the bound's subject — `[w => Functor]` ⇒ `(Functor
+  ;; w)`, giving `w` the kind `* -> *` (the bound's last position) — and a
+  ;; bare parameter mentioned earlier in another bound — `[g => (Pairing
+  ;; f)]` ⇒ `(Pairing f g)`, giving the bare `f` the kind of `Pairing`'s
+  ;; first parameter.  Superclasses are always declared before their
+  ;; subclasses, so the lookup is resolved in `env`.
   (define (kind-from-supers name)
     (for/or ([s (in-list supers)])
-      (define args (constraint-args s))
-      (and (pair? args)
-           (ty:var? (last args))
-           (eq? (ty:var-name (last args)) name)
-           (let ([cinfo (env-ref-class env (constraint-class s) #f)])
-             (and cinfo
-                  (pair? (class-info-params cinfo))
-                  (hash-ref (class-info-kinds cinfo)
-                            (last (class-info-params cinfo)) #f))))))
+      (define cinfo (env-ref-class env (constraint-class s) #f))
+      (and cinfo
+           (for/or ([a (in-list (constraint-args s))]
+                    [p (in-list (class-info-params cinfo))])
+             (and (ty:var? a)
+                  (eq? (ty:var-name a) name)
+                  (hash-ref (class-info-kinds cinfo) p #f))))))
   (define class-kinds
     (for/fold ([acc (hasheq)])
               ([raw (in-list (constraint-args head))]

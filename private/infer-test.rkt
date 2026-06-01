@@ -222,4 +222,32 @@
      '((protocol (Eq a) (: == (-> a (-> a Boolean))))
        (define (eq-twice x) (== x x)))))
   (check-equal? (scheme->datum (env-ref-var eq-twice-env 'eq-twice))
-                '(All (a) ((Eq a) => (-> a Boolean)))))
+                '(All (a) ((Eq a) => (-> a Boolean))))
+
+  ;; ----- Variant B: kind of a bare param inferred from a bound -------
+  ;;
+  ;; In `(Sub f [g => (Rel f)])`, `f` is bare yet appears as Rel's first
+  ;; (`* -> *`) argument inside g's bound `(Rel f g)`.  Its recorded kind
+  ;; must match both the explicit `[f :: (-> * *)]` form and Rel's own
+  ;; first-parameter kind — not the bare default `*`.
+  (define rel-decl
+    '(protocol (Rel (p :: (-> * *)) (q :: (-> * *)))
+       (: rel (-> (p a) (q a)))))
+  (define sub-bare-env
+    (program-env
+     (list rel-decl
+           '(protocol (Sub f [g => (Rel f)])
+              (: use (-> (f a) (g a)))))))
+  (define sub-expl-env
+    (program-env
+     (list rel-decl
+           '(protocol (Sub [f :: (-> * *)] [g => (Rel f)])
+              (: use (-> (f a) (g a)))))))
+  (define (param-kind env cls p)
+    (hash-ref (class-info-kinds (env-ref-class env cls)) p))
+  ;; bare `f` records the same kind as the explicit annotation …
+  (check-equal? (param-kind sub-bare-env 'Sub 'f)
+                (param-kind sub-expl-env 'Sub 'f))
+  ;; … which is Rel's first-parameter kind (`* -> *`), not `*`.
+  (check-equal? (param-kind sub-bare-env 'Sub 'f)
+                (param-kind sub-bare-env 'Rel 'p)))
