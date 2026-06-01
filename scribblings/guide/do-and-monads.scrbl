@@ -15,7 +15,7 @@ A @racket[Monad] is a higher-kinded class providing @racket[flatmap]
 (the function-first cousin of Haskell's @tt{>>=}):
 
 @codeblock|{
-(protocol ((Applicative m) => (Monad (m :: (-> * *))))
+(protocol (Monad [m => Applicative])
   (: flatmap (-> (-> a (m b)) (-> (m a) (m b)))))
 }|
 

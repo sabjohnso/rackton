@@ -27,7 +27,7 @@
 
     ;; --- Ord (Eq is a superclass) -------------------------------
 
-    (protocol ((Eq a) => (Ord a))
+    (protocol (Ord [a => Eq])
       (: <  (-> a (-> a Boolean)))
       (: >  (-> a (-> a Boolean)))
       (: <= (-> a (-> a Boolean)))
@@ -204,7 +204,7 @@
     ;; instance must define at least one of the three; omitting all of
     ;; them is rejected at compile time (see check-default-cycles in
     ;; private/infer.rkt).
-    (protocol ((Functor f) => (Applicative (f :: (-> * *))))
+    (protocol (Applicative [f => Functor])
       (: pure    (-> a (f a)))
       (: fapply  (-> (f (-> a b)) (-> (f a) (f b))))
       (: liftA2  (-> (-> a (-> b c)) (-> (f a) (-> (f b) (f c)))))
@@ -218,7 +218,7 @@
     ;; defaults.  An instance must define at least one.  flatmap takes
     ;; the continuation first and the monadic value second; the
     ;; ordering matches `flip (>>=)` from Haskell.
-    (protocol ((Applicative m) => (Monad (m :: (-> * *))))
+    (protocol (Monad [m => Applicative])
       (: flatmap (-> (-> a (m b)) (-> (m a) (m b))))
       (: join    (-> (m (m a)) (m a)))
       (define (flatmap f ma) (join (fmap f ma)))
@@ -401,7 +401,7 @@
     (protocol (Semigroup a)
       (: <> (-> a (-> a a))))
 
-    (protocol ((Semigroup a) => (Monoid a))
+    (protocol (Monoid [a => Semigroup])
       (: mempty a))
 
     (instance (Semigroup String)
@@ -476,7 +476,7 @@
 
     ;; ----- MonadState -------------------------------------------
 
-    (protocol ((Monad m) => (MonadState s (m :: (-> * *))))
+    (protocol (MonadState s [m => Monad])
       (#:fundep m -> s)
       (: get-st    (m s))
       (: put-st    (-> s (m Unit)))
@@ -493,7 +493,7 @@
 
     ;; ----- MonadEnv (Reader) ------------------------------------
 
-    (protocol ((Monad m) => (MonadEnv r (m :: (-> * *))))
+    (protocol (MonadEnv r [m => Monad])
       (#:fundep m -> r)
       (: ask-en   (m r))
       (: local-en (-> (-> r r) (-> (m a) (m a)))))
@@ -508,7 +508,7 @@
 
     ;; ----- MonadWriter ------------------------------------------
 
-    (protocol ((Monoid w) (Monad m) => (MonadWriter w (m :: (-> * *))))
+    (protocol (MonadWriter [w => Monoid] [m => Monad])
       (#:fundep m -> w)
       (: tell-w (-> w (m Unit)))
       (: listen (-> (m a) (m (Pair a w))))
@@ -524,7 +524,7 @@
 
     ;; ----- MonadError -------------------------------------------
 
-    (protocol ((Monad m) => (MonadError e (m :: (-> * *))))
+    (protocol (MonadError e [m => Monad])
       (#:fundep m -> e)
       (: throw-e (-> e (m a)))
       (: catch-e (-> (m a) (-> (-> e (m a)) (m a)))))
@@ -620,7 +620,7 @@
     ;; through one layer at a time.  lift-io is return-typed (dispatches
     ;; on the result monad), so the class lives here in the prelude and
     ;; instances register cross-module via the dispatch table.
-    (protocol ((Monad m) => (MonadIO (m :: (-> * *))))
+    (protocol (MonadIO [m => Monad])
       (: lift-io (-> (IO a) (m a))))
 
     (instance (MonadIO IO)
@@ -687,7 +687,7 @@
 
     (data (Future a))
 
-    (protocol ((Monad m) => (Concurrent (m :: (-> * *))))
+    (protocol (Concurrent [m => Monad])
       (: fork-c   (-> (m a) (m (Future a))))
       (: await-c  (-> (Future a) (m a)))
       (: yield-c  (m Unit)))
@@ -791,7 +791,7 @@
     (instance (Show Float)
       (define (show x) (racket String (x) "")))
 
-    (protocol ((Num a) => (Fractional a))
+    (protocol (Fractional [a => Num])
       (: float-div (-> a (-> a a))))
 
     (instance (Fractional Float)
@@ -867,7 +867,7 @@
 
     ;; --- Integral class ----------------------------
 
-    (protocol ((Num a) => (Integral a))
+    (protocol (Integral [a => Num])
       (: div  (-> a (-> a a)))
       (: mod  (-> a (-> a a)))
       (: quot (-> a (-> a a)))
@@ -881,7 +881,7 @@
 
     ;; --- Real class --------------------------------
 
-    (protocol ((Num a) (Ord a) => (Real a))
+    (protocol (Real [a => Num Ord])
       (: to-rational (-> a Rational)))
 
     (instance (Real Integer)
@@ -893,7 +893,7 @@
 
     ;; --- Floating class ----------------------------
 
-    (protocol ((Fractional a) => (Floating a))
+    (protocol (Floating [a => Fractional])
       (: pi   a)
       (: exp  (-> a a))
       (: log  (-> a a))
@@ -929,7 +929,7 @@
     ;; future Racket-side helpers; the rounding operations all
     ;; produce Integer regardless of `a`.
 
-    (protocol ((Real a) (Fractional a) => (RealFrac a))
+    (protocol (RealFrac [a => Real Fractional])
       (: floor-real    (-> a Integer))
       (: ceiling-real  (-> a Integer))
       (: round-real    (-> a Integer))
@@ -948,7 +948,7 @@
 
     ;; --- RealFloat class ---------------------------
 
-    (protocol ((RealFrac a) (Floating a) => (RealFloat a))
+    (protocol (RealFloat [a => RealFrac Floating])
       (: is-nan?      (-> a Boolean))
       (: is-infinite? (-> a Boolean))
       (: atan2        (-> a (-> a a))))

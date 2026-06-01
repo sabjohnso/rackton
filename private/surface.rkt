@@ -1475,11 +1475,10 @@
              stx)]))
 
 ;; Parse a constraint expression like `(Eq a)` or `(Foo (Maybe a))`.
-;; The head must be a non-lowercase identifier (a class name).  The
-;; constraint args may be plain types OR — when this constraint appears
-;; as a class head — kind-annotated type vars `(var :: kind)`, in which
-;; case the kind annotation is stripped and the resulting type-var
-;; remembers its kind via the syntax property 'rackton:kind on its stx.
+;; The head must be a non-lowercase identifier (a class name); every
+;; argument is a plain type.  (Kind-annotated class parameters appear
+;; only in a `protocol` head, which `parse-class-head` handles — not
+;; through this entry point.)
 (define (parse-constraint stx)
   (syntax-parse stx
     [(name:id arg ...+)
@@ -1487,23 +1486,8 @@
      "class name in a constraint must be a non-lowercase identifier"
      (constraint (syntax->datum #'name)
                  (for/list ([a (in-list (syntax->list #'(arg ...)))])
-                   (parse-constraint-arg a))
+                   (parse-type a))
                  stx)]))
-
-;; Constraint args may be either plain types or kind-annotated type
-;; variables `(var :: kind)`.  We parse the annotated form as a plain
-;; ty:var whose stx carries the kind as a property; the caller (the
-;; class-form handler) reads it back when computing param kinds.
-(define (parse-constraint-arg stx)
-  (syntax-parse stx
-    #:datum-literals (::)
-    [(v:id :: k)
-     #:fail-unless (lowercase-id? (syntax->datum #'v))
-     "kind-annotated class parameter must be a lowercase identifier"
-     (define kind (parse-kind-stx #'k))
-     (define annotated (syntax-property #'v 'rackton:kind kind))
-     (ty:var (syntax->datum #'v) annotated)]
-    [_ (parse-type stx)]))
 
 ;; Parse a kind expression: `*` or `(-> k1 k2 …)`.  Like the type arrow,
 ;; the kind arrow is variadic in surface syntax and right-associates into
@@ -1706,20 +1690,18 @@
                         stx
                         #'sname)]
 
-    ;; A protocol with a superclass list: ((C1 a) ... => (D a))
-    [(protocol (sup ...+ => head) body ...)
-     (top:class (for/list ([s (in-list (syntax->list #'(sup ...)))])
-                  (parse-constraint s))
-                (parse-constraint #'head)
-                (for/list ([m (in-list (syntax->list #'(body ...)))])
-                  (parse-class-method m))
-                stx)]
-    ;; A protocol with no superclasses: (D a)
+    ;; A protocol: `(Name binder …)`, with superclasses expressed as
+    ;; per-parameter `=>` bounds on the binders and/or `(#:requires …)`
+    ;; clauses in the body.  The prefix form `((Super x) … => (Name …))`
+    ;; has been retired.
     [(protocol head body ...)
-     (top:class '()
-                (parse-constraint #'head)
-                (for/list ([m (in-list (syntax->list #'(body ...)))])
-                  (parse-class-method m))
+     (define-values (head-constraint bound-supers)
+       (parse-class-head #'head))
+     (define-values (req-supers methods)
+       (parse-class-body (syntax->list #'(body ...))))
+     (top:class (append bound-supers req-supers)
+                head-constraint
+                methods
                 stx)]
 
     ;; Instance with context: ((Eq a) ... => (Eq (Maybe a)))
@@ -1755,6 +1737,89 @@
                   (parse-type a))
                 (parse-type #'result)
                 stx)]))
+
+;; ----- protocol head -----------------------------------------------
+;;
+;; A `protocol` head is `(Name binder …)`.  Each binder is one of:
+;;   v            — a plain parameter (kind inferred / defaults to *)
+;;   [v :: k]     — an explicit kind annotation, no superclass
+;;   [v => B …]   — one or more superclass BOUNDS on `v`
+;; A bound `B` is a class head missing its final argument; `v` supplies
+;; it.  So `[v => Functor]` ⇒ `(Functor v)` and `[v => (Pairing f)]` ⇒
+;; `(Pairing f v)`.  The head desugars to a plain class constraint plus
+;; a list of superclass constraints, matching the representation the old
+;; prefix form `((Super x) … => (Name …))` produced.
+
+;; Desugar one bound entry `B` for parameter `var` into a superclass
+;; constraint, appending `var` as the final argument.
+(define (bound->constraint stx var)
+  (syntax-parse stx
+    [c:id
+     #:fail-unless (not (lowercase-id? (syntax->datum #'c)))
+     "superclass in a bound must be a non-lowercase class name"
+     (constraint (syntax->datum #'c) (list var) stx)]
+    [(c:id arg ...+)
+     #:fail-unless (not (lowercase-id? (syntax->datum #'c)))
+     "superclass head in a bound must be a non-lowercase class name"
+     (constraint (syntax->datum #'c)
+                 (append (for/list ([a (in-list (syntax->list #'(arg ...)))])
+                           (parse-type a))
+                         (list var))
+                 stx)]))
+
+;; Parse one head binder.  Returns (values head-tyvar bound-constraints).
+;; The head-tyvar carries an explicit kind on its stx as 'rackton:kind
+;; when written `[v :: k]`; otherwise the kind is left to inference.
+(define (parse-class-param stx)
+  (syntax-parse stx
+    #:datum-literals (:: =>)
+    [v:id
+     #:fail-unless (lowercase-id? (syntax->datum #'v))
+     "class parameter must be a lowercase identifier"
+     (values (ty:var (syntax->datum #'v) #'v) '())]
+    [(v:id :: k)
+     #:fail-unless (lowercase-id? (syntax->datum #'v))
+     "class parameter must be a lowercase identifier"
+     (values (ty:var (syntax->datum #'v)
+                     (syntax-property #'v 'rackton:kind (parse-kind-stx #'k)))
+             '())]
+    [(v:id => b ...+)
+     #:fail-unless (lowercase-id? (syntax->datum #'v))
+     "class parameter must be a lowercase identifier"
+     (define var (ty:var (syntax->datum #'v) #'v))
+     (values var
+             (for/list ([b (in-list (syntax->list #'(b ...)))])
+               (bound->constraint b var)))]))
+
+;; Parse a protocol head `(Name binder …)` into (values head-constraint
+;; bound-supers), where bound-supers are the superclass constraints
+;; contributed by `=>` bounds on the binders.
+(define (parse-class-head stx)
+  (syntax-parse stx
+    [(name:id binder ...+)
+     #:fail-unless (not (lowercase-id? (syntax->datum #'name)))
+     "class name must be a non-lowercase identifier"
+     (define-values (vars super-lists)
+       (for/lists (vs ss)
+                  ([b (in-list (syntax->list #'(binder ...)))])
+         (parse-class-param b)))
+     (values (constraint (syntax->datum #'name) vars stx)
+             (append* super-lists))]))
+
+;; Split a protocol body into superclass constraints contributed by
+;; `(#:requires c …)` clauses and the remaining method items.  Keyword
+;; clauses self-quote in syntax-parse, like `#:fundep` / `#:type`.
+(define (parse-class-body items)
+  (for/fold ([supers '()] [methods '()]
+             #:result (values (reverse supers) (reverse methods)))
+            ([item (in-list items)])
+    (syntax-parse item
+      [(#:requires c ...+)
+       (values (append (reverse (for/list ([cs (in-list (syntax->list #'(c ...)))])
+                                  (parse-constraint cs)))
+                       supers)
+               methods)]
+      [_ (values supers (cons (parse-class-method item) methods))])))
 
 ;; A method form inside `protocol`: either a `(: name type)` signature,
 ;; a `(define ...)` providing a default implementation, or a functional

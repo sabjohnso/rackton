@@ -29,12 +29,25 @@ class constraint.
 
 @section{Superclasses}
 
-A class can demand its parameters already satisfy another class:
+A class can demand its parameters already satisfy another class.  The
+requirement is written as a @tech{bound} on the parameter, after
+@racket[=>]:
 
 @codeblock|{
-(protocol ((Eq a) => (Ord a))
+(protocol (Ord [a => Eq])
   (: < (-> a (-> a Boolean))))
 }|
+
+A bound @racket[[a => Eq]] reads ``@racket[a] is an @racket[Eq]'' and
+desugars to the superclass constraint @racket[(Eq a)].  Several classes
+may be stacked on one parameter (@racket[[a => Num Ord]]), and a
+multi-parameter class bounds each parameter in turn
+(@racket[(MonadWriter [w => Monoid] [m => Monad])]).  When the bound's
+class needs more arguments, supply them and let the parameter fill the
+last slot: @racket[[b => (Convert a)]] desugars to @racket[(Convert a b)].
+A superclass that genuinely relates several parameters at once is
+written instead as a trailing @racket[(#:requires (C …))] clause in the
+body.
 
 Superclass closure is followed during entailment: any program with an
 @racket[Ord] constraint on @racket[a] automatically discharges
@@ -103,7 +116,7 @@ whichever method is most natural and the others derive.  The prelude's
 @racket[Monad] is a 2-cycle:
 
 @codeblock|{
-(protocol ((Applicative m) => (Monad (m :: (-> * *))))
+(protocol (Monad [m => Applicative])
   (: flatmap (-> (-> a (m b)) (-> (m a) (m b))))
   (: join    (-> (m (m a)) (m a)))
   (define (flatmap f ma) (join (fmap f ma)))

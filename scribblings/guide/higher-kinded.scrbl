@@ -78,10 +78,13 @@ inconsistent with the fundep.
 @section{Higher-kinded with constraint}
 
 The two combine naturally — @racket[Monad] is a higher-kinded class
-with a @racket[Functor] superclass:
+with a @racket[Functor] superclass.  The bound carries both facts at
+once: because @racket[Functor]'s parameter has kind @racket[(-> * *)],
+the bound @racket[[m => Functor]] makes @racket[m] higher-kinded
+without a separate @racket[::] annotation:
 
 @codeblock|{
-(protocol ((Functor m) => (Monad (m :: (-> * *))))
+(protocol (Monad [m => Functor])
   (: flatmap (-> (-> a (m b)) (-> (m a) (m b)))))
 }|
 

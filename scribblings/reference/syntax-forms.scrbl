@@ -150,16 +150,20 @@ have the appropriate polymorphic schemes.
 @racket[data], including @racket[Foldable] and the auto-derived
 field-lens family.}
 
-@defform*[
-          [(protocol class-head method ...)
-           (protocol (super-class ... => class-head) method ...)]
+@defform[
+          (protocol class-head method ...)
           #:grammar
           ([class-head    (ClassName param ...)]
-           [param         id (id :: kind)]
-           [super-class   (ClassName var ...)]
+           [param         id
+                          (id :: kind)
+                          (id => bound ...)]
+           [bound         ClassName
+                          (ClassName type ...)]
            [method        (code:line (: method-name type))
                           (code:line (define (method-name p ...) body))
-                          (code:line #:fundep var ... -> var ...)])]{
+                          (code:line #:requires constraint ...)
+                          (code:line #:fundep var ... -> var ...)]
+           [constraint    (ClassName type ...)])]{
 
 Declares a type class.  Each method signature
 (@racket[(: name type)]) is added to the value environment with a
@@ -168,9 +172,23 @@ polymorphic use of the method automatically carries the class
 constraint.  Default method bodies (@racket[(define …)]) are used by
 instances that omit the corresponding method.
 
+A superclass requirement is written as a @deftech{bound} on the
+parameter it constrains: @racket[(id => bound ...)].  A bare
+@racket[ClassName] bound on @racket[id] desugars to the constraint
+@racket[(ClassName id)]; a partially-applied bound
+@racket[(ClassName type ...)] appends @racket[id] as the final
+argument, so @racket[(b => (Convert a))] desugars to
+@racket[(Convert a b)].  Several bounds may be stacked on one
+parameter (@racket[(a => Num Ord)]).  A superclass that relates several
+parameters at once — and so cannot be attached to a single
+parameter — is written as a trailing @racket[#:requires] clause in the
+body, listing the constraints directly.
+
 Class parameters may carry an explicit kind annotation
 (@racket[(param :: kind)]); without one the kind defaults to
-@racket[*].  Kinds are written as @racket[*] for ordinary types or
+@racket[*], unless a bound determines it (a parameter bounded by a
+class whose corresponding parameter is higher-kinded inherits that
+kind).  Kinds are written as @racket[*] for ordinary types or
 @racket[(-> k1 k2)] for type-constructor kinds.
 
 A class may declare one or more functional dependencies via

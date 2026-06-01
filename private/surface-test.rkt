@@ -260,20 +260,72 @@
                                     #f))
                   #f))
 
-  ;; Class with superclass
-  (check-equal? (ptop '(protocol ((Eq a) => (Ord a))
-                         (: < (-> a (-> a Boolean)))))
+  ;; A simple `(-> x y)` arrow, used to keep the bound cases readable.
+  (define (arr x y) (ty:app (ty:con '-> #f) (list x y) #f))
+
+  ;; Superclass as a per-parameter bound: `[a => Eq]` desugars to a
+  ;; super-constraint `(Eq a)` plus a plain `a` in the head.
+  (check-equal? (ptop '(protocol (Ord [a => Eq])
+                         (: < (-> a a))))
                 (top:class
                   (list (constraint 'Eq (list (ty:var 'a #f)) #f))
                   (constraint 'Ord (list (ty:var 'a #f)) #f)
-                  (list (method-sig '<
-                                    (ty:app (ty:con '-> #f)
-                                            (list (ty:var 'a #f)
-                                                  (ty:app (ty:con '-> #f)
-                                                          (list (ty:var 'a #f)
-                                                                (ty:con 'Boolean #f)) #f)) #f)
-                                    #f))
+                  (list (method-sig '< (arr (ty:var 'a #f) (ty:var 'a #f)) #f))
                   #f))
+
+  ;; Multiple superclasses on one parameter: `[a => Num Ord]`.
+  (check-equal? (ptop '(protocol (Real [a => Num Ord])
+                         (: r (-> a a))))
+                (top:class
+                  (list (constraint 'Num (list (ty:var 'a #f)) #f)
+                        (constraint 'Ord (list (ty:var 'a #f)) #f))
+                  (constraint 'Real (list (ty:var 'a #f)) #f)
+                  (list (method-sig 'r (arr (ty:var 'a #f) (ty:var 'a #f)) #f))
+                  #f))
+
+  ;; Bounds on different parameters of a multi-parameter class.
+  (check-equal? (ptop '(protocol (MonadWriter [w => Monoid] [m => Monad])
+                         (: tell (-> w w))))
+                (top:class
+                  (list (constraint 'Monoid (list (ty:var 'w #f)) #f)
+                        (constraint 'Monad  (list (ty:var 'm #f)) #f))
+                  (constraint 'MonadWriter
+                              (list (ty:var 'w #f) (ty:var 'm #f)) #f)
+                  (list (method-sig 'tell (arr (ty:var 'w #f) (ty:var 'w #f)) #f))
+                  #f))
+
+  ;; Partially-applied bound: `[b => (Convert a)]` desugars to the
+  ;; relational super-constraint `(Convert a b)` (bound var fills the
+  ;; last slot).  `a` is a bare parameter.
+  (check-equal? (ptop '(protocol (BiConvert a [b => (Convert a)])
+                         (: backward (-> b a))))
+                (top:class
+                  (list (constraint 'Convert
+                                    (list (ty:var 'a #f) (ty:var 'b #f)) #f))
+                  (constraint 'BiConvert
+                              (list (ty:var 'a #f) (ty:var 'b #f)) #f)
+                  (list (method-sig 'backward
+                                    (arr (ty:var 'b #f) (ty:var 'a #f)) #f))
+                  #f))
+
+  ;; Trailing `#:requires` clause for a relational superclass.
+  (check-equal? (ptop '(protocol (BiConvert a b)
+                         (#:requires (Convert a b))
+                         (: backward (-> b a))))
+                (top:class
+                  (list (constraint 'Convert
+                                    (list (ty:var 'a #f) (ty:var 'b #f)) #f))
+                  (constraint 'BiConvert
+                              (list (ty:var 'a #f) (ty:var 'b #f)) #f)
+                  (list (method-sig 'backward
+                                    (arr (ty:var 'b #f) (ty:var 'a #f)) #f))
+                  #f))
+
+  ;; The retired prefix superclass head is a parse error.
+  (check-exn exn:fail?
+             (lambda ()
+               (ptop '(protocol ((Eq a) => (Ord a))
+                        (: < (-> a a))))))
 
   ;; Class with a default-method implementation
   (check-equal? (ptop '(protocol (Foo a)

@@ -13,7 +13,7 @@
   (define (neq x y)
     (if (eq x y) #f #t)))
 
-(protocol ((Eq a) => (Ord a))
+(protocol (Ord [a => Eq])
   (: lt (-> a (-> a Boolean)))
   (: gt (-> a (-> a Boolean)))
   (define (gt x y) (lt y x)))

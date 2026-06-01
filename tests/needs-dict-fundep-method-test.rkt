@@ -20,7 +20,7 @@
 
 ;; A fundep class with both a VALUE-form (held) and a FUNCTION-form
 ;; (mk) return-typed method, each needing the inner monad's `pure`.
-(protocol ((Monad m) => (Holder s (m :: (-> * *))))
+(protocol (Holder s [m => Monad])
   (#:fundep m -> s)
   (: held (m s))
   (: mk   (-> s (m s))))

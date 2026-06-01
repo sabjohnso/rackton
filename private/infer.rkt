@@ -2644,6 +2644,24 @@
         [_ (raise-syntax-error 'infer
               "class head arguments must be (kind-annotated) type variables"
               stx)])))
+  ;; A parameter with no explicit `::` kind may still be higher-kinded by
+  ;; virtue of a superclass bound: if `name` is the FINAL argument of some
+  ;; super-constraint, it occupies that superclass's last parameter, so it
+  ;; inherits that parameter's (already-core) kind.  This is the Variant-A
+  ;; "kind from bound" rule; `[w => Functor]` gives `w` the kind `* -> *`
+  ;; without an explicit annotation.  Superclasses are always declared
+  ;; before their subclasses, so the lookup is resolved in `env`.
+  (define (kind-from-supers name)
+    (for/or ([s (in-list supers)])
+      (define args (constraint-args s))
+      (and (pair? args)
+           (ty:var? (last args))
+           (eq? (ty:var-name (last args)) name)
+           (let ([cinfo (env-ref-class env (constraint-class s) #f)])
+             (and cinfo
+                  (pair? (class-info-params cinfo))
+                  (hash-ref (class-info-kinds cinfo)
+                            (last (class-info-params cinfo)) #f))))))
   (define class-kinds
     (for/fold ([acc (hasheq)])
               ([raw (in-list (constraint-args head))]
@@ -2653,8 +2671,12 @@
          (define surface-kind
            (and (syntax? var-stx)
                 (syntax-property var-stx 'rackton:kind)))
-         (hash-set acc name (surface-kind->core
-                             (or surface-kind (k:star))))]
+         (define kind
+           (cond
+             [surface-kind (surface-kind->core surface-kind)]
+             [(kind-from-supers name) => values]
+             [else (surface-kind->core (k:star))]))
+         (hash-set acc name kind)]
         [_ (hash-set acc name (kind-star))])))
   (define super-preds
     (for/list ([s (in-list supers)]) (resolve-constraint s)))
