@@ -49,6 +49,13 @@ A superclass that genuinely relates several parameters at once is
 written instead as a trailing @racket[(#:requires (C …))] clause in the
 body.
 
+The older head-prefix form, which listed superclasses before the class
+head as @racket[(protocol ((Eq a) => (Ord a)) …)], has been retired and
+is now a syntax error.  Restate each superclass as a parameter bound or
+a @racket[#:requires] clause.  (This is distinct from an @italic{instance}
+context, @racket[((Eq a) => (Eq (Maybe a)))], which is unchanged — see
+below.)
+
 Superclass closure is followed during entailment: any program with an
 @racket[Ord] constraint on @racket[a] automatically discharges
 @racket[Eq] constraints on the same type.
