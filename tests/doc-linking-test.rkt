@@ -12,7 +12,8 @@
 ;; identifier is exported.
 
 (require racket/string
-         rackunit)
+         rackunit
+         "doc-names.rkt")   ; shared surface-forms / provide-specs
 
 (dynamic-require 'rackton #f)
 
@@ -30,17 +31,8 @@
 ;; Hand-maintained categorisations of names that must link.  Keep
 ;; these in sync with the reference's @defform / @defidform / @defthing
 ;; entries; the doc-coverage test enforces the opposite direction.
-
-(define surface-forms
-  '(define : data newtype struct
-     protocol instance define-alias define-effect
-     lambda λ let let& let% let+ letrec match-let where
-     if cond match do list ann update escape racket handle
-     require provide foreign foreign-c
-     All))
-
-(define provide-specs
-  '(all-defined-out all-from-out data-out struct-out protocol-out rename-out except-out))
+;; `surface-forms` and `provide-specs` are shared with doc-coverage via
+;; "doc-names.rkt"; the categorisations below are doc-linking-specific.
 
 (define type-ctors
   '(Integer Float Rational Complex Boolean String Char Bytes Unit

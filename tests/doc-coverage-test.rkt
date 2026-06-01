@@ -30,7 +30,8 @@
          racket/file
          racket/path
          racket/match
-         rackunit)
+         rackunit
+         "doc-names.rkt")   ; shared surface-forms / provide-specs
 
 ;; We don't `(require rackton)` directly because rackton re-exports
 ;; many names that collide with racket/base / racket/list (`first`,
@@ -47,20 +48,8 @@
               "scribblings" "reference"))
 
 ;; ----- expected names ----------------------------------------------
-
-;; Surface forms are macros recognised by private/surface.rkt, not
-;; identifiers exported by main.rkt.  Hand-maintained.
-(define surface-forms
-  '(define : data newtype struct
-     protocol instance define-alias define-effect
-     lambda λ let let& let% let+ letrec match-let where
-     if cond match do list ann update escape racket handle
-     require provide foreign foreign-c
-     All))
-
-;; Provide-spec heads recognised in (provide ...) bodies.
-(define provide-specs
-  '(all-defined-out all-from-out data-out struct-out protocol-out rename-out except-out))
+;; `surface-forms` and `provide-specs` come from "doc-names.rkt" (shared
+;; with doc-linking-test); the lists below are doc-coverage-specific.
 
 ;; REPL commands accepted by the interactive REPL.
 (define repl-commands
