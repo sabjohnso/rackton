@@ -14,7 +14,7 @@ Racket.  Highlights:
   recursion via declared schemes, full GADTs with skolem refinement,
   rank-N polymorphism (`All`), existential types, type aliases, and
   associated types (type families).
-- **Data** — ADTs, records (`define-struct`) with polymorphic field
+- **Data** — ADTs, records (`struct`) with polymorphic field
   update, sealed abstract types, pattern matching with guards and
   `match-let`, fatal exhaustiveness checking, `#:deriving` for `Eq`,
   `Ord`, `Show`, `Functor`, `Foldable`, `Traversable`, `Bifunctor`,
@@ -60,7 +60,7 @@ Inside a regular Racket module:
 (require rackton)
 
 (rackton
-  (define-data (Maybe a) None (Some a))
+  (data (Maybe a) None (Some a))
 
   (: from-maybe (-> a (-> (Maybe a) a)))
   (define (from-maybe d m)
