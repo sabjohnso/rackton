@@ -137,6 +137,27 @@
   (check-true
    (require-name/fails? "provide-lib-except.rkt" 'internal-helper)))
 
+(test-case "(except-out ...) rejects a name absent from the nested spec"
+  ;; Racket's except-out raises when a name to drop isn't in the spec;
+  ;; Rackton matches that (catches typos) rather than silently ignoring.
+  ;; Expanded as a `rackton` MODULE because provide resolution only runs
+  ;; at module level — the eval-based check-rackton-compile-error can't
+  ;; be used here (`provide` is invalid at eval top-level regardless).
+  (define (expand-rackton-module forms)
+    (expand (datum->syntax #'here (list* 'module 'anon 'rackton forms))))
+  (check-exn
+   (lambda (e) (and (exn:fail? e)
+                    (regexp-match? #rx"except-out: no-such-binding" (exn-message e))))
+   (lambda ()
+     (expand-rackton-module
+      '((define foo 1) (: foo Integer)
+        (provide (except-out (all-defined-out) no-such-binding))))))
+  (check-not-exn
+   (lambda ()
+     (expand-rackton-module
+      '((define foo 1) (: foo Integer) (define helper 2) (: helper Integer)
+        (provide (except-out (all-defined-out) helper)))))))
+
 ;; ----- type-level hiding ----------------------------------------
 
 (test-case "hidden binding pub escapes"

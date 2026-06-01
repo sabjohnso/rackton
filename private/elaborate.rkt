@@ -322,11 +322,19 @@
     (for ([sym (in-list (published 'rackton-exported-impls))])
       (hash-set! export-vars sym sym)))
 
-  (define (remove-name name)
-    ;; except-out: drop name from every category it appears in.
-    ;; The drop is silent if the name isn't there — Racket's
-    ;; except-out raises in that case, but mirroring that adds
-    ;; complexity without practical benefit.
+  (define (remove-name name src-stx)
+    ;; except-out: drop name from every category it appears in.  Like
+    ;; Racket's except-out, a name that the nested spec never exported
+    ;; is a compile-time error (rather than a silent no-op) — so a typo
+    ;; in an except-out list is caught instead of quietly exporting the
+    ;; name it was meant to hide.
+    (unless (or (hash-has-key? export-vars       name)
+                (hash-has-key? export-data-ctors name)
+                (hash-has-key? export-tcons      name)
+                (hash-has-key? export-classes    name))
+      (raise-syntax-error 'provide
+        (format "except-out: ~s is not in the nested provide spec" name)
+        src-stx))
     (hash-remove! export-vars       name)
     (hash-remove! export-data-ctors name)
     (hash-remove! export-tcons      name)
@@ -355,7 +363,7 @@
       [(except-out inner name:id ...)
        (process-spec #'inner)
        (for ([n (in-list (syntax->list #'(name ...)))])
-         (remove-name (syntax->datum n)))]
+         (remove-name (syntax->datum n) n))]
       [_
        (raise-syntax-error 'provide
          "unsupported provide spec"

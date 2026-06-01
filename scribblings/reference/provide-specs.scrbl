@@ -84,7 +84,10 @@ Exports each @racket[old] under the external name @racket[new].
          (except-out spec name ...)]{
 
 Resolves @racket[spec], then drops each @racket[name] from the
-resulting export set.
+resulting export set.  Like Racket's @racket[except-out], a
+@racket[name] that @racket[spec] does not export is a compile-time
+error — so a typo is caught rather than silently leaving the name
+exported.
 
 @racketblock[
 (provide (except-out (all-defined-out) helper))]}
