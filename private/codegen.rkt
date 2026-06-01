@@ -68,6 +68,7 @@
          "match.rkt"
          "entail.rkt"
          "impl-symbols.rkt"
+         "monomorph-log.rkt"
          "infer.rkt")
 
 ;; Prepend `dict-arg-names` to an expression's outermost lambda
@@ -377,14 +378,13 @@
     [(not (e:var? head)) #f]
     [else
      (define resolutions (current-method-resolutions))
-     (define inlinables  (current-inlinable-bodies))
      (cond
-       [(or (not resolutions) (not inlinables)) #f]
+       [(not resolutions) #f]
        [else
         (define impl-name
           (hash-ref resolutions (e:var-stx head) #f))
         (define body
-          (and impl-name (hash-ref inlinables impl-name #f)))
+          (and impl-name (lookup-inlinable-body impl-name)))
         (cond
           [(not body) #f]
           [(not (e:lam? body)) #f]
@@ -393,10 +393,7 @@
           [else
            (define params (e:lam-params body))
            (define inner  (e:lam-body body))
-           (when (current-inlined-sites)
-             (define b (current-inlined-sites))
-             (set-box! b (cons (cons (e:var-name head) impl-name)
-                               (unbox b))))
+           (record-inlined-site! (e:var-name head) impl-name)
            (parameterize ([current-inlining-stack
                            (set-add (current-inlining-stack) impl-name)])
              (with-syntax ([(p ...) (for/list ([n (in-list params)])
@@ -995,9 +992,7 @@
      (when (and (current-inlinable-bodies)
                 (e:lam? body*)
                 (inlinable-body? (e:lam-body body*)))
-       (hash-set! (current-inlinable-bodies)
-                  impl-name-sym
-                  body*))
+       (register-inlinable-body! impl-name-sym body*))
      (define def-form
        (with-syntax ([impl-name (datum->syntax stx impl-name-sym stx)]
                      [impl      (compile-expr body*)])

@@ -34,9 +34,6 @@
          current-method-dict-resolutions
          current-dict-skolems
          current-needs-dict-defs
-         current-monomorphized-sites
-         current-inlinable-bodies
-         current-inlined-sites
          current-instance-exported-impls
          current-prelude-build?
          resolve-method-uses!)
@@ -51,6 +48,7 @@
          "surface.rkt"
          "entail.rkt"
          "impl-symbols.rkt"
+         "monomorph-log.rkt"
          "scheme-codec.rkt")
 
 ;; ----- fresh type variables -----------------------------------------
@@ -95,25 +93,11 @@
 (define current-dict-skolems    (make-parameter (hasheq)))
 (define current-needs-dict-defs (make-parameter #f))
 
-;; Log of compile-time monomorphizations.  When a
-;; positional class-method call site's dispatch type resolves to a
-;; concrete tcon, the inst-dispatch resolver records the
-;; (method-name . impl-name) pair here.  The list survives the
-;; elaborate call and is published to runtime via the emit at the
-;; end of rackton-elaborate.
-(define current-monomorphized-sites (make-parameter #f))
-
-;; Registry of inlinable method bodies.  Maps an impl
-;; name symbol (e.g. '$tag-of:Integer) to its lambda AST.  Set by
-;; compile-instance when emitting a small, leaf body; consumed by
-;; the e:app codegen which substitutes args at full-application
-;; monomorphized call sites.
-(define current-inlinable-bodies (make-parameter #f))
-
-;; Log of inlined call sites — (method . impl) pairs
-;; accumulated as the codegen substitutes bodies in place of calls.
-;; Same shape as current-monomorphized-sites.
-(define current-inlined-sites (make-parameter #f))
+;; The compile-time monomorphization & inlining logs
+;; (current-monomorphized-sites, current-inlinable-bodies,
+;; current-inlined-sites) and their record/lookup/snapshot interface live
+;; in "monomorph-log.rkt"; inference records monomorphized sites through
+;; that module's `record-monomorphized-site!`.
 
 ;; Box holding the impl-name symbols of needs-dict return-typed
 ;; instance methods generated in THIS module (e.g. '$pure:StateT,
@@ -3291,9 +3275,7 @@
               (define impl
                 (return-impl-symbol method-name keep-tcon-names))
               (hash-set! resolutions stx impl)
-              (when (current-monomorphized-sites)
-                (define b (current-monomorphized-sites))
-                (set-box! b (cons (cons method-name impl) (unbox b))))]))]))
+              (record-monomorphized-site! method-name impl)]))]))
     (hash-clear! uses)))
 
 ;; Does this instance have a real, named compile-emitted

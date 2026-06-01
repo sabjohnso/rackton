@@ -20,6 +20,7 @@
                      "surface.rkt"
                      "infer.rkt"
                      "codegen.rkt"
+                     "monomorph-log.rkt"
                      "prelude.rkt"
                      "scheme-codec.rkt"
                      "env.rkt")
@@ -118,13 +119,13 @@
                  [current-needs-dict-defs         (make-hash)]
                  ;; Monomorphization log starts empty per elaborate,
                  ;; accumulates each resolved site.
-                 [current-monomorphized-sites     (box '())]
+                 [current-monomorphized-sites     (make-monomorph-log)]
                  ;; inlinable-bodies is populated by
                  ;; compile-instance; the inlined-sites log mirrors
                  ;; the monomorphization log but for actually
                  ;; substituted call sites.
-                 [current-inlinable-bodies        (make-hasheq)]
-                 [current-inlined-sites           (box '())]
+                 [current-inlinable-bodies        (make-inlinable-registry)]
+                 [current-inlined-sites           (make-monomorph-log)]
                  ;; Generated needs-dict return-typed impl names that
                  ;; must be exported so cross-module call sites bind.
                  [current-instance-exported-impls (box '())])
@@ -151,8 +152,8 @@
     ;; monomorphization log via the codegen-exposed setter.  The
     ;; rackton-monomorphized-sites accessor returns this list so
     ;; tests can verify the optimization fired.
-    (define mono-log (unbox (current-monomorphized-sites)))
-    (define inline-log (unbox (current-inlined-sites)))
+    (define mono-log (monomorphized-sites-snapshot))
+    (define inline-log (inlined-sites-snapshot))
     ;; Pass the logs alongside compiled forms; the
     ;; rackton macro turns them into runtime forms.
     (define-values (final-compiled prov-stx bs dcs tcs cls insts impls)
