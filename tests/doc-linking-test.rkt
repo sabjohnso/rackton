@@ -36,7 +36,7 @@
      protocol instance define-alias define-effect
      lambda λ let let& let% let+ letrec match-let where
      if cond match do list ann update escape racket handle
-     require provide foreign
+     require provide foreign foreign-c
      All))
 
 (define provide-specs
@@ -54,10 +54,11 @@
     Show
     Functor Applicative Monad Foldable Traversable Bifunctor
     Semigroup Monoid
-    MonadState MonadEnv MonadWriter MonadError Concurrent))
+    MonadState MonadEnv MonadWriter MonadError Concurrent
+    Storable))
 
 (define return-typed-methods
-  '(pure mempty get-st ask-en await-c yield-c pi))
+  '(pure mempty get-st ask-en await-c yield-c pi peek))
 
 (define (check-all-bound category names)
   (define unbound (filter (lambda (n) (not (bound? n))) names))

@@ -36,6 +36,12 @@ Racket.  Highlights:
   error recovery (`try` / `raise-io`), algebraic effects + handlers,
   threads/MVars/channels, STM (`TVar`/`atomically`/`retry`), and a
   polymorphic `Concurrent` class.
+- **Foreign function interface** — `foreign` imports a host (Racket)
+  binding under a Rackton type; `foreign-c` binds an external C
+  function via `get-ffi-obj`; `rackton/foreign/ptr` provides an unsafe
+  `Ptr` core (malloc / peek / poke / free) with the `Storable` class
+  for polymorphic `peek`/`poke`. The declared type is an unchecked
+  trust boundary — these are deliberately unsafe.
 - **Surfaces** — embedded `(rackton ...)` macro (multiple blocks per
   Racket module) and whole-module `#lang rackton`, with multi-file
   imports that carry bindings, data types, records, classes, and

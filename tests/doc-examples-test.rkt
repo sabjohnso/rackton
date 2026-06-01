@@ -163,3 +163,18 @@
 (test-case "values flip and compose are typed prelude bindings"
   (check-equal? flipped  7)
   (check-equal? composed 7))
+
+;; ----- foreign.scrbl: import a host binding with `foreign` ----------
+
+(rackton
+  (foreign str-replace (-> String (-> String (-> String String)))
+           #:from racket/string #:as string-replace)
+
+  (: slashify (-> String String))
+  (define (slashify s) (str-replace s "." "/"))
+
+  (: slashified String)
+  (define slashified (slashify "a.b.c")))
+
+(test-case "foreign import (racket/string string-replace) works"
+  (check-equal? slashified "a/b/c"))
