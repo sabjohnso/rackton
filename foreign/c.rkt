@@ -5,6 +5,12 @@
 ;; @racket[foreign] form.  This both adds genuinely useful numerics and
 ;; shows the general pattern for calling external C functions.
 ;;
+;; THIS MODULE IS UNSAFE, like @racketmodname[rackton/foreign/ptr].  Each
+;; binding crosses the @racket[get-ffi-obj] trust boundary: the Rackton
+;; type (and, for inline @racket[foreign-c], the C @racket[#:sig]) is
+;; asserted, never checked against the real C ABI.  A wrong type,
+;; signature, or library corrupts memory or crashes the process.
+;;
 ;; The pattern, for binding your OWN C function:
 ;;   1. Write a small Racket module that uses @racket[get-ffi-obj] /
 ;;      @racket[ffi-lib] from @racketmodname[ffi/unsafe] to produce a

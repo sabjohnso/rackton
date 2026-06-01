@@ -12,9 +12,11 @@
 ;; marshalling for a future C-function binding).
 ;;
 ;; A @racket[(Ptr a)] is opaque; the @racket[a] is a phantom tag for the
-;; pointee type — there is no @tt{Storable} class, so reads and writes
-;; are the type-specific @racket[peek-int] / @racket[poke-int] / … rather
-;; than one polymorphic pair.  NULL is @racket[null-ptr].
+;; pointee type.  Reads and writes come in two forms: the type-specific
+;; primitives (@racket[peek-int] / @racket[poke-int] /
+;; @racket[peek-double] / …) and the prelude's @tt{Storable} class, whose
+;; polymorphic @racket[peek] / @racket[poke] (instances below) layer over
+;; them.  NULL is @racket[null-ptr].
 
 (provide (all-defined-out))
 
