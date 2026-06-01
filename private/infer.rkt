@@ -2313,22 +2313,43 @@
 (define (infer-program-step form env declared)
   (handle-top-form form env declared))
 
+;; handle-top-form dispatches on the top-level form; each non-trivial
+;; arm is its own `handle-<form>` helper (class/instance/require already
+;; were).  The `parameterize` stays here, wrapping the dispatch, so the
+;; helpers run with `current-aliases` in scope (they call resolve-type).
 (define (handle-top-form form env declared)
   (parameterize ([current-aliases (env-aliases env)])
-   (match form
+    (match form
+      [(top:alias name params target-ast stx)
+       (handle-alias-form name params target-ast env declared)]
+      [(top:dec name ty-ast _)            (handle-dec-form name ty-ast env declared)]
+      [(top:def name expr stx)            (handle-def-form name expr stx env declared)]
+      [(top:class supers head methods stx)
+       (handle-class-form supers head methods stx env declared)]
+      [(top:instance ctx head methods stx)
+       (handle-instance-form ctx head methods stx env declared)]
+      [(top:require specs stx)            (handle-require-form specs stx env declared)]
+      [(top:provide specs stx)            (handle-provide-form env declared)]
+      [(top:struct-fields struct-name field-names _)
+       (handle-struct-fields-form struct-name field-names env declared)]
+      [(top:effect ename ops stx)         (handle-effect-form ename ops stx env declared)]
+      [(top:data tname tparams ctors stx abstract? runtime-tag)
+       (handle-data-form tname tparams ctors stx abstract? runtime-tag env declared)])))
 
-    [(top:alias name params target-ast stx)
-     (values (env-extend-alias env name params target-ast) declared)]
+;; ----- per-top-form elaboration (the arms of handle-top-form) -------
 
-    [(top:dec name ty-ast _)
+(define (handle-alias-form name params target-ast env declared)
+  (values (env-extend-alias env name params target-ast) declared))
+
+(define (handle-dec-form name ty-ast env declared)
      (define sch (resolve-scheme ty-ast))
      ;; Pre-register the name in env with its declared scheme so that
      ;; subsequent top-level forms can forward-reference it.  When the
      ;; matching define is processed later, the binding is replaced.
      (values (env-extend-var env name sch)
-             (hash-set declared name sch))]
+             (hash-set declared name sch)))
 
-    [(top:def name expr stx)
+(define (handle-def-form name expr stx env declared)
      (cond
        [(hash-has-key? declared name)
         (define decl-scheme (hash-ref declared name))
@@ -2519,33 +2540,24 @@
            (current-dict-skolems sk-map)
            (resolve-method-uses! (subst-compose skolem-subst s*) env)
            (current-dict-skolems saved-skolems)
-           (values (env-extend-var final-env name generalized) declared)])])]
+           (values (env-extend-var final-env name generalized) declared)])]))
 
-    [(top:class supers head methods stx)
-     (handle-class-form supers head methods stx env declared)]
-
-    [(top:instance ctx head methods stx)
-     (handle-instance-form ctx head methods stx env declared)]
-
-    [(top:require specs stx)
-     (handle-require-form specs stx env declared)]
-
-    [(top:provide specs stx)
+(define (handle-provide-form env declared)
      ;; `provide` is a packaging concern, not a typing concern: it
      ;; doesn't introduce any constraints or change the env.  The
      ;; elaborator resolves the spec list against the final env
      ;; after inference completes.
-     (values env declared)]
+     (values env declared))
 
-    [(top:struct-fields struct-name field-names _)
+(define (handle-struct-fields-form struct-name field-names env declared)
      ;; Register the struct's ordered field-name list.
      ;; No code is emitted; the entry is consulted by inference
      ;; (and codegen) for `e:update` to resolve named fields to
      ;; the underlying Racket struct slots.
      (values (env-extend-struct-fields env struct-name field-names)
-             declared)]
+             declared))
 
-    [(top:effect ename ops stx)
+(define (handle-effect-form ename ops stx env declared)
      ;; An effect declaration registers each operation
      ;; as a regular value with type `(-> argT ... resultT)`.
      ;; The effect itself is recorded in env so codegen can emit
@@ -2569,9 +2581,9 @@
      (values (env-extend-effect env* ename
                                 (for/list ([o (in-list ops)])
                                   (effect-op-name o)))
-             declared)]
+             declared))
 
-    [(top:data tname tparams ctors stx abstract? runtime-tag)
+(define (handle-data-form tname tparams ctors stx abstract? runtime-tag env declared)
      (define default-result-type
        (make-tapp (tcon tname)
                   (for/list ([p (in-list tparams)]) (tvar p))))
@@ -2631,7 +2643,7 @@
                           (data-info tname (data-ctor-name c)
                                      (length field-tys) sch
                                      extra-tvars))))
-     (values env** declared)])))
+     (values env** declared))
 
 ;; ----- class / instance elaboration --------------------------------
 
