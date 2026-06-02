@@ -141,3 +141,23 @@
 
 (test-case "cross-module: derived Functor DBox escapes"     (check-equal? imported-fmap 42))
 (test-case "cross-module: derived Applicative DBox escapes" (check-equal? imported-ap 42))
+
+;; ----- derive Functor FROM an Applicative instance ----------------
+
+(rackton
+  (data (Af a) (MkAf a))
+
+  ;; Only the Applicative primitives (pure + fapply) are given; the
+  ;; Functor instance is synthesized via `fmap f x = fapply (pure f) x`
+  ;; (the Applicative class's own #:derive Functor clause).
+  (instance (Applicative Af) #:derive-superclasses
+    (define (pure x) (MkAf x))
+    (define (fapply ff fx)
+      (match ff [(MkAf f) (match fx [(MkAf x) (MkAf (f x))])])))
+
+  (: af-fmap Integer)
+  (define af-fmap
+    (match (fmap (lambda (x) (+ x 1)) (MkAf 41)) [(MkAf v) v])))
+
+(test-case "derive Functor from an Applicative instance"
+  (check-equal? af-fmap 42))

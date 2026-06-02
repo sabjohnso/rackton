@@ -212,7 +212,12 @@
       (define (fapply ff fa)
         (fmap (lambda (p) (match p [(MkPair f x) (f x)])) (product ff fa)))
       (define (liftA2 g x y) (fapply (fmap g x) y))
-      (define (product x y) (liftA2 MkPair x y)))
+      (define (product x y) (liftA2 MkPair x y))
+      ;; Cross-class derivation of the Functor superclass: an Applicative
+      ;; instance written with `#:derive-superclasses` (supplying `pure`
+      ;; and `fapply`) gets `Functor` for free via `fmap f = pure f <*>`.
+      (#:derive Functor
+        (define (fmap f x) (fapply (pure f) x))))
 
     ;; Monad has two derivable methods — flatmap and join — with mutual
     ;; defaults.  An instance must define at least one.  flatmap takes
