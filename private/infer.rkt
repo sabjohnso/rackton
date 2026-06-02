@@ -1127,7 +1127,7 @@
                          (apply-subst/env s env)
                          (> i 0)))
          (values (subst-compose s-cl s) _t)))
-     ;; A match-let-style irrefutable destructure skips the
+     ;; An irrefutable destructure (a pattern let/where binding) skips the
      ;; exhaustiveness check — the user has asserted the pattern fits.
      (unless irrefutable?
        (check-exhaustive! (apply-subst s-final t-scrut) clauses stx env))

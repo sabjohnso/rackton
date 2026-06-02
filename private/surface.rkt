@@ -109,9 +109,10 @@
 (struct e:if      (test then else stx) #:transparent)
 (struct e:ann     (expr type stx) #:transparent)
 ;; `irrefutable?` flag: when #t the match was synthesized by a
-;; destructuring form like `match-let` and is allowed to be
-;; non-exhaustive — the user is asserting the pattern fits.  When #f
-;; (the default for user-written `match`), exhaustiveness is checked.
+;; destructuring binding (a pattern LHS in `let` / `where`) and is
+;; allowed to be non-exhaustive — the user is asserting the pattern
+;; fits.  When #f (the default for user-written `match`), exhaustiveness
+;; is checked.
 (struct e:match   (scrutinee clauses irrefutable? stx) #:transparent)
 ;; A host-language escape: (racket τ (var ...) body) drops into raw
 ;; Racket, returning a value typed as τ.  `vars` lists the Rackton
@@ -1028,7 +1029,7 @@
 
 (define (parse-expr stx)
   (syntax-parse stx
-    #:datum-literals (lambda λ let let& let% let+ letrec match-let where if cond else ann match racket do <- update handle return describe context list ->)
+    #:datum-literals (lambda λ let let& let% let+ letrec where if cond else ann match racket do <- update handle return describe context list ->)
     [n:number  (e:literal (syntax->datum #'n) stx)]
     [b:boolean (e:literal (syntax->datum #'b) stx)]
     [s:string  (e:literal (syntax->datum #'s) stx)]
@@ -1054,12 +1055,16 @@
                       (parse-expr #'body)
                       stx)]
 
-    [(let ([x:id rhs] ...) body)
-     (e:let (for/list ([id (in-list (syntax->list #'(x ...)))]
-                       [r  (in-list (syntax->list #'(rhs ...)))])
-              (cons (syntax->datum id) (parse-expr r)))
-            (parse-expr #'body)
-            stx)]
+    ;; Plain `let` — parallel binding, with destructuring.  Each LHS is a
+    ;; pattern: a bare identifier is an ordinary (let-polymorphic) binding;
+    ;; a constructor/wildcard/literal pattern destructures its RHS via an
+    ;; irrefutable match.  All RHSs are evaluated in the surrounding scope
+    ;; (parallel), so a binding cannot see another's pattern variables.
+    [(let ([lhs rhs] ...) body)
+     (build-destructuring-let (syntax->list #'(lhs ...))
+                              (syntax->list #'(rhs ...))
+                              (parse-expr #'body)
+                              stx)]
 
     ;; let& — sequential monad bind (deps allowed); nested flatmap, same
     ;; family as `do`.  Body is the final monadic expression.
@@ -1099,23 +1104,6 @@
                (parse-expr #'body)
                stx)]
 
-    ;; (match-let ([pat expr] ...+) body) — desugars to nested
-    ;; singleton matches.  Each binding pattern destructures its rhs
-    ;; for the remainder of the chain.
-    [(match-let ([pat rhs] ...+) body)
-     (define pat-list (syntax->list #'(pat ...)))
-     (define rhs-list (syntax->list #'(rhs ...)))
-     (let loop ([pats pat-list] [rhss rhs-list])
-       (cond
-         [(null? pats) (parse-expr #'body)]
-         [else
-          (e:match (parse-expr (car rhss))
-                   (list (clause (parse-pattern (car pats))
-                                 #f
-                                 (loop (cdr pats) (cdr rhss))
-                                 (car pats)))
-                   #t stx)]))]
-
     ;; (list e ...) — list-literal sugar.  Desugars to a Cons/Nil
     ;; chain; (list) is Nil.  Purely a parser rewrite, so the result is
     ;; an ordinary (List a).
@@ -1142,20 +1130,15 @@
                    (map parse-expr (syntax->list #'(child ...))) stx))
             stx)]
 
-    ;; (where ([n expr] ...) body) — sequential local bindings.
-    ;; Each binding sees the ones before it.  Equivalent to a
-    ;; nested chain of singleton lets.
-    [(where ([x:id rhs] ...+) body)
-     (define ids (syntax->list #'(x ...)))
-     (define rhss (syntax->list #'(rhs ...)))
-     (let loop ([ids ids] [rhss rhss])
-       (cond
-         [(null? ids) (parse-expr #'body)]
-         [else
-          (e:let (list (cons (syntax->datum (car ids))
-                             (parse-expr (car rhss))))
-                 (loop (cdr ids) (cdr rhss))
-                 stx)]))]
+    ;; (where ([lhs expr] ...) body) — sequential local bindings, with
+    ;; destructuring.  Each binding sees the ones before it (nested
+    ;; singleton lets); a non-variable LHS pattern destructures its RHS
+    ;; via an irrefutable match.
+    [(where ([lhs rhs] ...+) body)
+     (build-destructuring-where (syntax->list #'(lhs ...))
+                                (syntax->list #'(rhs ...))
+                                (parse-expr #'body)
+                                stx)]
 
     [(if c t e)
      (e:if (parse-expr #'c) (parse-expr #'t) (parse-expr #'e) stx)]
@@ -1302,6 +1285,54 @@
   (for/list ([id (in-list (syntax->list ids-stx))]
              [r  (in-list (syntax->list rhss-stx))])
     (cons (syntax->datum id) (parse-expr r))))
+
+;; ----- destructuring let / where -----------------------------------
+;;
+;; A binding LHS is a pattern.  A bare-identifier pattern is an ordinary
+;; binding; any other pattern destructures its RHS via an IRREFUTABLE
+;; match (a failure panics), exactly as the retired `match-let` did.
+
+;; Parallel `let`: every RHS is evaluated in the surrounding scope, so the
+;; RHSs go into one `e:let` (preserving let-polymorphism for the plain
+;; bindings) and the non-variable patterns destructure their bound temp
+;; around the body — no binding can see another's pattern variables.
+(define (build-destructuring-let lhs-stxs rhs-stxs body stx)
+  (define-values (binds destructures)
+    (for/fold ([binds '()] [ds '()]
+               #:result (values (reverse binds) (reverse ds)))
+              ([l (in-list lhs-stxs)] [r (in-list rhs-stxs)] [i (in-naturals)])
+      (define pat (parse-pattern l))
+      (define rhs (parse-expr r))
+      (cond
+        [(p:var? pat)
+         (values (cons (cons (p:var-name pat) rhs) binds) ds)]
+        [else
+         (define tmp (string->symbol (format "$let.~a" i)))
+         (values (cons (cons tmp rhs) binds)
+                 (cons (list tmp pat l) ds))])))
+  (define body*
+    (for/foldr ([acc body]) ([d (in-list destructures)])
+      (e:match (e:var (car d) stx)
+               (list (clause (cadr d) #f acc (caddr d)))
+               #t stx)))
+  (e:let binds body* stx))
+
+;; Sequential `where`: each binding nests inside the next, so a later RHS
+;; sees the earlier pattern variables.  A plain identifier is a singleton
+;; `e:let`; any other pattern is a singleton irrefutable match.
+(define (build-destructuring-where lhs-stxs rhs-stxs body stx)
+  (let loop ([ls lhs-stxs] [rs rhs-stxs])
+    (cond
+      [(null? ls) body]
+      [else
+       (define pat (parse-pattern (car ls)))
+       (define rhs (parse-expr (car rs)))
+       (define inner (loop (cdr ls) (cdr rs)))
+       (cond
+         [(p:var? pat)
+          (e:let (list (cons (p:var-name pat) rhs)) inner stx)]
+         [else
+          (e:match rhs (list (clause pat #f inner (car ls))) #t stx)])])))
 
 ;; Gather independent binding RHS into one applicative value via
 ;; right-associated `product`, with the matching nested `MkPair`

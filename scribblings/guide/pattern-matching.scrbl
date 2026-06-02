@@ -73,16 +73,19 @@ Guards see the bound pattern variables:
   [_                "zero"])
 }|
 
-@section{Destructuring with @racket[match-let]}
+@section{Destructuring in @racket[let] bindings}
 
-For a single match, @racket[match-let] is more direct:
+A @racket[let] (or @racket[where]) binding may use a pattern on its
+left-hand side, so a single match needs no @racket[match]:
 
 @codeblock|{
-(match-let ([(MkPair x y) (MkPair 3 4)])
+(let ([(MkPair x y) (MkPair 3 4)])
   (+ x y))   ;; ⇒ 7
 }|
 
 The body sees @racket[x] and @racket[y].  A failure to match raises a
-panic — use @racket[match-let] only when the pattern is irrefutable
-(constructor with exactly one inhabitant, like @racket[MkPair] or a
-@racket[struct] constructor).
+panic — use a pattern binding only when the pattern is irrefutable
+(a constructor with exactly one inhabitant, like @racket[MkPair] or a
+@racket[struct] constructor).  A @racket[let] evaluates every right-hand
+side in the surrounding scope, so its pattern bindings are independent;
+use @racket[where] when a later binding must see an earlier one.

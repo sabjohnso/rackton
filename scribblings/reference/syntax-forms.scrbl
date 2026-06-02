@@ -308,13 +308,24 @@ Anonymous function with parameters @racket[p ...] and result
 @racket[body].  Currying is implicit: @racket[(lambda (x y) e)] has
 type @racket[(-> a (-> b c))], not a tupled domain.}
 
-@defform*[[(let ([var expr] ...) body)
-           (let loop ([var init] ...) body)]]{
+@defform*[[(let (binding ...) body)
+           (let loop ([var init] ...) body)]
+          #:grammar ([binding [pattern expr]])]{
 
 Parallel binding.  Each @racket[expr] is evaluated in the surrounding
-scope; the resulting values bind @racket[var ...] in @racket[body].
-Each binding is generalised independently against the surrounding
-environment after inference, giving Rackton its let-polymorphism.
+scope; the resulting values bind the variables of each @racket[pattern]
+in @racket[body].  A bare-identifier pattern is generalised independently
+against the surrounding environment after inference, giving Rackton its
+let-polymorphism; any other pattern destructures its value via an
+irrefutable match (a failure panics — use only irrefutable patterns,
+such as a single-constructor type or a @racket[struct]).  Because every
+@racket[expr] is evaluated in the surrounding scope, a binding cannot see
+another binding's pattern variables (use @racket[where] for that).
+
+@racketblock[
+(let ([(MkPair a b) (MkPair 3 4)]
+      [n            10])
+  (+ a (+ b n)))]
 
 The second, @emph{named} form is a loop: @racket[loop] is bound in
 @racket[body] to a recursive procedure of the @racket[var ...], invoked
@@ -336,17 +347,15 @@ surrounding environment after inference.
          [odd?  (lambda (n) (if (== n 0) #f (even? (- n 1))))])
   (even? 8))]}
 
-@defform[(match-let ([pattern expr] ...) body)]{
-
-Destructuring binding.  Each @racket[pattern] is matched against the
-value of @racket[expr]; the bound pattern variables are in scope in
-@racket[body].  Failure to match raises a panic.}
-
-@defform[(where ([var expr] ...) body)]{
+@defform[(where (binding ...) body)
+         #:grammar ([binding [pattern expr]])]{
 
 Sequential local-binding form modelled on the Haskell @tt{where}
 clause: each @racket[expr] is type-checked in the scope of all the
-preceding @racket[var]s.  Equivalent to nested @racket[let]s.}
+preceding bindings.  Equivalent to nested singleton @racket[let]s.  Like
+@racket[let], a binding may destructure with a @racket[pattern] (an
+irrefutable match); unlike @racket[let], a later @racket[expr] may
+reference the variables bound earlier.}
 
 @defform[(if test then else)]{
 
@@ -506,7 +515,8 @@ for the full story.}
 
 @section[#:tag "sf-patterns"]{Patterns}
 
-A @racket[match]/@racket[match-let] pattern is one of:
+A pattern — used by @racket[match] and by @racket[let] / @racket[where]
+bindings — is one of:
 
 @itemlist[
 @item{@racket[_] — wildcard; matches any value, binds nothing.}

@@ -1,6 +1,6 @@
 #lang racket/base
 
-;; Pattern guards, match-let, where.
+;; Pattern guards, destructuring let, where.
 
 (require rackunit
          (for-syntax racket/base)
@@ -39,11 +39,11 @@
   (: filtered (List Integer))
   (define filtered (keep-pos (Cons 1 (Cons -2 (Cons 3 (Cons -4 (Cons 5 Nil)))))))
 
-  ;; ----- match-let destructuring two values ----------------
+  ;; ----- let destructuring two values ----------------------
   (: pair-sum Integer)
   (define pair-sum
-    (match-let ([(MkPair a b) (MkPair 7 35)]
-                [(Cons h _)   (Cons 100 Nil)])
+    (let ([(MkPair a b) (MkPair 7 35)]
+          [(Cons h _)   (Cons 100 Nil)])
       (+ a (+ b h))))
 
   ;; ----- where building intermediate bindings ---------------
@@ -70,7 +70,7 @@
 (test-case "pattern guard on List: keep-pos"
   (check-equal? filtered (Cons 1 (Cons 3 (Cons 5 Nil)))))
 
-(test-case "match-let destructures multiple values"
+(test-case "let destructures multiple values"
   ;; a=7, b=35, h=100 → 7 + 35 + 100 = 142
   (check-equal? pair-sum 142))
 

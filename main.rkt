@@ -41,11 +41,10 @@
          ;; (for-label rackton) can resolve cross-references to their
          ;; reference-doc entries.
          "private/lang-bindings.rkt"
-         ;; match-let is excluded because Rackton's surface form of the
-         ;; same name has its own desugaring (see private/surface.rkt)
-         ;; and its own @defform entry in the reference; the stub in
-         ;; lang-bindings.rkt is what (for-label rackton) should pick
-         ;; up for cross-references.
+         ;; `==` is excluded (it is Rackton's Eq method).  `match-let` is
+         ;; excluded so Racket's macro does not leak in as a binding:
+         ;; Rackton no longer has a match-let form — destructuring now
+         ;; lives in `let` / `where` bindings (see private/surface.rkt).
          (except-in racket/match == match-let)
          (for-syntax racket/base)
          ;; Explicit re-require of the racket/base names we expose for
