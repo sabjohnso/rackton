@@ -55,7 +55,11 @@
                          (run-writer-t wa))]))
               (run-writer-t wf)))))
 
-(instance ((Monad m) (Semigroup w) => (Monad (WriterT w m)))
+;; Monoid w (not just Semigroup w): the inherited Applicative superclass
+;; needs the log's `mempty` for `pure`, so a lawful Monad (WriterT w m)
+;; must carry Monoid w — matching the Applicative instance above and
+;; Haskell's WriterT, whose Monad instance also requires Monoid w.
+(instance ((Monad m) (Monoid w) => (Monad (WriterT w m)))
   (define (flatmap f wa)
     (MkWriterT
      (flatmap (lambda (p1)
