@@ -41,7 +41,7 @@
 (define (render-item it)
   (match it
     [(Item done text)
-     (where ([marker (if done "[x] " "[ ] ")])
+     (let* ([marker (if done "[x] " "[ ] ")])
        (<> marker text))]))
 
 ;; concat-map over list (filter-Some) — keep only Items that parsed.
@@ -58,13 +58,13 @@
     (match r
       [(Err _)        (pure Nil)]            ; missing file = empty
       [(Ok contents)
-       (where ([lines (string-split "\n" contents)]
+       (let* ([lines (string-split "\n" contents)]
                [nonempty (filter (lambda (s) (not (== s ""))) lines)])
          (pure (catMaybes (fmap parse-item nonempty))))])))
 
 (: write-items (-> String (-> (List Item) (IO Unit))))
 (define (write-items path items)
-  (where ([lines (fmap render-item items)]
+  (let* ([lines (fmap render-item items)]
           [body  (string-join "\n" lines)])
     (write-file path (<> body "\n"))))
 
@@ -99,7 +99,7 @@
   (match args
     [(Nil) (println "usage: todo add <task>")]
     [_
-     (where ([text   (string-join " " args)]
+     (let* ([text   (string-join " " args)]
              [new-it (Item #f text)])
        (do [path  <- todo-file]
            [items <- (read-items path)]
@@ -145,7 +145,7 @@
 (define cmd-clear
   (do [path  <- todo-file]
       [items <- (read-items path)]
-      (where ([keep (filter (lambda (it)
+      (let* ([keep (filter (lambda (it)
                               (match it [(Item done _) (not done)]))
                             items)]
               [dropped (- (length items) (length keep))])

@@ -1,6 +1,6 @@
 #lang racket/base
 
-;; Pattern guards, destructuring let, where.
+;; Pattern guards, destructuring let, let*.
 
 (require rackunit
          (for-syntax racket/base)
@@ -46,11 +46,11 @@
           [(Cons h _)   (Cons 100 Nil)])
       (+ a (+ b h))))
 
-  ;; ----- where building intermediate bindings ---------------
+  ;; ----- let* building intermediate bindings ----------------
   (: scaled-sum (-> Integer (-> Integer Integer)))
   (define (scaled-sum x y)
-    (where ([sum     (+ x y)]
-            [doubled (* 2 sum)])
+    (let* ([sum     (+ x y)]
+           [doubled (* 2 sum)])
       (+ sum doubled))))
 
 ;; ---------- assertions -------------------------------------------
@@ -74,7 +74,7 @@
   ;; a=7, b=35, h=100 → 7 + 35 + 100 = 142
   (check-equal? pair-sum 142))
 
-(test-case "where binds intermediates in sequence"
+(test-case "let* binds intermediates in sequence"
   ;; sum = 10, doubled = 20, result = 30
   (check-equal? (scaled-sum 3 7) 30))
 

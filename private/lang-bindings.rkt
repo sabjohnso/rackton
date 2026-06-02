@@ -46,7 +46,8 @@
 (define-rackton-form define-effect "algebraic effect declaration")
 
 ;; Expressions and binding forms not provided by racket/base.
-(define-rackton-form where "sequential local binding")
+;; (`let*` — the sequential binding form — IS a racket/base name, so it
+;; needs no stub here; it binds via the racket/base re-export.)
 (define-rackton-form foreign "host (FFI) import")
 (define-rackton-form foreign-c "inline C-function (FFI) import")
 (define-rackton-form let& "sequential monadic binding")

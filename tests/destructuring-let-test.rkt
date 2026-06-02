@@ -1,12 +1,12 @@
 #lang racket/base
 
-;; `let` and `where` bindings accept patterns, not just identifiers, so a
+;; `let` and `let*` bindings accept patterns, not just identifiers, so a
 ;; binding can destructure its right-hand side.  This subsumes the old
 ;; `match-let` form (now removed):
 ;;   - `let`   keeps PARALLEL semantics — every RHS is evaluated in the
 ;;     surrounding scope, then each pattern destructures its own value;
-;;   - `where` keeps SEQUENTIAL semantics — a later binding sees the
-;;     pattern variables bound earlier.
+;;   - `let*`  keeps SEQUENTIAL semantics (Lisp/Scheme let*) — a later
+;;     binding sees the pattern variables bound earlier.
 ;; A non-variable pattern lowers to an IRREFUTABLE match (a failure
 ;; panics), exactly as `match-let` did; a plain identifier binding is
 ;; unchanged (and still let-polymorphic).
@@ -65,12 +65,12 @@
   (: seq Integer)
   (define seq
     ;; The second binding destructures a value built from the first —
-    ;; only possible because `where` is sequential.
-    (where ([(MkPair a b) (MkPair 3 4)]
-            [(MkPair c d) (MkPair (+ a b) (* a b))])
+    ;; only possible because `let*` is sequential.
+    (let* ([(MkPair a b) (MkPair 3 4)]
+           [(MkPair c d) (MkPair (+ a b) (* a b))])
       (+ c d))))
 
-(test-case "where destructures sequentially (later sees earlier)"
+(test-case "let* destructures sequentially (later sees earlier)"
   (check-equal? seq 19))
 
 ;; ----- match-let is gone ------------------------------------------

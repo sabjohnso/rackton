@@ -320,7 +320,7 @@ let-polymorphism; any other pattern destructures its value via an
 irrefutable match (a failure panics — use only irrefutable patterns,
 such as a single-constructor type or a @racket[struct]).  Because every
 @racket[expr] is evaluated in the surrounding scope, a binding cannot see
-another binding's pattern variables (use @racket[where] for that).
+another binding's pattern variables (use @racket[let*] for that).
 
 @racketblock[
 (let ([(MkPair a b) (MkPair 3 4)]
@@ -347,15 +347,15 @@ surrounding environment after inference.
          [odd?  (lambda (n) (if (== n 0) #f (even? (- n 1))))])
   (even? 8))]}
 
-@defform[(where (binding ...) body)
+@defform[(let* (binding ...) body)
          #:grammar ([binding [pattern expr]])]{
 
-Sequential local-binding form modelled on the Haskell @tt{where}
-clause: each @racket[expr] is type-checked in the scope of all the
-preceding bindings.  Equivalent to nested singleton @racket[let]s.  Like
-@racket[let], a binding may destructure with a @racket[pattern] (an
-irrefutable match); unlike @racket[let], a later @racket[expr] may
-reference the variables bound earlier.}
+Sequential binding, as in Lisp/Scheme: each @racket[expr] is evaluated
+and type-checked in the scope of all the preceding bindings.  Equivalent
+to nested singleton @racket[let]s.  Like @racket[let], a binding may
+destructure with a @racket[pattern] (an irrefutable match); unlike
+@racket[let], a later @racket[expr] may reference the variables bound
+earlier.}
 
 @defform[(if test then else)]{
 
@@ -515,7 +515,7 @@ for the full story.}
 
 @section[#:tag "sf-patterns"]{Patterns}
 
-A pattern — used by @racket[match] and by @racket[let] / @racket[where]
+A pattern — used by @racket[match] and by @racket[let] / @racket[let*]
 bindings — is one of:
 
 @itemlist[

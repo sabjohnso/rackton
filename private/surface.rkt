@@ -1029,7 +1029,7 @@
 
 (define (parse-expr stx)
   (syntax-parse stx
-    #:datum-literals (lambda λ let let& let% let+ letrec where if cond else ann match racket do <- update handle return describe context list ->)
+    #:datum-literals (lambda λ let let& let% let+ letrec let* if cond else ann match racket do <- update handle return describe context list ->)
     [n:number  (e:literal (syntax->datum #'n) stx)]
     [b:boolean (e:literal (syntax->datum #'b) stx)]
     [s:string  (e:literal (syntax->datum #'s) stx)]
@@ -1130,15 +1130,15 @@
                    (map parse-expr (syntax->list #'(child ...))) stx))
             stx)]
 
-    ;; (where ([lhs expr] ...) body) — sequential local bindings, with
-    ;; destructuring.  Each binding sees the ones before it (nested
-    ;; singleton lets); a non-variable LHS pattern destructures its RHS
-    ;; via an irrefutable match.
-    [(where ([lhs rhs] ...+) body)
-     (build-destructuring-where (syntax->list #'(lhs ...))
-                                (syntax->list #'(rhs ...))
-                                (parse-expr #'body)
-                                stx)]
+    ;; (let* ([lhs expr] ...) body) — sequential local bindings, with
+    ;; destructuring (Lisp/Scheme let*).  Each binding sees the ones
+    ;; before it (nested singleton lets); a non-variable LHS pattern
+    ;; destructures its RHS via an irrefutable match.
+    [(let* ([lhs rhs] ...+) body)
+     (build-destructuring-let* (syntax->list #'(lhs ...))
+                               (syntax->list #'(rhs ...))
+                               (parse-expr #'body)
+                               stx)]
 
     [(if c t e)
      (e:if (parse-expr #'c) (parse-expr #'t) (parse-expr #'e) stx)]
@@ -1317,10 +1317,10 @@
                #t stx)))
   (e:let binds body* stx))
 
-;; Sequential `where`: each binding nests inside the next, so a later RHS
+;; Sequential `let*`: each binding nests inside the next, so a later RHS
 ;; sees the earlier pattern variables.  A plain identifier is a singleton
 ;; `e:let`; any other pattern is a singleton irrefutable match.
-(define (build-destructuring-where lhs-stxs rhs-stxs body stx)
+(define (build-destructuring-let* lhs-stxs rhs-stxs body stx)
   (let loop ([ls lhs-stxs] [rs rhs-stxs])
     (cond
       [(null? ls) body]

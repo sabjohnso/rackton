@@ -75,7 +75,7 @@ Guards see the bound pattern variables:
 
 @section{Destructuring in @racket[let] bindings}
 
-A @racket[let] (or @racket[where]) binding may use a pattern on its
+A @racket[let] (or @racket[let*]) binding may use a pattern on its
 left-hand side, so a single match needs no @racket[match]:
 
 @codeblock|{
@@ -88,4 +88,4 @@ panic — use a pattern binding only when the pattern is irrefutable
 (a constructor with exactly one inhabitant, like @racket[MkPair] or a
 @racket[struct] constructor).  A @racket[let] evaluates every right-hand
 side in the surrounding scope, so its pattern bindings are independent;
-use @racket[where] when a later binding must see an earlier one.
+use @racket[let*] when a later binding must see an earlier one.

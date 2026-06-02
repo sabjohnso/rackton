@@ -23,7 +23,7 @@
 (define surface-forms
   '(define : data newtype struct
      protocol instance define-alias define-effect
-     lambda λ let let& let% let+ letrec where
+     lambda λ let let& let% let+ letrec let*
      if cond match do list ann update escape racket handle
      require provide foreign foreign-c
      All))
