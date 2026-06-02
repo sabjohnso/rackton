@@ -243,8 +243,11 @@
       (#:derive Applicative
         (define (fapply ff fx)
           (flatmap (lambda (g) (flatmap (lambda (x) (pure (g x))) fx)) ff))
+        ;; Apply `g` with an n-ary call `(g a b)`, not a curried `((g a) b)`:
+        ;; `product`'s default passes the raw 2-ary `MkPair` constructor as
+        ;; `g`, and a constructor cannot be partially applied.
         (define (liftA2 g x y)
-          (flatmap (lambda (a) (flatmap (lambda (b) (pure ((g a) b))) y)) x))))
+          (flatmap (lambda (a) (flatmap (lambda (b) (pure (g a b))) y)) x))))
 
     ;; Maybe
     (instance (Functor Maybe)
