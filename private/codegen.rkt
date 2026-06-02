@@ -656,6 +656,24 @@
   (with-syntax ([(def ...) (append defs return-table-defs)])
     (syntax/loc stx (begin def ...))))
 
+;; Eta-expand a value-form method body to `arity` parameters, deferring
+;; its evaluation to call time.  Leaves already-lambda bodies untouched
+;; (they defer on their own) and arity-0 bodies untouched (a value, not a
+;; function — eta would wrongly turn it into a thunk).
+(define (eta-expand-value-body body arity stx)
+  (cond
+    [(e:lam? body) body]
+    [(<= arity 0)  body]
+    [else
+     (define params
+       (for/list ([i (in-range arity)])
+         (string->symbol (format "$eta~a" i))))
+     (e:lam params
+            (e:app body
+                   (for/list ([p (in-list params)]) (e:var p stx))
+                   stx)
+            stx)]))
+
 ;; Count the number of arrows in the method's body type — i.e. its
 ;; full arity — so the curry-dispatch wrapper knows when to stop
 ;; collecting and fire.
@@ -737,8 +755,24 @@
         ;; #:type bindings are compile-time only — no
         ;; runtime code is emitted for an associated-type binding.
         [(inst-type-fam _ _ _) acc])))
-  (define all-method-bodies
+  (define all-method-bodies0
     (instance-method-bodies cinfo user-impls head-pred-class stx))
+  ;; Eta-expand point-free / value-form method bodies.  A method given as
+  ;; `(define m some-fn)` (a bare value, not `(define (m args) …)`) emits
+  ;; an EAGER reference to `some-fn`.  When `some-fn` is a top-level def
+  ;; (codegen'd after instances), that forward-references it.  Wrapping
+  ;; the body in a lambda of the method's declared arity —
+  ;; `(lambda (a …) (some-fn a …))` — defers the reference to call time,
+  ;; by which point every module binding exists.  Bodies that are already
+  ;; lambdas (the inline form, and class defaults) are left untouched, as
+  ;; are arity-0 return-typed values (e.g. `mempty`), which cannot be
+  ;; eta-expanded — see ISSUES.org.
+  (define all-method-bodies
+    (for/list ([mb (in-list all-method-bodies0)])
+      (cons (car mb)
+            (eta-expand-value-body (cdr mb)
+                                   (method-arity cinfo (car mb))
+                                   stx))))
 
   ;; Filter out tcons at fundep-determined positions so the per-method
   ;; impl name matches what `resolve-return-impl` synthesizes in
@@ -1155,50 +1189,10 @@
 ;; when applying a class's default method body inside an instance
 ;; defined in a different module: the body's identifiers must resolve
 ;; in the instance site's lexical scope, not the class's defining one.
-(define (relocate-ast node new-stx)
-  (define (R x) (relocate-ast x new-stx))
-  (match node
-    [(e:literal v _)     (e:literal v new-stx)]
-    [(e:var n _)         (e:var n new-stx)]
-    [(e:lam p body _)    (e:lam p (R body) new-stx)]
-    [(e:app h args _)    (e:app (R h) (map R args) new-stx)]
-    [(e:let bs body _)
-     (e:let (for/list ([b (in-list bs)]) (cons (car b) (R (cdr b))))
-            (R body) new-stx)]
-    [(e:letrec bs body _)
-     (e:letrec (for/list ([b (in-list bs)]) (cons (car b) (R (cdr b))))
-               (R body) new-stx)]
-    [(e:if a b c _)      (e:if (R a) (R b) (R c) new-stx)]
-    [(e:ann e t _)       (e:ann (R e) (R t) new-stx)]
-    [(e:escape t vs body _)
-     ;; Escapes splice raw Racket syntax — relocating it would mean
-     ;; rewriting that user-written code, which we don't want to do.
-     (e:escape (R t) vs body new-stx)]
-    [(e:match s cs irr? _)
-     (e:match (R s)
-              (for/list ([c (in-list cs)])
-                (clause (R (clause-pattern c))
-                        (and (clause-guard c) (R (clause-guard c)))
-                        (R (clause-body c)) new-stx))
-              irr? new-stx)]
-    [(e:match* ss cs irr? _)
-     (e:match* (map R ss)
-               (for/list ([c (in-list cs)])
-                 (clause* (map R (clause*-patterns c))
-                          (and (clause*-guard c) (R (clause*-guard c)))
-                          (R (clause*-body c)) new-stx))
-               irr? new-stx)]
-    [(p:wild _)          (p:wild new-stx)]
-    [(p:var n _)         (p:var n new-stx)]
-    [(p:lit v _)         (p:lit v new-stx)]
-    [(p:ctor n args _)   (p:ctor n (map R args) new-stx)]
-    [(ty:var n _)        (ty:var n new-stx)]
-    [(ty:con n _)        (ty:con n new-stx)]
-    [(ty:app h args _)   (ty:app (R h) (map R args) new-stx)]
-    [(ty:forall vs b _)  (ty:forall vs (R b) new-stx)]
-    [(ty:qual cs b _)
-     (ty:qual (for/list ([c (in-list cs)]) (R c)) (R b) new-stx)]
-    [(constraint c args _) (constraint c (map R args) new-stx)]))
+;; relocate-ast lives in surface.rkt (shared AST utility) and is
+;; required from there; it re-anchors a parsed AST's syntax handles to a
+;; new site so class defaults / derived bodies resolve in the instance's
+;; lexical context.
 
 ;; Convert a parsed type-AST to a core type, ignoring `All` and `qual`
 ;; wrappers.  Used here so we can inspect what the instance head names.

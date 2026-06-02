@@ -205,13 +205,16 @@
     ;; for instance) is order-invariant just like a module body.
     ;; Single-form input degenerates into a 1-element mini-module —
     ;; same end result as the old `handle-top-form-step` loop.
-    (define-values (env* _declared*)
+    ;; infer-program/phases also returns the post-expansion form list
+    ;; (`#:derive-superclasses` instances replaced by the plain instances
+    ;; they synthesize); compile THAT so derived instances are lowered.
+    (define-values (env* _declared* parsed*)
       (infer-program/phases parsed
                             (rackton-repl-state-env state)
                             (rackton-repl-state-declared state)))
     (define compiled
       (filter values
-              (for/list ([p (in-list parsed)])
+              (for/list ([p (in-list parsed*)])
                 (compile-top p env*))))
     (values env* compiled)))
 

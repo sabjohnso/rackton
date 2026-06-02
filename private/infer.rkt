@@ -20,6 +20,7 @@
 
 (provide infer-expr/fresh
          infer-program
+         infer-program+forms
          infer-program/phases
          infer-program-step
          require-spec->submod-spec
@@ -1755,8 +1756,17 @@
 ;;     within their SCC.
 (define (infer-program forms [env initial-env])
   (with-fresh
-   (define-values (env* _) (infer-program/phases forms env (hasheq)))
+   (define-values (env* _ _forms) (infer-program/phases forms env (hasheq)))
    env*))
+
+;; Like `infer-program`, but also returns the post-expansion form list
+;; (with every `#:derive-superclasses` instance replaced by the plain
+;; instances it synthesized).  The elaborator drives codegen off THIS
+;; list so the synthesized superclass instances are lowered too.
+(define (infer-program+forms forms [env initial-env])
+  (with-fresh
+   (define-values (env* _ forms*) (infer-program/phases forms env (hasheq)))
+   (values env* forms*)))
 
 ;; `prior-declared` carries forward `top:dec` schemes registered in
 ;; previous REPL inputs.  A fresh `(infer-program)` call always
@@ -1767,23 +1777,29 @@
   ;; ---- Phase A: type infrastructure ----
   (define-values (env-after-A declared)
     (run-phase-A env forms prior-declared))
+  ;; ---- Cross-class derivation expansion ----
+  ;; Now that every class (prelude, local, imported) is in env, rewrite
+  ;; each `#:derive-superclasses` instance into the plain instances it
+  ;; synthesizes.  Every later phase — and codegen — runs over `forms*`.
+  (define forms* (expand-derive-instances forms env-after-A))
   ;; ---- Phase B: pre-register def names ----
   (define-values (env-after-B def-tvars)
-    (run-phase-B env-after-A declared forms))
+    (run-phase-B env-after-A declared forms*))
   ;; ---- Phase C: instance registration (+ method body inference) ----
-  (define env-after-C (run-phase-C env-after-B declared forms))
+  (define env-after-C (run-phase-C env-after-B declared forms*))
   ;; ---- Superclass obligations ----
   ;; Now that every instance — local, later-declared, and imported — is
   ;; in env, require each declared instance to satisfy its class's
   ;; superclasses.  Done here (not per-instance in Phase C) so the check
   ;; is order-independent: a superclass instance may be declared after
   ;; the subclass instance that needs it.
-  (check-superclass-obligations env-after-C forms)
+  (check-superclass-obligations env-after-C forms*)
   ;; ---- Phase D: SCC-based body inference for top:defs ----
-  (define env-after-D (run-phase-D env-after-C declared def-tvars forms))
+  (define env-after-D (run-phase-D env-after-C declared def-tvars forms*))
   (values env-after-D
-          (for/fold ([d prior-declared]) ([f (in-list forms)] #:when (top:def? f))
-            (hash-remove d (top:def-name f)))))
+          (for/fold ([d prior-declared]) ([f (in-list forms*)] #:when (top:def? f))
+            (hash-remove d (top:def-name f)))
+          forms*))
 
 ;; Verify that every instance declared in `forms` satisfies the
 ;; superclass constraints of its class.  For an instance `C T₁…Tₙ` with
@@ -1815,6 +1831,143 @@
               (format "instance ~a requires ~a, which has no instance"
                       (pred->datum head) (pred->datum target))
               (top:instance-stx f))))))))
+
+;; ----- cross-class derivation expansion ----------------------------
+;;
+;; A `#:derive-superclasses` instance bundles only the irreducible
+;; primitives (e.g. `pure` + `flatmap`).  Rewrite it into plain
+;; `top:instance` forms: one synthesized instance per MISSING superclass
+;; (filling its methods from the deriving class's `#:derive` table and
+;; the bundled primitives), plus the base instance carrying only the
+;; deriving class's own methods.  Superclasses that already have an
+;; instance — hand-written or imported — are left untouched, so the two
+;; never collide.
+(define (expand-derive-instances forms env)
+  (cond
+    [(not (for/or ([f (in-list forms)]) (top:derive-instance? f))) forms]
+    [else
+     (parameterize ([current-aliases (env-aliases env)])
+       ;; (class-name . spine-tcon) of every instance ALREADY written as a
+       ;; plain form, so synthesis can skip a superclass the user supplied.
+       (define existing (make-hash))
+       (for ([f (in-list forms)] #:when (top:instance? f))
+         (define h (resolve-constraint (top:instance-head f)))
+         (hash-set! existing (cons (pred-class h) (head-spine-tcon h)) #t))
+       (append*
+        (for/list ([f (in-list forms)])
+          (if (top:derive-instance? f)
+              (synthesize-derived-instances f env existing)
+              (list f)))))]))
+
+;; The spine type-constructor of a pred's first argument, e.g. `Box` for
+;; `(Functor Box)` and `StateT` for `(Monad (StateT s m))`; #f if none.
+(define (head-spine-tcon p)
+  (and (pair? (pred-args p)) (type-head-tcon (car (pred-args p)))))
+
+;; Transitive superclass class-NAMES of `class-name`, nearest first.
+(define (superclass-name-closure env class-name)
+  (let loop ([pending (list class-name)] [seen '()] [acc '()])
+    (cond
+      ;; `acc` is already accumulated nearest-first (BFS append order):
+      ;; (Applicative Functor) for Monad.  Synthesizing in this order
+      ;; registers a nearer superclass before a farther one that a
+      ;; derived body may reference.
+      [(null? pending) acc]
+      [else
+       (define cinfo (env-ref-class env (car pending) #f))
+       (define sup-names
+         (if cinfo (map pred-class (class-info-supers cinfo)) '()))
+       (define fresh (filter (lambda (s) (not (member s seen))) sup-names))
+       (loop (append (cdr pending) fresh)
+             (append seen fresh)
+             (append acc fresh))])))
+
+;; Merge the cross-class derivation tables of `C` and its superclass
+;; closure into one `superclass → (method → expr)` map, with `C`'s own
+;; entries taking precedence over an intermediate superclass's.
+(define (merged-derive-table env C closure)
+  (define (hash-merge2 a b) ; entries of b win
+    (for/fold ([h a]) ([(k v) (in-hash b)]) (hash-set h k v)))
+  (for/fold ([acc (hasheq)])
+            ([k (in-list (reverse (cons C closure)))]) ; farthest … nearest (C last)
+    (define ci (env-ref-class env k #f))
+    (cond
+      [ci (for/fold ([a acc]) ([(S tbl) (in-hash (class-info-super-derives ci))])
+            (hash-set a S (hash-merge2 (hash-ref a S (hasheq)) tbl)))]
+      [else acc])))
+
+(define (synthesize-derived-instances di env existing)
+  (define surface-head (top:derive-instance-head di))      ; surface constraint
+  (define head-pred    (resolve-constraint surface-head))  ; core pred
+  (define C            (pred-class head-pred))
+  (define spine        (head-spine-tcon head-pred))
+  (define ctx          (top:derive-instance-context di))
+  (define stx          (top:derive-instance-stx di))
+  (define cinfo (env-ref-class env C #f))
+  (unless cinfo
+    (raise-syntax-error 'derive-superclasses
+      (format "#:derive-superclasses on an instance of unknown class ~a" C)
+      stx))
+  (define closure (superclass-name-closure env C))
+  (define merged  (merged-derive-table env C closure))
+  ;; primitives the user bundled in the instance body (e.g. `pure`).
+  (define bundled
+    (for/fold ([acc (hasheq)]) ([m (in-list (top:derive-instance-methods di))]
+                                #:when (top:def? m))
+      (hash-set acc (top:def-name m) m)))
+  ;; the base instance keeps only the deriving class's OWN methods.
+  (define C-methods (class-info-methods cinfo))
+  (define base-methods
+    (for/list ([m (in-list (top:derive-instance-methods di))]
+               #:when (or (inst-type-fam? m)
+                          (and (top:def? m)
+                               (hash-has-key? C-methods (top:def-name m)))))
+      m))
+  (define base-inst (top:instance ctx surface-head base-methods stx))
+  ;; synthesize each missing superclass, reusing the head's surface type
+  ;; arguments so the head re-resolves normally.  Emit the BASE instance
+  ;; first, then superclasses nearest-first (Applicative before Functor):
+  ;; Phase C infers method bodies in this order, and a derived body may
+  ;; reference a nearer class's method (e.g. Functor's `fmap` calls the
+  ;; deriving Monad's `flatmap` and Applicative's `pure`), which must
+  ;; already be registered for its concrete-type constraint to discharge.
+  (define surface-args (constraint-args surface-head))
+  (define synth
+    (for/list ([S (in-list closure)]
+               #:unless (or (hash-ref existing (cons S spine) #f)
+                            (instance-already-in-env? env S spine)))
+      (synthesize-one-superclass S surface-args ctx merged bundled env stx)))
+  (cons base-inst synth))
+
+;; Is there already an instance of class `S` for the type whose spine is
+;; `spine`, among prelude/imported instances in env?  (Local instances
+;; aren't registered yet at expansion time — those are covered by the
+;; `existing` set built from the form list.)
+(define (instance-already-in-env? env S spine)
+  (for/or ([inst (in-list (env-instances env S))])
+    (equal? (head-spine-tcon (instance-info-head inst)) spine)))
+
+(define (synthesize-one-superclass S surface-args ctx merged bundled env stx)
+  (define S-cinfo (env-ref-class env S))
+  (define S-derive (hash-ref merged S (hasheq)))
+  (define methods
+    (for/fold ([acc '()]) ([(mname _sch) (in-hash (class-info-methods S-cinfo))])
+      (cond
+        ;; (1) a primitive the user bundled (e.g. `pure`) — reuse verbatim.
+        [(hash-ref bundled mname #f)
+         => (lambda (def) (cons def acc))]
+        ;; (2) a derivation body from the table — freshen its syntax to
+        ;;     the instance site.  Each node gets a DISTINCT handle so the
+        ;;     method-resolution map (keyed by syntax identity) doesn't
+        ;;     collapse this body's uses with another deriving instance's.
+        [(hash-ref S-derive mname #f)
+         => (lambda (expr)
+              (cons (top:def mname (freshen-ast expr stx) stx) acc))]
+        ;; (3) omit, so S's own intra-class default fills it — or, if
+        ;;     there is no default (the `pure` floor), handle-instance-form
+        ;;     later raises "missing method ~s with no default".
+        [else acc])))
+  (top:instance ctx (constraint S surface-args stx) methods stx))
 
 ;; Phase A — process forms that build the type-level env, in the
 ;; order described above.  Returns the post-A env and the `declared`
@@ -2333,7 +2486,14 @@
 ;; pending-preds boxes the REPL persists.  Callers parameterize
 ;; those boxes themselves.
 (define (infer-program-step form env declared)
-  (handle-top-form form env declared))
+  (cond
+    ;; A `#:derive-superclasses` instance expands into several plain
+    ;; instances; register each so the REPL behaves like batch mode.
+    [(top:derive-instance? form)
+     (for/fold ([e env] [d declared] #:result (values e d))
+               ([f (in-list (expand-derive-instances (list form) env))])
+       (handle-top-form f e d))]
+    [else (handle-top-form form env declared)]))
 
 ;; handle-top-form dispatches on the top-level form; each non-trivial
 ;; arm is its own `handle-<form>` helper (class/instance/require already
@@ -2794,10 +2954,18 @@
   (define type-families
     (for/list ([m (in-list methods)] #:when (class-type-fam? m))
       (class-type-fam-name m)))
+  ;; Cross-class derivation table: superclass-name → (method-name → expr),
+  ;; built from each `(#:derive Super (define …) …)` clause in the body.
+  (define super-derives
+    (for/fold ([acc (hasheq)]) ([m (in-list methods)] #:when (class-super-derive? m))
+      (define inner
+        (for/fold ([h (hasheq)]) ([d (in-list (class-super-derive-methods m))])
+          (hash-set h (method-default-name d) (method-default-expr d))))
+      (hash-set acc (class-super-derive-super m) inner)))
   (define info (class-info class-name class-params class-kinds
                            super-preds method-schemes defaults
                            dispatchpos fundeps dictreqs
-                           type-families))
+                           type-families super-derives))
   ;; When a class is redeclared, its previously-registered
   ;; instances belong to a now-superseded class.  Clear them out so
   ;; the new declaration starts fresh — without this the duplicate-

@@ -56,6 +56,10 @@
          (struct-out data-ctor)
          (struct-out top:class)
          (struct-out top:instance)
+         (struct-out top:derive-instance)
+         (struct-out class-super-derive)
+         relocate-ast
+         freshen-ast
          (struct-out method-sig)
          (struct-out method-default)
          (struct-out class-fundep)
@@ -173,6 +177,80 @@
 ;; and the body (signatures + defaults).
 (struct top:class    (supers head methods stx) #:transparent)
 (struct top:instance (context head methods stx) #:transparent)
+;; An instance written with `#:derive-superclasses`: the user bundles
+;; only the irreducible primitives (e.g. `pure` and `flatmap`) and the
+;; compiler synthesizes the missing superclass instances from the
+;; deriving class's cross-class derivation table.  Expanded into plain
+;; `top:instance` forms by `expand-derive-instances` in infer.rkt before
+;; any other phase sees it.  Same shape as `top:instance`.
+(struct top:derive-instance (context head methods stx) #:transparent)
+;; A `(#:derive Super (define …) …)` clause inside a `protocol` body:
+;; canonical bodies that fill superclass `super`'s methods in terms of
+;; this class's own methods.  `methods` is a list of `method-default`.
+(struct class-super-derive  (super methods stx) #:transparent)
+
+;; Re-anchor every syntax handle in a parsed AST.  A class default (or a
+;; cross-class derivation body) was parsed in the class's defining
+;; module; relocating it to the instance site makes its identifier
+;; references resolve via the instance module's imports.  `relocate-ast`
+;; gives every node the same `new-stx` — fine for codegen, which runs
+;; after method resolution is fixed.  `freshen-ast` gives every node a
+;; FRESH, distinct handle (same context + source location as `anchor`) —
+;; needed when an AST is relocated BEFORE inference and inferred per
+;; instance, since the method-resolution map keys uses by syntax
+;; identity, so a shared handle would collapse unrelated uses together.
+(define (relocate-ast node new-stx)
+  (remap-ast-stx node (lambda (_) new-stx)))
+
+(define (freshen-ast node anchor)
+  (remap-ast-stx node (lambda (_) (fresh-stx anchor))))
+
+;; Rebuild `node`, replacing each node's syntax handle with `(mk old)`.
+(define (remap-ast-stx node mk)
+  (define (R x) (remap-ast-stx x mk))
+  (define new-stx (mk node))
+  (match node
+    [(e:literal v _)     (e:literal v new-stx)]
+    [(e:var n _)         (e:var n new-stx)]
+    [(e:lam p body _)    (e:lam p (R body) new-stx)]
+    [(e:app h args _)    (e:app (R h) (map R args) new-stx)]
+    [(e:let bs body _)
+     (e:let (for/list ([b (in-list bs)]) (cons (car b) (R (cdr b))))
+            (R body) new-stx)]
+    [(e:letrec bs body _)
+     (e:letrec (for/list ([b (in-list bs)]) (cons (car b) (R (cdr b))))
+               (R body) new-stx)]
+    [(e:if a b c _)      (e:if (R a) (R b) (R c) new-stx)]
+    [(e:ann e t _)       (e:ann (R e) (R t) new-stx)]
+    [(e:escape t vs body _)
+     ;; Escapes splice raw Racket syntax — relocating it would mean
+     ;; rewriting that user-written code, which we don't want to do.
+     (e:escape (R t) vs body new-stx)]
+    [(e:match s cs irr? _)
+     (e:match (R s)
+              (for/list ([c (in-list cs)])
+                (clause (R (clause-pattern c))
+                        (and (clause-guard c) (R (clause-guard c)))
+                        (R (clause-body c)) new-stx))
+              irr? new-stx)]
+    [(e:match* ss cs irr? _)
+     (e:match* (map R ss)
+               (for/list ([c (in-list cs)])
+                 (clause* (map R (clause*-patterns c))
+                          (and (clause*-guard c) (R (clause*-guard c)))
+                          (R (clause*-body c)) new-stx))
+               irr? new-stx)]
+    [(p:wild _)          (p:wild new-stx)]
+    [(p:var n _)         (p:var n new-stx)]
+    [(p:lit v _)         (p:lit v new-stx)]
+    [(p:ctor n args _)   (p:ctor n (map R args) new-stx)]
+    [(ty:var n _)        (ty:var n new-stx)]
+    [(ty:con n _)        (ty:con n new-stx)]
+    [(ty:app h args _)   (ty:app (R h) (map R args) new-stx)]
+    [(ty:forall vs b _)  (ty:forall vs (R b) new-stx)]
+    [(ty:qual cs b _)
+     (ty:qual (for/list ([c (in-list cs)]) (R c)) (R b) new-stx)]
+    [(constraint c args _) (constraint c (map R args) new-stx)]))
 ;; Items inside a `protocol` body:
 (struct method-sig     (name type stx) #:transparent)
 (struct method-default (name expr stx) #:transparent)
@@ -1704,6 +1782,25 @@
                 methods
                 stx)]
 
+    ;; Opt-in cross-class derivation.  `#:derive-superclasses` directly
+    ;; after the head bundles the irreducible primitives; the compiler
+    ;; synthesizes the missing superclass instances.  These two clauses
+    ;; must precede the plain instance clauses so the keyword is consumed
+    ;; here rather than captured as the first body item.
+    [(instance (ctx ...+ => head) #:derive-superclasses body ...)
+     (top:derive-instance (for/list ([c (in-list (syntax->list #'(ctx ...)))])
+                            (parse-constraint c))
+                          (parse-constraint #'head)
+                          (for/list ([m (in-list (syntax->list #'(body ...)))])
+                            (parse-instance-method m))
+                          stx)]
+    [(instance head #:derive-superclasses body ...)
+     (top:derive-instance '()
+                          (parse-constraint #'head)
+                          (for/list ([m (in-list (syntax->list #'(body ...)))])
+                            (parse-instance-method m))
+                          stx)]
+
     ;; Instance with context: ((Eq a) ... => (Eq (Maybe a)))
     [(instance (ctx ...+ => head) body ...)
      (top:instance (for/list ([c (in-list (syntax->list #'(ctx ...)))])
@@ -1819,6 +1916,19 @@
                                   (parse-constraint cs)))
                        supers)
                methods)]
+      ;; (#:derive Super (define …) …) — cross-class derivation bodies for
+      ;; a superclass.  Kept inside the methods list as a class-super-derive
+      ;; item; the class handler in infer.rkt separates it from real methods.
+      [(#:derive super:id m ...+)
+       #:fail-unless (not (lowercase-id? (syntax->datum #'super)))
+       "superclass in #:derive must be a non-lowercase class name"
+       (values supers
+               (cons (class-super-derive
+                      (syntax->datum #'super)
+                      (for/list ([md (in-list (syntax->list #'(m ...)))])
+                        (parse-class-method md))
+                      item)
+                     methods))]
       [_ (values supers (cons (parse-class-method item) methods))])))
 
 ;; A method form inside `protocol`: either a `(: name type)` signature,

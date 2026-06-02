@@ -218,11 +218,28 @@
     ;; defaults.  An instance must define at least one.  flatmap takes
     ;; the continuation first and the monadic value second; the
     ;; ordering matches `flip (>>=)` from Haskell.
+    ;; Monad also carries cross-class derivations for its Applicative and
+    ;; Functor superclasses: an instance written with
+    ;; `#:derive-superclasses` need only supply `pure` (the irreducible
+    ;; Applicative primitive) and one of `flatmap`/`join`; `fmap` and the
+    ;; Applicative combinators are synthesized from these.
     (protocol (Monad [m => Applicative])
       (: flatmap (-> (-> a (m b)) (-> (m a) (m b))))
       (: join    (-> (m (m a)) (m a)))
       (define (flatmap f ma) (join (fmap f ma)))
-      (define (join mma)     (flatmap (lambda (m) m) mma)))
+      (define (join mma)     (flatmap (lambda (m) m) mma))
+      ;; The derived bodies use only `flatmap` and `pure` — never `fmap`,
+      ;; `fapply`, or `liftA2` — so a synthesized superclass instance never
+      ;; forward-references a class registered after it.  `liftA2` is
+      ;; provided too (not left to its default, which would call `fmap`);
+      ;; `product` then derives from `liftA2`.
+      (#:derive Functor
+        (define (fmap f x) (flatmap (lambda (a) (pure (f a))) x)))
+      (#:derive Applicative
+        (define (fapply ff fx)
+          (flatmap (lambda (g) (flatmap (lambda (x) (pure (g x))) fx)) ff))
+        (define (liftA2 g x y)
+          (flatmap (lambda (a) (flatmap (lambda (b) (pure ((g a) b))) y)) x))))
 
     ;; Maybe
     (instance (Functor Maybe)

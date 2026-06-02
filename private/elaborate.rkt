@@ -129,7 +129,11 @@
                  ;; Generated needs-dict return-typed impl names that
                  ;; must be exported so cross-module call sites bind.
                  [current-instance-exported-impls (box '())])
-    (define env (infer-program parsed prelude-env))
+    ;; infer-program also returns the post-expansion form list — every
+    ;; `#:derive-superclasses` instance replaced by the plain instances it
+    ;; synthesized.  Codegen and export resolution run over THIS list so
+    ;; the synthesized superclass instances are lowered and escape.
+    (define-values (env parsed*) (infer-program+forms parsed prelude-env))
     ;; Compile each parsed form into Racket syntax.  The emission
     ;; order must respect runtime dependencies — `instance`
     ;; mutates a dispatch table created by `protocol`, so all
@@ -138,7 +142,7 @@
     ;; preserve their source order so the user-visible execution
     ;; ordering of defs and side-effecting top-level expressions
     ;; doesn't change.
-    (define parsed-ordered (phase-sort-forms parsed))
+    (define parsed-ordered (phase-sort-forms parsed*))
     (define compiled
       ;; Return-typed method names (pure/mempty/…) drive codegen's choice
       ;; of a runtime-table lookup vs a direct impl reference at call
@@ -157,7 +161,7 @@
     ;; Pass the logs alongside compiled forms; the
     ;; rackton macro turns them into runtime forms.
     (define-values (final-compiled prov-stx bs dcs tcs cls insts impls)
-      (elaborate-finish parsed env compiled))
+      (elaborate-finish parsed* env compiled))
     (values final-compiled prov-stx bs dcs tcs cls insts impls mono-log inline-log)))
 
 ;; ----- export resolution ----------------------------------------------

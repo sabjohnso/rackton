@@ -136,6 +136,11 @@
         ;; List of associated-type names.
         (class-info-type-families ci)))
 
+;; super-derives is not serialized (it holds surface exprs, like
+;; `defaults`); every decoded class gets an empty table as the trailing
+;; field, so an imported user class's `#:derive` clauses don't cross
+;; modules.  The prelude monad stack lives in prelude-env, available
+;; everywhere, so deriving the standard superclasses works regardless.
 (define (decode-class-info datum)
   (match datum
     ;; Current shape: trailing type-families list.
@@ -155,7 +160,8 @@
                    (cons (car entry) (cadr entry)))
                  (for/hasheq ([entry (in-list dictreqs-list)])
                    (values (car entry) (cadr entry)))
-                 type-families-list)]
+                 type-families-list
+                 (hasheq))]
     [(list name params kinds-list supers-list methods-list dispatchpos-list
            fundeps-list dictreqs-list)
      (class-info name
@@ -172,7 +178,8 @@
                    (cons (car entry) (cadr entry)))
                  (for/hasheq ([entry (in-list dictreqs-list)])
                    (values (car entry) (cadr entry)))
-                 '())]
+                 '()
+                 (hasheq))]
     [(list name params kinds-list supers-list methods-list dispatchpos-list
            fundeps-list)
      (class-info name
@@ -188,7 +195,8 @@
                  (for/list ([entry (in-list fundeps-list)])
                    (cons (car entry) (cadr entry)))
                  (hasheq)
-                 '())]
+                 '()
+                 (hasheq))]
     [(list name params kinds-list supers-list methods-list dispatchpos-list)
      (class-info name
                  params
@@ -202,7 +210,8 @@
                    (values (car entry) (cadr entry)))
                  '()
                  (hasheq)
-                 '())]))
+                 '()
+                 (hasheq))]))
 
 ;; Instance info is encoded with its owning class name as the first
 ;; element so we know where to install it on decode.  Method bodies

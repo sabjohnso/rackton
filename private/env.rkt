@@ -111,8 +111,18 @@
 ;; `type-families` is the list of associated-type names declared by
 ;; the class via `#:type Foo`.  Each instance must supply concrete
 ;; bindings for every declared family.
+;;   super-derives : (HashEq superclass-name → (HashEq method-name →
+;;                   surface-expr)) — cross-class derivation table.  For
+;;                   each `(#:derive Super …)` clause in the class body,
+;;                   the canonical bodies that fill `Super`'s methods in
+;;                   terms of this class's own methods.  Consumed when an
+;;                   instance opts into `#:derive-superclasses`.  Empty
+;;                   for classes that declare no derivations.  Not
+;;                   serialized (like `defaults`), so a USER class's
+;;                   derivations are available only within its defining
+;;                   module; the prelude monad stack works everywhere.
 (struct class-info (name params kinds supers methods defaults dispatchpos
-                    fundeps dictreqs type-families)
+                    fundeps dictreqs type-families super-derives)
   #:transparent)
 
 ;; An instance's information.

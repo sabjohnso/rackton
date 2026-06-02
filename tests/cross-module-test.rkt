@@ -131,7 +131,10 @@
               (hasheq '< 0)
               '()
               (hasheq)
-              '()))
+              '()
+              ;; super-derives table is not encoded either; the codec
+              ;; reconstructs an empty hash on decode.
+              (hasheq)))
   (define round-tripped (decode-class-info (encode-class-info ci)))
   ;; Compare fields individually since the defaults field is dropped
   ;; and reconstituted as `(hasheq)`.

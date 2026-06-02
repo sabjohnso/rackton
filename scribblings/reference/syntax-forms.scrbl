@@ -162,7 +162,8 @@ field-lens family.}
            [method        (code:line (: method-name type))
                           (code:line (define (method-name p ...) body))
                           (code:line #:requires constraint ...)
-                          (code:line #:fundep var ... -> var ...)]
+                          (code:line #:fundep var ... -> var ...)
+                          (code:line (#:derive SuperClass (define …) ...))]
            [constraint    (ClassName type ...)])]{
 
 Declares a type class.  Each method signature
@@ -196,11 +197,25 @@ superclass.  Kinds are written as @racket[*] for ordinary types or
 @racket[(-> k1 k2)] for type-constructor kinds.
 
 A class may declare one or more functional dependencies via
-@racket[#:fundep] clauses inside the body.}
+@racket[#:fundep] clauses inside the body.
+
+A @racket[#:derive] clause declares a @deftech{cross-class derivation}:
+canonical bodies that fill a @emph{superclass}'s methods in terms of
+@emph{this} class's methods.  It is the inter-class analogue of a default
+method.  For example, @racket[Monad] derives its @racket[Functor] and
+@racket[Applicative] superclasses from @racket[flatmap] and @racket[pure].
+The bodies are consumed only when an instance opts in with
+@racket[#:derive-superclasses] (see @racket[instance]).  A
+@racket[#:derive] table is available within the module that declares the
+class; it is not currently serialized across module boundaries, so a
+user-defined class's derivations apply only to instances written in the
+same file (the built-in monad stack works everywhere).}
 
 @defform*[
           [(instance head method ...)
-           (instance (qual ... => head) method ...)]
+           (instance (qual ... => head) method ...)
+           (instance head #:derive-superclasses method ...)
+           (instance (qual ... => head) #:derive-superclasses method ...)]
           #:grammar
           ([head    (ClassName type ...)]
            [qual    (ClassName var ...)]
@@ -212,6 +227,27 @@ hypothesis constraints that become available to the body and that
 must be discharged at each use site.
 
 Omitted methods fall back to the class's default implementations.
+
+A method may be written in @deftech{point-free} form — @racket[(define
+method fn)], aliasing an existing function — instead of spelling out
+@racket[(define (method arg ...) body)].  This works even when
+@racket[fn] is a top-level @racket[define] that appears after the
+instance.  (The sole exception is an arity-0 return-typed method such as
+@racket[mempty]: alias it to a self-contained value, or define the
+aliased binding before the instance.)
+
+With @racket[#:derive-superclasses], the instance bundles only the
+irreducible primitives, and the compiler synthesizes the missing
+superclass instances from the class's @tech{cross-class derivation}
+table.  Writing a @racket[Monad] instance this way, for example, requires
+only @racket[pure] and one of @racket[flatmap]/@racket[join] — the
+@racket[Functor] and @racket[Applicative] instances are generated
+(inheriting the same context).  A superclass that already has an instance
+— hand-written or imported — is left untouched.  Note that @racket[pure]
+cannot be derived from @racket[Monad] (none of @racket[fmap],
+@racket[flatmap], @racket[join] can manufacture an @racket[(f a)] from a
+bare @racket[a]), so it must always be supplied; omitting it is a
+compile-time error.
 
 Instances always escape regardless of @racket[provide]; coherence is a
 module-level property.}
