@@ -28,7 +28,7 @@ inside an @racket[s].  Add @racket[#:deriving Lens] to a
 }|
 
 Without @racket[#:deriving Lens] no lenses are generated — you can
-still write them by hand with @racket[MkLens] (see below).
+still write them by hand with @racket[Lens] (see below).
 
 Compose lenses with @racket[lens-compose] to drill into nested
 structure:
@@ -45,13 +45,13 @@ structure:
 ;; ⇒ Person { name="Alice", addr=Address { city="LA", zip=10001 } }
 }|
 
-You can also construct a lens directly with @racket[MkLens]:
+You can also construct a lens directly with @racket[Lens]:
 
 @codeblock|{
 (: first-of-pair (Lens (Pair a b) a))
 (define first-of-pair
-  (MkLens fst
-          (lambda (p) (lambda (a) (MkPair a (snd p))))))
+  (Lens fst
+          (lambda (p) (lambda (a) (Pair a (snd p))))))
 }|
 
 @section{Prisms}
@@ -97,10 +97,10 @@ fields is a compile error.
   (Tri    Integer Integer Integer)
   #:deriving Prism)
 
-(preview Shape-Rect-prism (Rect 3 4))     ;; ⇒ (Some (MkPair 3 4))
-(review  Shape-Rect-prism (MkPair 7 8))   ;; ⇒ (Rect 7 8)
-(preview Shape-Tri-prism  (Tri 1 2 3))    ;; ⇒ (Some (MkTuple3 1 2 3))
-(review  Shape-Tri-prism  (MkTuple3 4 5 6)) ;; ⇒ (Tri 4 5 6)
+(preview Shape-Rect-prism (Rect 3 4))     ;; ⇒ (Some (Pair 3 4))
+(review  Shape-Rect-prism (Pair 7 8))   ;; ⇒ (Rect 7 8)
+(preview Shape-Tri-prism  (Tri 1 2 3))    ;; ⇒ (Some (Tuple3 1 2 3))
+(review  Shape-Tri-prism  (Tuple3 4 5 6)) ;; ⇒ (Tri 4 5 6)
 }|
 
 (Prism deriving is unavailable on @racket[struct] — a

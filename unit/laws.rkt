@@ -96,14 +96,14 @@
 (: show-pair2 ((Show a) => (-> (Pair a a) String)))
 (define (show-pair2 p)
   (match p
-    [(MkPair x y)
+    [(Pair x y)
      (string-append "(" (string-append (show x)
                           (string-append ", " (string-append (show y) ")"))))]))
 
 (: show-pair3 ((Show a) => (-> (Pair a (Pair a a)) String)))
 (define (show-pair3 t)
   (match t
-    [(MkPair x rest)
+    [(Pair x rest)
      (string-append "(" (string-append (show x)
                           (string-append ", " (string-append (show-pair2 rest) ")"))))]))
 
@@ -117,7 +117,7 @@
              (for-all-gen show-pair2 (gen-pair gen gen)
                           (lambda (p)
                             (match p
-                              [(MkPair x y) (== (== x y) (== y x))]))))))
+                              [(Pair x y) (== (== x y) (== y x))]))))))
 
 ;; Ord: reflexivity and totality of `<=`.
 (: ord-laws ((Ord a) (Show a) => (-> (Gen a) Test)))
@@ -129,7 +129,7 @@
              (for-all-gen show-pair2 (gen-pair gen gen)
                           (lambda (p)
                             (match p
-                              [(MkPair x y)
+                              [(Pair x y)
                                (if (<= x y) #t (<= y x))]))))))
 
 ;; Semigroup: associativity of `<>`.
@@ -140,7 +140,7 @@
              (for-all-gen show-pair3 (gen-pair gen (gen-pair gen gen))
                           (lambda (t)
                             (match t
-                              [(MkPair x (MkPair y z))
+                              [(Pair x (Pair y z))
                                (== (<> (<> x y) z) (<> x (<> y z)))]))))))
 
 ;; Monoid: `identity` is a left and right unit for `<>`.  The identity

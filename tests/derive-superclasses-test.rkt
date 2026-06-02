@@ -163,8 +163,8 @@
   (check-equal? af-fmap 42))
 
 ;; ----- product / liftA2 over a derived instance (regression) ------
-;; `product`'s default is `(liftA2 MkPair x y)`, passing the raw 2-ary
-;; MkPair constructor as liftA2's function.  The derived liftA2 must apply
+;; `product`'s default is `(liftA2 Pair x y)`, passing the raw 2-ary
+;; Pair constructor as liftA2's function.  The derived liftA2 must apply
 ;; it with an n-ary call `(g a b)`, not a curried `((g a) b)` — a
 ;; constructor cannot be partially applied.
 
@@ -177,14 +177,14 @@
   (: prod Integer)
   (define prod
     (match (product (MkBx 3) (MkBx 4))
-      [(MkBx p) (match p [(MkPair a b) (+ a b)])]))
+      [(MkBx p) (match p [(Pair a b) (+ a b)])]))
 
   ;; liftA2 with a real (curried) function argument still works too.
   (: la2 Integer)
   (define la2
     (match (liftA2 (lambda (a b) (* a b)) (MkBx 3) (MkBx 4)) [(MkBx v) v])))
 
-(test-case "derived product passes the bare MkPair constructor"
+(test-case "derived product passes the bare Pair constructor"
   (check-equal? prod 7))
 (test-case "derived liftA2 with a function argument"
   (check-equal? la2 12))

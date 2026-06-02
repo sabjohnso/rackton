@@ -74,17 +74,17 @@
 (define suite
   (list
    (it "WriterT String IO: concatenates the log"
-       (check-equal? r-greeting (MkPair "hello, world" 42)))
+       (check-equal? r-greeting (Pair "hello, world" 42)))
    (it "WriterT (List Integer) IO: appends the list log"
-       (check-equal? r-traced (MkPair (Cons 1 (Cons 2 (Cons 3 Nil))) 6)))
+       (check-equal? r-traced (Pair (Cons 1 (Cons 2 (Cons 3 Nil))) 6)))
    (it "WriterT String Maybe: works with a non-IO inner monad"
-       (check-equal? maybe-pair-result (Some (MkPair "step-1 step-2" 7))))
+       (check-equal? maybe-pair-result (Some (Pair "step-1 step-2" 7))))
    (it "exec-writer-t drops the value"
        (check-equal? r-only-log "hello, world"))
    (it "eval-writer-t drops the log"
        (check-equal? r-only-val 42))
    (it "lift-writer-t starts with empty log"
-       (check-equal? r-hoisted (MkPair "" 100)))))
+       (check-equal? r-hoisted (Pair "" 100)))))
 
 (: _ran Unit)
 (define _ran (run-io (run-suite "writer transformer" suite)))

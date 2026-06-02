@@ -46,15 +46,15 @@
     [(Cons (Err e) t) (Cons e (errs t))]
     [(Cons (Ok _) t)  (errs t)]))
 
-;; @racket[(partition-results rs)] — @racket[(MkPair errs oks)]
+;; @racket[(partition-results rs)] — @racket[(Pair errs oks)]
 ;; (Haskell @tt{partitionEithers}), order preserved.
 (: partition-results (-> (List (Result e a)) (Pair (List e) (List a))))
 (define (partition-results rs)
   (foldr (lambda (r acc)
            (match r
-             [(Err e) (MkPair (Cons e (fst acc)) (snd acc))]
-             [(Ok  a) (MkPair (fst acc) (Cons a (snd acc)))]))
-         (MkPair Nil Nil)
+             [(Err e) (Pair (Cons e (fst acc)) (snd acc))]
+             [(Ok  a) (Pair (fst acc) (Cons a (snd acc)))]))
+         (Pair Nil Nil)
          rs))
 
 ;; @racket[Ok] → @racket[Some]; @racket[Err] → @racket[None].

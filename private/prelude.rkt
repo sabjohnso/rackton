@@ -99,9 +99,9 @@
 
     (data (Maybe a)    None (Some a))
     (data (List a)     Nil  (Cons a (List a)))
-    (data (Pair a b)   (MkPair a b))
+    (data (Pair a b)   (Pair a b))
     (data (Result e a) (Err e) (Ok a))
-    (data Unit MkUnit)
+    (data Unit Unit)
 
     ;; --- Char and Bytes primitives (opaque ADTs; values come from
     ;; Racket's reader as `#\A` and `#"…"`) -----------------------
@@ -210,9 +210,9 @@
       (: liftA2  (-> (-> a (-> b c)) (-> (f a) (-> (f b) (f c)))))
       (: product (-> (f a) (-> (f b) (f (Pair a b)))))
       (define (fapply ff fa)
-        (fmap (lambda (p) (match p [(MkPair f x) (f x)])) (product ff fa)))
+        (fmap (lambda (p) (match p [(Pair f x) (f x)])) (product ff fa)))
       (define (liftA2 g x y) (fapply (fmap g x) y))
-      (define (product x y) (liftA2 MkPair x y))
+      (define (product x y) (liftA2 Pair x y))
       ;; Cross-class derivation of the Functor superclass: an Applicative
       ;; instance written with `#:derive-superclasses` (supplying `pure`
       ;; and `fapply`) gets `Functor` for free via `fmap f = pure f <*>`.
@@ -244,7 +244,7 @@
         (define (fapply ff fx)
           (flatmap (lambda (g) (flatmap (lambda (x) (pure (g x))) fx)) ff))
         ;; Apply `g` with an n-ary call `(g a b)`, not a curried `((g a) b)`:
-        ;; `product`'s default passes the raw 2-ary `MkPair` constructor as
+        ;; `product`'s default passes the raw 2-ary `Pair` constructor as
         ;; `g`, and a constructor cannot be partially applied.
         (define (liftA2 g x y)
           (flatmap (lambda (a) (flatmap (lambda (b) (pure (g a b))) y)) x))))
@@ -342,7 +342,7 @@
     (instance (Bifunctor Pair)
       (define (bimap f g p)
         (match p
-          [(MkPair x y) (MkPair (f x) (g y))])))
+          [(Pair x y) (Pair (f x) (g y))])))
 
     (instance (Bifunctor Result)
       (define (bimap f g r)
@@ -575,15 +575,15 @@
     (define (gets f) (fmap f get-st))
 
     (: void ((Functor f) => (-> (f a) (f Unit))))
-    (define (void fa) (fmap (const MkUnit) fa))
+    (define (void fa) (fmap (const Unit) fa))
 
     (: when ((Applicative f) => (-> Boolean (-> (f Unit) (f Unit)))))
     (define (when b fu)
-      (if b fu (pure MkUnit)))
+      (if b fu (pure Unit)))
 
     (: unless ((Applicative f) => (-> Boolean (-> (f Unit) (f Unit)))))
     (define (unless b fu)
-      (if b (pure MkUnit) fu))
+      (if b (pure Unit) fu))
 
     (: filter (-> (-> a Boolean) (-> (List a) (List a))))
     (define (filter p xs)
@@ -732,35 +732,35 @@
     ;; Future; await-c reads it back.  Useful for deterministic
     ;; unit tests of polymorphic concurrent code.
 
-    (data (Identity a) (MkIdentity a))
+    (data (Identity a) (Identity a))
 
     (: run-identity (-> (Identity a) a))
     (define (run-identity i)
-      (match i [(MkIdentity x) x]))
+      (match i [(Identity x) x]))
 
     (instance (Functor Identity)
       (define (fmap f i)
-        (match i [(MkIdentity x) (MkIdentity (f x))])))
+        (match i [(Identity x) (Identity (f x))])))
 
     (instance (Applicative Identity)
-      (define (pure x)        (MkIdentity x))
+      (define (pure x)        (Identity x))
       (define (fapply ifn ix)
         (match ifn
-          [(MkIdentity f)
-           (match ix [(MkIdentity x) (MkIdentity (f x))])])))
+          [(Identity f)
+           (match ix [(Identity x) (Identity (f x))])])))
 
     (instance (Monad Identity)
       (define (flatmap f i)
-        (match i [(MkIdentity x) (f x)])))
+        (match i [(Identity x) (f x)])))
 
     (instance (Concurrent Identity)
       (define (fork-c m)
         (match m
-          [(MkIdentity x) (MkIdentity (racket (Future a) (x) #f))]))
+          [(Identity x) (Identity (racket (Future a) (x) #f))]))
       (define (await-c fut)
-        (MkIdentity (racket a (fut) #f)))
+        (Identity (racket a (fut) #f)))
       (define yield-c
-        (MkIdentity MkUnit)))
+        (Identity Unit)))
 
     ;; Optics (Lens / Prism / Traversal) moved to rackton/data/lens
     ;; (Phase 2 slim).
@@ -780,10 +780,10 @@
       (foldr (lambda (h acc) (append acc (Cons h Nil))) Nil xs))
 
     (: fst (-> (Pair a b) a))
-    (define (fst p) (match p [(MkPair a _) a]))
+    (define (fst p) (match p [(Pair a _) a]))
 
     (: snd (-> (Pair a b) b))
-    (define (snd p) (match p [(MkPair _ b) b]))
+    (define (snd p) (match p [(Pair _ b) b]))
 
     ;; zip / take / drop / find / split-at / merge-lists / sort /
     ;; concat-map moved to rackton/data/list; swap to rackton/data/tuple
@@ -1009,8 +1009,8 @@
     (instance ((Eq a) (Eq b) => (Eq (Pair a b)))
       (define (== p1 p2)
         (match p1
-          [(MkPair x1 y1)
-           (match p2 [(MkPair x2 y2) (if (== x1 x2) (== y1 y2) #f)])])))
+          [(Pair x1 y1)
+           (match p2 [(Pair x2 y2) (if (== x1 x2) (== y1 y2) #f)])])))
 
     (instance ((Eq e) (Eq a) => (Eq (Result e a)))
       (define (== r1 r2)
@@ -1042,9 +1042,9 @@
     (instance ((Ord a) (Ord b) => (Ord (Pair a b)))
       (define (< p1 p2)
         (match p1
-          [(MkPair x1 y1)
+          [(Pair x1 y1)
            (match p2
-             [(MkPair x2 y2)
+             [(Pair x2 y2)
               (if (< x1 x2) #t (if (== x1 x2) (< y1 y2) #f))])])))
 
     ;; Show: human-readable renderings; used in check-equal? failure
@@ -1069,7 +1069,7 @@
     (instance ((Show a) (Show b) => (Show (Pair a b)))
       (define (show p)
         (match p
-          [(MkPair x y)
+          [(Pair x y)
            (string-append "(" (string-append (show x)
                             (string-append ", " (string-append (show y) ")"))))])))
 

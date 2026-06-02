@@ -87,26 +87,26 @@
 
 ;; ----- Summary ------------------------------------------------------
 
-(data Summary (MkSummary Integer Integer))   ;; passed, failed
+(data Summary (Summary Integer Integer))   ;; passed, failed
 
 (: summary-passed (-> Summary Integer))
-(define (summary-passed s) (match s [(MkSummary p _) p]))
+(define (summary-passed s) (match s [(Summary p _) p]))
 
 (: summary-failed (-> Summary Integer))
-(define (summary-failed s) (match s [(MkSummary _ f) f]))
+(define (summary-failed s) (match s [(Summary _ f) f]))
 
 (: summary-add (-> Summary (-> Summary Summary)))
 (define (summary-add a b)
   (match a
-    [(MkSummary p1 f1)
+    [(Summary p1 f1)
      (match b
-       [(MkSummary p2 f2) (MkSummary (+ p1 p2) (+ f1 f2))])]))
+       [(Summary p2 f2) (Summary (+ p1 p2) (+ f1 f2))])]))
 
 (: one-pass Summary)
-(define one-pass (MkSummary 1 0))
+(define one-pass (Summary 1 0))
 
 (: one-fail Summary)
-(define one-fail (MkSummary 0 1))
+(define one-fail (Summary 0 1))
 
 ;; ----- Runner helpers -----------------------------------------------
 
@@ -126,7 +126,7 @@
 ;; through `flatmap` delays the work until the IO is actually run.
 (: defer-io (-> (-> Unit a) (IO a)))
 (define (defer-io th)
-  (flatmap (lambda (u) (pure-io (th u))) (pure-io MkUnit)))
+  (flatmap (lambda (u) (pure-io (th u))) (pure-io Unit)))
 
 ;; Print one line at the given depth.
 (: emit (-> Integer (-> String (IO Unit))))
@@ -184,7 +184,7 @@
 (: run-group (-> Integer (-> (List Test) (IO Summary))))
 (define (run-group d kids)
   (match kids
-    [(Nil) (pure-io (MkSummary 0 0))]
+    [(Nil) (pure-io (Summary 0 0))]
     [(Cons t rest)
      (do [s1 <- (run-at d t)]
          [s2 <- (run-group d rest)]
@@ -245,7 +245,7 @@
 (: qrun-group (-> String (-> (List Test) (IO Summary))))
 (define (qrun-group path kids)
   (match kids
-    [(Nil) (pure-io (MkSummary 0 0))]
+    [(Nil) (pure-io (Summary 0 0))]
     [(Cons t rest)
      (do [s1 <- (qrun-at path t)]
          [s2 <- (qrun-group path rest)]
@@ -261,4 +261,4 @@
         (panic (string-append name
                  (string-append ": "
                    (string-append (integer->string (summary-failed s)) " failure(s)"))))
-        (pure-io MkUnit))))
+        (pure-io Unit))))

@@ -31,7 +31,7 @@
 ;; WriterT needs the log's mempty, so its lift is inlined (delegating to
 ;; the needs-dict lift-writer-t would cross skolemizations).
 (instance ((Monoid w) => (MonadTrans (WriterT w)))
-  (define (lift ma) (MkWriterT (fmap (lambda (a) (MkPair mempty a)) ma))))
+  (define (lift ma) (WriterT (fmap (lambda (a) (Pair mempty a)) ma))))
 
 (instance (MonadTrans (ExceptT e))
   (define (lift ma) (lift-except-t ma)))
@@ -47,7 +47,7 @@
 
 (instance ((MonadIO m) (Monoid w) => (MonadIO (WriterT w m)))
   (define (lift-io io)
-    (MkWriterT (fmap (lambda (a) (MkPair mempty a)) (lift-io io)))))
+    (WriterT (fmap (lambda (a) (Pair mempty a)) (lift-io io)))))
 
 (instance ((MonadIO m) => (MonadIO (ExceptT e m)))
   (define (lift-io io) (lift-except-t (lift-io io))))

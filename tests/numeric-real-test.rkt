@@ -18,10 +18,10 @@
 (: lb-10-1k Float) (define lb-10-1k (num-log-base 10.0 1000.0))
 
 ;; properFraction truncates toward zero: (whole, fractional)
-(: pf-pos-i Integer) (define pf-pos-i (match (num-proper-fraction 3.7)  [(MkPair i _) i]))
-(: pf-pos-f Float)   (define pf-pos-f (match (num-proper-fraction 3.7)  [(MkPair _ f) f]))
-(: pf-neg-i Integer) (define pf-neg-i (match (num-proper-fraction -3.7) [(MkPair i _) i]))
-(: pf-neg-f Float)   (define pf-neg-f (match (num-proper-fraction -3.7) [(MkPair _ f) f]))
+(: pf-pos-i Integer) (define pf-pos-i (match (num-proper-fraction 3.7)  [(Pair i _) i]))
+(: pf-pos-f Float)   (define pf-pos-f (match (num-proper-fraction 3.7)  [(Pair _ f) f]))
+(: pf-neg-i Integer) (define pf-neg-i (match (num-proper-fraction -3.7) [(Pair i _) i]))
+(: pf-neg-f Float)   (define pf-neg-f (match (num-proper-fraction -3.7) [(Pair _ f) f]))
 
 ;; ---------- assertions ---------------------------------------
 

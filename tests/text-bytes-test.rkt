@@ -15,8 +15,8 @@
 (: tk String) (define tk (b->s (bytes-take 3 (string->bytes "hello"))))
 (: dp String) (define dp (b->s (bytes-drop 3 (string->bytes "hello"))))
 
-(: sp-l String) (define sp-l (match (bytes-split 2 (string->bytes "hello")) [(MkPair a _) (b->s a)]))
-(: sp-r String) (define sp-r (match (bytes-split 2 (string->bytes "hello")) [(MkPair _ b) (b->s b)]))
+(: sp-l String) (define sp-l (match (bytes-split 2 (string->bytes "hello")) [(Pair a _) (b->s a)]))
+(: sp-r String) (define sp-r (match (bytes-split 2 (string->bytes "hello")) [(Pair _ b) (b->s b)]))
 
 (: cc String)
 (define cc (b->s (bytes-concat (list (string->bytes "ab")

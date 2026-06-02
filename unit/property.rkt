@@ -46,7 +46,7 @@
          gen-string)
 
 ;; numTests -> startSeed -> outcome
-(data Property (MkProperty (-> Integer (-> Integer PropOutcome))))
+(data Property (Property (-> Integer (-> Integer PropOutcome))))
 
 (data PropOutcome
   (PropPassed Integer)            ;; number of cases that passed
@@ -83,10 +83,10 @@
 ;; renderer for counterexamples.  The renderer is passed explicitly
 ;; (rather than via a `Show` constraint) because the dictionary for a
 ;; class constraint does not thread into the closure captured by
-;; `MkProperty`; passing `show` as a first-class value sidesteps that.
+;; `Property`; passing `show` as a first-class value sidesteps that.
 (: for-all-gen (-> (-> a String) (-> (Gen a) (-> (-> a Boolean) Property))))
 (define (for-all-gen render g pred)
-  (MkProperty
+  (Property
    (lambda (num-tests start-seed)
      (letrec ([loop (lambda (i s)
                       (if (>= i num-tests)
@@ -108,4 +108,4 @@
 (: run-property (-> Integer (-> Integer (-> Property PropOutcome))))
 (define (run-property num-tests start-seed prop)
   (match prop
-    [(MkProperty f) (f num-tests start-seed)]))
+    [(Property f) (f num-tests start-seed)]))

@@ -13,10 +13,10 @@
 (: so4 String) (define so4 (string-join "|" (split-on "::" "x::y::z")))
 
 ;; break-on: components of the pair
-(: bo1l String) (define bo1l (match (break-on "::" "a::b::c") [(MkPair a _) a]))
-(: bo1r String) (define bo1r (match (break-on "::" "a::b::c") [(MkPair _ b) b]))
-(: bo2l String) (define bo2l (match (break-on "x" "abc") [(MkPair a _) a]))
-(: bo2r String) (define bo2r (match (break-on "x" "abc") [(MkPair _ b) b]))
+(: bo1l String) (define bo1l (match (break-on "::" "a::b::c") [(Pair a _) a]))
+(: bo1r String) (define bo1r (match (break-on "::" "a::b::c") [(Pair _ b) b]))
+(: bo2l String) (define bo2l (match (break-on "x" "abc") [(Pair a _) a]))
+(: bo2r String) (define bo2r (match (break-on "x" "abc") [(Pair _ b) b]))
 
 ;; index-of (-1 for None)
 (: io1 Integer) (define io1 (match (index-of "lo" "hello") [(Some i) i] [(None) -1]))

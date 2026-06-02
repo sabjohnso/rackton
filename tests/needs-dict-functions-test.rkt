@@ -17,18 +17,18 @@
 (define empty-strs (my-concat (ann Nil (List String))))
 
 (: total Sum)
-(define total (my-concat (Cons (MkSum 3) (Cons (MkSum 5) (Cons (MkSum 7) Nil)))))
+(define total (my-concat (Cons (Sum 3) (Cons (Sum 5) (Cons (Sum 7) Nil)))))
 
 (: factorial Product)
 (define factorial
-  (my-concat (Cons (MkProduct 2)
-                   (Cons (MkProduct 3)
-                         (Cons (MkProduct 4) Nil)))))
+  (my-concat (Cons (Product 2)
+                   (Cons (Product 3)
+                         (Cons (Product 4) Nil)))))
 
 ;; ----- User-defined Applicative helper -------------------
 (: my-pure-pair ((Applicative f) => (-> a (f (Pair a a)))))
 (define (my-pure-pair x)
-  (pure (MkPair x x)))
+  (pure (Pair x x)))
 
 (: pair-maybe (Maybe (Pair Integer Integer)))
 (define pair-maybe (my-pure-pair 42))
@@ -51,7 +51,7 @@
 (define wrapped-str (wrap-with-empty "hello"))
 
 (: wrapped-sum Sum)
-(define wrapped-sum (wrap-with-empty (MkSum 99)))
+(define wrapped-sum (wrap-with-empty (Sum 99)))
 
 ;; ---------- assertions -----------------------------------
 
@@ -67,13 +67,13 @@
    (it "user my-concat on Product"
        (check-equal? (get-product factorial) 24))
    (it "user my-pure-pair into Maybe"
-       (check-equal? pair-maybe (Some (MkPair 42 42))))
+       (check-equal? pair-maybe (Some (Pair 42 42))))
    (it "user my-pure-pair into List"
-       (check-equal? pair-list (Cons (MkPair "hi" "hi") Nil)))
+       (check-equal? pair-list (Cons (Pair "hi" "hi") Nil)))
    (it "user my-pure-pair into Result"
-       (check-equal? pair-result (Ok (MkPair 7 7))))
+       (check-equal? pair-result (Ok (Pair 7 7))))
    (it "user my-pure-pair into IO"
-       (check-equal? (run-io pair-io) (MkPair 1 1)))
+       (check-equal? (run-io pair-io) (Pair 1 1)))
    (it "user body mixes runtime <> and dict-passed mempty (String)"
        (check-equal? wrapped-str "hello"))
    (it "user body mixes runtime <> and dict-passed mempty (Sum)"

@@ -60,7 +60,7 @@
   (do [box <- (new-mvar 7)]
       [a   <- (read-mvar box)]
       [b   <- (read-mvar box)]
-    (pure (MkPair a b))))
+    (pure (Pair a b))))
 
 ;; ---------- assertions ---------------------------------------
 
@@ -79,7 +79,7 @@
    (it "five threads each modify-mvar (+1) atomically"
        (check-equal? r-five 5))
    (it "read-mvar is non-destructive"
-       (check-equal? r-twice (MkPair 7 7)))))
+       (check-equal? r-twice (Pair 7 7)))))
 
 (: _ran Unit)
 (define _ran (run-io (run-suite "concurrency-primitives" suite)))

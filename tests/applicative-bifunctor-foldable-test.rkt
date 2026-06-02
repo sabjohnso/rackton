@@ -37,7 +37,7 @@
 (define pair-bimapped
   (bimap (lambda (x) (+ x 1))
          (lambda (s) (string-append s "!"))
-         (MkPair 41 "hi")))
+         (Pair 41 "hi")))
 
 ;; ----- Bifunctor bimap over Result --------------------------
 (: result-bimapped (Result Integer Integer))
@@ -55,11 +55,11 @@
 ;; ----- Bifunctor first / second defaults --------------------
 (: pair-first (Pair Integer String))
 (define pair-first
-  (first (lambda (x) (+ x 100)) (MkPair 1 "k")))
+  (first (lambda (x) (+ x 100)) (Pair 1 "k")))
 
 (: pair-second (Pair Integer String))
 (define pair-second
-  (second (lambda (s) (string-append s "?")) (MkPair 1 "k")))
+  (second (lambda (s) (string-append s "?")) (Pair 1 "k")))
 
 ;; ----- Foldable foldr over List -----------------------------
 (: sum-list (-> (List Integer) Integer))
@@ -113,15 +113,15 @@
    (it "Applicative fapply on IO"
        (check-equal? io-ap-result 105))
    (it "Bifunctor bimap on Pair"
-       (check-equal? pair-bimapped (MkPair 42 "hi!")))
+       (check-equal? pair-bimapped (Pair 42 "hi!")))
    (it "Bifunctor bimap on Result Ok"
        (check-equal? result-bimapped (Ok 70)))
    (it "Bifunctor bimap on Result Err"
        (check-equal? result-bimapped-err (Err 4)))
    (it "Bifunctor first on Pair"
-       (check-equal? pair-first (MkPair 101 "k")))
+       (check-equal? pair-first (Pair 101 "k")))
    (it "Bifunctor second on Pair"
-       (check-equal? pair-second (MkPair 1 "k?")))
+       (check-equal? pair-second (Pair 1 "k?")))
    (it "Foldable foldr on List"
        (check-equal? sum-result 6))
    (it "Foldable foldr on Maybe"

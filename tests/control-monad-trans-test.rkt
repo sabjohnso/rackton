@@ -49,15 +49,15 @@
   (list
    (it "lift (MonadTrans)"
        (all-checks
-        (list (check-equal? lift-st (Some (MkPair 0 5)))
+        (list (check-equal? lift-st (Some (Pair 0 5)))
               (check-equal? lift-ex (Some (Ok 9))))))
    (it "lift-io (MonadIO) single layer"
        (all-checks
-        (list (check-equal? r-io-st (MkPair 0 7))
+        (list (check-equal? r-io-st (Pair 0 7))
               (check-equal? r-io-ex (Ok 8))
-              (check-equal? r-io-wr (MkPair "" 3)))))
+              (check-equal? r-io-wr (Pair "" 3)))))
    (it "lift-io through a two-layer stack"
-       (check-equal? r-io-nested (Ok (MkPair 0 1))))))
+       (check-equal? r-io-nested (Ok (Pair 0 1))))))
 
 (: _ran Unit)
 (define _ran (run-io (run-suite "control-monad-trans" suite)))

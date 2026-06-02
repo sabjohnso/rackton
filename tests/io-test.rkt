@@ -18,7 +18,7 @@
   (define (greet-both a b)
     (do [_ <- (greet a)]
         [_ <- (greet b)]
-      (pure-io MkUnit)))
+      (pure-io Unit)))
 
   ;; Numeric helpers + integer->string.
   (define numeric-show

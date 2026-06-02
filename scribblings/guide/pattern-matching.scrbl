@@ -79,13 +79,13 @@ A @racket[let] (or @racket[let*]) binding may use a pattern on its
 left-hand side, so a single match needs no @racket[match]:
 
 @codeblock|{
-(let ([(MkPair x y) (MkPair 3 4)])
+(let ([(Pair x y) (Pair 3 4)])
   (+ x y))   ;; ⇒ 7
 }|
 
 The body sees @racket[x] and @racket[y].  A failure to match raises a
 panic — use a pattern binding only when the pattern is irrefutable
-(a constructor with exactly one inhabitant, like @racket[MkPair] or a
+(a constructor with exactly one inhabitant, like @racket[Pair] or a
 @racket[struct] constructor).  A @racket[let] evaluates every right-hand
 side in the surrounding scope, so its pattern bindings are independent;
 use @racket[let*] when a later binding must see an earlier one.

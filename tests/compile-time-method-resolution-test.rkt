@@ -27,7 +27,7 @@
   ;; ----- mconcat over Sum ----------------------------------
   (: total Sum)
   (define total
-    (mconcat (Cons (MkSum 3) (Cons (MkSum 5) (Cons (MkSum 7) Nil)))))
+    (mconcat (Cons (Sum 3) (Cons (Sum 5) (Cons (Sum 7) Nil)))))
 
   (: empty-total Sum)
   (define empty-total (mconcat (ann Nil (List Sum))))
@@ -35,11 +35,11 @@
   ;; ----- mconcat over Product ------------------------------
   (: factorial-5 Product)
   (define factorial-5
-    (mconcat (Cons (MkProduct 1)
-                   (Cons (MkProduct 2)
-                         (Cons (MkProduct 3)
-                               (Cons (MkProduct 4)
-                                     (Cons (MkProduct 5) Nil))))))))
+    (mconcat (Cons (Product 1)
+                   (Cons (Product 2)
+                         (Cons (Product 3)
+                               (Cons (Product 4)
+                                     (Cons (Product 5) Nil))))))))
 
 ;; ---------- assertions ------------------------------------------
 
@@ -54,13 +54,13 @@
                 (Cons 1 (Cons 2 (Cons 3 (Cons 4 Nil))))))
 
 (test-case "mconcat over Sum"
-  (check-equal? total (MkSum 15)))
+  (check-equal? total (Sum 15)))
 
-(test-case "mconcat over empty Sum list yields (MkSum 0)"
-  (check-equal? empty-total (MkSum 0)))
+(test-case "mconcat over empty Sum list yields (Sum 0)"
+  (check-equal? empty-total (Sum 0)))
 
 (test-case "mconcat over Product computes 5!"
-  (check-equal? factorial-5 (MkProduct 120)))
+  (check-equal? factorial-5 (Product 120)))
 
 ;; ----- ambiguity rejected at compile time -----------------
 

@@ -855,7 +855,7 @@
             (e:var 's (fresh-stx ctx-stx))
             (list (clause (p:ctor ctor-name '() ctx-stx) #f
                           (e:app (e:var 'Some (fresh-stx ctx-stx))
-                                 (list (e:var 'MkUnit (fresh-stx ctx-stx)))
+                                 (list (e:var 'Unit (fresh-stx ctx-stx)))
                                  (fresh-stx ctx-stx))
                           ctx-stx)
                   ;; Always emit a wildcard fallback even when the
@@ -871,7 +871,7 @@
            (e:var ctor-name (fresh-stx ctx-stx))
            (fresh-stx ctx-stx)))
   (top:def lens-name
-           (e:app (e:var 'MkPrism (fresh-stx ctx-stx))
+           (e:app (e:var 'Prism (fresh-stx ctx-stx))
                   (list extractor builder)
                   (fresh-stx ctx-stx))
            ctx-stx))
@@ -897,7 +897,7 @@
   ;; `(Foo x)` and `Foo` interchangeable for arity-1 ctors.
   (define builder (e:var ctor-name (fresh-stx ctx-stx)))
   (top:def lens-name
-           (e:app (e:var 'MkPrism (fresh-stx ctx-stx))
+           (e:app (e:var 'Prism (fresh-stx ctx-stx))
                   (list extractor builder)
                   (fresh-stx ctx-stx))
            ctx-stx))
@@ -910,9 +910,9 @@
 ;; when no tuple type of that arity exists.
 (define (prism-tuple-ctor arity)
   (cond
-    [(= arity 2) 'MkPair]
+    [(= arity 2) 'Pair]
     [(<= 3 arity prism-max-tuple-arity)
-     (string->symbol (format "MkTuple~a" arity))]
+     (string->symbol (format "Tuple~a" arity))]
     [else #f]))
 
 ;; Prism for a multi-field (arity ≥ 2) ctor.  The focus is the FLAT
@@ -962,7 +962,7 @@
             #t ctx-stx)
            (fresh-stx ctx-stx)))
   (top:def lens-name
-           (e:app (e:var 'MkPrism (fresh-stx ctx-stx))
+           (e:app (e:var 'Prism (fresh-stx ctx-stx))
                   (list extractor builder)
                   (fresh-stx ctx-stx))
            ctx-stx))
@@ -1205,12 +1205,12 @@
     [x:id  (e:var (syntax->datum #'x) stx)]
 
     ;; Also accept zero-arg applications `(f)`.  These
-    ;; are passed an implicit MkUnit so the typing of 0-arg ops
+    ;; are passed an implicit Unit so the typing of 0-arg ops
     ;; as `(-> Unit T)` lines up — saves users from spelling out
     ;; the dummy at every effect call site.
     [(head)
      (e:app (parse-expr #'head)
-            (list (e:var 'MkUnit stx))
+            (list (e:var 'Unit stx))
             stx)]
     [(head arg ...+)
      (e:app (parse-expr #'head)
@@ -1335,13 +1335,13 @@
           (e:match rhs (list (clause pat #f inner (car ls))) #t stx)])])))
 
 ;; Gather independent binding RHS into one applicative value via
-;; right-associated `product`, with the matching nested `MkPair`
+;; right-associated `product`, with the matching nested `Pair`
 ;; destructuring pattern.  A single binding has no product: the value is
 ;; the lone RHS and the pattern is a plain variable.
 ;;
 ;;   [(a . m1) (b . m2) (c . m3)]
 ;;     value   = (product m1 (product m2 m3))
-;;     pattern = (MkPair a (MkPair b c))
+;;     pattern = (Pair a (Pair b c))
 (define (gather-product binds stx)
   (define name (car (car binds)))
   (define rhs  (cdr (car binds)))
@@ -1351,7 +1351,7 @@
     [else
      (define-values (rest-ast rest-pat) (gather-product (cdr binds) stx))
      (values (e:app (e:var 'product stx) (list rhs rest-ast) stx)
-             (p:ctor 'MkPair (list (p:var name stx) rest-pat) stx))]))
+             (p:ctor 'Pair (list (p:var name stx) rest-pat) stx))]))
 
 ;; Build `(combiner (lambda (p) (match p [pattern body])) gathered)` for
 ;; let% (combiner = 'flatmap) and let+ (combiner = 'fmap).  A single
@@ -2252,7 +2252,7 @@
                     (fresh-stx ctx-stx))
              (fresh-stx ctx-stx)))
     (define lens-body
-      (e:app (e:var 'MkLens (fresh-stx ctx-stx))
+      (e:app (e:var 'Lens (fresh-stx ctx-stx))
              (list getter setter)
              (fresh-stx ctx-stx)))
     (top:def lens-name lens-body ctx-stx)))

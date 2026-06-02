@@ -51,4 +51,4 @@
 (: num-proper-fraction (-> Float (Pair Integer Float)))
 (define (num-proper-fraction x)
   (let ([n (truncate-real x)])
-    (MkPair n (- x (integer->float n)))))
+    (Pair n (- x (integer->float n)))))

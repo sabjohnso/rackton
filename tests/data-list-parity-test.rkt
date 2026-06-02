@@ -21,7 +21,7 @@
 (: r-elem Boolean)            (define r-elem (elem 2 (list 1 2 3)))
 (: r-notelem Boolean)         (define r-notelem (not-elem 9 (list 1 2 3)))
 (: r-lookup (Maybe String))   (define r-lookup
-                                (lookup 2 (list (MkPair 1 "a") (MkPair 2 "b"))))
+                                (lookup 2 (list (Pair 1 "a") (Pair 2 "b"))))
 (: r-elemidx (Maybe Integer)) (define r-elemidx (elem-index 3 (list 1 2 3)))
 (: r-findidx (Maybe Integer)) (define r-findidx
                                 (find-index (lambda (x) (> x 1)) (list 0 5 2)))
@@ -62,7 +62,7 @@
 (: r-zipwith (List Integer))  (define r-zipwith
                                 (zip-with (lambda (a b) (+ a b)) (list 1 2 3) (list 10 20)))
 (: r-unzip (Pair (List Integer) (List String)))
-(define r-unzip (unzip (list (MkPair 1 "a") (MkPair 2 "b"))))
+(define r-unzip (unzip (list (Pair 1 "a") (Pair 2 "b"))))
 (: r-nub (List Integer))      (define r-nub (nub (list 1 2 1 3 2)))
 
 ;; ===== finishing batch ==============================================
@@ -117,7 +117,7 @@
 (: q-cycle (List Integer))
 (define q-cycle (cycle-n 3 (list 1 2)))
 (: q-unfoldr (List Integer))
-(define q-unfoldr (unfoldr (lambda (n) (if (> n 0) (Some (MkPair n (- n 1))) None)) 3))
+(define q-unfoldr (unfoldr (lambda (n) (if (> n 0) (Some (Pair n (- n 1))) None)) 3))
 
 ;; nub-by / combinatorial / mapAccumL
 (: q-nubby (List Integer))
@@ -128,7 +128,7 @@
 (define q-perms (permutations (list 1 2)))
 (: q-mapaccum (Pair Integer (List Integer)))
 (define q-mapaccum
-  (map-accum-l (lambda (s x) (MkPair (+ s x) (* x 10))) 0 (list 1 2 3)))
+  (map-accum-l (lambda (s x) (Pair (+ s x) (* x 10))) 0 (list 1 2 3)))
 
 (: suite (List Test))
 (define suite
@@ -160,9 +160,9 @@
        (all-checks
         (list (check-equal? r-takewhile (Cons 1 (Cons 2 Nil)))
               (check-equal? r-dropwhile (Cons 3 (Cons 1 Nil)))
-              (check-equal? r-span  (MkPair (Cons 1 (Cons 2 Nil)) (Cons 3 (Cons 1 Nil))))
-              (check-equal? r-break (MkPair (Cons 1 (Cons 2 Nil)) (Cons 3 (Cons 1 Nil))))
-              (check-equal? r-partition (MkPair (Cons 4 (Cons 5 Nil)) (Cons 1 (Cons 2 Nil)))))))
+              (check-equal? r-span  (Pair (Cons 1 (Cons 2 Nil)) (Cons 3 (Cons 1 Nil))))
+              (check-equal? r-break (Pair (Cons 1 (Cons 2 Nil)) (Cons 3 (Cons 1 Nil))))
+              (check-equal? r-partition (Pair (Cons 4 (Cons 5 Nil)) (Cons 1 (Cons 2 Nil)))))))
    (it "folding / predicates"
        (all-checks
         (list (check-equal? r-fold-left 4)
@@ -175,7 +175,7 @@
    (it "zipping / uniqueness"
        (all-checks
         (list (check-equal? r-zipwith (Cons 11 (Cons 22 Nil)))
-              (check-equal? r-unzip   (MkPair (Cons 1 (Cons 2 Nil)) (Cons "a" (Cons "b" Nil))))
+              (check-equal? r-unzip   (Pair (Cons 1 (Cons 2 Nil)) (Cons "a" (Cons "b" Nil))))
               (check-equal? r-nub     (Cons 1 (Cons 2 (Cons 3 Nil)))))))
    (it "scans"
        (all-checks
@@ -219,7 +219,7 @@
         (list (check-equal? q-nubby   (list 1 2))
               (check-equal? q-subseq  (list Nil (list 2) (list 1) (list 1 2)))
               (check-equal? q-perms   (list (list 1 2) (list 2 1)))
-              (check-equal? q-mapaccum (MkPair 6 (list 10 20 30))))))))
+              (check-equal? q-mapaccum (Pair 6 (list 10 20 30))))))))
 
 (: _ran Unit)
 (define _ran (run-io (run-suite "rackton/data/list (parity)" suite)))

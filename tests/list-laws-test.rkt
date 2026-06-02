@@ -31,7 +31,7 @@
             (for-all (gen-pair gli gli)
                      (lambda (p)
                        (match p
-                         [(MkPair xs ys)
+                         [(Pair xs ys)
                           (== (length (append xs ys))
                               (+ (length xs) (length ys)))]))))
 
@@ -39,7 +39,7 @@
             (for-all (gen-pair gli (gen-pair gli gli))
                      (lambda (t)
                        (match t
-                         [(MkPair xs (MkPair ys zs))
+                         [(Pair xs (Pair ys zs))
                           (== (append (append xs ys) zs)
                               (append xs (append ys zs)))]))))
 
@@ -47,7 +47,7 @@
             (for-all (gen-pair gli gli)
                      (lambda (p)
                        (match p
-                         [(MkPair xs ys)
+                         [(Pair xs ys)
                           (== (reverse (append xs ys))
                               (append (reverse ys) (reverse xs)))]))))
 

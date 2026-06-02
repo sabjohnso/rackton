@@ -59,7 +59,7 @@
 (test-case "type-equality constraint rejects mismatched types"
   (check-rackton-compile-error
    (: pair-eq ((~ a b) => (-> a (-> b (Pair a b)))))
-   (define (pair-eq x y) (MkPair x y))
+   (define (pair-eq x y) (Pair x y))
    (define bad (pair-eq 7 "hi"))))
 
 (test-case "rank-N: monomorphic lambda rejected where polymorphic expected"
@@ -67,7 +67,7 @@
   ;; so it cannot inhabit (forall a. a -> a).
   (check-rackton-compile-error
    (: pair-id (-> (All (a) (-> a a)) (Pair Integer String)))
-   (define (pair-id f) (MkPair (f 7) (f "hi")))
+   (define (pair-id f) (Pair (f 7) (f "hi")))
    (define bad (pair-id (lambda (x) 42)))))
 
 (test-case "rank-N: integer-only lambda rejected at polymorphic argument"
@@ -75,7 +75,7 @@
   ;; site (f "hi") needs a to be String, so this can't pass.
   (check-rackton-compile-error
    (: pair-id (-> (All (a) (-> a a)) (Pair Integer String)))
-   (define (pair-id f) (MkPair (f 7) (f "hi")))
+   (define (pair-id f) (Pair (f 7) (f "hi")))
    (define bad (pair-id (lambda (x) (+ x 1))))))
 
 (test-case "associated type: instance missing #:type binding is rejected"

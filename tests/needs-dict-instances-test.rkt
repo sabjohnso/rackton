@@ -74,10 +74,10 @@
   (check-equal? (run-io ((run-env-t env-of-io) "ignored")) 2))
 
 (test-case "lifted HasUnit over StateT Maybe"
-  (check-equal? ((run-state-t state-of-maybe) 0) (Some (MkPair 0 1))))
+  (check-equal? ((run-state-t state-of-maybe) 0) (Some (Pair 0 1))))
 
 (test-case "lifted HasUnit over StateT IO"
-  (check-equal? (run-io ((run-state-t state-of-io) 0)) (MkPair 0 2)))
+  (check-equal? (run-io ((run-state-t state-of-io) 0)) (Pair 0 2)))
 
 (test-case "two-method lifted instance: one-val"
   (check-equal? ((run-env-t env-one) "ignored") (Some 10)))

@@ -10,8 +10,8 @@
 ;; All / Any via <>
 (: all-tt Boolean) (define all-tt (get-all (<> (MkAll #t) (MkAll #t))))
 (: all-tf Boolean) (define all-tf (get-all (<> (MkAll #t) (MkAll #f))))
-(: any-ft Boolean) (define any-ft (get-any (<> (MkAny #f) (MkAny #t))))
-(: any-ff Boolean) (define any-ff (get-any (<> (MkAny #f) (MkAny #f))))
+(: any-ft Boolean) (define any-ft (get-any (<> (Any #f) (Any #t))))
+(: any-ff Boolean) (define any-ff (get-any (<> (Any #f) (Any #f))))
 
 ;; All / Any via mconcat (mempty resolves at the element type)
 (: all-mc  Boolean) (define all-mc  (get-all (mconcat (list (MkAll #t) (MkAll #t) (MkAll #f)))))
@@ -19,10 +19,10 @@
 (: any-mc0 Boolean) (define any-mc0 (get-any (mconcat (ann Nil (List Any)))))
 
 ;; Min / Max / First / Last
-(: mn Integer) (define mn (get-min   (<> (MkMin 3) (MkMin 7))))
-(: mx Integer) (define mx (get-max   (<> (MkMax 3) (MkMax 7))))
-(: ft Integer) (define ft (get-first (<> (MkFirst 1) (MkFirst 2))))
-(: lt Integer) (define lt (get-last  (<> (MkLast 1) (MkLast 2))))
+(: mn Integer) (define mn (get-min   (<> (Min 3) (Min 7))))
+(: mx Integer) (define mx (get-max   (<> (Max 3) (Max 7))))
+(: ft Integer) (define ft (get-first (<> (First 1) (First 2))))
+(: lt Integer) (define lt (get-last  (<> (Last 1) (Last 2))))
 
 (: suite (List Test))
 (define suite

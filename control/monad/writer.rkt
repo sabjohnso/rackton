@@ -17,7 +17,7 @@
 (provide (all-defined-out))
 
 (newtype (WriterT w m a)
-  (MkWriterT (m (Pair w a))))
+  (WriterT (m (Pair w a))))
 
 (: run-writer-t  (-> (WriterT w m a) (m (Pair w a))))
 (: eval-writer-t ((Functor m) => (-> (WriterT w m a) (m a))))
@@ -25,33 +25,33 @@
 (: tell          ((Applicative m) => (-> w (WriterT w m Unit))))
 (: lift-writer-t ((Functor m) (Monoid w) => (-> (m a) (WriterT w m a))))
 
-(define (run-writer-t w) (match w [(MkWriterT m) m]))
+(define (run-writer-t w) (match w [(WriterT m) m]))
 
 (define (eval-writer-t w)
-  (fmap (lambda (p) (match p [(MkPair _ a) a])) (run-writer-t w)))
+  (fmap (lambda (p) (match p [(Pair _ a) a])) (run-writer-t w)))
 (define (exec-writer-t w)
-  (fmap (lambda (p) (match p [(MkPair w0 _) w0])) (run-writer-t w)))
+  (fmap (lambda (p) (match p [(Pair w0 _) w0])) (run-writer-t w)))
 
 ;; tell's inner `pure` is dict-threaded; lift-writer-t's `mempty` is.
-(define (tell w) (MkWriterT (pure (MkPair w MkUnit))))
+(define (tell w) (WriterT (pure (Pair w Unit))))
 (define (lift-writer-t ma)
-  (MkWriterT (fmap (lambda (a) (MkPair mempty a)) ma)))
+  (WriterT (fmap (lambda (a) (Pair mempty a)) ma)))
 
 (instance ((Functor m) => (Functor (WriterT w m)))
   (define (fmap f wa)
-    (MkWriterT (fmap (lambda (p) (match p [(MkPair w0 a) (MkPair w0 (f a))]))
+    (WriterT (fmap (lambda (p) (match p [(Pair w0 a) (Pair w0 (f a))]))
                      (run-writer-t wa)))))
 
 (instance ((Monad m) (Monoid w) => (Applicative (WriterT w m)))
   ;; pure threads BOTH inner pure and the log's mempty.
-  (define (pure a) (MkWriterT (pure (MkPair mempty a))))
+  (define (pure a) (WriterT (pure (Pair mempty a))))
   (define (fapply wf wa)
-    (MkWriterT
+    (WriterT
      (flatmap (lambda (p1)
                 (match p1
-                  [(MkPair w1 f)
+                  [(Pair w1 f)
                    (fmap (lambda (p2)
-                           (match p2 [(MkPair w2 a) (MkPair (<> w1 w2) (f a))]))
+                           (match p2 [(Pair w2 a) (Pair (<> w1 w2) (f a))]))
                          (run-writer-t wa))]))
               (run-writer-t wf)))))
 
@@ -61,24 +61,24 @@
 ;; Haskell's WriterT, whose Monad instance also requires Monoid w.
 (instance ((Monad m) (Monoid w) => (Monad (WriterT w m)))
   (define (flatmap f wa)
-    (MkWriterT
+    (WriterT
      (flatmap (lambda (p1)
                 (match p1
-                  [(MkPair w1 a)
+                  [(Pair w1 a)
                    (fmap (lambda (p2)
-                           (match p2 [(MkPair w2 b) (MkPair (<> w1 w2) b)]))
+                           (match p2 [(Pair w2 b) (Pair (<> w1 w2) b)]))
                          (run-writer-t (f a)))]))
               (run-writer-t wa)))))
 
 (instance ((Monoid w) (Monad m) => (MonadWriter w (WriterT w m)))
   ;; tell-w inlines tell (delegating to the needs-dict `tell` top-def
   ;; would cross two skolemizations — see the StateT block's note).
-  (define (tell-w x)    (MkWriterT (pure (MkPair x MkUnit))))
+  (define (tell-w x)    (WriterT (pure (Pair x Unit))))
   (define (listen wm)
-    (MkWriterT (fmap (lambda (p) (match p [(MkPair w a) (MkPair w (MkPair a w))]))
+    (WriterT (fmap (lambda (p) (match p [(Pair w a) (Pair w (Pair a w))]))
                      (run-writer-t wm))))
   (define (censor f wm)
-    (MkWriterT (fmap (lambda (p) (match p [(MkPair w a) (MkPair (f w) a)]))
+    (WriterT (fmap (lambda (p) (match p [(Pair w a) (Pair (f w) a)]))
                      (run-writer-t wm)))))
 
 ;; ----- WriterT-outer mtl pass-through instances -------------------
@@ -88,18 +88,18 @@
 ;; catch-e) recurse on the inner monad value directly.
 
 (instance ((MonadState s m) (Monoid w) => (MonadState s (WriterT w m)))
-  (define get-st        (MkWriterT (fmap (lambda (a) (MkPair mempty a)) get-st)))
-  (define (put-st x)    (MkWriterT (fmap (lambda (a) (MkPair mempty a)) (put-st x))))
-  (define (modify-st f) (MkWriterT (fmap (lambda (a) (MkPair mempty a)) (modify-st f)))))
+  (define get-st        (WriterT (fmap (lambda (a) (Pair mempty a)) get-st)))
+  (define (put-st x)    (WriterT (fmap (lambda (a) (Pair mempty a)) (put-st x))))
+  (define (modify-st f) (WriterT (fmap (lambda (a) (Pair mempty a)) (modify-st f)))))
 
 (instance ((MonadEnv r m) (Monoid w) => (MonadEnv r (WriterT w m)))
-  (define ask-en     (MkWriterT (fmap (lambda (a) (MkPair mempty a)) ask-en)))
+  (define ask-en     (WriterT (fmap (lambda (a) (Pair mempty a)) ask-en)))
   (define (local-en f wm)
-    (MkWriterT (local-en f (run-writer-t wm)))))
+    (WriterT (local-en f (run-writer-t wm)))))
 
 (instance ((MonadError e m) (Monoid w) => (MonadError e (WriterT w m)))
   (define (throw-e ev)
-    (MkWriterT (fmap (lambda (a) (MkPair mempty a)) (throw-e ev))))
+    (WriterT (fmap (lambda (a) (Pair mempty a)) (throw-e ev))))
   (define (catch-e wm h)
-    (MkWriterT (catch-e (run-writer-t wm)
+    (WriterT (catch-e (run-writer-t wm)
                         (lambda (e) (run-writer-t (h e)))))))

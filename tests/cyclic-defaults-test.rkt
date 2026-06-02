@@ -27,7 +27,7 @@
   (define pm
     (match (product (Some 3) (Some 4))
       [(None) 0]
-      [(Some p) (match p [(MkPair a b) (+ a b)])])))
+      [(Some p) (match p [(Pair a b) (+ a b)])])))
 
 (test-case "join derived via Monad Maybe default"
   (check-equal? jm 7))
@@ -82,7 +82,7 @@
   (: prod-via-liftA2 Integer)
   (define prod-via-liftA2
     (match (product (MkWrap 2) (MkWrap 3))
-      [(MkWrap p) (match p [(MkPair a b) (+ a b)])])))
+      [(MkWrap p) (match p [(Pair a b) (+ a b)])])))
 
 (test-case "instance with liftA2-only: fapply derives"
   (check-equal? ap-via-liftA2 42))
@@ -103,7 +103,7 @@
     (define (pure x) (MkCell x))
     (define (product x y)
       (match x [(MkCell a)
-       (match y [(MkCell b) (MkCell (MkPair a b))])])))
+       (match y [(MkCell b) (MkCell (Pair a b))])])))
 
   (: ap-via-product Integer)
   (define ap-via-product

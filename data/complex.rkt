@@ -28,4 +28,4 @@
 
 ;; (magnitude, phase) pair.
 (: polar (-> Complex (Pair Float Float)))
-(define (polar z) (MkPair (magnitude z) (phase z)))
+(define (polar z) (Pair (magnitude z) (phase z)))

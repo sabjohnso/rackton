@@ -16,7 +16,7 @@ when generalisation does (and doesn't) fire.
 (define (id x) x)             ;; inferred :: (All (a) (-> a a))
 
 (let ([f id])
-  (MkPair (f 1) (f "hi")))    ;; OK — f re-instantiates at each use
+  (Pair (f 1) (f "hi")))    ;; OK — f re-instantiates at each use
 }|
 
 Each binding's right-hand side is type-checked, the resulting type is
@@ -29,7 +29,7 @@ monomorphic types:
 
 @codeblock|{
 (lambda (f)
-  (MkPair (f 1) (f "hi")))    ;; TYPE ERROR: f used at two types
+  (Pair (f 1) (f "hi")))    ;; TYPE ERROR: f used at two types
 }|
 
 This is the @italic{value restriction} as it appears in HM with
@@ -76,7 +76,7 @@ quantifier inside the parameter's type:
 @codeblock|{
 (: apply-twice (-> (All (a) (-> a a)) (Pair Integer String)))
 (define (apply-twice f)
-  (MkPair (f 1) (f "hello")))
+  (Pair (f 1) (f "hello")))
 }|
 
 Inside @racket[apply-twice], @racket[f] is universally quantified over

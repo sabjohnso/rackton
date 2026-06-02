@@ -14,41 +14,41 @@
 
 (provide (all-defined-out))
 
-(newtype Sum     (MkSum     Integer))
-(newtype Product (MkProduct Integer))
+(newtype Sum     (Sum     Integer))
+(newtype Product (Product Integer))
 
 (: get-sum     (-> Sum Integer))
-(define (get-sum s)     (match s [(MkSum n) n]))
+(define (get-sum s)     (match s [(Sum n) n]))
 
 (: get-product (-> Product Integer))
-(define (get-product p) (match p [(MkProduct n) n]))
+(define (get-product p) (match p [(Product n) n]))
 
 (instance (Semigroup Sum)
   (define (<> a b)
-    (match a [(MkSum x)
-              (match b [(MkSum y) (MkSum (+ x y))])])))
+    (match a [(Sum x)
+              (match b [(Sum y) (Sum (+ x y))])])))
 
 (instance (Monoid Sum)
-  (define mempty (MkSum 0)))
+  (define mempty (Sum 0)))
 
 (instance (Semigroup Product)
   (define (<> a b)
-    (match a [(MkProduct x)
-              (match b [(MkProduct y) (MkProduct (* x y))])])))
+    (match a [(Product x)
+              (match b [(Product y) (Product (* x y))])])))
 
 (instance (Monoid Product)
-  (define mempty (MkProduct 1)))
+  (define mempty (Product 1)))
 
 ;; --- Boolean monoids: All (conjunction) / Any (disjunction) --------
 
 (newtype All (MkAll Boolean))
-(newtype Any (MkAny Boolean))
+(newtype Any (Any Boolean))
 
 (: get-all (-> All Boolean))
 (define (get-all a) (match a [(MkAll b) b]))
 
 (: get-any (-> Any Boolean))
-(define (get-any a) (match a [(MkAny b) b]))
+(define (get-any a) (match a [(Any b) b]))
 
 (instance (Semigroup All)
   (define (<> a b)
@@ -59,10 +59,10 @@
 
 (instance (Semigroup Any)
   (define (<> a b)
-    (match a [(MkAny x) (match b [(MkAny y) (MkAny (or x y))])])))
+    (match a [(Any x) (match b [(Any y) (Any (or x y))])])))
 
 (instance (Monoid Any)
-  (define mempty (MkAny #f)))
+  (define mempty (Any #f)))
 
 ;; --- Endo: endomorphisms (a -> a) under composition ----------------
 ;;
@@ -70,18 +70,18 @@
 ;; and mempty is the identity function.  The instances need no
 ;; constraint on `a`: composition and identity are uniform.
 
-(newtype (Endo a) (MkEndo (-> a a)))
+(newtype (Endo a) (Endo (-> a a)))
 
 (: app-endo (-> (Endo a) (-> a a)))
-(define (app-endo e) (match e [(MkEndo f) f]))
+(define (app-endo e) (match e [(Endo f) f]))
 
 (instance (Semigroup (Endo a))
   (define (<> a b)
-    (match a [(MkEndo f)
-              (match b [(MkEndo g) (MkEndo (lambda (x) (f (g x))))])])))
+    (match a [(Endo f)
+              (match b [(Endo g) (Endo (lambda (x) (f (g x))))])])))
 
 (instance (Monoid (Endo a))
-  (define mempty (MkEndo (lambda (x) x))))
+  (define mempty (Endo (lambda (x) x))))
 
 ;; --- Dual: the same Semigroup with its arguments flipped -----------
 ;;
@@ -89,14 +89,14 @@
 ;; identity.  The inner <> / mempty come from the wrapped type's own
 ;; instance via the (Semigroup a) / (Monoid a) constraints.
 
-(newtype (Dual a) (MkDual a))
+(newtype (Dual a) (Dual a))
 
 (: get-dual (-> (Dual a) a))
-(define (get-dual d) (match d [(MkDual x) x]))
+(define (get-dual d) (match d [(Dual x) x]))
 
 (instance ((Semigroup a) => (Semigroup (Dual a)))
   (define (<> a b)
-    (match a [(MkDual x) (match b [(MkDual y) (MkDual (<> y x))])])))
+    (match a [(Dual x) (match b [(Dual y) (Dual (<> y x))])])))
 
 (instance ((Monoid a) => (Monoid (Dual a)))
-  (define mempty (MkDual mempty)))
+  (define mempty (Dual mempty)))

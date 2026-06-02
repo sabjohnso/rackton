@@ -25,11 +25,11 @@
       [(None)   None]
       [(Some x) (Some (f x))]))
 
-  (data (Pair a b) (MkPair a b))
+  (data (Pair a b) (Pair a b))
 
   (: swap (-> (Pair a b) (Pair b a)))
   (define (swap p)
-    (match p [(MkPair x y) (MkPair y x)]))
+    (match p [(Pair x y) (Pair y x)]))
 
   (data Color Red Green Blue)
 
@@ -69,7 +69,7 @@
                 (Some 5)))
 
 (test-case "pair"
-  (check-equal? (swap (MkPair 1 "x")) (MkPair "x" 1)))
+  (check-equal? (swap (Pair 1 "x")) (Pair "x" 1)))
 
 (test-case "enum-like"
   (check-equal? (color-code Red)   0)

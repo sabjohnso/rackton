@@ -46,7 +46,7 @@
       [fb <- (fork-c mb)]
       [a  <- (await-c fa)]
       [b  <- (await-c fb)]
-    (pure (MkPair a b))))
+    (pure (Pair a b))))
 
 (: id-par-pair (Identity (Pair Integer String)))
 (define id-par-pair
@@ -97,7 +97,7 @@
    (it "STM blocking retry: main thread waits until TVar > 0"
        (check-equal? (run-io blocking-retry-result) 2))
    (it "Mock Concurrent via Identity — par-pair runs synchronously"
-       (check-equal? id-par-pair-result (MkPair 7 "ok")))
+       (check-equal? id-par-pair-result (Pair 7 "ok")))
    (it "abs polymorphic via Num: Integer / Float / Rational"
        (all-checks
         (list (check-equal? abs-int    7)

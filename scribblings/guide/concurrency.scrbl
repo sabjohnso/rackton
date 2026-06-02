@@ -61,7 +61,7 @@ and the @racket[STM] monad:
       [dst <- (read-tvar to)]
       (write-tvar from (- src amount))
       (write-tvar to   (+ dst amount))
-    (pure MkUnit)))
+    (pure Unit)))
 
 (: do-transfer (-> (TVar Integer) (-> (TVar Integer) (IO Unit))))
 (define (do-transfer from to)

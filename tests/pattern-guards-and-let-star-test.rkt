@@ -42,7 +42,7 @@
   ;; ----- let destructuring two values ----------------------
   (: pair-sum Integer)
   (define pair-sum
-    (let ([(MkPair a b) (MkPair 7 35)]
+    (let ([(Pair a b) (Pair 7 35)]
           [(Cons h _)   (Cons 100 Nil)])
       (+ a (+ b h))))
 

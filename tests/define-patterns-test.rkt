@@ -23,10 +23,10 @@
 
   ;; Mixed: first parameter is a plain identifier, second is a pattern.
   (: scale (-> Integer (Pair Integer Integer) (Pair Integer Integer)))
-  (define (scale k (MkPair x y)) (MkPair (* k x) (* k y)))
+  (define (scale k (Pair x y)) (Pair (* k x) (* k y)))
 
   (: r2 (Pair Integer Integer))
-  (define r2 (scale 3 (MkPair 2 7)))
+  (define r2 (scale 3 (Pair 2 7)))
 
   (provide r1 r2))
 
@@ -34,7 +34,7 @@
   (check-equal? r1 -7.0))
 
 (test-case "mixed plain-id and pattern params"
-  (check-equal? r2 (MkPair 6 21)))
+  (check-equal? r2 (Pair 6 21)))
 
 ;; ----- Piece 2: multi-clause defines --------------------------
 

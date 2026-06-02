@@ -7,12 +7,12 @@
 (provide (all-defined-out))
 
 (: swap (-> (Pair a b) (Pair b a)))
-(define (swap p) (match p [(MkPair a b) (MkPair b a)]))
+(define (swap p) (match p [(Pair a b) (Pair b a)]))
 
 ;; curry: turn a function on a Pair into a two-argument function.
 (: curry (-> (-> (Pair a b) c) (-> a (-> b c))))
-(define (curry f a b) (f (MkPair a b)))
+(define (curry f a b) (f (Pair a b)))
 
 ;; uncurry: turn a two-argument function into one taking a Pair.
 (: uncurry (-> (-> a (-> b c)) (-> (Pair a b) c)))
-(define (uncurry f p) (match p [(MkPair a b) (f a b)]))
+(define (uncurry f p) (match p [(Pair a b) (f a b)]))

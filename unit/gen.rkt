@@ -40,23 +40,23 @@
 
 ;; ----- Shrink trees -------------------------------------------------
 
-(data (Tree a) (MkTree a (Lazy (Stream (Tree a)))))
+(data (Tree a) (Tree a (Lazy (Stream (Tree a)))))
 
 (: tree-value (-> (Tree a) a))
 (define (tree-value t)
-  (match t [(MkTree v _) v]))
+  (match t [(Tree v _) v]))
 
 (: tree-children (-> (Tree a) (Stream (Tree a))))
 (define (tree-children t)
-  (match t [(MkTree _ ls) (force-lazy ls)]))
+  (match t [(Tree _ ls) (force-lazy ls)]))
 
 ;; Map a function over a value and all of its shrinks.
 (: tree-map (-> (-> a b) (-> (Tree a) (Tree b))))
 (define (tree-map f t)
   (match t
-    [(MkTree v ls)
-     (MkTree (f v)
-             (MkLazy (lambda (_)
+    [(Tree v ls)
+     (Tree (f v)
+             (Lazy (lambda (_)
                        (stream-map (lambda (c) (tree-map f c))
                                    (force-lazy ls)))))]))
 
@@ -66,11 +66,11 @@
 (: tree-bind (-> (-> a (Tree b)) (-> (Tree a) (Tree b))))
 (define (tree-bind f t)
   (match t
-    [(MkTree v ls)
+    [(Tree v ls)
      (match (f v)
-       [(MkTree v2 ls2)
-        (MkTree v2
-                (MkLazy (lambda (_)
+       [(Tree v2 ls2)
+        (Tree v2
+                (Lazy (lambda (_)
                           (stream-append
                            (stream-map (lambda (c) (tree-bind f c))
                                        (force-lazy ls))
@@ -78,11 +78,11 @@
 
 ;; ----- Generators ---------------------------------------------------
 
-(data (Gen a) (MkGen (-> Integer (-> Seed (Tree a)))))
+(data (Gen a) (Gen (-> Integer (-> Seed (Tree a)))))
 
 (: run-gen (-> (Gen a) (-> Integer (-> Seed (Tree a)))))
 (define (run-gen g)
-  (match g [(MkGen f) f]))
+  (match g [(Gen f) f]))
 
 ;; Run a generator at a given size and starting seed, producing its
 ;; shrink tree.  The public way to "execute" a generator.
@@ -98,27 +98,27 @@
 ;; `constant` rather than `pure` over `Gen`.
 (: constant (-> a (Gen a)))
 (define (constant x)
-  (MkGen (lambda (size seed) (MkTree x (delay-lazy SNil)))))
+  (Gen (lambda (size seed) (Tree x (delay-lazy SNil)))))
 
 (instance (Functor Gen)
   (define (fmap f g)
-    (MkGen (lambda (size seed)
+    (Gen (lambda (size seed)
              (tree-map f (gen-tree g size seed))))))
 
 (instance (Applicative Gen)
   (define (pure x) (constant x))
   (define (fapply gf gx)
-    (MkGen (lambda (size seed)
+    (Gen (lambda (size seed)
              (match (split-seed seed)
-               [(MkPair s1 s2)
+               [(Pair s1 s2)
                 (tree-bind (lambda (f) (tree-map f (gen-tree gx size s2)))
                            (gen-tree gf size s1))])))))
 
 (instance (Monad Gen)
   (define (flatmap f g)
-    (MkGen (lambda (size seed)
+    (Gen (lambda (size seed)
              (match (split-seed seed)
-               [(MkPair s1 s2)
+               [(Pair s1 s2)
                 (tree-bind (lambda (a) (gen-tree (f a) size s2))
                            (gen-tree g size s1))])))))
 
@@ -140,8 +140,8 @@
   (match cs
     [(Nil) SNil]
     [(Cons c rest)
-     (SCons (MkTree c (MkLazy (lambda (_) (int-shrinks target c))))
-            (MkLazy (lambda (_) (candidates->stream target rest))))]))
+     (SCons (Tree c (Lazy (lambda (_) (int-shrinks target c))))
+            (Lazy (lambda (_) (candidates->stream target rest))))]))
 
 (: int-shrinks (-> Integer (-> Integer (Stream (Tree Integer)))))
 (define (int-shrinks target v)
@@ -152,18 +152,18 @@
 ;; A uniform integer in [lo, hi], shrinking toward `lo`.
 (: int-range (-> Integer (-> Integer (Gen Integer))))
 (define (int-range lo hi)
-  (MkGen (lambda (size seed)
+  (Gen (lambda (size seed)
            (let ([v (seed-int-range seed lo hi)])
-             (MkTree v (MkLazy (lambda (_) (int-shrinks lo v))))))))
+             (Tree v (Lazy (lambda (_) (int-shrinks lo v))))))))
 
 ;; A boolean; #t shrinks to #f, #f is minimal.
 (: bool (Gen Boolean))
 (define bool
-  (MkGen (lambda (size seed)
+  (Gen (lambda (size seed)
            (if (== (seed-int-range seed 0 1) 0)
-               (MkTree #f (delay-lazy SNil))
-               (MkTree #t (MkLazy (lambda (_)
-                                    (SCons (MkTree #f (delay-lazy SNil))
+               (Tree #f (delay-lazy SNil))
+               (Tree #t (Lazy (lambda (_)
+                                    (SCons (Tree #f (delay-lazy SNil))
                                            (delay-lazy SNil)))))))))
 
 ;; ----- Default & compound generators --------------------------------
@@ -186,7 +186,7 @@
 (define (gen-pair ga gb)
   (do [x <- ga]
       [y <- gb]
-    (constant (MkPair x y))))
+    (constant (Pair x y))))
 
 ;; Exactly `n` elements drawn from `g`.
 (: replicate-gen (-> Integer (-> (Gen a) (Gen (List a)))))

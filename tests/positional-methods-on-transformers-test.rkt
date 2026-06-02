@@ -15,7 +15,7 @@
   (require rackton/control/monad/except)
   ;; ----- WriterT do-notation in a polymorphic body --------
   ;; The MonadWriter inferred body's `do` chain runtime-dispatches
-  ;; `flatmap` on MkWriterT — already registered.  This is a
+  ;; `flatmap` on WriterT — already registered.  This is a
   ;; regression guard.
 
   (: log-and-add ((MonadWriter String m) => (-> Integer (m Integer))))
@@ -32,7 +32,7 @@
   ;; ----- listen / censor in a polymorphic body ------------
   ;; Calls listen/censor inside a (MonadWriter w m) =>, then runs at
   ;; WriterT String IO.  Both methods must dispatch at runtime on
-  ;; MkWriterT.
+  ;; WriterT.
 
   (: traced-then-listen
      ((MonadWriter String m) => (m (Pair Integer String))))
@@ -82,7 +82,7 @@
   ;; ----- local-en in a polymorphic body over StateT (Env _) -----
   ;; Polymorphic `(MonadEnv String m) => ...` body, then run at
   ;; StateT Integer (Env String).  The runtime `local-en` dispatch
-  ;; on MkStateT recurses via runtime local-en on the inner Env.
+  ;; on StateT recurses via runtime local-en on the inner Env.
 
   (: announce-env ((MonadEnv String m) => (m String)))
   (define announce-env
@@ -100,20 +100,20 @@
 
 (test-case "do-notation chain in MonadWriter polymorphic body (WriterT IO)"
   (check-equal? (run-io wt-add-result)
-                (MkPair "added." 11)))
+                (Pair "added." 11)))
 
 (test-case "listen in polymorphic MonadWriter body (WriterT IO)"
   (check-equal? (run-io listen-result)
-                (MkPair "x.y." (MkPair 7 "x.y."))))
+                (Pair "x.y." (Pair 7 "x.y."))))
 
 (test-case "censor in polymorphic MonadWriter body (WriterT IO)"
   (check-equal? (run-io censor-result)
-                (MkPair "!step." 99)))
+                (Pair "!step." 99)))
 
 (test-case "catch-e lifted through WriterT (ExceptT IO)"
   (check-equal? (run-io caught-wt-result)
-                (Ok (MkPair "" 42))))
+                (Ok (Pair "" 42))))
 
 (test-case "local-en in polymorphic body over StateT (Env String)"
   (check-equal? ((run-env local-stack-result) "world")
-                (MkPair 0 "hi !world")))
+                (Pair 0 "hi !world")))

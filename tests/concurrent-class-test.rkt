@@ -26,7 +26,7 @@
       [fb <- (fork-c mb)]
       [a  <- (await-c fa)]
       [b  <- (await-c fb)]
-    (pure (MkPair a b))))
+    (pure (Pair a b))))
 
 (: par-pair-result (IO (Pair Integer String)))
 (define par-pair-result
@@ -50,9 +50,9 @@
    (it "fork-c + await-c in IO"
        (check-equal? r-sum 42))
    (it "par-pair polymorphic over Concurrent, instantiated at IO"
-       (check-equal? r-par (MkPair 7 "ok")))
+       (check-equal? r-par (Pair 7 "ok")))
    (it "yield-c is callable"
-       (check-equal? r-yield MkUnit))))
+       (check-equal? r-yield Unit))))
 
 (: _ran Unit)
 (define _ran (run-io (run-suite "concurrent-class" suite)))

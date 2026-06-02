@@ -15,12 +15,12 @@
 ;; Hand-written field lenses for Point.
 (: x-lens (Lens Point Integer))
 (define x-lens
-  (MkLens (lambda (p) (Point-x p))
+  (Lens (lambda (p) (Point-x p))
           (lambda (p v) (Point v (Point-y p)))))
 
 (: y-lens (Lens Point Integer))
 (define y-lens
-  (MkLens (lambda (p) (Point-y p))
+  (Lens (lambda (p) (Point-y p))
           (lambda (p v) (Point (Point-x p) v))))
 
 (: p0 Point)
@@ -45,12 +45,12 @@
 
 (: start-lens (Lens Segment Point))
 (define start-lens
-  (MkLens (lambda (s) (Segment-start s))
+  (Lens (lambda (s) (Segment-start s))
           (lambda (s v) (Segment v (Segment-end s)))))
 
 (: end-lens (Lens Segment Point))
 (define end-lens
-  (MkLens (lambda (s) (Segment-end s))
+  (Lens (lambda (s) (Segment-end s))
           (lambda (s v) (Segment (Segment-start s) v))))
 
 (: start-x-lens (Lens Segment Integer))

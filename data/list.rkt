@@ -15,7 +15,7 @@
      (match bs
        [(Nil) Nil]
        [(Cons b bt)
-        (Cons (MkPair a b) (zip at bt))])]))
+        (Cons (Pair a b) (zip at bt))])]))
 
 (: take (-> Integer (-> (List a) (List a))))
 (define (take n xs)
@@ -48,12 +48,12 @@
 (: split-at (-> Integer (-> (List a) (Pair (List a) (List a)))))
 (define (split-at n xs)
   (if (== n 0)
-      (MkPair Nil xs)
+      (Pair Nil xs)
       (match xs
-        [(Nil) (MkPair Nil Nil)]
+        [(Nil) (Pair Nil Nil)]
         [(Cons h t)
          (let ([rest (split-at (- n 1) t)])
-           (MkPair (Cons h (fst rest)) (snd rest)))])))
+           (Pair (Cons h (fst rest)) (snd rest)))])))
 
 (: merge-lists ((Ord a) => (-> (List a) (-> (List a) (List a)))))
 (define (merge-lists xs ys)
@@ -125,7 +125,7 @@
 (define (lookup k xs)
   (match xs
     [(Nil) None]
-    [(Cons (MkPair k0 v0) t) (if (== k k0) (Some v0) (lookup k t))]))
+    [(Cons (Pair k0 v0) t) (if (== k k0) (Some v0) (lookup k t))]))
 
 (: elem-index ((Eq a) => (-> a (-> (List a) (Maybe Integer)))))
 (define (elem-index x xs) (find-index (lambda (y) (== x y)) xs))
@@ -174,7 +174,7 @@
     [(Cons h t) (if (p h) (drop-while p t) xs)]))
 
 (: span (-> (-> a Boolean) (-> (List a) (Pair (List a) (List a)))))
-(define (span p xs) (MkPair (take-while p xs) (drop-while p xs)))
+(define (span p xs) (Pair (take-while p xs) (drop-while p xs)))
 
 (: break (-> (-> a Boolean) (-> (List a) (Pair (List a) (List a)))))
 (define (break p xs) (span (lambda (x) (not (p x))) xs))
@@ -183,9 +183,9 @@
 (define (partition p xs)
   (foldr (lambda (x acc)
            (if (p x)
-               (MkPair (Cons x (fst acc)) (snd acc))
-               (MkPair (fst acc) (Cons x (snd acc)))))
-         (MkPair Nil Nil)
+               (Pair (Cons x (fst acc)) (snd acc))
+               (Pair (fst acc) (Cons x (snd acc)))))
+         (Pair Nil Nil)
          xs))
 
 ;; --- folding / predicates ------------------------------------------
@@ -236,8 +236,8 @@
 (: unzip (-> (List (Pair a b)) (Pair (List a) (List b))))
 (define (unzip xs)
   (foldr (lambda (p acc)
-           (MkPair (Cons (fst p) (fst acc)) (Cons (snd p) (snd acc))))
-         (MkPair Nil Nil)
+           (Pair (Cons (fst p) (fst acc)) (Cons (snd p) (snd acc))))
+         (Pair Nil Nil)
          xs))
 
 (: nub ((Eq a) => (-> (List a) (List a))))
@@ -416,7 +416,7 @@
 (define (unfoldr f seed)
   (match (f seed)
     [(None)              Nil]
-    [(Some (MkPair a b)) (Cons a (unfoldr f b))]))
+    [(Some (Pair a b)) (Cons a (unfoldr f b))]))
 
 ;; --- combinatorial -------------------------------------------------
 
@@ -432,9 +432,9 @@
 (define (selections xs)
   (match xs
     [(Nil)      Nil]
-    [(Cons h t) (Cons (MkPair h t)
+    [(Cons h t) (Cons (Pair h t)
                       (fmap (lambda (sel)
-                              (match sel [(MkPair y ys) (MkPair y (Cons h ys))]))
+                              (match sel [(Pair y ys) (Pair y (Cons h ys))]))
                             (selections t)))]))
 
 (: permutations (-> (List a) (List (List a))))
@@ -443,7 +443,7 @@
     [(Nil) (Cons Nil Nil)]
     [_     (concat-map (lambda (sel)
                          (match sel
-                           [(MkPair x rest)
+                           [(Pair x rest)
                             (fmap (lambda (p) (Cons x p)) (permutations rest))]))
                        (selections xs))]))
 
@@ -452,8 +452,8 @@
 (: map-accum-l (-> (-> s (-> a (Pair s b))) (-> s (-> (List a) (Pair s (List b))))))
 (define (map-accum-l f s xs)
   (match xs
-    [(Nil)      (MkPair s Nil)]
+    [(Nil)      (Pair s Nil)]
     [(Cons h t) (match (f s h)
-                  [(MkPair s2 b)
+                  [(Pair s2 b)
                    (match (map-accum-l f s2 t)
-                     [(MkPair s3 bs) (MkPair s3 (Cons b bs))])])]))
+                     [(Pair s3 bs) (Pair s3 (Cons b bs))])])]))

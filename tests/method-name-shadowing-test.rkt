@@ -22,7 +22,7 @@
 (define (run-counter s0 prog)
   (handle (prog)
     [peek () k -> (k s0)]
-    [poke () k -> (k MkUnit)]
+    [poke () k -> (k Unit)]
     [return v -> v]))
 
 (: prog (-> Integer))

@@ -72,7 +72,7 @@
   ;; equality, or the call won't typecheck.
 
   (: pair-eq ((~ a b) => (-> a (-> b (Pair a b)))))
-  (define (pair-eq x y) (MkPair x y))
+  (define (pair-eq x y) (Pair x y))
 
   (: eq-int (Pair Integer Integer))
   (define eq-int (pair-eq 7 7))
@@ -80,7 +80,7 @@
   (: rackton-eq-pair? (-> (Pair Integer Integer) (-> Integer (-> Integer Boolean))))
   (define (rackton-eq-pair? p a b)
     (match p
-      [(MkPair x y) (and (= x a) (= y b))]))
+      [(Pair x y) (and (= x a) (= y b))]))
 
   ;; ----- 50.D Nullary GADT constructors ---------------------
   ;; A field-less ctor still refines its result type via a

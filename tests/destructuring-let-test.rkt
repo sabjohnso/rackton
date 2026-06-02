@@ -27,7 +27,7 @@
 (rackton
   (: pair-sum Integer)
   (define pair-sum
-    (let ([(MkPair a b) (MkPair 7 35)]
+    (let ([(Pair a b) (Pair 7 35)]
           [(Cons h _)   (Cons 100 Nil)])
       (+ a (+ b h)))))
 
@@ -39,7 +39,7 @@
 (rackton
   (: mixed Integer)
   (define mixed
-    (let ([(MkPair a b) (MkPair 10 20)]
+    (let ([(Pair a b) (Pair 10 20)]
           [c            (+ 1 2)])
       (+ a (+ b c)))))
 
@@ -66,8 +66,8 @@
   (define seq
     ;; The second binding destructures a value built from the first —
     ;; only possible because `let*` is sequential.
-    (let* ([(MkPair a b) (MkPair 3 4)]
-           [(MkPair c d) (MkPair (+ a b) (* a b))])
+    (let* ([(Pair a b) (Pair 3 4)]
+           [(Pair c d) (Pair (+ a b) (* a b))])
       (+ c d))))
 
 (test-case "let* destructures sequentially (later sees earlier)"
@@ -78,4 +78,4 @@
 (test-case "match-let is no longer a recognized form"
   (check-rackton-compile-error
    (: x Integer)
-   (define x (match-let ([(MkPair a b) (MkPair 1 2)]) (+ a b)))))
+   (define x (match-let ([(Pair a b) (Pair 1 2)]) (+ a b)))))

@@ -39,7 +39,7 @@
 ;; --- pure splittable StdGen (SplitMix64) ---------------------------
 
 ;; A generator is (seed, gamma) with gamma odd.
-(data StdGen (MkStdGen Integer Integer))
+(data StdGen (StdGen Integer Integer))
 
 ;; 2^64, and the SplitMix constants.
 (: sm-mod Integer)    (define sm-mod    18446744073709551616)
@@ -59,29 +59,29 @@
 
 ;; mkStdGen: seed a generator from any Integer.
 (: mk-std-gen (-> Integer StdGen))
-(define (mk-std-gen s) (MkStdGen (sm-mix64 (mask64 s)) sm-gamma))
+(define (mk-std-gen s) (StdGen (sm-mix64 (mask64 s)) sm-gamma))
 
 ;; next-word: the next 64-bit value and the advanced generator.
 (: next-word (-> StdGen (Pair Integer StdGen)))
 (define (next-word g)
   (match g
-    [(MkStdGen seed gamma)
+    [(StdGen seed gamma)
      (let ([seed2 (mask64 (+ seed gamma))])
-       (MkPair (sm-mix64 seed2) (MkStdGen seed2 gamma)))]))
+       (Pair (sm-mix64 seed2) (StdGen seed2 gamma)))]))
 
 ;; randomR lo hi: a uniform Integer in the INCLUSIVE range [lo, hi] and
 ;; the advanced generator (slight modulo bias — best-effort).
 (: random-r (-> Integer (-> Integer (-> StdGen (Pair Integer StdGen)))))
 (define (random-r lo hi g)
   (match (next-word g)
-    [(MkPair w g2) (MkPair (+ lo (mod w (+ (- hi lo) 1))) g2)]))
+    [(Pair w g2) (Pair (+ lo (mod w (+ (- hi lo) 1))) g2)]))
 
 ;; split: two decorrelated generators derived from g.
 (: split (-> StdGen (Pair StdGen StdGen)))
 (define (split g)
   (match (next-word g)
-    [(MkPair w1 g2)
+    [(Pair w1 g2)
      (match (next-word g2)
-       [(MkPair w2 _)
-        (MkPair (MkStdGen (sm-mix64 w1) sm-gamma)
-                (MkStdGen (sm-mix64 w2) sm-gamma))])]))
+       [(Pair w2 _)
+        (Pair (StdGen (sm-mix64 w1) sm-gamma)
+                (StdGen (sm-mix64 w2) sm-gamma))])]))

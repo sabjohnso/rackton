@@ -60,7 +60,7 @@ other side-effecting forms work naturally:
 (define (report n)
   (racket (IO Unit) (n)
     (define msg (format "value is ~a" n))
-    (define action ($io (lambda () (displayln msg) MkUnit)))
+    (define action ($io (lambda () (displayln msg) Unit)))
     action))
 }|
 

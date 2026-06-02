@@ -507,7 +507,7 @@
      ;; args, captures the current continuation, and aborts to
      ;; the prompt with `(list 'op-name args k)`.  A 0-arg op was
      ;; promoted to take Unit; the user-facing call site passes
-     ;; MkUnit and the op's compiled body ignores it.
+     ;; Unit and the op's compiled body ignores it.
      (define tag-id
        (datum->syntax stx
          (string->symbol (format "$effect-tag:~a" ename)) stx))

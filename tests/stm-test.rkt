@@ -29,7 +29,7 @@
 (: bump-n-times (-> (TVar Integer) (-> Integer (IO Unit))))
 (define (bump-n-times tv n)
   (if (== n 0)
-      (pure MkUnit)
+      (pure Unit)
       (do [_ <- (atomically (increment-tvar tv))]
         (bump-n-times tv (- n 1)))))
 

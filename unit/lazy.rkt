@@ -8,7 +8,7 @@
 ;; thunk or construction would diverge.  `Lazy` is that thunk; `Stream`
 ;; is a lazy cons-list whose tail is deferred.  Both are ordinary
 ;; single-/multi-ctor `data` types — the deferral is entirely in the
-;; `(-> Unit a)` field of `MkLazy`, evaluated only by `force-lazy`.
+;; `(-> Unit a)` field of `Lazy`, evaluated only by `force-lazy`.
 ;;
 ;; Public API: Lazy, Stream, force-lazy, delay-lazy, stream-take.
 
@@ -20,9 +20,9 @@
          stream-map
          stream-append)
 
-;; A deferred computation.  Constructing `(MkLazy th)` does not run
+;; A deferred computation.  Constructing `(Lazy th)` does not run
 ;; `th`; only `force-lazy` does.
-(data (Lazy a) (MkLazy (-> Unit a)))
+(data (Lazy a) (Lazy (-> Unit a)))
 
 ;; A lazy cons-stream: the tail of `SCons` is wrapped in `Lazy`, so a
 ;; producer can be infinite while consumers take only a finite prefix.
@@ -33,11 +33,11 @@
 (: force-lazy (-> (Lazy a) a))
 (define (force-lazy l)
   (match l
-    [(MkLazy th) (th MkUnit)]))
+    [(Lazy th) (th Unit)]))
 
 ;; Wrap an already-evaluated value as a (trivially) deferred one.
 (: delay-lazy (-> a (Lazy a)))
-(define (delay-lazy x) (MkLazy (lambda (_) x)))
+(define (delay-lazy x) (Lazy (lambda (_) x)))
 
 ;; The first `n` elements of a stream, as a strict List.  Forces only
 ;; the `n` tails it actually needs.
@@ -54,11 +54,11 @@
 (define (stream-map f s)
   (match s
     [(SNil)       SNil]
-    [(SCons x lz) (SCons (f x) (MkLazy (lambda (_) (stream-map f (force-lazy lz)))))]))
+    [(SCons x lz) (SCons (f x) (Lazy (lambda (_) (stream-map f (force-lazy lz)))))]))
 
 ;; Concatenate two streams lazily.
 (: stream-append (-> (Stream a) (-> (Stream a) (Stream a))))
 (define (stream-append xs ys)
   (match xs
     [(SNil)       ys]
-    [(SCons x lz) (SCons x (MkLazy (lambda (_) (stream-append (force-lazy lz) ys))))]))
+    [(SCons x lz) (SCons x (Lazy (lambda (_) (stream-append (force-lazy lz) ys))))]))

@@ -93,20 +93,20 @@
  rackton-inlined-sites
 
  ;; ADTs (constructors usable as expressions and as match patterns)
- None Some Nil Cons MkPair Ok Err MkUnit
+ None Some Nil Cons Pair Ok Err Unit
  ;; IO-action constructor — exposed so sibling runtime modules (e.g.
  ;; private/ffi-runtime) can build IO actions sharing run-io's struct.
  ;; Excepted from main.rkt's re-export, so it stays internal.
  $io
- ;; State/Env (run-state/get-state/run-env/ask/local + MkState/MkEnv)
+ ;; State/Env (run-state/get-state/run-env/ask/local + State/Env)
  ;; moved to rackton/control/monad/state + reader.
- ;; StateT runtime (MkStateT, run/eval/exec/get/put/modify/lift-state-t,
+ ;; StateT runtime (StateT, run/eval/exec/get/put/modify/lift-state-t,
  ;; and its $pure / $flatmap / mtl impls) moved to
  ;; rackton/control/monad/state — authored there as pure Rackton.
  ;; EnvT runtime moved to rackton/control/monad/reader.
  ;; WriterT runtime moved to rackton/control/monad/writer.
  ;; ExceptT runtime moved to rackton/control/monad/except.
- MkIdentity
+ Identity
 
  ;; Class methods
  +  -  *
@@ -314,25 +314,25 @@
 (define-data-ctor Nil  0)
 (define-data-ctor Cons 2)
 
-(define-data-ctor MkPair 2)
+(define-data-ctor Pair 2)
 
 (define-data-ctor Ok  1)
 (define-data-ctor Err 1)
 
-(define-data-ctor MkUnit 0)
+(define-data-ctor Unit 0)
 
-;; MkSum / MkProduct moved to rackton/data/monoid (Phase 2 slim).
+;; Sum / Product moved to rackton/data/monoid (Phase 2 slim).
 
-;; MkState / MkEnv moved to rackton/control/monad/state + reader.
+;; State / Env moved to rackton/control/monad/state + reader.
 
-;; MkStateT moved to rackton/control/monad/state.
-;; MkEnvT moved to rackton/control/monad/reader.
+;; StateT moved to rackton/control/monad/state.
+;; EnvT moved to rackton/control/monad/reader.
 
-;; MkWriterT moved to rackton/control/monad/writer.
-;; MkExceptT moved to rackton/control/monad/except.
+;; WriterT moved to rackton/control/monad/writer.
+;; ExceptT moved to rackton/control/monad/except.
 ;; Identity for the Mock Concurrent demo.
-(define-data-ctor MkIdentity 1)
-;; MkLens / MkPrism / MkTraversal moved to rackton/data/lens (Phase 2).
+(define-data-ctor Identity 1)
+;; Lens / Prism / Traversal moved to rackton/data/lens (Phase 2).
 
 ;; ----- Class dispatch tables -------------------------------------
 
@@ -420,7 +420,7 @@
 ;; Two registries feed it:
 ;;   $pure-by-tag         — concrete bases (IO, Maybe, List, ...): the
 ;;                          pure impl directly.
-;;   $pure-witness-derivers — wrapper transformers (MkExceptT, ...):
+;;   $pure-witness-derivers — wrapper transformers (ExceptT, ...):
 ;;                          a (witness -> pure-impl) that unwraps the
 ;;                          inner value, recurses, and re-wraps.  Carved
 ;;                          transformer modules register their own here
@@ -445,7 +445,7 @@
             "no pure-via-witness impl for tag: ~v" tag)]))
 
 ;; Derive the INNER monad's pure from a transformer witness whose single
-;; field IS the inner monad value (e.g. MkExceptT holding (m (Result e
+;; field IS the inner monad value (e.g. ExceptT holding (m (Result e
 ;; a))).  Codegen emits calls to this from the runtime registrations of
 ;; value-dispatched needs-dict methods (ExceptT's flatmap/catch-e/...).
 (define (inner-pure-from-witness wrapped)
@@ -571,14 +571,14 @@
   (fmap f $dict-get-st))
 
 ;; void :: (Functor f) => f a -> f Unit — no dicts; fmap is positional.
-(define (void fa) (fmap (const MkUnit) fa))
+(define (void fa) (fmap (const Unit) fa))
 
 ;; when / unless :: (Applicative f) => Boolean -> f Unit -> f Unit.
 ;; One dict for Applicative's `pure`.
 (define/curried (when $dict-pure b fu)
-  (if b fu ($dict-pure MkUnit)))
+  (if b fu ($dict-pure Unit)))
 (define/curried (unless $dict-pure b fu)
-  (if b ($dict-pure MkUnit) fu))
+  (if b ($dict-pure Unit) fu))
 
 ;; ----- Stdlib ----------------------------------------------------
 
@@ -701,8 +701,8 @@
 
 (define (run-io io) (($io-thunk io)))
 
-(define (print s)   ($io (lambda () (display   s) MkUnit)))
-(define (println s) ($io (lambda () (displayln s) MkUnit)))
+(define (print s)   ($io (lambda () (display   s) Unit)))
+(define (println s) ($io (lambda () (displayln s) Unit)))
 (define read-line
   ($io (lambda ()
          (define line (rkt:read-line))
@@ -821,7 +821,7 @@
 
 (define (make-ref v) ($io (lambda () (box v))))
 (define (read-ref r) ($io (lambda () (unbox r))))
-(define/curried (write-ref r v) ($io (lambda () (set-box! r v) MkUnit)))
+(define/curried (write-ref r v) ($io (lambda () (set-box! r v) Unit)))
 
 ;; ----- Concurrency ---------------------------------
 ;;
@@ -838,7 +838,7 @@
          t)))
 
 (define (wait-thread t)
-  ($io (lambda () (thread-wait t) MkUnit)))
+  ($io (lambda () (thread-wait t) Unit)))
 
 (define (new-mvar v)
   ($io (lambda ()
@@ -861,7 +861,7 @@
          (semaphore-wait ($mvar-empty m))
          (set-box! ($mvar-cell m) v)
          (semaphore-post ($mvar-filled m))
-         MkUnit)))
+         Unit)))
 
 ;; read-mvar takes the filled-permit, reads, then re-posts the
 ;; filled-permit so other readers/takers can proceed.  The empty
@@ -882,13 +882,13 @@
          (define v (unbox ($mvar-cell m)))
          (set-box! ($mvar-cell m) (f v))
          (semaphore-post ($mvar-filled m))
-         MkUnit)))
+         Unit)))
 
 (define new-chan
   ($io (lambda () (make-async-channel))))
 
 (define/curried (send-chan ch v)
-  ($io (lambda () (async-channel-put ch v) MkUnit)))
+  ($io (lambda () (async-channel-put ch v) Unit)))
 
 (define (recv-chan ch)
   ($io (lambda () (async-channel-get ch))))
@@ -951,7 +951,7 @@
   ($stm (lambda (log) (log-read! log tv))))
 
 (define/curried (write-tvar tv v)
-  ($stm (lambda (log) (log-write! log tv v) MkUnit)))
+  ($stm (lambda (log) (log-write! log tv v) Unit)))
 
 (define retry
   ($stm (lambda (_log) (raise $stm-retry-sentinel))))
@@ -1093,7 +1093,7 @@
 (register-instance-method! $dispatch:fork-c  '$io fork-c-io)
 
 (define |$await-c:IO| await-c-io)
-(define |$yield-c:IO| ($io (lambda () (sleep 0) MkUnit)))
+(define |$yield-c:IO| ($io (lambda () (sleep 0) Unit)))
 
 ;; MonadIO IO: lift-io is the identity on IO actions.
 (define (|$lift-io:IO| io) io)
@@ -1101,48 +1101,48 @@
 ;; ----- Identity monad + Concurrent Identity -------
 
 (define (run-identity i)
-  (match i [(MkIdentity x) x]))
+  (match i [(Identity x) x]))
 
 ;; Functor / Applicative / Monad for Identity
 (define (identity-fmap f i)
-  (match i [(MkIdentity x) (MkIdentity (f x))]))
-(register-instance-method! $dispatch:fmap '$ctor:MkIdentity identity-fmap)
+  (match i [(Identity x) (Identity (f x))]))
+(register-instance-method! $dispatch:fmap '$ctor:Identity identity-fmap)
 
-(define |$pure:Identity| MkIdentity)
-(register-pure-impl! '$ctor:MkIdentity |$pure:Identity|)
+(define |$pure:Identity| Identity)
+(register-pure-impl! '$ctor:Identity |$pure:Identity|)
 
 (define (identity-ap ifn ix)
   (match ifn
-    [(MkIdentity f)
-     (match ix [(MkIdentity x) (MkIdentity (f x))])]))
-(register-instance-method! $dispatch:fapply '$ctor:MkIdentity identity-ap)
+    [(Identity f)
+     (match ix [(Identity x) (Identity (f x))])]))
+(register-instance-method! $dispatch:fapply '$ctor:Identity identity-ap)
 
 (define (identity-liftA2 g ia ib)
   (match ia
-    [(MkIdentity a)
-     (match ib [(MkIdentity b) (MkIdentity (g a b))])]))
-(register-instance-method! $dispatch:liftA2 '$ctor:MkIdentity identity-liftA2)
+    [(Identity a)
+     (match ib [(Identity b) (Identity (g a b))])]))
+(register-instance-method! $dispatch:liftA2 '$ctor:Identity identity-liftA2)
 
 (define (identity-bind f i)
-  (match i [(MkIdentity x) (f x)]))
-(register-instance-method! $dispatch:flatmap '$ctor:MkIdentity identity-bind)
+  (match i [(Identity x) (f x)]))
+(register-instance-method! $dispatch:flatmap '$ctor:Identity identity-bind)
 
 ;; Concurrent Identity — fork-c runs the computation immediately
 ;; and uses the bare value as the Future; await-c rewraps in
 ;; Identity.  Since Identity is a transparent monad, no synchronization
 ;; needed.
 (define (fork-c-identity m)
-  ;; m :: Identity a == (MkIdentity x).  Return (MkIdentity x) — the
+  ;; m :: Identity a == (Identity x).  Return (Identity x) — the
   ;; "Future a" representation at Identity is just the raw value.
   m)
 (define (await-c-identity fut)
   ;; fut is the raw a value (after do-notation extracted from
-  ;; MkIdentity); wrap back as Identity a.
-  (MkIdentity fut))
-(register-instance-method! $dispatch:fork-c '$ctor:MkIdentity fork-c-identity)
+  ;; Identity); wrap back as Identity a.
+  (Identity fut))
+(register-instance-method! $dispatch:fork-c '$ctor:Identity fork-c-identity)
 
 (define |$await-c:Identity| await-c-identity)
-(define |$yield-c:Identity| (MkIdentity MkUnit))
+(define |$yield-c:Identity| (Identity Unit))
 
 ;; ----- File I/O ------------------------------------------------
 
@@ -1152,7 +1152,7 @@
   ($io (lambda ()
          (with-output-to-file path #:exists 'replace
            (lambda () (display contents)))
-         MkUnit)))
+         Unit)))
 (define (file-exists? path)
   ($io (lambda () (rkt:file-exists?-impl path))))
 
@@ -1178,8 +1178,8 @@
 
 ;; ----- Pair helpers -------------------------------------------
 
-(define (fst p)  (match p [(MkPair a _) a]))
-(define (snd p)  (match p [(MkPair _ b) b]))
+(define (fst p)  (match p [(Pair a _) a]))
+(define (snd p)  (match p [(Pair _ b) b]))
 ;; swap moved to rackton/data/tuple (Phase 2 slim).
 
 ;; Optics primitives (Lens / Prism / Traversal) moved to
@@ -1433,17 +1433,17 @@
          (rkt-list->rackton (vector->list (rkt:argv))))))
 
 (define (delete-file path)
-  ($io (lambda () (rkt:delete-file path) MkUnit)))
+  ($io (lambda () (rkt:delete-file path) Unit)))
 
 (define (make-directory path)
-  ($io (lambda () (rkt:make-directory path) MkUnit)))
+  ($io (lambda () (rkt:make-directory path) Unit)))
 
 ;; appendFile: append to a file (creating it if absent).
 (define/curried (append-file path contents)
   ($io (lambda ()
          (with-output-to-file path #:exists 'append
            (lambda () (display contents)))
-         MkUnit)))
+         Unit)))
 
 (define (does-directory-exist? path)
   ($io (lambda () (directory-exists? path))))
@@ -1460,23 +1460,23 @@
 ;; setEnv: set an environment variable (putenv's boolean result is
 ;; dropped — Haskell's setEnv returns ()).
 (define/curried (set-env name val)
-  ($io (lambda () (putenv name val) MkUnit)))
+  ($io (lambda () (putenv name val) Unit)))
 
 ;; renameFile: move/rename, replacing an existing destination.
 (define/curried (rename-file old new)
-  ($io (lambda () (rename-file-or-directory old new #t) MkUnit)))
+  ($io (lambda () (rename-file-or-directory old new #t) Unit)))
 
 ;; copyFile: copy contents, replacing an existing destination.  Named
 ;; copy-file-io (not copy-file) so prelude-runtime doesn't re-provide a
 ;; racket/base name into modules that import both; the Rackton-facing
 ;; name `copy-file` is bound via the foreign decl's #:as.
 (define/curried (copy-file-io src dst)
-  ($io (lambda () (rkt:copy-file src dst #t) MkUnit)))
+  ($io (lambda () (rkt:copy-file src dst #t) Unit)))
 
 ;; createDirectoryIfMissing: create the directory (and any parents),
 ;; with no error if it already exists.
 (define (create-directory-if-missing path)
-  ($io (lambda () (make-directory* path) MkUnit)))
+  ($io (lambda () (make-directory* path) Unit)))
 
 ;; getCurrentTime: wall-clock milliseconds since the Unix epoch.
 (define get-current-time-millis
@@ -1512,16 +1512,16 @@
 (define (h-close h)
   ($io (lambda ()
          (if (input-port? h) (close-input-port h) (close-output-port h))
-         MkUnit)))
+         Unit)))
 
 (define/curried (h-put-str h s)
-  ($io (lambda () (write-string s h) MkUnit)))
+  ($io (lambda () (write-string s h) Unit)))
 
 (define/curried (h-put-str-ln h s)
-  ($io (lambda () (write-string s h) (newline h) MkUnit)))
+  ($io (lambda () (write-string s h) (newline h) Unit)))
 
 (define (h-flush h)
-  ($io (lambda () (flush-output h) MkUnit)))
+  ($io (lambda () (flush-output h) Unit)))
 
 (define (h-get-contents h)
   ($io (lambda () (port->string h))))
@@ -1705,12 +1705,12 @@
 (define pair-bimap
   (lambda (f g p)
     (match p
-      [(MkPair x y) (MkPair (f x) (g y))])))
-(register-instance-method! $dispatch:bimap '$ctor:MkPair pair-bimap)
+      [(Pair x y) (Pair (f x) (g y))])))
+(register-instance-method! $dispatch:bimap '$ctor:Pair pair-bimap)
 (define pair-first  (lambda (f p) (pair-bimap f id      p)))
 (define pair-second (lambda (g p) (pair-bimap id     g  p)))
-(register-instance-method! $dispatch:first  '$ctor:MkPair pair-first)
-(register-instance-method! $dispatch:second '$ctor:MkPair pair-second)
+(register-instance-method! $dispatch:first  '$ctor:Pair pair-first)
+(register-instance-method! $dispatch:second '$ctor:Pair pair-second)
 
 (define result-bimap
   (lambda (f g r)
@@ -1795,9 +1795,9 @@
 
 (define (pair-eq p1 p2)
   (match p1
-    [(MkPair x1 y1)
-     (match p2 [(MkPair x2 y2) (if (== x1 x2) (== y1 y2) #f)])]))
-(register-instance-method! $dispatch:== '$ctor:MkPair pair-eq)
+    [(Pair x1 y1)
+     (match p2 [(Pair x2 y2) (if (== x1 x2) (== y1 y2) #f)])]))
+(register-instance-method! $dispatch:== '$ctor:Pair pair-eq)
 
 (define (result-eq r1 r2)
   (match r1
@@ -1807,10 +1807,10 @@
 (register-instance-method! $dispatch:== '$ctor:Ok  result-eq)
 
 (define (unit-eq _u1 _u2) #t)
-(register-instance-method! $dispatch:== '$ctor:MkUnit unit-eq)
+(register-instance-method! $dispatch:== '$ctor:Unit unit-eq)
 
 (for ([tag (in-list '($ctor:None $ctor:Some $ctor:Nil $ctor:Cons
-                      $ctor:MkPair $ctor:Err $ctor:Ok $ctor:MkUnit))])
+                      $ctor:Pair $ctor:Err $ctor:Ok $ctor:Unit))])
   (register-instance-method! $dispatch:/= tag (lambda (x y) (rkt:not (== x y)))))
 
 ;; -- Ord (< is primitive; the rest derive from generic < and ==) --
@@ -1830,9 +1830,9 @@
 
 (define (pair-lt p1 p2)
   (match p1
-    [(MkPair x1 y1)
+    [(Pair x1 y1)
      (match p2
-       [(MkPair x2 y2)
+       [(Pair x2 y2)
         (if (< x1 x2) #t (if (== x1 x2) (< y1 y2) #f))])]))
 
 (define (register-ord-derived! tag)
@@ -1846,8 +1846,8 @@
 (register-instance-method! $dispatch:< '$ctor:Some   maybe-lt)
 (register-instance-method! $dispatch:< '$ctor:Nil    list-lt)
 (register-instance-method! $dispatch:< '$ctor:Cons   list-lt)
-(register-instance-method! $dispatch:< '$ctor:MkPair pair-lt)
-(for ([tag (in-list '($ctor:None $ctor:Some $ctor:Nil $ctor:Cons $ctor:MkPair))])
+(register-instance-method! $dispatch:< '$ctor:Pair pair-lt)
+(for ([tag (in-list '($ctor:None $ctor:Some $ctor:Nil $ctor:Cons $ctor:Pair))])
   (register-ord-derived! tag))
 
 ;; -- Show --
@@ -1870,10 +1870,10 @@
 
 (define (pair-show p)
   (match p
-    [(MkPair x y)
+    [(Pair x y)
      (string-append "(" (string-append (show x)
                       (string-append ", " (string-append (show y) ")"))))]))
-(register-instance-method! $dispatch:show '$ctor:MkPair pair-show)
+(register-instance-method! $dispatch:show '$ctor:Pair pair-show)
 
 (define (result-show r)
   (match r
@@ -1883,7 +1883,7 @@
 (register-instance-method! $dispatch:show '$ctor:Ok  result-show)
 
 (define (unit-show _u) "Unit")
-(register-instance-method! $dispatch:show '$ctor:MkUnit unit-show)
+(register-instance-method! $dispatch:show '$ctor:Unit unit-show)
 
 ;; WriterT w m runtime moved to rackton/control/monad/writer (pure
 ;; Rackton — value-dispatched fmap/fapply/flatmap combine logs via
@@ -1903,7 +1903,7 @@
 ;; ExceptT e m runtime moved to rackton/control/monad/except (pure
 ;; Rackton — its value-dispatched fapply/flatmap/catch-e derive the
 ;; inner pure from the dispatch-arg witness, and it registers a
-;; pure-via-witness deriver for MkExceptT so nested ExceptT works).
+;; pure-via-witness deriver for ExceptT so nested ExceptT works).
 
 ;; ----- mtl-style class instance impls ------------------
 ;; Naming: `$<method>:<head-tcon>`.  Lifted instances over a
@@ -1969,7 +1969,7 @@
 ;; the curried `$method:T` impls; this just adds a parallel path.
 
 ;; catch-e on transformer-wrapped values.
-;; (catch-e for MkStateT/MkEnvT/MkWriterT registered in
+;; (catch-e for StateT/EnvT/WriterT registered in
 ;; rackton/control/monad/{state,reader,writer}.)
 
 ;; listen / censor on WriterT registered in
@@ -1978,7 +1978,7 @@
 ;; local-en on transformer-wrapped values.  These all recurse via
 ;; runtime local-en on the inner value, so register the same impl
 ;; without the unused dict slots.
-;; (local-en for MkStateT/MkWriterT/MkExceptT registered in their
+;; (local-en for StateT/WriterT/ExceptT registered in their
 ;; rackton/control/monad/* modules.)
 
 ;; ----- default `join` and `product` for prelude instances ----------
@@ -1991,7 +1991,7 @@
 ;; registered `liftA2` gets `product` derived from `liftA2`.
 
 (define default-join    (lambda (mma) (flatmap (lambda (m) m) mma)))
-(define default-product (lambda (x y) (liftA2 MkPair x y)))
+(define default-product (lambda (x y) (liftA2 Pair x y)))
 
 (for ([ctor (in-hash-keys $dispatch:flatmap)])
   (register-instance-method! $dispatch:join ctor default-join))

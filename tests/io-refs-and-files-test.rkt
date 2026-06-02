@@ -15,7 +15,7 @@
     (if (< n stop)
         (do [_ <- (write-ref r (+ n 1))]
           (loop-step r stop))
-        (pure-io MkUnit))))
+        (pure-io Unit))))
 
 (: count-from-to (-> Integer (-> Integer (IO Integer))))
 (define (count-from-to start stop)
@@ -33,7 +33,7 @@
 (define missing  (find (lambda (n) (== n 99)) xs))
 
 ;; Pair helpers
-(define p     (MkPair "key" 42))
+(define p     (Pair "key" 42))
 (define p-fst (fst p))
 (define p-snd (snd p))
 (define p-sw  (swap p))
@@ -77,7 +77,7 @@
        (all-checks
         (list (check-equal? p-fst "key")
               (check-equal? p-snd 42)
-              (check-equal? p-sw  (MkPair 42 "key")))))
+              (check-equal? p-sw  (Pair 42 "key")))))
    (it "fmap over a tree (derived)"
        (check-equal?
         t1-x2

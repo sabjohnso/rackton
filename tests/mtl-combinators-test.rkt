@@ -106,15 +106,15 @@
 
   ;; when: conditional Applicative action.
   (: when-true-io  (IO Unit))
-  (define when-true-io  (when #true  (pure MkUnit)))
+  (define when-true-io  (when #true  (pure Unit)))
   (: when-false-io (IO Unit))
-  (define when-false-io (when #false (pure MkUnit)))
+  (define when-false-io (when #false (pure Unit)))
 
   ;; unless: complement of when.
   (: unless-true-io  (IO Unit))
-  (define unless-true-io  (unless #true  (pure MkUnit)))
+  (define unless-true-io  (unless #true  (pure Unit)))
   (: unless-false-io (IO Unit))
-  (define unless-false-io (unless #false (pure MkUnit))))
+  (define unless-false-io (unless #false (pure Unit))))
 
 ;; ---------- assertions ---------------------------------------
 
@@ -123,7 +123,7 @@
 
 (test-case "local-en lifted through StateT (EnvT IO)"
   (check-equal? (run-io stacked-local-result)
-                (MkPair 5 "X-abc")))
+                (Pair 5 "X-abc")))
 
 (test-case "catch-e on base ExceptT IO recovers from a throw"
   (check-equal? (run-io caught-base-result) (Ok 42)))
@@ -134,26 +134,26 @@
   ;; is unchanged and the inner pair carries the original value plus
   ;; the log so far.
   (check-equal? (run-io listened-greet)
-                (MkPair "step1.step2."
-                        (MkPair "done" "step1.step2."))))
+                (Pair "step1.step2."
+                        (Pair "done" "step1.step2."))))
 
 (test-case "censor on WriterT IO transforms the log"
   (check-equal? (run-io censored-greet)
-                (MkPair "X-step1.step2." "done")))
+                (Pair "X-step1.step2." "done")))
 
 (test-case "asks derives from Env"
   (check-equal? env-length-result 5))
 
 (test-case "gets derives from State"
-  (check-equal? state-doubled-result (MkPair 21 42)))
+  (check-equal? state-doubled-result (Pair 21 42)))
 
 (test-case "void drops the IO result"
-  (check-equal? (run-io voided-io) MkUnit))
+  (check-equal? (run-io voided-io) Unit))
 
 (test-case "when true runs the action; false short-circuits"
-  (check-equal? (run-io when-true-io)  MkUnit)
-  (check-equal? (run-io when-false-io) MkUnit))
+  (check-equal? (run-io when-true-io)  Unit)
+  (check-equal? (run-io when-false-io) Unit))
 
 (test-case "unless true short-circuits; false runs the action"
-  (check-equal? (run-io unless-true-io)  MkUnit)
-  (check-equal? (run-io unless-false-io) MkUnit))
+  (check-equal? (run-io unless-true-io)  Unit)
+  (check-equal? (run-io unless-false-io) Unit))

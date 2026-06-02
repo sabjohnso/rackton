@@ -90,7 +90,7 @@ return type:
 
 @codeblock|{
 (: greet (IO Unit))
-(define greet (pure MkUnit))   (code:comment "pure here is (IO Unit)'s pure")
+(define greet (pure Unit))   (code:comment "pure here is (IO Unit)'s pure")
 
 (: many  (Maybe Integer))
 (define many  (pure 3))         (code:comment "pure here is Maybe's pure")

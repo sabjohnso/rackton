@@ -26,7 +26,7 @@
 ;; ----- nested ExceptT flatmap --------------------------
 ;; The inner monad is ExceptT String IO (itself needs-dict).
 ;; Without a runtime resolver for needs-dict instances,
-;; flatmap on MkExceptT fails here.
+;; flatmap on ExceptT fails here.
 
 (: nested-ok (ExceptT String (ExceptT String IO) Integer))
 (define nested-ok
@@ -73,7 +73,7 @@
 
 ;; ----- nested ExceptT catch via runtime resolver --------
 ;; Two layers of ExceptT (with distinct error types) over IO.
-;; The inner-pure derivation has to walk MkExceptT → MkExceptT →
+;; The inner-pure derivation has to walk ExceptT → ExceptT →
 ;; $io.  Throw at the OUTER ExceptT's error layer; catch with a
 ;; handler that returns a pure value.
 
@@ -102,7 +102,7 @@
        (check-equal? (run-io nested-ok-result) (Ok (Ok 15))))
    (it "catch-e lifted through StateT (ExceptT IO)"
        (check-equal? (run-io caught-st-result)
-                     (Ok (MkPair 0 7))))
+                     (Ok (Pair 0 7))))
    (it "catch-e base ExceptT IO (regression)"
        (check-equal? (run-io caught-base-result) (Ok 42)))
    (it "catch-e on nested ExceptT (ExceptT IO) via runtime resolver"

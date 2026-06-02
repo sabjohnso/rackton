@@ -95,14 +95,14 @@
 ;; ---------- assertions ---------------------------------------
 
 (test-case "MonadState over State"
-  (check-equal? state-result (MkPair 15 MkUnit)))
+  (check-equal? state-result (Pair 15 Unit)))
 
 (test-case "MonadState over StateT IO"
-  (check-equal? (run-io state-t-io-result) (MkPair 103 MkUnit)))
+  (check-equal? (run-io state-t-io-result) (Pair 103 Unit)))
 
 (test-case "MonadState lifted over EnvT (State Integer)"
   (check-equal? ((run-state env-of-state-result) 5)
-                (MkPair 12 MkUnit)))
+                (Pair 12 Unit)))
 
 (test-case "MonadEnv over Env"
   (check-equal? env-greet-result "hello, world"))
@@ -112,7 +112,7 @@
 
 (test-case "MonadEnv lifted over StateT (Env r)"
   (check-equal? ((run-env state-of-env-greet-result) "from-env")
-                (MkPair 0 "hello, from-env")))
+                (Pair 0 "hello, from-env")))
 
 (test-case "MonadError throw + ok path over ExceptT IO"
   (check-equal? (run-io ok-result)  (Ok 7))
@@ -120,4 +120,4 @@
 
 (test-case "Nested stack: StateT over EnvT IO with both effects"
   (check-equal? (run-io nested-stack-result)
-                (MkPair 1 "tag: 1")))
+                (Pair 1 "tag: 1")))

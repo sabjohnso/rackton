@@ -62,14 +62,11 @@ Immutable byte strings (Racket's @racket[bytes?]).  Literals like
 @racket[#"hello"] have type @racket[Bytes].  Instances: @racket[Eq],
 @racket[Show].}
 
-@defidform[#:kind "type" Unit]{
+@defidform[#:kind "type & constructor" Unit]{
 
-A nullary type with a single value.  Used as the result type of
-side-effecting computations.
-
-@defidform[#:kind "constructor" MkUnit]{
-
-The sole inhabitant of @racket[Unit].}}
+A nullary type with a single value; the type and its sole constructor
+share the name @racket[Unit].  Used as the result type of
+side-effecting computations.}
 
 @section{Sum and product types}
 
@@ -100,14 +97,11 @@ Instances: @racket[Functor], @racket[Applicative], @racket[Monad],
 @racket[Foldable], @racket[Traversable], @racket[Semigroup],
 @racket[Monoid].}
 
-@defidform[#:kind "type" Pair]{
+@defidform[#:kind "type & constructor" Pair]{
 
-Two-element product type.
-
-@defidform[#:kind "constructor" MkPair]{
-
-@racket[MkPair : (-> a (-> b (Pair a b)))] builds a pair.  Use
-@racket[fst] / @racket[snd] / @racket[swap] to project.}
+Two-element product type; the type and its constructor share the name.
+@racket[Pair : (-> a (-> b (Pair a b)))] builds a pair.  Use
+@racket[fst] / @racket[snd] / @racket[swap] to project.
 
 Instances: @racket[Bifunctor].}
 
@@ -130,29 +124,23 @@ Instances: @racket[Functor], @racket[Applicative], @racket[Monad]
 @para{@bold{Module} — @racket[(require rackton/data/monoid)]
 (see @secref["stdlib"]).}
 
-@defidform[#:kind "type" Sum]{
+@defidform[#:kind "type & constructor" Sum]{
 
 Newtype wrapper marking an @racket[Integer] for additive monoid
-behaviour.
-
-@defidform[#:kind "constructor" MkSum]{
-
-@racket[MkSum : (-> Integer Sum)].}
+behaviour; the type and its constructor share the name.
+@racket[Sum : (-> Integer Sum)].
 
 Instance: @racket[Semigroup] / @racket[Monoid] (@racket[mempty] is
-@racket[(MkSum 0)]; @racket[<>] adds).}
+@racket[(Sum 0)]; @racket[<>] adds).}
 
-@defidform[#:kind "type" Product]{
+@defidform[#:kind "type & constructor" Product]{
 
 Newtype wrapper marking an @racket[Integer] for multiplicative monoid
-behaviour.
-
-@defidform[#:kind "constructor" MkProduct]{
-
-@racket[MkProduct : (-> Integer Product)].}
+behaviour; the type and its constructor share the name.
+@racket[Product : (-> Integer Product)].
 
 Instance: @racket[Semigroup] / @racket[Monoid] (@racket[mempty] is
-@racket[(MkProduct 1)]; @racket[<>] multiplies).}
+@racket[(Product 1)]; @racket[<>] multiplies).}
 
 @section{IO, references, and concurrency}
 
@@ -221,36 +209,28 @@ TVars.  Run a transaction with @racket[atomically].  Instances:
 @para{@bold{Module} — @racket[(require rackton/data/lens)]
 (see @secref["stdlib"]).}
 
-@defidform[#:kind "type" Lens]{
+@defidform[#:kind "type & constructor" Lens]{
 
 A functional getter/setter pair: @racket[(Lens s a)] focuses an
-@racket[a] inside an @racket[s].
+@racket[a] inside an @racket[s].  The type and its constructor share the
+name.  @racket[Lens : (-> (-> s a) (-> s (-> a s)) (Lens s a))].  See
+@racket[view], @racket[set], @racket[over], @racket[lens-compose].}
 
-@defidform[#:kind "constructor" MkLens]{
-
-@racket[MkLens : (-> (-> s a) (-> s (-> a s)) (Lens s a))].  See
-@racket[view], @racket[set], @racket[over], @racket[lens-compose].}}
-
-@defidform[#:kind "type" Prism]{
+@defidform[#:kind "type & constructor" Prism]{
 
 A pattern for matching one branch of a sum type: @racket[(Prism s a)]
-either extracts or builds.
+either extracts or builds.  The type and its constructor share the name.
+@racket[Prism : (-> (-> s (Maybe a)) (-> a s) (Prism s a))].  See
+@racket[preview], @racket[review].}
 
-@defidform[#:kind "constructor" MkPrism]{
-
-@racket[MkPrism : (-> (-> s (Maybe a)) (-> a s) (Prism s a))].  See
-@racket[preview], @racket[review].}}
-
-@defidform[#:kind "type" Traversal]{
+@defidform[#:kind "type & constructor" Traversal]{
 
 A polymorphic walk that visits zero or more positions.
-@racket[(Traversal s a)] is the lens-of-many.
-
-@defidform[#:kind "constructor" MkTraversal]{
-
-@racket[MkTraversal : (-> (-> s (List a)) (-> (-> a a) (-> s s)) (Traversal s a))].
+@racket[(Traversal s a)] is the lens-of-many.  The type and its
+constructor share the name.
+@racket[Traversal : (-> (-> s (List a)) (-> (-> a a) (-> s s)) (Traversal s a))].
 See @racket[to-list-of], @racket[over-of], @racket[list-traversal],
-@racket[lens-as-traversal].}}
+@racket[lens-as-traversal].}
 
 @section{Monad transformers and the Identity monad}
 
@@ -260,101 +240,85 @@ transformers live under @tt{rackton/control/monad}:
 @racket[WriterT] in @tt{…/writer}, @racket[ExceptT] in @tt{…/except}
 (see @secref["stdlib"]).}
 
-@defidform[#:kind "type" Identity]{
+@defidform[#:kind "type & constructor" Identity]{
 
 The identity monad: @racket[(Identity a)] wraps a single @racket[a]
-with no effects.  Useful as the base for transformer stacks.
-
-@defidform[#:kind "constructor" MkIdentity]{
-
-@racket[MkIdentity : (-> a (Identity a))].  Unwrap with
-@racket[run-identity].}
+with no effects.  Useful as the base for transformer stacks.  The type
+and its constructor share the name.
+@racket[Identity : (-> a (Identity a))].  Unwrap with
+@racket[run-identity].
 
 Instances: @racket[Functor], @racket[Applicative], @racket[Monad],
 @racket[Concurrent].}
 
-@defidform[#:kind "type" State]{
+@defidform[#:kind "type & constructor" State]{
 
 The state monad: @racket[(State s a)] is a function from a state
-@racket[s] to a pair of a new state and a result.
-
-@defidform[#:kind "constructor" MkState]{
-
-@racket[MkState : (-> (-> s (Pair s a)) (State s a))].  See
+@racket[s] to a pair of a new state and a result.  The type and its
+constructor share the name.
+@racket[State : (-> (-> s (Pair s a)) (State s a))].  See
 @racket[run-state], @racket[eval-state], @racket[exec-state],
-@racket[get-state], @racket[put-state], @racket[modify-state].}
+@racket[get-state], @racket[put-state], @racket[modify-state].
 
 Instances: @racket[Functor], @racket[Applicative], @racket[Monad],
 @racket[MonadState].}
 
-@defidform[#:kind "type" Env]{
+@defidform[#:kind "type & constructor" Env]{
 
 The reader / environment monad: @racket[(Env r a)] is a function from
-an environment @racket[r] to an @racket[a].
-
-@defidform[#:kind "constructor" MkEnv]{
-
-@racket[MkEnv : (-> (-> r a) (Env r a))].  See @racket[run-env],
-@racket[ask], @racket[local].}
+an environment @racket[r] to an @racket[a].  The type and its
+constructor share the name.
+@racket[Env : (-> (-> r a) (Env r a))].  See @racket[run-env],
+@racket[ask], @racket[local].
 
 Instances: @racket[Functor], @racket[Applicative], @racket[Monad],
 @racket[MonadEnv].}
 
-@defidform[#:kind "type" StateT]{
+@defidform[#:kind "type & constructor" StateT]{
 
 State monad transformer: @racket[(StateT s m a)] threads state
-@racket[s] through an inner monad @racket[m].
-
-@defidform[#:kind "constructor" MkStateT]{
-
-@racket[MkStateT : (-> (-> s (m (Pair s a))) (StateT s m a))].  See
+@racket[s] through an inner monad @racket[m].  The type and its
+constructor share the name.
+@racket[StateT : (-> (-> s (m (Pair s a))) (StateT s m a))].  See
 @racket[run-state-t], @racket[eval-state-t], @racket[exec-state-t],
 @racket[get-state-t], @racket[put-state-t], @racket[modify-state-t],
-@racket[lift-state-t].}
+@racket[lift-state-t].
 
 Instances: @racket[Functor], @racket[Applicative], @racket[Monad],
 @racket[MonadState] (when @racket[m] is a @racket[Monad]).}
 
-@defidform[#:kind "type" EnvT]{
+@defidform[#:kind "type & constructor" EnvT]{
 
 Reader monad transformer: @racket[(EnvT r m a)] threads an
-environment @racket[r] through an inner monad @racket[m].
-
-@defidform[#:kind "constructor" MkEnvT]{
-
-@racket[MkEnvT : (-> (-> r (m a)) (EnvT r m a))].  See
-@racket[run-env-t], @racket[ask-t], @racket[local-t], @racket[lift-env-t].}
+environment @racket[r] through an inner monad @racket[m].  The type and
+its constructor share the name.
+@racket[EnvT : (-> (-> r (m a)) (EnvT r m a))].  See
+@racket[run-env-t], @racket[ask-t], @racket[local-t], @racket[lift-env-t].
 
 Instances: @racket[Functor], @racket[Applicative], @racket[Monad],
 @racket[MonadEnv] (when @racket[m] is a @racket[Monad]).}
 
-@defidform[#:kind "type" WriterT]{
+@defidform[#:kind "type & constructor" WriterT]{
 
 Writer monad transformer: @racket[(WriterT w m a)] threads a log
 @racket[w] (which must be a @racket[Monoid]) through an inner monad
-@racket[m].
-
-@defidform[#:kind "constructor" MkWriterT]{
-
-@racket[MkWriterT : (-> (m (Pair w a)) (WriterT w m a))].  See
+@racket[m].  The type and its constructor share the name.
+@racket[WriterT : (-> (m (Pair w a)) (WriterT w m a))].  See
 @racket[run-writer-t], @racket[eval-writer-t], @racket[exec-writer-t],
-@racket[tell], @racket[lift-writer-t].}
+@racket[tell], @racket[lift-writer-t].
 
 Instances: @racket[Functor], @racket[Applicative], @racket[Monad],
 @racket[MonadWriter] (when @racket[m] is a @racket[Monad] and
 @racket[w] is a @racket[Monoid]).}
 
-@defidform[#:kind "type" ExceptT]{
+@defidform[#:kind "type & constructor" ExceptT]{
 
 Exception monad transformer: @racket[(ExceptT e m a)] threads a
 short-circuiting error of type @racket[e] through an inner monad
-@racket[m].
-
-@defidform[#:kind "constructor" MkExceptT]{
-
-@racket[MkExceptT : (-> (m (Result e a)) (ExceptT e m a))].  See
+@racket[m].  The type and its constructor share the name.
+@racket[ExceptT : (-> (m (Result e a)) (ExceptT e m a))].  See
 @racket[run-except-t], @racket[throw-error], @racket[catch-error],
-@racket[lift-except-t].}
+@racket[lift-except-t].
 
 Instances: @racket[Functor], @racket[Applicative], @racket[Monad],
 @racket[MonadError] (when @racket[m] is a @racket[Monad]).}

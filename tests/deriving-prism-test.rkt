@@ -23,7 +23,7 @@
   (preview Opt-Absent-prism (Present 7)))
 
 (: rev-absent (Opt Integer))
-(define rev-absent (review Opt-Absent-prism MkUnit))
+(define rev-absent (review Opt-Absent-prism Unit))
 
 (: prev-present-on-present (Maybe Integer))
 (define prev-present-on-present
@@ -82,19 +82,19 @@
 (: prev-rect-miss (Maybe (Pair Integer Integer)))
 (define prev-rect-miss (preview Shape-Rect-prism (Circle 1)))
 (: rev-rect Shape)
-(define rev-rect (review Shape-Rect-prism (MkPair 7 8)))
+(define rev-rect (review Shape-Rect-prism (Pair 7 8)))
 
 (: prev-tri3 (Maybe (Tuple3 Integer Integer Integer)))
 (define prev-tri3 (preview Shape-Tri3-prism (Tri3 1 2 3)))
 (: rev-tri3 Shape)
-(define rev-tri3 (review Shape-Tri3-prism (MkTuple3 1 2 3)))
+(define rev-tri3 (review Shape-Tri3-prism (Tuple3 1 2 3)))
 
 (: suite (List Test))
 (define suite
   (list
    (it "Absent prism: preview / review"
        (all-checks
-        (list (check-equal? prev-absent-on-absent   (Some MkUnit))
+        (list (check-equal? prev-absent-on-absent   (Some Unit))
               (check-equal? prev-absent-on-present  None)
               (check-equal? rev-absent              Absent))))
    (it "Present prism: preview / review"
@@ -109,16 +109,16 @@
               (check-equal? rev-lft         (Lft "boom")))))
    (it "nullary + single-field ctors both get prisms"
        (all-checks
-        (list (check-equal? prev-empty-on-empty (Some MkUnit))
+        (list (check-equal? prev-empty-on-empty (Some Unit))
               (check-equal? prev-one-on-one     (Some 7)))))
    (it "2-field ctor focuses a Pair"
        (all-checks
-        (list (check-equal? prev-rect      (Some (MkPair 3 4)))
+        (list (check-equal? prev-rect      (Some (Pair 3 4)))
               (check-equal? prev-rect-miss None)
               (check-equal? rev-rect       (Rect 7 8)))))
    (it "3-field ctor focuses a flat Tuple3"
        (all-checks
-        (list (check-equal? prev-tri3 (Some (MkTuple3 1 2 3)))
+        (list (check-equal? prev-tri3 (Some (Tuple3 1 2 3)))
               (check-equal? rev-tri3  (Tri3 1 2 3)))))))
 
 (: _ran Unit)

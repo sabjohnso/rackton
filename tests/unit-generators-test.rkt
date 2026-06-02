@@ -24,7 +24,7 @@
   (define pair-ok
     (match (tree-value (gen-tree (gen-pair (int-range 1 1) (int-range 2 2))
                                  0 (seed-from 5)))
-      [(MkPair a b) (if (== a 1) (== b 2) #f)]))
+      [(Pair a b) (if (== a 1) (== b 2) #f)]))
 
   ;; replicate-gen yields exactly n elements …
   (: rep-len Integer)

@@ -7,7 +7,7 @@
          "../unit.rkt")
 
 ;; round-trip construction
-(: rt Integer) (define rt (num-from-natural (MkNatural 5)))
+(: rt Integer) (define rt (num-from-natural (Natural 5)))
 
 ;; checked construction
 (: to-ok-flag  Boolean) (define to-ok-flag  (match (num-to-natural 5)  [(Some _) #t] [(None) #f]))
@@ -15,14 +15,14 @@
 (: to-neg-none Boolean) (define to-neg-none (match (num-to-natural -1) [(Some _) #f] [(None) #t]))
 
 ;; Num: + * - on Natural
-(: add Integer) (define add (num-from-natural (+ (MkNatural 3) (MkNatural 4))))
-(: mul Integer) (define mul (num-from-natural (* (MkNatural 3) (MkNatural 4))))
-(: sub Integer) (define sub (num-from-natural (- (MkNatural 7) (MkNatural 2))))
+(: add Integer) (define add (num-from-natural (+ (Natural 3) (Natural 4))))
+(: mul Integer) (define mul (num-from-natural (* (Natural 3) (Natural 4))))
+(: sub Integer) (define sub (num-from-natural (- (Natural 7) (Natural 2))))
 
 ;; Eq / Ord / Show
-(: eq-t Boolean) (define eq-t (== (MkNatural 3) (MkNatural 3)))
-(: lt-t Boolean) (define lt-t (< (MkNatural 2) (MkNatural 5)))
-(: shown String) (define shown (show (MkNatural 42)))
+(: eq-t Boolean) (define eq-t (== (Natural 3) (Natural 3)))
+(: lt-t Boolean) (define lt-t (< (Natural 2) (Natural 5)))
+(: shown String) (define shown (show (Natural 42)))
 
 ;; ---------- assertions ---------------------------------------
 

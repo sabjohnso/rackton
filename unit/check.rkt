@@ -27,24 +27,24 @@
   CheckPass
   (CheckFail String))
 
-(data Assertion (MkAssertion CheckResult))
+(data Assertion (Assertion CheckResult))
 
 (: assertion-result (-> Assertion CheckResult))
 (define (assertion-result a)
-  (match a [(MkAssertion r) r]))
+  (match a [(Assertion r) r]))
 
 ;; First failure wins; otherwise pass.
 (instance (Semigroup Assertion)
   (define (<> x y)
     (match x
-      [(MkAssertion (CheckFail _)) x]
-      [(MkAssertion (CheckPass))   y])))
+      [(Assertion (CheckFail _)) x]
+      [(Assertion (CheckPass))   y])))
 
 (: pass Assertion)
-(define pass (MkAssertion CheckPass))
+(define pass (Assertion CheckPass))
 
 (: fail (-> String Assertion))
-(define (fail msg) (MkAssertion (CheckFail msg)))
+(define (fail msg) (Assertion (CheckFail msg)))
 
 (: check-true (-> Boolean Assertion))
 (define (check-true b)

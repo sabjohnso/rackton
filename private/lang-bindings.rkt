@@ -82,17 +82,18 @@
 (define-syntax-rule (define-rackton-types name ...)
   (begin (define-rackton-type name) ...))
 
+;; Types whose constructor now SHARES the type name (Coalton/Haskell
+;; style — `(data (Pair a b) (Pair a b))`) are intentionally absent here:
+;; the constructor's own binding is the for-label target, so a stub would
+;; be a duplicate binding.  Only types with NO same-named constructor
+;; (erased types, or distinct ctor names like Maybe/List) get a stub.
 (define-rackton-types
   ;; Primitive types
-  Integer Float Rational Complex Boolean String Char Bytes Unit
-  ;; Sum / product types
-  Maybe List Pair Result Sum Product
+  Integer Float Rational Complex Boolean String Char Bytes
+  ;; Sum / product types (distinct ctor names)
+  Maybe List Result
   ;; IO, refs, concurrency
   IO Ref MVar Chan ThreadId Future TVar STM
-  ;; Optics
-  Lens Prism Traversal
-  ;; Identity and monad transformers
-  Identity State Env StateT EnvT WriterT ExceptT
   ;; Containers
   Map Set
   ;; Raw memory (rackton/foreign/ptr)

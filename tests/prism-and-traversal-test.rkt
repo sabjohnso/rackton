@@ -10,14 +10,14 @@
 ;; A prism focusing on the `Some` constructor of `Maybe a`.
 (: some-prism (Prism (Maybe a) a))
 (define some-prism
-  (MkPrism (lambda (m) (match m [(Some x) (Some x)] [(None) None]))
+  (Prism (lambda (m) (match m [(Some x) (Some x)] [(None) None]))
            Some))
 
 ;; A prism focusing on `None` — extracts Unit; builds None ignoring
 ;; its arg.
 (: none-prism (Prism (Maybe a) Unit))
 (define none-prism
-  (MkPrism (lambda (m) (match m [(None) (Some MkUnit)] [(Some _) None]))
+  (Prism (lambda (m) (match m [(None) (Some Unit)] [(Some _) None]))
            (lambda (_) None)))
 
 (: prev-some-on-some (Maybe Integer))
@@ -72,7 +72,7 @@
               (check-equal? prev-some-on-none  None)
               (check-equal? rev-some           (Some 42)))))
    (it "None-prism preview on None"
-       (check-equal? prev-none-on-none (Some MkUnit)))
+       (check-equal? prev-none-on-none (Some Unit)))
    (it "list-traversal gathers and transforms"
        (all-checks
         (list (check-equal? nums-collected nums)

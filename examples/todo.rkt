@@ -89,7 +89,7 @@
 
 (define (print-items items n)
   (match items
-    [(Nil) (pure MkUnit)]
+    [(Nil) (pure Unit)]
     [(Cons it rest)
      (do [_ <- (println (<> (integer->string n)
                             (<> ". " (render-item it))))]

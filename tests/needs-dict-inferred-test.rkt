@@ -24,7 +24,7 @@
 (define madd-result (madd (Ok 10) (Ok 32)))
 
 ;; ----- the unascribed counterpart of my-pure-pair --------
-(define (pair-pure x) (pure (MkPair x x)))
+(define (pair-pure x) (pure (Pair x x)))
 
 (: pair-pure-maybe (Maybe (Pair Integer Integer)))
 (define pair-pure-maybe (pair-pure 42))
@@ -39,7 +39,7 @@
 (define cat-string (cat (Cons "a" (Cons "b" (Cons "c" Nil)))))
 
 (: cat-sum Sum)
-(define cat-sum (cat (Cons (MkSum 3) (Cons (MkSum 5) Nil))))
+(define cat-sum (cat (Cons (Sum 3) (Cons (Sum 5) Nil))))
 
 ;; ----- self-recursion in a needs-dict function -----------
 ;; replicate-pure n x = a singleton-list-like fold-up using pure/<>
@@ -72,9 +72,9 @@
    (it "inferred madd over Result (Ok/Ok)"
        (check-equal? madd-result (Ok 42)))
    (it "inferred pair-pure into Maybe"
-       (check-equal? pair-pure-maybe (Some (MkPair 42 42))))
+       (check-equal? pair-pure-maybe (Some (Pair 42 42))))
    (it "inferred pair-pure into Result"
-       (check-equal? pair-pure-result (Ok (MkPair 7 7))))
+       (check-equal? pair-pure-result (Ok (Pair 7 7))))
    (it "inferred Monoid cat on String"
        (check-equal? cat-string "abc"))
    (it "inferred Monoid cat on Sum"

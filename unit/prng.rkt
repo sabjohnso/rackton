@@ -23,7 +23,7 @@
          seed-int-range)
 
 ;; 64-bit LCG state, kept in [0, 2^64).
-(data Seed (MkSeed Integer))
+(data Seed (Seed Integer))
 
 (: two64 Integer)
 (define two64 18446744073709551616)
@@ -36,13 +36,13 @@
 
 ;; Build a seed from any printable Integer (the user-visible handle).
 (: seed-from (-> Integer Seed))
-(define (seed-from n) (MkSeed (mod (abs n) two64)))
+(define (seed-from n) (Seed (mod (abs n) two64)))
 
 ;; Advance the LCG one step.
 (: next-seed (-> Seed Seed))
 (define (next-seed s)
   (match s
-    [(MkSeed x) (MkSeed (mod (+ (* x lcg-mult) lcg-inc) two64))]))
+    [(Seed x) (Seed (mod (+ (* x lcg-mult) lcg-inc) two64))]))
 
 ;; Extract a well-mixed value from a seed.  Arithmetic-only avalanche
 ;; (no xorshift available): fold the high half into the low half, then
@@ -50,7 +50,7 @@
 (: seed-value (-> Seed Integer))
 (define (seed-value s)
   (match s
-    [(MkSeed x)
+    [(Seed x)
      (let ([h (mod (* (+ x (quot x 4294967296)) lcg-mult) two64)])
        (mod (+ h (quot h 65536)) two64))]))
 
@@ -59,8 +59,8 @@
 (: split-seed (-> Seed (Pair Seed Seed)))
 (define (split-seed s)
   (let ([s1 (next-seed s)])
-    (let ([s2 (next-seed (MkSeed (mod (+ (seed-value s1) lcg-inc) two64)))])
-      (MkPair s1 s2))))
+    (let ([s2 (next-seed (Seed (mod (+ (seed-value s1) lcg-inc) two64)))])
+      (Pair s1 s2))))
 
 ;; A value in the inclusive range [lo, hi] (assumes hi >= lo).
 (: seed-int-range (-> Seed (-> Integer (-> Integer Integer))))

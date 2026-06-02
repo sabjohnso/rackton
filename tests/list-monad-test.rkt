@@ -26,7 +26,7 @@
 (define pairs
   (do [x <- (list 1 2)]
       [y <- (list 10 20)]
-    (pure (MkPair x y))))
+    (pure (Pair x y))))
 
 ;; flatmap to the empty list short-circuits that branch
 (: with-empty (List Integer))
@@ -42,10 +42,10 @@
        (check-equal? flattened (Cons 1 (Cons 2 (Cons 3 (Cons 4 (Cons 5 Nil)))))))
    (it "do over List is the cartesian product"
        (check-equal? pairs
-                     (Cons (MkPair 1 10)
-                           (Cons (MkPair 1 20)
-                                 (Cons (MkPair 2 10)
-                                       (Cons (MkPair 2 20) Nil))))))
+                     (Cons (Pair 1 10)
+                           (Cons (Pair 1 20)
+                                 (Cons (Pair 2 10)
+                                       (Cons (Pair 2 20) Nil))))))
    (it "flatmap to Nil drops that element"
        (check-equal? with-empty (Cons 1 (Cons 3 Nil))))))
 

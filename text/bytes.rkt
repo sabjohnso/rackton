@@ -28,7 +28,7 @@
 
 ;; split into (first n, rest) — Haskell's splitAt.
 (: bytes-split (-> Integer (-> Bytes (Pair Bytes Bytes))))
-(define (bytes-split n b) (MkPair (bytes-take n b) (bytes-drop n b)))
+(define (bytes-split n b) (Pair (bytes-take n b) (bytes-drop n b)))
 
 ;; concatenate a list of byte strings.
 (: bytes-concat (-> (List Bytes) Bytes))

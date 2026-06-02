@@ -26,9 +26,9 @@
   (: run-counter (-> Integer (-> (-> Integer) (Pair Integer Integer))))
   (define (run-counter s0 prog)
     (handle (prog)
-      [peek () k        -> (MkPair s0 s0)]
-      [bump () k        -> (MkPair s0 (+ s0 1))]
-      [return v         -> (MkPair v s0)]))
+      [peek () k        -> (Pair s0 s0)]
+      [bump () k        -> (Pair s0 (+ s0 1))]
+      [return v         -> (Pair v s0)]))
 
   (: prog-peek (-> Integer))
   (define (prog-peek) (peek))
@@ -76,7 +76,7 @@
 
   ;; helper to extract first of a pair without using Racket-side match
   (: first-of (-> (Pair Integer Integer) Integer))
-  (define (first-of p) (match p [(MkPair v _) v])))
+  (define (first-of p) (match p [(Pair v _) v])))
 
 ;; ----- assertions ------------------------------------------------
 

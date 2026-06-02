@@ -130,7 +130,7 @@
 
 (rackton
   (: greet (IO Unit))
-  (define greet (pure MkUnit))
+  (define greet (pure Unit))
 
   (: many (Maybe Integer))
   (define many (pure 3))

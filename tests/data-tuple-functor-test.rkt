@@ -9,11 +9,11 @@
 
 ;; curry: f over a Pair, applied to two args
 (: c-res Integer)
-(define c-res (curry (lambda (p) (match p [(MkPair a b) (+ a b)])) 3 4))
+(define c-res (curry (lambda (p) (match p [(Pair a b) (+ a b)])) 3 4))
 
 ;; uncurry: a two-arg function applied to a Pair
 (: u-res Integer)
-(define u-res (uncurry (lambda (a b) (+ a b)) (MkPair 5 6)))
+(define u-res (uncurry (lambda (a b) (+ a b)) (Pair 5 6)))
 
 ;; const-replace-flipped: fa $> b  replaces every element with b
 (: cf-res Integer)

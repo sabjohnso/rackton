@@ -2746,7 +2746,7 @@
      ;; a per-effect continuation-prompt-tag and so handle clauses
      ;; can verify the op belongs to a known effect.  A 0-arg op
      ;; is typed `(-> Unit resultT)` so it can be called as a
-     ;; function — the surface `(op)` form auto-passes MkUnit.
+     ;; function — the surface `(op)` form auto-passes Unit.
      (define op-schemes
        (for/list ([o (in-list ops)])
          (define arg-tys (map resolve-type (effect-op-arg-types o)))

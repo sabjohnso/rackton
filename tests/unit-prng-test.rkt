@@ -27,7 +27,7 @@
   (: split-distinct Boolean)
   (define split-distinct
     (match (split-seed (seed-from 1))
-      [(MkPair sa sb) (/= (seed-value sa) (seed-value sb))]))
+      [(Pair sa sb) (/= (seed-value sa) (seed-value sb))]))
 
   ;; Range bound across three successive seeds.
   (: all-in-range Boolean)

@@ -21,10 +21,10 @@
   (define five (force-lazy (delay-lazy 5)))
 
   ;; An infinite stream of naturals.  Productive only because the tail
-  ;; sits inside a `MkLazy` thunk and is not evaluated at SCons time.
+  ;; sits inside a `Lazy` thunk and is not evaluated at SCons time.
   (: nats-from (-> Integer (Stream Integer)))
   (define (nats-from n)
-    (SCons n (MkLazy (lambda (_) (nats-from (+ n 1))))))
+    (SCons n (Lazy (lambda (_) (nats-from (+ n 1))))))
 
   (: first3 (List Integer))
   (define first3 (stream-take 3 (nats-from 0)))

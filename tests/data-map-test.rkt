@@ -7,7 +7,7 @@
          "../unit.rkt")
 
 (: m (Map Integer String))
-(define m (map-from-list (list (MkPair 1 "a") (MkPair 2 "b"))))
+(define m (map-from-list (list (Pair 1 "a") (Pair 2 "b"))))
 
 (: mem1 Boolean) (define mem1 (map-member? 1 m))
 (: mem3 Boolean) (define mem3 (map-member? 3 m))
@@ -39,24 +39,24 @@
 (: isect (Maybe Integer))
 (define isect
   (map-lookup 2 (map-intersection-with (lambda (a b) (+ a b))
-                                       (map-from-list (list (MkPair 1 10) (MkPair 2 20)))
-                                       (map-from-list (list (MkPair 2 200) (MkPair 3 300))))))
+                                       (map-from-list (list (Pair 1 10) (Pair 2 20)))
+                                       (map-from-list (list (Pair 2 200) (Pair 3 300))))))
 
 (: mm (Maybe Integer))
-(define mm (map-lookup 1 (map-map (lambda (v) (* v 2)) (map-from-list (list (MkPair 1 10))))))
+(define mm (map-lookup 1 (map-map (lambda (v) (* v 2)) (map-from-list (list (Pair 1 10))))))
 (: mmk (Maybe Integer))
 (define mmk (map-lookup 1 (map-map-with-key (lambda (k v) (+ k v))
-                                            (map-from-list (list (MkPair 1 10))))))
+                                            (map-from-list (list (Pair 1 10))))))
 
 (: filt1 Boolean)
 (define filt1 (map-member? 1 (map-filter (lambda (v) (> v 1))
-                                         (map-from-list (list (MkPair 1 0) (MkPair 2 5))))))
+                                         (map-from-list (list (Pair 1 0) (Pair 2 5))))))
 (: filt2 Boolean)
 (define filt2 (map-member? 2 (map-filter (lambda (v) (> v 1))
-                                         (map-from-list (list (MkPair 1 0) (MkPair 2 5))))))
+                                         (map-from-list (list (Pair 1 0) (Pair 2 5))))))
 (: filtk Boolean)
 (define filtk (map-member? 1 (map-filter-with-key (lambda (k v) (> k 1))
-                                                  (map-from-list (list (MkPair 1 5) (MkPair 2 5))))))
+                                                  (map-from-list (list (Pair 1 5) (Pair 2 5))))))
 
 (: suite (List Test))
 (define suite

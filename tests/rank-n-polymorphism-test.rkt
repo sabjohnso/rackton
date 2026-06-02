@@ -16,7 +16,7 @@
 
 (: pair-id (-> (All (a) (-> a a)) (Pair Integer String)))
 (define (pair-id f)
-  (MkPair (f 7) (f "hi")))
+  (Pair (f 7) (f "hi")))
 
 (: r-pair (Pair Integer String))
 (define r-pair (pair-id (lambda (x) x)))
@@ -27,7 +27,7 @@
 
 (: pair-fst (-> (All (a) (-> a (-> a a))) (Pair Integer String)))
 (define (pair-fst f)
-  (MkPair (f 1 99) (f "yes" "no")))
+  (Pair (f 1 99) (f "yes" "no")))
 
 (: r-fst (Pair Integer String))
 (define r-fst (pair-fst (lambda (x y) x)))
@@ -47,7 +47,7 @@
 (: pair-eq? (-> (Pair Integer String) (-> Integer (-> String Boolean))))
 (define (pair-eq? p a b)
   (match p
-    [(MkPair x y) (and (= x a) (== y b))]))
+    [(Pair x y) (and (= x a) (== y b))]))
 
 (: suite (List Test))
 (define suite

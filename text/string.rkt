@@ -171,24 +171,24 @@
 (: break-on-chars (-> (List Char) (-> (List Char) (Pair (List Char) (List Char)))))
 (define (break-on-chars sep s)
   (if (chars-prefix? sep s)
-      (MkPair Nil s)
+      (Pair Nil s)
       (match s
-        [(Nil) (MkPair Nil Nil)]
+        [(Nil) (Pair Nil Nil)]
         [(Cons h t)
          (match (break-on-chars sep t)
-           [(MkPair before after) (MkPair (Cons h before) after)])])))
+           [(Pair before after) (Pair (Cons h before) after)])])))
 
 ;; breakOn: split at the first occurrence of `needle`; the second
 ;; component starts WITH needle (or is "" when needle is absent).
 (: break-on (-> String (-> String (Pair String String))))
 (define (break-on needle s)
   (match (break-on-chars (string->chars needle) (string->chars s))
-    [(MkPair before after) (MkPair (chars->string before) (chars->string after))]))
+    [(Pair before after) (Pair (chars->string before) (chars->string after))]))
 
 (: split-on-chars (-> (List Char) (-> (List Char) (List (List Char)))))
 (define (split-on-chars sep s)
   (match (break-on-chars sep s)
-    [(MkPair before after)
+    [(Pair before after)
      (match after
        [(Nil) (Cons before Nil)]
        [_     (Cons before (split-on-chars sep (drop (length sep) after)))])]))

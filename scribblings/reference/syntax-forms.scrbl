@@ -323,7 +323,7 @@ such as a single-constructor type or a @racket[struct]).  Because every
 another binding's pattern variables (use @racket[let*] for that).
 
 @racketblock[
-(let ([(MkPair a b) (MkPair 3 4)]
+(let ([(Pair a b) (Pair 3 4)]
       [n            10])
   (+ a (+ b n)))]
 

@@ -78,7 +78,7 @@
 
 (test-case "State: three-ticks counts 10→13, collects 10,11,12"
   (check-equal? ticked
-                (MkPair 13 (Cons 10 (Cons 11 (Cons 12 Nil))))))
+                (Pair 13 (Cons 10 (Cons 11 (Cons 12 Nil))))))
 
 (test-case "Env: reads the environment"
   (check-equal? greeted "hello, world"))
@@ -90,7 +90,7 @@
   ;; safe-div 20 4 = 5 with state→1
   ;; safe-div 10 5 = 2 with state→2
   ;; result = 5 + 2 = 7
-  (check-equal? ok-chain (Some (MkPair 2 7))))
+  (check-equal? ok-chain (Some (Pair 2 7))))
 
 (test-case "StateT/Maybe short-circuits on inner None"
   (check-equal? bad-chain None))
@@ -100,4 +100,4 @@
                 "[CONFIG] settings.cfg"))
 
 (test-case "lift-state-t wraps an inner-monad action"
-  (check-equal? rounded (Some (MkPair 7 99))))
+  (check-equal? rounded (Some (Pair 7 99))))

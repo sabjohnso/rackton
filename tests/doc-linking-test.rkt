@@ -35,11 +35,15 @@
 ;; "doc-names.rkt"; the categorisations below are doc-linking-specific.
 
 (define type-ctors
+  ;; Core `rackton` types only.  The monad transformers (StateT, EnvT,
+  ;; WriterT, ExceptT) and other stdlib newtypes are bound in their own
+  ;; modules, not in core `rackton`, so they link via the stdlib
+  ;; reference's for-label, not this list.  `Pair`/`Unit`/`Identity` are
+  ;; bound here because their constructor (same name) is in the prelude.
   '(Integer Float Rational Complex Boolean String Char Bytes Unit
     Maybe List Pair Result
     IO Future
-    Identity
-    StateT EnvT WriterT ExceptT))
+    Identity))
 
 (define classes
   '(Eq Ord Num Fractional Integral Real Floating RealFrac RealFloat

@@ -52,7 +52,7 @@
        (all-checks
         (list (check-equal? r-oks  (Cons 1 (Cons 2 Nil)))
               (check-equal? r-errs (Cons "a" (Cons "b" Nil)))
-              (check-equal? r-part (MkPair (Cons "a" Nil) (Cons 1 (Cons 2 Nil)))))))
+              (check-equal? r-part (Pair (Cons "a" Nil) (Cons 1 (Cons 2 Nil)))))))
    (it "Maybe interop"
        (all-checks
         (list (check-equal? r-to-maybe   (Some 7))

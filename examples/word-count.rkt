@@ -29,7 +29,7 @@
 (: render-row (-> (Pair String Integer) String))
 (define (render-row p)
   (match p
-    [(MkPair w n) (<> (pad-left 5 #\space (show n)) (<> "  " w))]))
+    [(Pair w n) (<> (pad-left 5 #\space (show n)) (<> "  " w))]))
 
 ;; The top-n report as a single newline-joined String.
 (: report (-> Integer (-> String String)))

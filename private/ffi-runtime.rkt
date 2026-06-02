@@ -14,7 +14,7 @@
 ;; free, no bounds checking.
 
 (require ffi/unsafe
-         (only-in "prelude-runtime.rkt" $io MkUnit)
+         (only-in "prelude-runtime.rkt" $io Unit)
          (only-in "dict.rkt" define/curried))
 
 (provide malloc-bytes free-ptr null-ptr ptr-null? ptr-plus
@@ -61,7 +61,7 @@
 ;; malloc n raw bytes (manually freed with free-ptr).
 (define (malloc-bytes n) ($io (lambda () (malloc n 'raw))))
 
-(define (free-ptr p) ($io (lambda () (free p) MkUnit)))
+(define (free-ptr p) ($io (lambda () (free p) Unit)))
 
 ;; --- null + arithmetic (pure) --------------------------------------
 
@@ -73,15 +73,15 @@
 
 (define (peek-int p)        ($io (lambda () (ptr-ref p _int))))
 (define/curried (poke-int p v)
-  ($io (lambda () (ptr-set! p _int v) MkUnit)))
+  ($io (lambda () (ptr-set! p _int v) Unit)))
 
 (define (peek-double p)     ($io (lambda () (ptr-ref p _double))))
 (define/curried (poke-double p v)
-  ($io (lambda () (ptr-set! p _double v) MkUnit)))
+  ($io (lambda () (ptr-set! p _double v) Unit)))
 
 (define (peek-byte p)       ($io (lambda () (ptr-ref p _byte))))
 (define/curried (poke-byte p v)
-  ($io (lambda () (ptr-set! p _byte v) MkUnit)))
+  ($io (lambda () (ptr-set! p _byte v) Unit)))
 
 ;; --- C strings (IO) ------------------------------------------------
 

@@ -10,14 +10,14 @@
 ;; compile-time dict to thread, so codegen registers those methods to
 ;; derive the inner pure from the dispatch-arg WITNESS
 ;; (inner-pure-from-witness), and emits a pure-via-witness deriver for
-;; MkExceptT so nested stacks (ExceptT over ExceptT) reconstruct it.
+;; ExceptT so nested stacks (ExceptT over ExceptT) reconstruct it.
 ;; This module owns every mtl instance where ExceptT is the OUTER
 ;; transformer.  (ExceptT over Identity plays the role of a bare Except.)
 
 (provide (all-defined-out))
 
 (newtype (ExceptT e m a)
-  (MkExceptT (m (Result e a))))
+  (ExceptT (m (Result e a))))
 
 (: run-except-t  (-> (ExceptT e m a) (m (Result e a))))
 (: throw-error   ((Applicative m) => (-> e (ExceptT e m a))))
@@ -26,13 +26,13 @@
                                        (ExceptT e m a)))))
 (: lift-except-t ((Functor m) => (-> (m a) (ExceptT e m a))))
 
-(define (run-except-t e) (match e [(MkExceptT m) m]))
+(define (run-except-t e) (match e [(ExceptT m) m]))
 
 ;; throw-error / catch-error thread the inner `pure` as a dict at their
 ;; (concrete) call sites.
-(define (throw-error e) (MkExceptT (pure (Err e))))
+(define (throw-error e) (ExceptT (pure (Err e))))
 (define (catch-error ea handler)
-  (MkExceptT
+  (ExceptT
    (flatmap (lambda (r)
               (match r
                 [(Err e) (run-except-t (handler e))]
@@ -40,17 +40,17 @@
             (run-except-t ea))))
 
 ;; lift carries Functor m only — no inner pure, hence no dict.
-(define (lift-except-t ma) (MkExceptT (fmap Ok ma)))
+(define (lift-except-t ma) (ExceptT (fmap Ok ma)))
 
 (instance ((Functor m) => (Functor (ExceptT e m)))
   (define (fmap f ea)
-    (MkExceptT (fmap (lambda (r) (match r [(Err x) (Err x)] [(Ok v) (Ok (f v))]))
+    (ExceptT (fmap (lambda (r) (match r [(Err x) (Err x)] [(Ok v) (Ok (f v))]))
                      (run-except-t ea)))))
 
 (instance ((Monad m) => (Applicative (ExceptT e m)))
-  (define (pure a) (MkExceptT (pure (Ok a))))
+  (define (pure a) (ExceptT (pure (Ok a))))
   (define (fapply ef ea)
-    (MkExceptT
+    (ExceptT
      (flatmap (lambda (rf)
                 (match rf
                   [(Err x) (pure (Err x))]
@@ -62,7 +62,7 @@
 
 (instance ((Monad m) => (Monad (ExceptT e m)))
   (define (flatmap f ea)
-    (MkExceptT
+    (ExceptT
      (flatmap (lambda (r)
                 (match r
                   [(Err e) (pure (Err e))]
@@ -72,9 +72,9 @@
 (instance ((Monad m) => (MonadError e (ExceptT e m)))
   ;; Inline throw-e/catch-e (delegating to the needs-dict throw-error/
   ;; catch-error top-defs would cross skolemizations).
-  (define (throw-e e) (MkExceptT (pure (Err e))))
+  (define (throw-e e) (ExceptT (pure (Err e))))
   (define (catch-e ea handler)
-    (MkExceptT
+    (ExceptT
      (flatmap (lambda (r)
                 (match r
                   [(Err e) (run-except-t (handler e))]
@@ -93,7 +93,7 @@
 (instance ((MonadEnv r m) => (MonadEnv r (ExceptT e m)))
   (define ask-en     (lift-except-t ask-en))
   (define (local-en f em)
-    (MkExceptT (local-en f (run-except-t em)))))
+    (ExceptT (local-en f (run-except-t em)))))
 
 (instance ((MonadWriter w m) => (MonadWriter w (ExceptT e m)))
   (define (tell-w x)    (lift-except-t (tell-w x)))

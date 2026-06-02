@@ -57,7 +57,7 @@
 
 (: map-to-list (-> (Map k v) (List (Pair k v))))
 (define (map-to-list m)
-  (map-fold (lambda (k v acc) (Cons (MkPair k v) acc)) Nil m))
+  (map-fold (lambda (k v acc) (Cons (Pair k v) acc)) Nil m))
 
 (: map-from-list (-> (List (Pair k v)) (Map k v)))
 (define (map-from-list ps)

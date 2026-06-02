@@ -11,30 +11,30 @@
 
 (provide (all-defined-out))
 
-(newtype Natural (MkNatural Integer))
+(newtype Natural (Natural Integer))
 
 ;; --- construction / projection -------------------------------------
 
 ;; Integer -> (Maybe Natural); None when the input is negative.
 (: num-to-natural (-> Integer (Maybe Natural)))
 (define (num-to-natural n)
-  (if (< n 0) None (Some (MkNatural n))))
+  (if (< n 0) None (Some (Natural n))))
 
 (: num-from-natural (-> Natural Integer))
-(define (num-from-natural x) (match x [(MkNatural n) n]))
+(define (num-from-natural x) (match x [(Natural n) n]))
 
 ;; --- Eq / Ord / Show -----------------------------------------------
 
 (instance (Eq Natural)
   (define (== a b)
-    (match a [(MkNatural x) (match b [(MkNatural y) (== x y)])])))
+    (match a [(Natural x) (match b [(Natural y) (== x y)])])))
 
 (instance (Ord Natural)
   (define (< a b)
-    (match a [(MkNatural x) (match b [(MkNatural y) (< x y)])])))
+    (match a [(Natural x) (match b [(Natural y) (< x y)])])))
 
 (instance (Show Natural)
-  (define (show x) (match x [(MkNatural n) (show n)])))
+  (define (show x) (match x [(Natural n) (show n)])))
 
 ;; --- Num -----------------------------------------------------------
 ;; Addition and multiplication stay within the naturals; subtraction
@@ -42,16 +42,16 @@
 
 (instance (Num Natural)
   (define (+ a b)
-    (match a [(MkNatural x) (match b [(MkNatural y) (MkNatural (+ x y))])]))
+    (match a [(Natural x) (match b [(Natural y) (Natural (+ x y))])]))
   (define (* a b)
-    (match a [(MkNatural x) (match b [(MkNatural y) (MkNatural (* x y))])]))
+    (match a [(Natural x) (match b [(Natural y) (Natural (* x y))])]))
   (define (- a b)
-    (match a [(MkNatural x)
-              (match b [(MkNatural y)
+    (match a [(Natural x)
+              (match b [(Natural y)
                         (if (< x y)
                             (panic "Natural subtraction below zero")
-                            (MkNatural (- x y)))])]))
+                            (Natural (- x y)))])]))
   (define (abs x) x)
   (define (negate x)
-    (match x [(MkNatural n)
-              (if (== n 0) (MkNatural 0) (panic "negate of a positive Natural"))])))
+    (match x [(Natural n)
+              (if (== n 0) (Natural 0) (panic "negate of a positive Natural"))])))

@@ -5,7 +5,7 @@
 ;; Moved out of the auto-prelude (Phase 2 slim): `(require
 ;; rackton/data/lens)` to use them, and likewise in any module that
 ;; uses `#:deriving Lens` / `#:deriving Prism` (the generated code
-;; refers to `MkLens` / `MkPrism`).
+;; refers to `Lens` / `Prism`).
 ;;
 ;; Simple (getter, setter) pair encoding.  Each `(Lens s a)` packs a
 ;; function to extract an `a` from `s` and a function to inject a new
@@ -14,24 +14,24 @@
 (provide (all-defined-out))
 
 (data (Lens s a)
-  (MkLens (-> s a) (-> s (-> a s))))
+  (Lens (-> s a) (-> s (-> a s))))
 
 (: view (-> (Lens s a) (-> s a)))
 (define (view l s)
-  (match l [(MkLens g _) (g s)]))
+  (match l [(Lens g _) (g s)]))
 
 (: set (-> (Lens s a) (-> a (-> s s))))
 (define (set l v s)
-  (match l [(MkLens _ ps) ((ps s) v)]))
+  (match l [(Lens _ ps) ((ps s) v)]))
 
 (: over (-> (Lens s a) (-> (-> a a) (-> s s))))
 (define (over l f s)
-  (match l [(MkLens g ps) ((ps s) (f (g s)))]))
+  (match l [(Lens g ps) ((ps s) (f (g s)))]))
 
 (: lens-compose
    (-> (Lens s a) (-> (Lens a b) (Lens s b))))
 (define (lens-compose outer inner)
-  (MkLens
+  (Lens
    (lambda (s) (view inner (view outer s)))
    (lambda (s b)
      (set outer (set inner b (view outer s)) s))))
@@ -43,15 +43,15 @@
 ;; succeeds — it builds the target ctor.
 
 (data (Prism s a)
-  (MkPrism (-> s (Maybe a)) (-> a s)))
+  (Prism (-> s (Maybe a)) (-> a s)))
 
 (: preview (-> (Prism s a) (-> s (Maybe a))))
 (define (preview p s)
-  (match p [(MkPrism extract _) (extract s)]))
+  (match p [(Prism extract _) (extract s)]))
 
 (: review  (-> (Prism s a) (-> a s)))
 (define (review p a)
-  (match p [(MkPrism _ build) (build a)]))
+  (match p [(Prism _ build) (build a)]))
 
 ;; --- Traversals -------------------------------
 ;;
@@ -59,26 +59,26 @@
 ;; them; over-of transforms all of them.
 
 (data (Traversal s a)
-  (MkTraversal (-> s (List a))
+  (Traversal (-> s (List a))
                (-> (-> a a) (-> s s))))
 
 (: to-list-of (-> (Traversal s a) (-> s (List a))))
 (define (to-list-of t s)
-  (match t [(MkTraversal get-all _) (get-all s)]))
+  (match t [(Traversal get-all _) (get-all s)]))
 
 (: over-of    (-> (Traversal s a) (-> (-> a a) (-> s s))))
 (define (over-of t f s)
-  (match t [(MkTraversal _ modify-all) ((modify-all f) s)]))
+  (match t [(Traversal _ modify-all) ((modify-all f) s)]))
 
 ;; A built-in traversal that focuses on every element of a List.
 (: list-traversal (Traversal (List a) a))
 (define list-traversal
-  (MkTraversal id (lambda (f) (lambda (xs) (fmap f xs)))))
+  (Traversal id (lambda (f) (lambda (xs) (fmap f xs)))))
 
 ;; Promote a Lens to a Traversal with a single focus.
 (: lens-as-traversal (-> (Lens s a) (Traversal s a)))
 (define (lens-as-traversal l)
-  (MkTraversal
+  (Traversal
    (lambda (s) (Cons (view l s) Nil))
    (lambda (f) (lambda (s) (over l f s)))))
 
@@ -90,8 +90,8 @@
 ;; module that already requires rackton/data/lens for prisms gets the
 ;; focus types with no extra import and no instance-coherence diamond.
 
-(data (Tuple3 a b c)         (MkTuple3 a b c)         #:deriving Eq Ord Show)
-(data (Tuple4 a b c d)       (MkTuple4 a b c d)       #:deriving Eq Ord Show)
-(data (Tuple5 a b c d e)     (MkTuple5 a b c d e)     #:deriving Eq Ord Show)
-(data (Tuple6 a b c d e f)   (MkTuple6 a b c d e f)   #:deriving Eq Ord Show)
-(data (Tuple7 a b c d e f g) (MkTuple7 a b c d e f g) #:deriving Eq Ord Show)
+(data (Tuple3 a b c)         (Tuple3 a b c)         #:deriving Eq Ord Show)
+(data (Tuple4 a b c d)       (Tuple4 a b c d)       #:deriving Eq Ord Show)
+(data (Tuple5 a b c d e)     (Tuple5 a b c d e)     #:deriving Eq Ord Show)
+(data (Tuple6 a b c d e f)   (Tuple6 a b c d e f)   #:deriving Eq Ord Show)
+(data (Tuple7 a b c d e f g) (Tuple7 a b c d e f g) #:deriving Eq Ord Show)

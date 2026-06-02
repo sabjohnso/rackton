@@ -21,7 +21,7 @@ computation via a captured continuation.
 
 (: run-env (-> Integer (-> Unit Integer) Integer))
 (define (run-env val prog)
-  (handle (prog MkUnit)
+  (handle (prog Unit)
     [ask () k -> (k val)]
     [return v -> v]))
 
@@ -69,9 +69,9 @@ under the same handler.
 (define (run-counter start prog)
   (letrec
     ([loop (lambda (n)
-             (handle (prog MkUnit)
+             (handle (prog Unit)
                [peek () k -> ((loop n) (k n))]
-               [bump () k -> ((loop (+ n 1)) (k MkUnit))]
+               [bump () k -> ((loop (+ n 1)) (k Unit))]
                [return v -> v]))])
     (loop start)))
 }|
@@ -84,7 +84,7 @@ under the same handler.
 
 (: run-exn (-> Integer (-> Unit Integer) Integer))
 (define (run-exn fallback prog)
-  (handle (prog MkUnit)
+  (handle (prog Unit)
     [raise-e () _ -> fallback]      (code:comment "don't resume; return fallback")
     [return v     -> v]))
 }|
@@ -97,10 +97,10 @@ under the same handler.
       propagate effect signatures through function types is a possible
       future extension; today, programmer discipline is required.}
 @item{The program passed to a handler should be a thunk (a function
-      taking @racket[MkUnit]), so operations aren't performed before
+      taking @racket[Unit]), so operations aren't performed before
       the prompt is installed.}
 @item{0-arg operations are typed @racket[(-> Unit T)] internally; call
-      sites @racket[(op)] receive an implicit @racket[MkUnit].}]
+      sites @racket[(op)] receive an implicit @racket[Unit].}]
 
 @section{Effects vs. monad transformers}
 
