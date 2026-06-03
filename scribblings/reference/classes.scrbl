@@ -263,6 +263,104 @@ two-sided map.
 Built-in instances: @racket[Pair], @racket[Result].  Derived via
 @racket[#:deriving Bifunctor].}
 
+@section{Category and Arrow}
+
+Arrows generalize plain functions and Kleisli arrows.  The hierarchy is
+@racket[Category] → @racket[Arrow] → @racket[ArrowChoice] /
+@racket[ArrowApply] / @racket[ArrowLoop].  Method names are non-infix and
+distinct from existing prelude names (@racket[ident]/@racket[comp] rather
+than @racket[id]/@racket[compose]; @racket[on-first]/@racket[on-second]
+rather than @racket[Bifunctor]'s @racket[first]/@racket[second]).  The
+canonical instance is the function arrow @racket[(->)].  @racket[ident],
+@racket[arr], and @racket[arrow-app] are return-typed (the class
+parameter @racket[cat] appears only in the result), so each call site
+resolves its instance from the expected type, like @racket[pure].  The
+@racket[proc] notation (see @secref["arrow-notation"]) desugars to these
+combinators.
+
+@defidform[#:kind "class" Category]{
+
+Type constructors @racket[(cat :: (-> * (-> * *)))] that compose like
+functions.
+
+@deftogether[(
+  @defthing[ident (cat a a)]
+  @defproc[(comp [f (cat a b)] [g (cat b c)]) (cat a c)])]{
+
+@racket[ident] is the identity arrow; @racket[comp] is forward
+composition — @racket[(comp f g)] runs @racket[f], then @racket[g].}
+
+Built-in instance: @racket[(->)] (functions, where @racket[ident] is the
+identity function and @racket[comp] is composition).}
+
+@defidform[#:kind "class" Arrow]{
+
+@racket[Category] arrows that can lift a plain function and act on one
+component of a @racket[Pair].
+
+@deftogether[(
+  @defproc[(arr       [g (-> a b)])               (cat a b)]
+  @defproc[(on-first  [f (cat a b)])              (cat (Pair a c) (Pair b c))]
+  @defproc[(on-second [f (cat a b)])              (cat (Pair c a) (Pair c b))]
+  @defproc[(split     [f (cat a b)] [g (cat c d)]) (cat (Pair a c) (Pair b d))]
+  @defproc[(fanout    [f (cat a b)] [g (cat a c)]) (cat a (Pair b c))])]{
+
+@racket[arr] lifts a function into the arrow.  @racket[on-first] /
+@racket[on-second] run an arrow on the first / second half of a
+@racket[Pair].  @racket[split] runs two arrows on the two halves;
+@racket[fanout] feeds one input to two arrows and pairs the results.
+@racket[on-second], @racket[split], and @racket[fanout] have defaults
+expressed via @racket[arr], @racket[on-first], and @racket[comp], so an
+instance need only supply @racket[arr] and @racket[on-first].}
+
+Built-in instance: @racket[(->)].}
+
+@defidform[#:kind "class" ArrowChoice]{
+
+@racket[Arrow]s that route a @racket[Result] through one of two arrows
+by branch (@racket[Err] is the left/active branch, @racket[Ok] the
+right).
+
+@deftogether[(
+  @defproc[(on-left  [f (cat a b)])               (cat (Result a x) (Result b x))]
+  @defproc[(on-right [f (cat a b)])               (cat (Result x a) (Result x b))]
+  @defproc[(fork     [f (cat a b)] [g (cat c d)]) (cat (Result a c) (Result b d))]
+  @defproc[(fanin    [f (cat a c)] [g (cat b c)]) (cat (Result a b) c)])]{
+
+@racket[on-left] / @racket[on-right] transform one branch and pass the
+other through; @racket[fork] runs one arrow per branch; @racket[fanin]
+runs one arrow per branch and collapses the result.  All derive from
+@racket[on-left].}
+
+Built-in instance: @racket[(->)].}
+
+@defidform[#:kind "class" ArrowApply]{
+
+@racket[Arrow]s in which an arrow can be fed in as data alongside its
+argument and run.
+
+@defthing[arrow-app (cat (Pair (cat a b) a) b)]{
+
+Runs the arrow in the first half of the @racket[Pair] on the value in
+the second half.}
+
+Built-in instance: @racket[(->)].}
+
+@defidform[#:kind "class" ArrowLoop]{
+
+@racket[Arrow]s supporting value recursion — the @racket[c] half of the
+output is fed back as the @racket[c] half of the input.
+
+@defproc[(arrow-loop [f (cat (Pair a c) (Pair b c))]) (cat a b)]{
+
+Ties the recursive feedback channel.}
+
+There is deliberately @bold{no} instance for @racket[(->)]: tying the
+recursive knot needs laziness, which strict Rackton functions cannot
+provide, so @racket[arrow-loop] (and @racket[proc] @racket[rec]) over a
+plain function is a type error.  A user arrow whose representation
+supports feedback can define one.}
+
 @section{Semigroup and Monoid}
 
 @defidform[#:kind "class" Semigroup]{

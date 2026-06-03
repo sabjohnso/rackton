@@ -105,3 +105,38 @@ The prelude ships @racket[Functor], @racket[Applicative], and
 @racket[List]'s @racket[flatmap] is concatMap.  The transformer
 instances are themselves qualified — a @racket[StateT s m] is a
 @racket[Monad] only when @racket[m] is.
+
+@section{Arrows}
+
+Arrows (Hughes) generalize plain functions.  The @racket[Category] →
+@racket[Arrow] hierarchy abstracts composition (@racket[comp]), lifting a
+function (@racket[arr]), and pairing computations (@racket[fanout],
+@racket[split]), so the same point-free code runs over ordinary functions
+and over richer arrows.  The canonical instance is the function arrow
+@racket[(->)], where every combinator collapses to function plumbing:
+
+@codeblock|{
+(: inc-then-double (-> Integer Integer))
+(define inc-then-double
+  (comp (arr (lambda (n) (+ n 1)))
+         (arr (lambda (n) (* n 2)))))
+}|
+
+The @racket[proc] form is the point-free analogue of @racket[do]: each
+command feeds a value through an arrow, and bindings stay in scope for
+later commands.
+
+@codeblock|{
+(: sum-with-succ (-> Integer Integer))
+(define sum-with-succ
+  (proc (x)
+    [y <- (feed (arr (lambda (n) (+ n 1))) x)]
+    (feed (arr (lambda (p) (match p [(Pair a b) (+ a b)]))) (Pair x y))))
+}|
+
+The method names are deliberately non-infix and distinct from existing
+prelude names (@racket[ident]/@racket[comp], not @racket[id]/@racket[compose];
+@racket[on-first]/@racket[on-second], not @racket[Bifunctor]'s
+@racket[first]/@racket[second]).  The reference covers the full hierarchy
+— @racket[ArrowChoice], @racket[ArrowApply], @racket[ArrowLoop] — and the
+@racket[proc] command grammar.

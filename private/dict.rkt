@@ -43,6 +43,11 @@
     [(string? v)        'String]
     [(char? v)          'Char]
     [(bytes? v)         'Bytes]
+    ;; Functions are the canonical Arrow/Category instance: a procedure
+    ;; value dispatches as the function-arrow tycon `->`, matching the
+    ;; `(register-instance-method! … '-> …)` registrations for `then`,
+    ;; `on-first`, `split`, etc. in prelude-runtime.rkt.
+    [(procedure? v)     '->]
     [(struct? v)
      (define-values (st _skip) (struct-info v))
      (define-values (name _i _a _r _mu _im _pa _x) (struct-type-info st))

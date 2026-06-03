@@ -28,10 +28,10 @@
      (match (random-r 0 1000000000 g2)
        [(Pair b _) (/= a b)])]))
 
-;; split yields two decorrelated generators
+;; split-gen yields two decorrelated generators
 (: split-diff Boolean)
 (define split-diff
-  (match (split (mk-std-gen 123))
+  (match (split-gen (mk-std-gen 123))
     [(Pair gl gr)
      (match (random-r 0 1000000000 gl)
        [(Pair a _)

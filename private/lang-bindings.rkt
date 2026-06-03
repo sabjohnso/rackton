@@ -58,6 +58,7 @@
 (define-rackton-form escape "internal escape form")
 (define-rackton-form racket "host-language escape")
 (define-rackton-form handle "effect handler")
+(define-rackton-form proc "arrow (point-free) notation")
 
 ;; Type-level keywords (appear inside type signatures).
 (define-rackton-form All "universal quantifier")
@@ -125,6 +126,8 @@
   Functor Applicative Monad
   ;; Folding and traversal
   Foldable Traversable Bifunctor
+  ;; Arrows (Category hierarchy)
+  Category Arrow ArrowChoice ArrowApply ArrowLoop
   ;; Semigroup / monoid
   Semigroup Monoid
   ;; MTL-style monadic classes
@@ -169,4 +172,6 @@
   ;; Storable (peek is return-typed; poke is an ordinary dispatched method)
   peek
   ;; Floating
-  pi)
+  pi
+  ;; Arrows (return-typed: the class param appears only in the result)
+  ident arr arrow-app)

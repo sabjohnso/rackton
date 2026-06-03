@@ -7,7 +7,7 @@
 ;;  * a PURE, splittable StdGen — SplitMix64, the same algorithm
 ;;    Haskell's `random` uses for StdGen — implemented in plain 64-bit
 ;;    integer arithmetic (masked with mod 2^64), so a seed reproduces a
-;;    sequence with no IO.  `split` here is best-effort: it keeps the
+;;    sequence with no IO.  `split-gen` here is best-effort: it keeps the
 ;;    golden gamma fixed and derives two decorrelated child seeds by
 ;;    mixing, rather than running the full mixGamma odd-gamma machinery.
 
@@ -76,9 +76,12 @@
   (match (next-word g)
     [(Pair w g2) (Pair (+ lo (mod w (+ (- hi lo) 1))) g2)]))
 
-;; split: two decorrelated generators derived from g.
-(: split (-> StdGen (Pair StdGen StdGen)))
-(define (split g)
+;; split-gen: two decorrelated generators derived from g.  (Named
+;; `split-gen` rather than `split` so it does not collide with the
+;; prelude's Arrow `split` combinator, which is in scope in every
+;; `#lang rackton` module.)
+(: split-gen (-> StdGen (Pair StdGen StdGen)))
+(define (split-gen g)
   (match (next-word g)
     [(Pair w1 g2)
      (match (next-word g2)

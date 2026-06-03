@@ -27,6 +27,28 @@
   (check-rackton-compile-error
    (define x (1 2))))
 
+;; ArrowLoop ships no `(->)` instance — a strict function cannot tie the
+;; recursive feedback knot — so `arrow-loop` over a plain function must
+;; be rejected for want of an `(ArrowLoop (->))` instance.  (Category /
+;; Arrow / ArrowChoice / ArrowApply over `(->)` all resolve fine; this
+;; pins the deliberate ArrowLoop gap.)
+(test-case "arrow-loop over a plain function has no instance"
+  (check-rackton-compile-error
+   (define (step p) (match p [(Pair a c) (Pair a c)]))
+   (define run (arrow-loop step))))
+
+;; proc `rec` desugars to `arrow-loop`, so a `rec` over the function
+;; arrow is likewise rejected — there is no `(ArrowLoop (->))` instance.
+(test-case "proc rec over the function arrow is rejected"
+  (check-rackton-compile-error
+   (: inc (-> Integer Integer))
+   (define (inc x) (+ x 1))
+   (: loopy (-> Integer Integer))
+   (define loopy
+     (proc (x)
+       (rec [s <- (feed (arr inc) s)])
+       (feed (arr inc) s)))))
+
 (test-case "constructor arity is enforced"
   (check-rackton-compile-error
    (data (Maybe a) None (Some a))

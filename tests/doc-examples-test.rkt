@@ -178,3 +178,27 @@
 
 (test-case "foreign import (racket/string string-replace) works"
   (check-equal? slashified "a/b/c"))
+
+;; ----- higher-kinded.scrbl: Arrows section -------------------------
+
+(rackton
+  (: inc-then-double (-> Integer Integer))
+  (define inc-then-double
+    (comp (arr (lambda (n) (+ n 1)))
+          (arr (lambda (n) (* n 2)))))
+
+  (: id2-result Integer)
+  (define id2-result (inc-then-double 5))
+
+  (: sum-with-succ (-> Integer Integer))
+  (define sum-with-succ
+    (proc (x)
+      [y <- (feed (arr (lambda (n) (+ n 1))) x)]
+      (feed (arr (lambda (p) (match p [(Pair a b) (+ a b)]))) (Pair x y))))
+
+  (: sws-result Integer)
+  (define sws-result (sum-with-succ 3)))
+
+(test-case "higher-kinded Arrows examples"
+  (check-equal? id2-result 12)    ; (5+1)*2
+  (check-equal? sws-result 7))    ; x=3, y=4, x+y=7

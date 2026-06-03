@@ -447,6 +447,55 @@ but @racket[body] is a @emph{pure} expression mapped in with
        [b (Some 5)])
   (+ a b))]}
 
+@subsection[#:tag "arrow-notation"]{Arrow notation}
+
+@defform[#:literals (feed feed-apply let if match via rec <-)
+         (proc (pat) cmd ...+)
+         #:grammar
+         [(cmd  (feed arrow expr)
+                (feed-apply arrow expr)
+                [pat <- cmd]
+                (let ([var expr] ...))
+                (if expr cmd cmd)
+                (match expr [pat cmd] ...)
+                (via op cmd ...)
+                (rec [pat <- cmd] ...)
+                cmd)]]{
+
+Arrow notation — the point-free analogue of @racket[do] for
+@racket[Arrow]s.  Like @racket[do], it desugars at parse time into
+combinator calls (@racket[arr], @racket[comp], @racket[fanout],
+@racket[fanin], @racket[arrow-app], @racket[arrow-loop]); see
+@secref["Category_and_Arrow"].  @racket[pat] binds the input; the
+commands form a pipeline and the last command is the output.
+
+A command is one of:
+@itemlist[
+@item{@racket[(feed arrow expr)] — run a static @racket[arrow] on
+@racket[expr] (which may read the bound variables); the Haskell
+@tt{arrow -< expr}.}
+@item{@racket[(feed-apply arrow expr)] — like @racket[feed] but the
+@racket[arrow] itself may read the environment; the Haskell
+@tt{arrow -<< expr} (needs @racket[ArrowApply]).}
+@item{@racket[[pat <- cmd]] — run @racket[cmd] and bind its output to
+@racket[pat] for the remaining commands.}
+@item{@racket[(let ([var expr] ...))] — pure bindings added to the
+environment.}
+@item{@racket[(if expr cmd cmd)] and @racket[(match expr [pat cmd] ...)]
+— choose a command by a test or by matching (needs
+@racket[ArrowChoice]).}
+@item{@racket[(via op cmd ...)] — apply an arrow-combining expression
+@racket[op] to the sub-commands (banana brackets).}
+@item{@racket[(rec [pat <- cmd] ...)] — mutually-recursive bindings
+(needs @racket[ArrowLoop]; not available for @racket[(->)]).}]
+
+@racketblock[
+(: p (-> Integer Integer))
+(define p
+  (proc (x)
+    [y <- (feed (arr (lambda (n) (+ n 1))) x)]
+    (feed (arr (lambda (n) (* n 2))) y)))]}
+
 @defform[(list elem ...)]{
 
 List-literal sugar.  Desugars to a @racket[Cons]/@racket[Nil] chain, so

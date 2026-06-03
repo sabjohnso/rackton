@@ -1029,7 +1029,7 @@
 
 (define (parse-expr stx)
   (syntax-parse stx
-    #:datum-literals (lambda λ let let& let% let+ letrec let* if cond else ann match racket do <- update handle return describe context list ->)
+    #:datum-literals (lambda λ let let& let% let+ letrec let* if cond else ann match racket do proc <- update handle return describe context list ->)
     [n:number  (e:literal (syntax->datum #'n) stx)]
     [b:boolean (e:literal (syntax->datum #'b) stx)]
     [s:string  (e:literal (syntax->datum #'s) stx)]
@@ -1179,6 +1179,14 @@
     ;; final computation.
     [(do stmt ...+ body)
      (parse-do (syntax->list #'(stmt ...)) #'body stx)]
+
+    ;; (proc (pat) cmd ...+)  — arrow notation, desugared at parse time
+    ;; into Category/Arrow combinator calls (the analogue of `do` for
+    ;; Arrows).  `pat` binds the proc's input; the commands form a
+    ;; point-free pipeline and the last command is the output.  See
+    ;; `parse-proc`.
+    [(proc (pat) cmd ...+)
+     (parse-proc #'pat (syntax->list #'(cmd ...)) stx)]
 
     ;; (handle EXPR [op (args ...) k -> body] ... [return v -> body])
     ;; EXPR is run in a context where the named ops
@@ -1441,6 +1449,251 @@
                      (parse-expr #'expr))
                stx)])]))
 
+;; ----- proc / arrow notation ---------------------------------------
+;;
+;; A `proc (pat) cmd …` desugars to a single arrow built from the
+;; Category/Arrow combinators, following the environment-passing
+;; (Paterson) translation.  The "environment" is a runtime value
+;; carrying every in-scope variable; at each point we track `env-pat`,
+;; a pattern that destructures that value into the variables bound so
+;; far.  A command translates to an arrow `env ~> output`.
+;;
+;; Combinator shorthands used by the translation:
+;;   arr g            lift a plain function into the arrow
+;;   comp a b         run a, then b (forward composition)
+;;   ident            the identity arrow
+;;   fanout a b       env ~> (Pair (a env) (b env))   (used to keep env)
+;;   fanin  a b       (Result x y) ~> out             (used by if/match)
+;;   arrow-app        run a fed-in arrow on its argument (feed-apply)
+;;
+;; Sequencing a command and binding its result to `p` keeps the old
+;; environment alongside the new output:
+;;   comp (fanout ⟦cmd⟧ ident) ⟦rest⟧      with env' = (Pair p env)
+
+(define (parse-proc pat-stx cmd-stxs stx)
+  (translate-proc-seq cmd-stxs (parse-pattern pat-stx) stx))
+
+;; Arrow-combinator constructors (kept tiny and local).  Each method
+;; reference gets a FRESH syntax object: the infer→codegen method-
+;; resolution table is keyed by the `e:var`'s `stx` identity, so reusing
+;; one `stx` across the many method call sites a single `proc` emits
+;; would make their resolutions collide.  `fresh-op-stx` mints a distinct
+;; object per reference while preserving the source location for errors.
+(define (fresh-op-stx ctx) (datum->syntax ctx 'arrow-op ctx))
+(define (arrow-arr g stx)      (e:app (e:var 'arr (fresh-op-stx stx))   (list g) stx))
+(define (arrow-comp a b stx)   (e:app (e:var 'comp (fresh-op-stx stx))  (list a b) stx))
+(define (arrow-fanout a b stx) (e:app (e:var 'fanout (fresh-op-stx stx))(list a b) stx))
+(define (arrow-fanin a b stx)  (e:app (e:var 'fanin (fresh-op-stx stx)) (list a b) stx))
+(define (arrow-ident stx)      (e:var 'ident (fresh-op-stx stx)))
+(define (arrow-app-ref stx)    (e:var 'arrow-app (fresh-op-stx stx)))
+(define (arrow-loop a stx)     (e:app (e:var 'arrow-loop (fresh-op-stx stx)) (list a) stx))
+(define (mk-pair a b stx)      (e:app (e:var 'Pair (fresh-op-stx stx))  (list a b) stx))
+
+;; Right-nest a non-empty list of items into binary pairs via `mk`:
+;; [a b c] → (mk a (mk b c)).  Used to build the recursive-binding tuple
+;; (and its destructuring pattern) for `rec`.
+(define (nest-right items mk)
+  (let loop ([xs items])
+    (if (null? (cdr xs)) (car xs) (mk (car xs) (loop (cdr xs))))))
+
+;; Build `arr (λ g. match g [env-pat body])` — a pure arrow that
+;; destructures the environment value and computes `body`.  The match is
+;; flagged irrefutable: env-pat is a tuple/var pattern we constructed, so
+;; it always fits.
+(define (env-arr env-pat body stx)
+  (define g (gensym '$env))
+  (arrow-arr
+   (e:lam (list g)
+          (e:match (e:var g stx)
+                   (list (clause env-pat #f body stx))
+                   #t stx)
+          stx)
+   stx))
+
+;; Translate a command sequence in environment `env-pat`.  The final
+;; command is the output; earlier ones bind into the environment.
+(define (translate-proc-seq cmds env-pat stx)
+  (cond
+    [(null? (cdr cmds)) (translate-proc-cmd (car cmds) env-pat stx)]
+    [else
+     (define s (car cmds))
+     (syntax-parse s
+       #:datum-literals (<- let rec)
+       ;; (rec [p <- c] …) — mutually-recursive bindings: every p is in
+       ;; scope in every c (and downstream).  Translated via ArrowLoop:
+       ;; the binding tuple R is fed back as the loop's recursive
+       ;; channel, so each command sees (Pair env R).  No `(->)` instance
+       ;; exists, so `rec` only resolves for a loop-capable user arrow.
+       [(rec [p <- c] ...+)
+        (define ps (map parse-pattern (syntax->list #'(p ...))))
+        (define cs (syntax->list #'(c ...)))
+        (define r-pat (nest-right ps (lambda (a b) (p:ctor 'Pair (list a b) stx))))
+        ;; inside the loop each command sees env extended with R.
+        (define inner-pat (p:ctor 'Pair (list env-pat r-pat) stx))
+        (define branch-arrs
+          (for/list ([ci (in-list cs)]) (translate-proc-cmd ci inner-pat stx)))
+        (define fanout-tree
+          (nest-right branch-arrs (lambda (a b) (arrow-fanout a b stx))))
+        ;; loopbody : (Pair env R) ~> (Pair R R) — produce R as output and
+        ;; feedback both.
+        (define r (gensym '$rec))
+        (define dup (arrow-arr (e:lam (list r) (mk-pair (e:var r stx) (e:var r stx) stx) stx) stx))
+        (define loopbody (arrow-comp fanout-tree dup stx))
+        (define looped (arrow-loop loopbody stx))
+        ;; extend the outer env with the produced bindings, then continue.
+        (define env-pat* (p:ctor 'Pair (list r-pat env-pat) stx))
+        (arrow-comp (arrow-fanout looped (arrow-ident stx) stx)
+                    (translate-proc-seq (cdr cmds) env-pat* stx)
+                    stx)]
+       ;; [p <- cmd] — run cmd, bind its output to pattern p, continue.
+       [[p <- c]
+        (define c-arr (translate-proc-cmd #'c env-pat stx))
+        (define env-pat* (p:ctor 'Pair (list (parse-pattern #'p) env-pat) stx))
+        (arrow-comp (arrow-fanout c-arr (arrow-ident stx) stx)
+                    (translate-proc-seq (cdr cmds) env-pat* stx)
+                    stx)]
+       ;; (let ([v e] …) — pure bindings that extend the environment for
+       ;; the remaining commands.  e's may reference earlier variables.
+       [(let ([v:id e] ...+))
+        (define vs (map syntax->datum (syntax->list #'(v ...))))
+        (define es (map parse-expr (syntax->list #'(e ...))))
+        (define g (gensym '$env))
+        ;; new env value: (Pair v1 (Pair v2 … g)), built inside a let that
+        ;; binds each v to its parsed rhs (rhs sees the destructured env).
+        (define tuple
+          (for/foldr ([acc (e:var g stx)])
+                     ([v (in-list vs)])
+            (mk-pair (e:var v stx) acc stx)))
+        (define ext-body
+          (e:let (for/list ([v (in-list vs)] [e (in-list es)]) (cons v e))
+                 tuple stx))
+        (define ext-arr
+          (arrow-arr
+           (e:lam (list g)
+                  (e:match (e:var g stx)
+                           (list (clause env-pat #f ext-body stx))
+                           #t stx)
+                  stx)
+           stx))
+        (define env-pat*
+          (for/foldr ([acc env-pat])
+                     ([v (in-list vs)])
+            (p:ctor 'Pair (list (p:var v stx) acc) stx)))
+        (arrow-comp ext-arr (translate-proc-seq (cdr cmds) env-pat* stx) stx)]
+       ;; bare command — run it for effect, discard its output, continue.
+       [_
+        (define c-arr (translate-proc-cmd s env-pat stx))
+        (define env-pat* (p:ctor 'Pair (list (p:wild stx) env-pat) stx))
+        (arrow-comp (arrow-fanout c-arr (arrow-ident stx) stx)
+                    (translate-proc-seq (cdr cmds) env-pat* stx)
+                    stx)])]))
+
+;; Translate one command to an arrow `env ~> output`.
+(define (translate-proc-cmd cmd env-pat stx)
+  (syntax-parse cmd
+    #:datum-literals (feed feed-apply if match via)
+    ;; (feed arrow e) — `arrow -< e`: arrow is static, e reads the env.
+    [(feed f e)
+     (arrow-comp (env-arr env-pat (parse-expr #'e) stx)
+                 (parse-expr #'f)
+                 stx)]
+    ;; (feed-apply af e) — `af -<< e`: the arrow itself reads the env.
+    [(feed-apply f e)
+     (arrow-comp (env-arr env-pat (mk-pair (parse-expr #'f) (parse-expr #'e) stx) stx)
+                 (arrow-app-ref stx)
+                 stx)]
+    ;; (if test c1 c2) — choose a command by a Boolean test.  Route the
+    ;; whole env left (Err) or right (Ok), then fan the branches back in.
+    [(if test c1 c2)
+     (define g (gensym '$env))
+     (define route
+       (arrow-arr
+        (e:lam (list g)
+               (e:match (e:var g stx)
+                        (list (clause env-pat #f
+                                      (e:if (parse-expr #'test)
+                                            (e:app (e:var 'Err stx) (list (e:var g stx)) stx)
+                                            (e:app (e:var 'Ok  stx) (list (e:var g stx)) stx)
+                                            stx)
+                                      stx))
+                        #t stx)
+               stx)
+        stx))
+     (arrow-comp route
+                 (arrow-fanin (translate-proc-cmd #'c1 env-pat stx)
+                              (translate-proc-cmd #'c2 env-pat stx)
+                              stx)
+                 stx)]
+    ;; (match e [pat c] …) — choose a command by matching `e` (read from
+    ;; the env).  Each branch runs in the env extended by its pattern's
+    ;; bindings.  Routing tags the (env-carrying) value into a right-
+    ;; nested `Result`, then a right-nested `fanin` dispatches the
+    ;; branches.  See `translate-proc-case`.
+    [(match e [pat c] ...+)
+     (translate-proc-case #'e
+                          (syntax->list #'(pat ...))
+                          (syntax->list #'(c ...))
+                          env-pat stx)]
+    ;; (via opExpr c …) — banana brackets: apply an arrow-combining
+    ;; expression to the translated sub-commands.
+    [(via op c ...+)
+     (e:app (parse-expr #'op)
+            (for/list ([ci (in-list (syntax->list #'(c ...)))])
+              (translate-proc-cmd ci env-pat stx))
+            stx)]))
+
+;; Build a `Result`-nesting wrapper for branch `i` of `n` (0-based) to
+;; feed a right-nested `fanin` consumer
+;; `(fanin c0 (fanin c1 (… c_{n-1})))`: branch i is `i` Oks deep, then an
+;; `Err` (the fanin's left/active side) for every branch except the last,
+;; which sits on the final Ok.  n = 1 needs no tag at all.
+(define (case-wrap i n v stx)
+  (define inner
+    (if (= i (sub1 n))
+        v
+        (e:app (e:var 'Err (fresh-op-stx stx)) (list v) stx)))
+  (let loop ([k i] [acc inner])
+    (if (= k 0)
+        acc
+        (loop (sub1 k) (e:app (e:var 'Ok (fresh-op-stx stx)) (list acc) stx)))))
+
+;; Translate `(match e [pat c] …)` to a routing arrow followed by a
+;; right-nested fanin over the branch arrows.
+(define (translate-proc-case e-stx pat-stxs cmd-stxs env-pat stx)
+  (define n (length pat-stxs))
+  (define pats (map parse-pattern pat-stxs))
+  (define ev (gensym '$case))
+  (define g  (gensym '$env))
+  ;; Routing arrow: destructure env, bind `ev` = e, then match ev to
+  ;; pick a branch, tagging (Pair ev env) into the nested Result.
+  (define route-clauses
+    (for/list ([p (in-list pats)] [i (in-naturals)])
+      (clause p #f (case-wrap i n (mk-pair (e:var ev stx) (e:var g stx) stx) stx) stx)))
+  (define route
+    (arrow-arr
+     (e:lam (list g)
+            (e:match (e:var g stx)
+                     (list (clause env-pat #f
+                                   (e:let (list (cons ev (parse-expr e-stx)))
+                                          (e:match (e:var ev stx) route-clauses #f stx)
+                                          stx)
+                                   stx))
+                     #t stx)
+            stx)
+     stx))
+  ;; Each branch consumes (Pair ev env) with its pattern re-bound.
+  (define branch-arrs
+    (for/list ([p (in-list pats)] [c (in-list cmd-stxs)])
+      (translate-proc-cmd c (p:ctor 'Pair (list p env-pat) stx) stx)))
+  ;; Single branch: no choice, just the routing + the one branch.
+  ;; Otherwise fold a right-nested fanin over the branch arrows.
+  (define consumer
+    (let loop ([bs branch-arrs])
+      (cond
+        [(null? (cdr bs)) (car bs)]
+        [else (arrow-fanin (car bs) (loop (cdr bs)) stx)])))
+  (arrow-comp route consumer stx))
+
 ;; ----- patterns -----------------------------------------------------
 
 (define (parse-pattern stx)
@@ -1545,6 +1798,13 @@
                 (parse-constraint cstx))
               (parse-type #'body)
               stx)]
+    ;; Bare function arrow as a referenceable type constructor.  Either the
+    ;; standalone literal `->` or the parenthesized zero-arg `(->)` denotes
+    ;; the arrow tycon unapplied, so it can sit in an instance head such as
+    ;; `(Arrow (->))`.  These clauses sit above the variadic arrow form and
+    ;; match only the zero-argument cases, leaving `(-> A B …)` untouched.
+    [->    (ty:con '-> stx)]
+    [(->)  (ty:con '-> stx)]
     ;; Arrow type — variadic in the surface, binary in the core AST.
     ;;   `(-> T)`         → `(-> Unit T)` (0-arg fn returning T)
     ;;   `(-> A B)`       → standard binary arrow

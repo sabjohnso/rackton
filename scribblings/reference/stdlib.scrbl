@@ -279,7 +279,7 @@ Exceptions in @racket[IO]: @racket[try] / @racket[raise-io].
 @racket[random-integer] / @racket[random-float] / the inclusive
 @racket[random-r-integer] / @racket[random-r-float], and a pure
 splittable SplitMix64 @racket[StdGen]: @racket[mk-std-gen] /
-@racket[next-word] / @racket[random-r] / @racket[split].
+@racket[next-word] / @racket[random-r] / @racket[split-gen].
 
 @defmodule[rackton/system/time #:no-declare]
 @racket[current-time-seconds] / @racket[get-current-time-millis] /

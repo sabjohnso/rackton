@@ -350,6 +350,95 @@
           [(Err e) (Err (f e))]
           [(Ok  v) (Ok  (g v))])))
 
+    ;; --- Category / Arrow --------------------------------------
+    ;;
+    ;; Arrows (Hughes) generalize plain functions and Kleisli arrows.
+    ;; The hierarchy is Category → Arrow.  Method names are non-infix
+    ;; and chosen to avoid clashing with existing prelude names:
+    ;; `ident`/`comp` (Category — distinct from the standalone `id`
+    ;; function and the backward `compose`) and
+    ;; `arr`/`on-first`/`on-second`/`split`/`fanout` (Arrow — distinct
+    ;; from `Bifunctor`'s `first`/`second`).  `ident` and `arr` are
+    ;; return-typed: the class parameter `cat` appears only in the
+    ;; result, so each call site resolves the instance at compile time
+    ;; from the expected type — the same mechanism as `pure`/`mempty`.
+    ;; The canonical instance is the function arrow `(->)`, where every
+    ;; combinator collapses to ordinary function plumbing.
+
+    (protocol (Category (cat :: (-> * (-> * *))))
+      (: ident (cat a a))
+      (: comp (-> (cat a b) (-> (cat b c) (cat a c)))))
+
+    (protocol (Arrow [cat => Category])
+      (: arr       (-> (-> a b) (cat a b)))
+      (: on-first  (-> (cat a b) (cat (Pair a c) (Pair b c))))
+      (: on-second (-> (cat a b) (cat (Pair c a) (Pair c b))))
+      (: split     (-> (cat a b) (-> (cat c d) (cat (Pair a c) (Pair b d)))))
+      (: fanout    (-> (cat a b) (-> (cat a c) (cat a (Pair b c)))))
+      ;; on-second/split/fanout derive from `arr`, `on-first`, and the
+      ;; superclass `comp`, so an instance need only supply `arr` and
+      ;; `on-first` (plus Category's `ident`/`comp`).  `swap`/`dup` are
+      ;; inlined as lambdas.
+      (define (on-second g)
+        (comp (arr (lambda (p) (match p [(Pair a b) (Pair b a)])))
+              (comp (on-first g)
+                    (arr (lambda (p) (match p [(Pair a b) (Pair b a)]))))))
+      (define (split f g) (comp (on-first f) (on-second g)))
+      (define (fanout f g)
+        (comp (arr (lambda (x) (Pair x x))) (split f g))))
+
+    (instance (Category (->))
+      (define ident (lambda (x) x))
+      (define (comp f g) (lambda (x) (g (f x)))))
+
+    (instance (Arrow (->))
+      (define (arr f) f)
+      (define (on-first f)
+        (lambda (p) (match p [(Pair a c) (Pair (f a) c)]))))
+
+    ;; ArrowChoice routes a `Result` through one of two arrows by
+    ;; branch.  `Err` is the Left (active) branch and `Ok` the Right, so
+    ;; `on-left` transforms the `Err` payload and passes `Ok` through.
+    ;; on-right/fork/fanin derive from on-left + arr + comp, so an
+    ;; instance need only supply `on-left`.  `mirror` (swap branches)
+    ;; and the same-typed-Result collapse are inlined as lambdas.
+    (protocol (ArrowChoice [cat => Arrow])
+      (: on-left  (-> (cat a b) (cat (Result a x) (Result b x))))
+      (: on-right (-> (cat a b) (cat (Result x a) (Result x b))))
+      (: fork     (-> (cat a b) (-> (cat c d) (cat (Result a c) (Result b d)))))
+      (: fanin    (-> (cat a c) (-> (cat b c) (cat (Result a b) c))))
+      (define (on-right g)
+        (comp (arr (lambda (r) (match r [(Err x) (Ok x)] [(Ok x) (Err x)])))
+              (comp (on-left g)
+                    (arr (lambda (r) (match r [(Err x) (Ok x)] [(Ok x) (Err x)]))))))
+      (define (fork f g) (comp (on-left f) (on-right g)))
+      (define (fanin f g)
+        (comp (fork f g)
+              (arr (lambda (r) (match r [(Err c) c] [(Ok c) c]))))))
+
+    (instance (ArrowChoice (->))
+      (define (on-left f)
+        (lambda (r) (match r [(Err a) (Err (f a))] [(Ok x) (Ok x)]))))
+
+    ;; ArrowApply makes the arrow a first-class value that can be fed in
+    ;; alongside its argument and run.  `arrow-app` is return-typed (a
+    ;; constant arrow), so it resolves at compile time like `ident`.
+    (protocol (ArrowApply [cat => Arrow])
+      (: arrow-app (cat (Pair (cat a b) a) b)))
+
+    (instance (ArrowApply (->))
+      (define arrow-app (lambda (p) (match p [(Pair f x) (f x)]))))
+
+    ;; ArrowLoop ties a feedback channel: the `c` half of the output is
+    ;; fed back as the `c` half of the input.  Deliberately NO instance
+    ;; for `(->)`: a lawful function-arrow loop needs laziness to tie the
+    ;; recursive knot, which strict Rackton functions cannot do, so
+    ;; `arrow-loop` (and proc `rec`) over a plain function is correctly a
+    ;; type error.  A user arrow whose representation supports feedback
+    ;; (e.g. a circuit/stream arrow with a unit delay) can define one.
+    (protocol (ArrowLoop [cat => Arrow])
+      (: arrow-loop (-> (cat (Pair a c) (Pair b c)) (cat a b))))
+
     ;; --- Small stdlib ------------------------------------------
 
     (: not (-> Boolean Boolean))

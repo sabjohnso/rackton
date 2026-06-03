@@ -158,6 +158,14 @@
                 (ty:app (ty:con '-> #f)
                         (list (ty:con 'Unit #f) (ty:con 'Integer #f)) #f))
 
+  ;; The bare function arrow is a referenceable type constructor, so it
+  ;; can appear unapplied (e.g. as an instance-head argument like
+  ;; `(Arrow (->))`).  Both the bare literal `->` and the parenthesized
+  ;; zero-arg `(->)` parse to the arrow tycon.  This must not disturb the
+  ;; applied forms above.
+  (check-equal? (pt '->)   (ty:con '-> #f))
+  (check-equal? (pt '(->)) (ty:con '-> #f))
+
   ;; Variadic `->` also applies to kind syntax.
   (check-equal? (parse-kind-stx (datum->syntax #f '(-> * * *)))
                 (parse-kind-stx (datum->syntax #f '(-> * (-> * *)))))

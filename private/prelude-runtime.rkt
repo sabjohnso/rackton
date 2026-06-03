@@ -118,6 +118,12 @@
  flatmap join
  poke
  bimap first second
+ ;; Category/Arrow value-dispatched methods (ident/arr are return-typed,
+ ;; resolved at compile time like pure/mempty, so they have no bare
+ ;; binding here).
+ comp on-first on-second split fanout
+ on-left on-right fork fanin
+ arrow-loop
  foldr length to-list sum
  mappend
  traverse
@@ -137,6 +143,7 @@
  ;; (transformer $pure / $flatmap / mtl impls are regenerated in the
  ;; carved rackton/control/monad/* modules.)
  |$mempty:String| |$mempty:List|
+ |$ident:->| |$arr:->| |$arrow-app:->|
  ;; Runtime dispatchers for the positional class methods
  ;; introduced by mtl polish (local-en already covered above).
  ;; catch-e is exported so carved transformer modules
@@ -173,6 +180,10 @@
  $dispatch:bimap
  $dispatch:first
  $dispatch:second
+ $dispatch:comp $dispatch:on-first $dispatch:on-second $dispatch:split $dispatch:fanout
+ $dispatch:on-left $dispatch:on-right $dispatch:fork $dispatch:fanin
+ $dispatch:arrow-loop
+ $dispatch:ident $dispatch:arr $dispatch:arrow-app
  $dispatch:foldr
  $dispatch:length
  $dispatch:to-list
@@ -376,6 +387,26 @@
 (define $dispatch:bimap  (make-hasheq))(define-class-method bimap  $dispatch:bimap  2 3)
 (define $dispatch:first  (make-hasheq))(define-class-method first  $dispatch:first  1 2)
 (define $dispatch:second (make-hasheq))(define-class-method second $dispatch:second 1 2)
+;; Category/Arrow's value-dispatched methods select the instance on the
+;; arrow value (arg 0 in every case).  `comp`/`split`/`fanout` take two
+;; arrows; `on-first`/`on-second` take one.  (`ident`/`arr` are
+;; return-typed — see below.)
+(define $dispatch:comp      (make-hasheq))(define-class-method comp      $dispatch:comp      0 2)
+(define $dispatch:on-first  (make-hasheq))(define-class-method on-first  $dispatch:on-first  0 1)
+(define $dispatch:on-second (make-hasheq))(define-class-method on-second $dispatch:on-second 0 1)
+(define $dispatch:split     (make-hasheq))(define-class-method split     $dispatch:split     0 2)
+(define $dispatch:fanout    (make-hasheq))(define-class-method fanout    $dispatch:fanout    0 2)
+;; ArrowChoice's branch combinators also dispatch on the arrow value
+;; (arg 0).  on-left/on-right take one arrow; fork/fanin take two.
+;; (`arrow-app` is return-typed — see below.)
+(define $dispatch:on-left   (make-hasheq))(define-class-method on-left   $dispatch:on-left   0 1)
+(define $dispatch:on-right  (make-hasheq))(define-class-method on-right  $dispatch:on-right  0 1)
+(define $dispatch:fork      (make-hasheq))(define-class-method fork      $dispatch:fork      0 2)
+(define $dispatch:fanin     (make-hasheq))(define-class-method fanin     $dispatch:fanin     0 2)
+;; ArrowLoop's arrow-loop dispatches on the arrow value (arg 0).  No
+;; base instance ships (strict `(->)` cannot tie the recursive knot), so
+;; the table stays empty until a user arrow registers a lawful impl.
+(define $dispatch:arrow-loop (make-hasheq))(define-class-method arrow-loop $dispatch:arrow-loop 0 1)
 ;; Foldable's foldr dispatches on the container (arg 2). length/to-list
 ;; dispatch on the container as arg 0.
 (define $dispatch:foldr   (make-hasheq))(define-class-method foldr   $dispatch:foldr   2 3)
@@ -742,6 +773,9 @@
 (define $dispatch:lift-io   (make-hasheq))
 (define $dispatch:lift      (make-hasheq))  ; MonadTrans.lift (no base instance)
 (define $dispatch:peek      (make-hasheq))  ; Storable.peek (no base instance)
+(define $dispatch:ident     (make-hasheq))  ; Category.ident   (return-typed)
+(define $dispatch:arr       (make-hasheq))  ; Arrow.arr        (return-typed)
+(define $dispatch:arrow-app (make-hasheq))  ; ArrowApply.arrow-app (return-typed)
 
 (define (|$pure:Maybe|  x) (Some x))
 (define (|$pure:List|   x) (Cons x Nil))
@@ -763,6 +797,14 @@
 ;; Sum / Product moved to rackton/data/monoid (Phase 2 slim).
 (define |$mempty:String|  "")
 (define |$mempty:List|    Nil)
+
+;; ----- Category/Arrow ident & arr (return-typed) ------------------
+;; For the function-arrow instance, the identity arrow is the identity
+;; function and lifting a function into the arrow is the identity.
+(define |$ident:->| (lambda (x) x))
+(define (|$arr:->| f) f)
+;; ArrowApply's `arrow-app` for (->) runs a captured arrow on its arg.
+(define |$arrow-app:->| (lambda (p) (match p [(Pair f x) (f x)])))
 
 ;; ----- Semigroup mappend -----------------------------------------------
 (define (semigroup-list-mappend xs ys)
@@ -1725,6 +1767,37 @@
 (register-instance-method! $dispatch:first  '$ctor:Ok  result-first)
 (register-instance-method! $dispatch:second '$ctor:Err result-second)
 (register-instance-method! $dispatch:second '$ctor:Ok  result-second)
+
+;; ----- Category/Arrow instance for the function arrow (->) --------
+;; A procedure dispatches as the `->` tycon (see dispatch-tag).  Every
+;; method is registered concretely; the prelude's derived defaults for
+;; on-second/split/fanout are typing-only, so their runtime impls are
+;; spelled out here directly.
+(define arrow-comp      (lambda (f g) (lambda (x) (g (f x)))))
+(define arrow-on-first  (lambda (f) (lambda (p) (match p [(Pair a c) (Pair (f a) c)]))))
+(define arrow-on-second (lambda (g) (lambda (p) (match p [(Pair c a) (Pair c (g a))]))))
+(define arrow-split     (lambda (f g) (lambda (p) (match p [(Pair a c) (Pair (f a) (g c))]))))
+(define arrow-fanout    (lambda (f g) (lambda (x) (Pair (f x) (g x)))))
+(register-instance-method! $dispatch:comp      '-> arrow-comp)
+(register-instance-method! $dispatch:on-first  '-> arrow-on-first)
+(register-instance-method! $dispatch:on-second '-> arrow-on-second)
+(register-instance-method! $dispatch:split     '-> arrow-split)
+(register-instance-method! $dispatch:fanout    '-> arrow-fanout)
+;; Return-typed ident/arr: keyed by the result type's tycon (`->`).
+(register-instance-method! $dispatch:ident '-> |$ident:->|)
+(register-instance-method! $dispatch:arr   '-> |$arr:->|)
+
+;; ArrowChoice for (->): Err is the Left branch, Ok the Right.
+(define arrow-on-left  (lambda (f) (lambda (r) (match r [(Err a) (Err (f a))] [(Ok x) (Ok x)]))))
+(define arrow-on-right (lambda (g) (lambda (r) (match r [(Ok a) (Ok (g a))] [(Err x) (Err x)]))))
+(define arrow-fork     (lambda (f g) (lambda (r) (match r [(Err a) (Err (f a))] [(Ok c) (Ok (g c))]))))
+(define arrow-fanin    (lambda (f g) (lambda (r) (match r [(Err a) (f a)] [(Ok b) (g b)]))))
+(register-instance-method! $dispatch:on-left  '-> arrow-on-left)
+(register-instance-method! $dispatch:on-right '-> arrow-on-right)
+(register-instance-method! $dispatch:fork     '-> arrow-fork)
+(register-instance-method! $dispatch:fanin    '-> arrow-fanin)
+;; ArrowApply for (->): arrow-app is return-typed, keyed by tycon `->`.
+(register-instance-method! $dispatch:arrow-app '-> |$arrow-app:->|)
 
 ;; ----- Foldable instances ---------------------------------------
 
