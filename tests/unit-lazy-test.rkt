@@ -24,7 +24,7 @@
   ;; sits inside a `Lazy` thunk and is not evaluated at SCons time.
   (: nats-from (-> Integer (Stream Integer)))
   (define (nats-from n)
-    (SCons n (Lazy (lambda (_) (nats-from (+ n 1))))))
+    (SCons n (delay (nats-from (+ n 1)))))
 
   (: first3 (List Integer))
   (define first3 (stream-take 3 (nats-from 0)))

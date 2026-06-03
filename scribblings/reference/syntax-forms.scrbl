@@ -503,6 +503,21 @@ List-literal sugar.  Desugars to a @racket[Cons]/@racket[Nil] chain, so
 @racket[(list)] is @racket[Nil].  The result is an ordinary
 @racket[(List a)]; all elements must share one type.}
 
+@defform[(delay expr)]{
+
+Defer @racket[expr] as a @racket[Lazy], evaluated at most once and cached
+(call-by-need).  Unlike a function, @racket[delay] does not evaluate
+@racket[expr] eagerly: it desugars to @racket[(make-lazy (lambda (_)
+expr))], so the result has type @racket[(Lazy τ)] when @racket[expr] has
+type @racket[τ].  Run it with @racket[force].  Both @racket[force] and the
+@racket[Lazy] type come from @racketmodname[rackton/data/lazy] — require
+that module to use @racket[delay].
+
+@racketblock[
+(require rackton/data/lazy)
+(define slow (delay (expensive 42)))   (code:comment "not run yet")
+(force slow)                            (code:comment "runs once, then cached")]}
+
 @defform[(ann expr type)]{
 
 Type ascription.  Asserts that @racket[expr] has type @racket[type];

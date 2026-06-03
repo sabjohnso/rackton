@@ -149,6 +149,41 @@ random generator.  Everything is in @racket[IO]:
                  [(None)   "hi stranger"]))))
 }|
 
+@section{Laziness}
+
+Rackton is strict, but @racketmodname[rackton/data/lazy] adds opt-in
+laziness.  The @racket[delay] form defers a computation as a
+@racket[Lazy]; @racket[force] runs it, at most once, caching the result
+(call-by-need).  @racket[delay] is a form, not a function — it does not
+evaluate its argument until forced:
+
+@codeblock|{
+(require rackton/data/lazy)
+
+(: slow (Lazy Integer))
+(define slow (delay (* 6 7)))   (code:comment "not computed yet")
+
+(: answer Integer)
+(define answer (force slow))    (code:comment "computes 42 once, then caches")
+}|
+
+A @racket[Stream] is a lazy cons-list whose tail is a @racket[Lazy], so
+producers may be infinite while consumers force only a finite prefix:
+
+@codeblock|{
+(require rackton/data/lazy)
+
+(: nats (Stream Integer))
+(define nats (stream-iterate (lambda (n) (+ n 1)) 0))   (code:comment "0 1 2 3 …")
+
+(: first5 (List Integer))
+(define first5 (stream-take 5 nats))                    (code:comment "(0 1 2 3 4)")
+}|
+
+@racket[stream-map], @racket[stream-filter], and @racket[stream-append]
+stay lazy, so they compose over infinite streams as long as the final
+consumer (e.g. @racket[stream-take]) is finite.
+
 @section{A program across families}
 
 @filepath{examples/word-count.rkt} (see @secref["examples"]) ties

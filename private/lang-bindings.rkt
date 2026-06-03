@@ -59,6 +59,7 @@
 (define-rackton-form racket "host-language escape")
 (define-rackton-form handle "effect handler")
 (define-rackton-form proc "arrow (point-free) notation")
+(define-rackton-form delay "deferred (call-by-need) computation")
 
 ;; Type-level keywords (appear inside type signatures).
 (define-rackton-form All "universal quantifier")
