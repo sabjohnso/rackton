@@ -178,3 +178,24 @@
 
 (test-case "foreign import (racket/string string-replace) works"
   (check-equal? slashified "a/b/c"))
+
+;; ----- standard-library.scrbl: Laziness section -------------------
+
+(rackton
+  (require rackton/data/lazy)
+
+  (: slow (Lazy Integer))
+  (define slow (delay (* 6 7)))
+
+  (: answer Integer)
+  (define answer (force slow))
+
+  (: nats (Stream Integer))
+  (define nats (stream-iterate (lambda (n) (+ n 1)) 0))
+
+  (: first5 (List Integer))
+  (define first5 (stream-take 5 nats)))
+
+(test-case "stdlib Laziness examples"
+  (check-equal? answer 42)
+  (check-equal? first5 (Cons 0 (Cons 1 (Cons 2 (Cons 3 (Cons 4 Nil)))))))

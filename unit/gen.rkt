@@ -56,9 +56,8 @@
   (match t
     [(Tree v ls)
      (Tree (f v)
-             (Lazy (lambda (_)
-                       (stream-map (lambda (c) (tree-map f c))
-                                   (force-lazy ls)))))]))
+             (delay (stream-map (lambda (c) (tree-map f c))
+                                (force-lazy ls))))]))
 
 ;; Monadic bind on trees: the children of the result interleave the
 ;; outer tree's shrinks (re-bound through `f`) with the inner tree's
@@ -70,11 +69,10 @@
      (match (f v)
        [(Tree v2 ls2)
         (Tree v2
-                (Lazy (lambda (_)
-                          (stream-append
-                           (stream-map (lambda (c) (tree-bind f c))
-                                       (force-lazy ls))
-                           (force-lazy ls2)))))])]))
+                (delay (stream-append
+                        (stream-map (lambda (c) (tree-bind f c))
+                                    (force-lazy ls))
+                        (force-lazy ls2))))])]))
 
 ;; ----- Generators ---------------------------------------------------
 
@@ -140,8 +138,8 @@
   (match cs
     [(Nil) SNil]
     [(Cons c rest)
-     (SCons (Tree c (Lazy (lambda (_) (int-shrinks target c))))
-            (Lazy (lambda (_) (candidates->stream target rest))))]))
+     (SCons (Tree c (delay (int-shrinks target c)))
+            (delay (candidates->stream target rest)))]))
 
 (: int-shrinks (-> Integer (-> Integer (Stream (Tree Integer)))))
 (define (int-shrinks target v)
@@ -154,7 +152,7 @@
 (define (int-range lo hi)
   (Gen (lambda (size seed)
            (let ([v (seed-int-range seed lo hi)])
-             (Tree v (Lazy (lambda (_) (int-shrinks lo v))))))))
+             (Tree v (delay (int-shrinks lo v)))))))
 
 ;; A boolean; #t shrinks to #f, #f is minimal.
 (: bool (Gen Boolean))
@@ -162,9 +160,8 @@
   (Gen (lambda (size seed)
            (if (== (seed-int-range seed 0 1) 0)
                (Tree #f (delay-lazy SNil))
-               (Tree #t (Lazy (lambda (_)
-                                    (SCons (Tree #f (delay-lazy SNil))
-                                           (delay-lazy SNil)))))))))
+               (Tree #t (delay (SCons (Tree #f (delay-lazy SNil))
+                                      (delay-lazy SNil))))))))
 
 ;; ----- Default & compound generators --------------------------------
 ;;

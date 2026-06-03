@@ -1029,7 +1029,7 @@
 
 (define (parse-expr stx)
   (syntax-parse stx
-    #:datum-literals (lambda λ let let& let% let+ letrec let* if cond else ann match racket do <- update handle return describe context list ->)
+    #:datum-literals (lambda λ let let& let% let+ letrec let* if cond else ann match racket do delay <- update handle return describe context list ->)
     [n:number  (e:literal (syntax->datum #'n) stx)]
     [b:boolean (e:literal (syntax->datum #'b) stx)]
     [s:string  (e:literal (syntax->datum #'s) stx)]
@@ -1179,6 +1179,16 @@
     ;; final computation.
     [(do stmt ...+ body)
      (parse-do (syntax->list #'(stmt ...)) #'body stx)]
+
+    ;; (delay e) — defer `e` (call-by-need).  Like `do`, this desugars at
+    ;; parse time: it cannot be a function (that would evaluate `e`
+    ;; eagerly), so it wraps `e` in a thunk and hands it to `make-lazy`
+    ;; (from rackton/data/lazy).  The lambda parameter is a fresh ignored
+    ;; name typed at Unit; `force` calls the thunk with Unit at most once.
+    [(delay e)
+     (e:app (e:var 'make-lazy stx)
+            (list (e:lam (list (gensym '_delay)) (parse-expr #'e) stx))
+            stx)]
 
     ;; (handle EXPR [op (args ...) k -> body] ... [return v -> body])
     ;; EXPR is run in a context where the named ops

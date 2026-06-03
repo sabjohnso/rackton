@@ -76,6 +76,17 @@ The @racket[NonEmpty] type (total @racket[ne-head]/@racket[ne-tail])
 with @racket[nonempty], @racket[ne-to-list]/@racket[ne-from-list],
 @racket[ne-cons], @racket[ne-map], @racket[ne-length].
 
+@defmodule[rackton/data/lazy #:no-declare]
+First-class laziness for the strict language: the opaque, memoizing
+@racket[Lazy] type built with the @racket[delay] form (see
+@secref["syntax-forms"]) and run with @racket[force] (call-by-need —
+evaluated at most once, then cached); plus a lazy @racket[Stream]
+(@racket[SNil] / @racket[SCons], whose tail is a @racket[Lazy] so a
+producer may be infinite) with @racket[stream-head]/@racket[stream-tail],
+@racket[stream-take], @racket[stream-map]/@racket[stream-filter]/@racket[stream-append],
+the infinite producers @racket[stream-repeat]/@racket[stream-iterate]/@racket[stream-from],
+and @racket[list->stream].
+
 @defmodule[rackton/data/tuple #:no-declare]
 @racket[Pair] helpers: @racket[swap], @racket[curry], @racket[uncurry].
 
