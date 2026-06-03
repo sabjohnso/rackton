@@ -417,14 +417,14 @@
 
     ;; --- Semigroup / Monoid ----------------------------------
     ;;
-    ;; `Semigroup` carries an associative `<>` (`sappend`).  `Monoid`
+    ;; `Semigroup` carries an associative `mappend`.  `Monoid`
     ;; refines it with a left+right identity `mempty`.  `mempty` is a
     ;; return-typed class member — the elaborator picks the
     ;; instance from the expected type at each call site (see
     ;; @secref{Return-typed_dispatch} for the mechanism).
 
     (protocol (Semigroup a)
-      (: <> (-> a (-> a a))))
+      (: mappend (-> a (-> a a))))
 
     (protocol (Monoid [a => Semigroup])
       (: mempty a))
@@ -432,7 +432,7 @@
     (instance (Semigroup String)
       ;; `string-append` is defined later in the prelude; use a host
       ;; escape so the load order doesn't bite us.
-      (define (<> a b) (racket String (a b) #f)))
+      (define (mappend a b) (racket String (a b) #f)))
 
     (instance (Monoid String)
       (define mempty ""))
@@ -441,7 +441,7 @@
       ;; cartesian concat; `append` is defined later in this prelude,
       ;; so inline a local cat helper as the Applicative List instance
       ;; does.
-      (define (<> xs ys)
+      (define (mappend xs ys)
         (letrec ([cat (lambda (as bs)
                         (match as
                           [(Nil)      bs]

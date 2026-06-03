@@ -7,9 +7,9 @@
          "../unit.rkt")
 
 (: r-either-ok  String) (define r-either-ok
-  (either (lambda (e) (<> "err:" e)) (lambda (a) (<> "ok:" a)) (ann (Ok "x") (Result String String))))
+  (either (lambda (e) (mappend "err:" e)) (lambda (a) (mappend "ok:" a)) (ann (Ok "x") (Result String String))))
 (: r-either-err String) (define r-either-err
-  (either (lambda (e) (<> "err:" e)) (lambda (a) (<> "ok:" a)) (ann (Err "y") (Result String String))))
+  (either (lambda (e) (mappend "err:" e)) (lambda (a) (mappend "ok:" a)) (ann (Err "y") (Result String String))))
 
 (: r-is-ok  Boolean) (define r-is-ok  (is-ok  (ann (Ok 1) (Result String Integer))))
 (: r-is-err Boolean) (define r-is-err (is-err (ann (Err "e") (Result String Integer))))

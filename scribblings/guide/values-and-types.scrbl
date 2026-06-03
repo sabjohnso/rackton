@@ -18,7 +18,7 @@ introduces a fresh binding or refers to an existing one:
       (function parameter, @racket[let]-bound name, top-level
       @racket[define], or prelude function).}
 @item{Every other identifier — uppercase initial, or operator-shaped
-      names like @racket[->], @racket[<>], @racket[+], @racket[==] —
+      names like @racket[->], @racket[+], @racket[==], @racket[>=] —
       is always a @italic{reference} to an already-bound name, never
       a fresh binding.  What it refers to depends on position: a
       @italic{type constructor} or @italic{class name} in a type, a

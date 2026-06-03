@@ -4,7 +4,7 @@
 ;; the prelude's String type.  Built on the prelude string/char ops and
 ;; data/list's drop-while.  (string-length / substring / string-append /
 ;; string-prefix? / string-split / string-join and the char conversions
-;; are in the prelude; <> is the Semigroup append.)
+;; are in the prelude; mappend is the Semigroup append.)
 
 (require rackton/data/list)
 (provide (all-defined-out))
@@ -80,7 +80,7 @@
 ;; unlines: append a newline after each line (Haskell `unlines`).
 (: unlines (-> (List String) String))
 (define (unlines ls)
-  (foldr (lambda (l acc) (<> l (<> "\n" acc))) "" ls))
+  (foldr (lambda (l acc) (mappend l (mappend "\n" acc))) "" ls))
 
 ;; --- affix predicates ----------------------------------------------
 
@@ -130,14 +130,14 @@
 (define (pad-left w c s)
   (if (>= (string-length s) w)
       s
-      (<> (chars->string (replicate (- w (string-length s)) c)) s)))
+      (mappend (chars->string (replicate (- w (string-length s)) c)) s)))
 
 ;; pad to width w by appending copies of c.
 (: pad-right (-> Integer (-> Char (-> String String))))
 (define (pad-right w c s)
   (if (>= (string-length s) w)
       s
-      (<> s (chars->string (replicate (- w (string-length s)) c)))))
+      (mappend s (chars->string (replicate (- w (string-length s)) c)))))
 
 ;; concatenate n copies of s.
 (: repeat-string (-> Integer (-> String String)))
@@ -149,7 +149,7 @@
 (: replace-chars (-> (List Char) (-> (List Char) (-> (List Char) (List Char)))))
 (define (replace-chars from to s)
   (if (chars-prefix? from s)
-      (<> to (replace-chars from to (drop (length from) s)))
+      (mappend to (replace-chars from to (drop (length from) s)))
       (match s
         [(Nil)       Nil]
         [(Cons h t)  (Cons h (replace-chars from to t))])))

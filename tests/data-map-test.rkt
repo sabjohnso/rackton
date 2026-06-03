@@ -23,14 +23,14 @@
 (: fwd-miss String) (define fwd-miss (map-find-with-default "d" 9 m))
 
 (: adj (Maybe String))
-(define adj (map-lookup 1 (map-adjust (lambda (v) (<> v "!")) 1 m)))
+(define adj (map-lookup 1 (map-adjust (lambda (v) (mappend v "!")) 1 m)))
 (: iw (Maybe String))
-(define iw (map-lookup 1 (map-insert-with (lambda (new old) (<> new old)) 1 "x" m)))
+(define iw (map-lookup 1 (map-insert-with (lambda (new old) (mappend new old)) 1 "x" m)))
 
 (: uni (Maybe String))
 (define uni (map-lookup 1 (map-union (map-singleton 1 "L") (map-singleton 1 "R"))))
 (: uniw (Maybe String))
-(define uniw (map-lookup 1 (map-union-with (lambda (a b) (<> a b))
+(define uniw (map-lookup 1 (map-union-with (lambda (a b) (mappend a b))
                                            (map-singleton 1 "L") (map-singleton 1 "R"))))
 
 (: diff1 Boolean) (define diff1 (map-member? 1 (map-difference m (map-singleton 1 "z"))))

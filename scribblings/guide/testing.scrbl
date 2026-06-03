@@ -131,7 +131,7 @@ laws of a structure.  Each is parameterised by a generator (and, for
 
 @racketidfont{eq-laws} checks reflexivity and symmetry; @racketidfont{ord-laws}
 checks reflexivity and totality of @racket[<=]; @racketidfont{semigroup-laws}
-checks associativity of @racket[<>]; @racketidfont{monoid-laws} additionally
+checks associativity of @racket[mappend]; @racketidfont{monoid-laws} additionally
 checks that the supplied identity is a left and right unit.
 
 @section{Reproducibility and seeds}

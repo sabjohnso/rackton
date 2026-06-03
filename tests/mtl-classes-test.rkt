@@ -43,7 +43,7 @@
   (: greet-env ((MonadEnv String m) => (m String)))
   (define greet-env
     (do [name <- ask-en]
-      (pure (<> "hello, " name))))
+      (pure (mappend "hello, " name))))
 
   ;; Against plain Env
   (: env-greet-result String)
@@ -83,7 +83,7 @@
     (do [_    <- (incr-by 1)]
         [n    <- get-st]
         [name <- ask-en]
-      (pure (<> name (<> ": " (integer->string n))))))
+      (pure (mappend name (mappend ": " (integer->string n))))))
 
   (: nested-stack-result (IO (Pair Integer String)))
   (define nested-stack-result

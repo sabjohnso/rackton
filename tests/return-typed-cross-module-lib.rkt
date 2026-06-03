@@ -26,7 +26,7 @@
 (define (unwrap w) (match w [(MkWrap xs) xs]))
 
 (instance (Semigroup (Wrap a))
-  (define (<> x y)
+  (define (mappend x y)
     (match x [(MkWrap xs)
               (match y [(MkWrap ys) (MkWrap (append xs ys))])])))
 

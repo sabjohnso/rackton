@@ -19,11 +19,11 @@
   (define empty-wrap mempty)
 
   (: combined (Wrap Integer))
-  (define combined (<> (MkWrap (Cons 1 (Cons 2 Nil))) empty-wrap)))
+  (define combined (mappend (MkWrap (Cons 1 (Cons 2 Nil))) empty-wrap)))
 
 (test-case "cross-module return-typed pure"
   (check-equal? (unbox-it made) 5))
 
-(test-case "cross-module return-typed mempty + positional <>"
+(test-case "cross-module return-typed mempty + positional mappend"
   (check-equal? (unwrap empty-wrap) Nil)
   (check-equal? (unwrap combined) (Cons 1 (Cons 2 Nil))))

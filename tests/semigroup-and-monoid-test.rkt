@@ -7,12 +7,12 @@
          "../main.rkt")
 
 (rackton
-  ;; ----- Semigroup <> --------------------------------------
+  ;; ----- Semigroup mappend --------------------------------------
   (: greet String)
-  (define greet (<> "hello, " "world"))
+  (define greet (mappend "hello, " "world"))
 
   (: ones-and-twos (List Integer))
-  (define ones-and-twos (<> (Cons 1 Nil) (Cons 2 (Cons 3 Nil))))
+  (define ones-and-twos (mappend (Cons 1 Nil) (Cons 2 (Cons 3 Nil))))
 
   ;; ----- Monoid mempty -------------------------------------
   (: empty-string String)
@@ -23,27 +23,27 @@
 
   ;; ----- Monoid identity laws ------------------------------
   (: left-id (-> String String))
-  (define (left-id s) (<> (ann mempty String) s))
+  (define (left-id s) (mappend (ann mempty String) s))
 
   (: right-id (-> String String))
-  (define (right-id s) (<> s (ann mempty String)))
+  (define (right-id s) (mappend s (ann mempty String)))
 
   (: left-id-list (-> (List Integer) (List Integer)))
-  (define (left-id-list xs) (<> (ann mempty (List Integer)) xs))
+  (define (left-id-list xs) (mappend (ann mempty (List Integer)) xs))
 
-  ;; ----- Partial application of <> --------------------------
+  ;; ----- Partial application of mappend --------------------------
   (: prefixer (-> String String))
-  (define prefixer (<> "[!] "))
+  (define prefixer (mappend "[!] "))
 
   (: warned String)
   (define warned (prefixer "danger")))
 
 ;; ---------- assertions ----------------------------------------
 
-(test-case "Semigroup <> on String"
+(test-case "Semigroup mappend on String"
   (check-equal? greet "hello, world"))
 
-(test-case "Semigroup <> on List"
+(test-case "Semigroup mappend on List"
   (check-equal? ones-and-twos
                 (Cons 1 (Cons 2 (Cons 3 Nil)))))
 
@@ -61,7 +61,7 @@
   (check-equal? (left-id-list (Cons 1 (Cons 2 Nil)))
                 (Cons 1 (Cons 2 Nil))))
 
-(test-case "Partial application of <>"
+(test-case "Partial application of mappend"
   (check-equal? warned "[!] danger"))
 
 ;; ----- ambiguity rejected at compile time -------------------

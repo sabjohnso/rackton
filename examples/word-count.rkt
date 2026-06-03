@@ -29,7 +29,7 @@
 (: render-row (-> (Pair String Integer) String))
 (define (render-row p)
   (match p
-    [(Pair w n) (<> (pad-left 5 #\space (show n)) (<> "  " w))]))
+    [(Pair w n) (mappend (pad-left 5 #\space (show n)) (mappend "  " w))]))
 
 ;; The top-n report as a single newline-joined String.
 (: report (-> Integer (-> String String)))

@@ -11,10 +11,10 @@
   #:deriving Bifunctor Eq Show)
 
 (: mapped-left  (Either2 Integer String))
-(define mapped-left  (bimap (lambda (n) (+ n 1)) (lambda (s) (<> s "!")) (Lft 41)))
+(define mapped-left  (bimap (lambda (n) (+ n 1)) (lambda (s) (mappend s "!")) (Lft 41)))
 
 (: mapped-right (Either2 Integer String))
-(define mapped-right (bimap (lambda (n) (+ n 1)) (lambda (s) (<> s "!")) (Rgt "ok")))
+(define mapped-right (bimap (lambda (n) (+ n 1)) (lambda (s) (mappend s "!")) (Rgt "ok")))
 
 ;; ----- Semigroup on a single-ctor record ----------------
 
@@ -25,7 +25,7 @@
 
 (: combined-logs (Log Integer))
 (define combined-logs
-  (<> (Log (Cons 1 (Cons 2 Nil)) "left:")
+  (mappend (Log (Cons 1 (Cons 2 Nil)) "left:")
       (Log (Cons 3 Nil)           "right")))
 
 ;; ----- Monoid on a single-ctor record -------------------
@@ -40,7 +40,7 @@
 
 (: combined-counter Counter)
 (define combined-counter
-  (<> (Counter (Cons 1 Nil) "a")
+  (mappend (Counter (Cons 1 Nil) "a")
       (Counter (Cons 2 Nil) "b")))
 
 ;; ---------- assertions ---------------------------------------

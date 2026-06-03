@@ -5,7 +5,7 @@
 ;; Each bundle turns a generator into a `Test` group of named
 ;; properties capturing the laws of a structure (Eq, Ord, Semigroup,
 ;; Monoid; Functor, Applicative, Monad, Traversable).  First-order laws
-;; are expressed with the positional methods `==`, `<=`, `<>` (which
+;; are expressed with the positional methods `==`, `<=`, `mappend` (which
 ;; dispatch on their runtime arguments), so the bundles work for any
 ;; type with the relevant instances.  `monoid-laws` takes the identity
 ;; element explicitly rather than via the return-typed `mempty` (which
@@ -132,7 +132,7 @@
                               [(Pair x y)
                                (if (<= x y) #t (<= y x))]))))))
 
-;; Semigroup: associativity of `<>`.
+;; Semigroup: associativity of `mappend`.
 (: semigroup-laws ((Eq a) (Show a) (Semigroup a) => (-> (Gen a) Test)))
 (define (semigroup-laws gen)
   (describe "Semigroup laws"
@@ -141,17 +141,17 @@
                           (lambda (t)
                             (match t
                               [(Pair x (Pair y z))
-                               (== (<> (<> x y) z) (<> x (<> y z)))]))))))
+                               (== (mappend (mappend x y) z) (mappend x (mappend y z)))]))))))
 
-;; Monoid: `identity` is a left and right unit for `<>`.  The identity
+;; Monoid: `identity` is a left and right unit for `mappend`.  The identity
 ;; element is supplied explicitly.
 (: monoid-laws ((Eq a) (Show a) (Semigroup a) => (-> (Gen a) (-> a Test))))
 (define (monoid-laws gen identity)
   (describe "Monoid laws"
     (it-prop "left identity"
-             (for-all gen (lambda (x) (== (<> identity x) x))))
+             (for-all gen (lambda (x) (== (mappend identity x) x))))
     (it-prop "right identity"
-             (for-all gen (lambda (x) (== (<> x identity) x))))))
+             (for-all gen (lambda (x) (== (mappend x identity) x))))))
 
 ;; ----- higher-kinded laws -------------------------------------------
 ;;

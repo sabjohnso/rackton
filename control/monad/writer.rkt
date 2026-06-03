@@ -4,7 +4,7 @@
 ;; transformer (an accumulating writer over an inner monad), carved out
 ;; of the auto-prelude (Phase 2 slim, finding 2026-05-30).  Pure
 ;; Rackton — the value-dispatched methods resolve the inner monad's impl
-;; and the log Monoid's `<>` by runtime dispatch on the relevant value's
+;; and the log Monoid's `mappend` by runtime dispatch on the relevant value's
 ;; tag; the methods that need the inner `pure` and/or the log's `mempty`
 ;; (pure / tell / the lifted mtl methods) have those threaded as dict
 ;; args by the needs-dict-body machinery.  This module owns every mtl
@@ -51,7 +51,7 @@
                 (match p1
                   [(Pair w1 f)
                    (fmap (lambda (p2)
-                           (match p2 [(Pair w2 a) (Pair (<> w1 w2) (f a))]))
+                           (match p2 [(Pair w2 a) (Pair (mappend w1 w2) (f a))]))
                          (run-writer-t wa))]))
               (run-writer-t wf)))))
 
@@ -66,7 +66,7 @@
                 (match p1
                   [(Pair w1 a)
                    (fmap (lambda (p2)
-                           (match p2 [(Pair w2 b) (Pair (<> w1 w2) b)]))
+                           (match p2 [(Pair w2 b) (Pair (mappend w1 w2) b)]))
                          (run-writer-t (f a)))]))
               (run-writer-t wa)))))
 

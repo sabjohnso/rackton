@@ -105,7 +105,7 @@ In any @racket[(MonadState s m)], reads the state and applies
 
 @defproc[(mconcat [xs (List a)]) a]{
 
-In any @racket[(Monoid a)], folds @racket[xs] with @racket[<>] and
+In any @racket[(Monoid a)], folds @racket[xs] with @racket[mappend] and
 @racket[mempty].}
 
 @section[#:tag "strings"]{Strings}
@@ -119,7 +119,7 @@ The length of @racket[s] in characters.}
 
 @defproc[(string-append [a String] [b String]) String]{
 
-Concatenation.  See also @racket[<>] (the @racket[Semigroup] method)
+Concatenation.  See also @racket[mappend] (the @racket[Semigroup] method)
 which is the polymorphic equivalent.}
 
 @defproc[(substring [s String] [start Integer] [end Integer]) String]{
@@ -172,7 +172,7 @@ operations are specialised to lists:
 
 @defproc[(append [xs (List a)] [ys (List a)]) (List a)]{
 
-Concatenates two lists.  See also @racket[<>] (the @racket[Semigroup]
+Concatenates two lists.  See also @racket[mappend] (the @racket[Semigroup]
 instance for @racket[List]) which is the polymorphic equivalent.}
 
 @defproc[(filter [p (-> a Boolean)] [xs (List a)]) (List a)]{

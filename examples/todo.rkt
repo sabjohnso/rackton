@@ -42,7 +42,7 @@
   (match it
     [(Item done text)
      (let* ([marker (if done "[x] " "[ ] ")])
-       (<> marker text))]))
+       (mappend marker text))]))
 
 ;; concat-map over list (filter-Some) — keep only Items that parsed.
 (: catMaybes (-> (List (Maybe a)) (List a)))
@@ -66,7 +66,7 @@
 (define (write-items path items)
   (let* ([lines (fmap render-item items)]
           [body  (string-join "\n" lines)])
-    (write-file path (<> body "\n"))))
+    (write-file path (mappend body "\n"))))
 
 ;; ----- subcommands ---------------------------------------------
 ;; Forward-declared so the mutually-referential defs below can find
@@ -91,8 +91,8 @@
   (match items
     [(Nil) (pure Unit)]
     [(Cons it rest)
-     (do [_ <- (println (<> (integer->string n)
-                            (<> ". " (render-item it))))]
+     (do [_ <- (println (mappend (integer->string n)
+                            (mappend ". " (render-item it))))]
        (print-items rest (+ n 1)))]))
 
 (define (cmd-add args)
@@ -104,7 +104,7 @@
        (do [path  <- todo-file]
            [items <- (read-items path)]
            [_     <- (write-items path (snoc items new-it))]
-         (println (<> "added: " text))))]))
+         (println (mappend "added: " text))))]))
 
 ;; snoc — append a single element on the right.
 (define (snoc xs y)
@@ -116,7 +116,7 @@
   (match args
     [(Cons s _)
      (match (string->integer s)
-       [(None)   (println (<> "not a number: " s))]
+       [(None)   (println (mappend "not a number: " s))]
        [(Some n)
         (do [path  <- todo-file]
             [items <- (read-items path)]
@@ -124,7 +124,7 @@
             [(Err msg) (println msg)]
             [(Ok new)
              (do [_ <- (write-items path new)]
-               (println (<> "marked done: #" (integer->string n))))]))])]
+               (println (mappend "marked done: #" (integer->string n))))]))])]
     [(Nil) (println "usage: todo done <N>")]))
 
 ;; Mark the 1-based n'th item done.  Returns the rebuilt list, or an
@@ -134,7 +134,7 @@
 
 (define (mark-done-from xs target i)
   (match xs
-    [(Nil) (Err (<> "no such item: #" (integer->string target)))]
+    [(Nil) (Err (mappend "no such item: #" (integer->string target)))]
     [(Cons (Item _ text) rest) #:when (== i target)
      (Ok (Cons (Item #t text) rest))]
     [(Cons h rest)
@@ -150,8 +150,8 @@
                             items)]
               [dropped (- (length items) (length keep))])
         (do [_ <- (write-items path keep)]
-          (println (<> "cleared "
-                       (<> (integer->string dropped)
+          (println (mappend "cleared "
+                       (mappend (integer->string dropped)
                            " items")))))))
 
 ;; ----- usage ---------------------------------------------------

@@ -28,7 +28,7 @@
   (define string-monoid-summary
     (run-tests (monoid-laws gen-string "")))
 
-  ;; A non-associative Semigroup: (a <> b) = a - b.  (x-y)-z ≠ x-(y-z).
+  ;; A non-associative Semigroup: (a mappend b) = a - b.  (x-y)-z ≠ x-(y-z).
   (data Broken (MkBroken Integer))
 
   (instance (Eq Broken)
@@ -39,7 +39,7 @@
     (define (show a) (match a [(MkBroken x) (integer->string x)])))
 
   (instance (Semigroup Broken)
-    (define (<> a b)
+    (define (mappend a b)
       (match a [(MkBroken x) (match b [(MkBroken y) (MkBroken (- x y))])])))
 
   (: gen-broken (Gen Broken))
@@ -77,5 +77,5 @@
   (ru:check-equal? (cdr monoid-counts) 0)
   (ru:check-true   (> (car monoid-counts) 0)))
 
-(ru:test-case "semigroup-laws catches a non-associative <>"
+(ru:test-case "semigroup-laws catches a non-associative mappend"
   (ru:check-true (> (cdr broken-counts) 0)))

@@ -269,7 +269,7 @@ Built-in instances: @racket[Pair], @racket[Result].  Derived via
 
 Types with an associative combining operation.
 
-@defproc[(<> [x a] [y a]) a]{
+@defproc[(mappend [x a] [y a]) a]{
 
 The semigroup operation.}
 

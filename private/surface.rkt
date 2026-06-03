@@ -358,7 +358,7 @@
 
 ;; fresh-stx creates a new syntax object sharing `base`'s
 ;; lexical context but distinct as a struct.  Synthesizers that emit
-;; multiple references to the same class method (Semigroup `<>`,
+;; multiple references to the same class method (Semigroup `mappend`,
 ;; Monoid `mempty`) need each reference to have a unique stx, since
 ;; current-method-resolutions / dict-resolutions are keyed by stx.
 ;; Sharing stxs across leaves caused all e:vars in a synth body to
@@ -757,7 +757,7 @@
     [else arg]))
 
 ;; ----- Semigroup deriving ----------------------------
-;; Single-ctor ADTs only.  Combine fields pairwise via `<>`.  Qual
+;; Single-ctor ADTs only.  Combine fields pairwise via `mappend`.  Qual
 ;; context carries `(Semigroup ft)` for each unique field type.
 ;; Concrete field types (e.g. `String`) get discharged immediately
 ;; by reduce-context; tvar field types stay in the qual.
@@ -779,7 +779,7 @@
       [else
        (e:app (e:var ctor-name (fresh-stx stx))
               (for/list ([i (in-range arity)])
-                (e:app (e:var '<> (fresh-stx stx))
+                (e:app (e:var 'mappend (fresh-stx stx))
                        (list (e:var (a-name i) (fresh-stx stx))
                              (e:var (b-name i) (fresh-stx stx)))
                        (fresh-stx stx)))
@@ -796,7 +796,7 @@
                    stx))
      #f stx))
   (top:instance ctx head
-                (list (top:def '<> (e:lam '(x y) body stx) stx))
+                (list (top:def 'mappend (e:lam '(x y) body stx) stx))
                 stx))
 
 ;; ----- Monoid deriving -------------------------------

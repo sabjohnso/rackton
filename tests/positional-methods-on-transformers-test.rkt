@@ -46,7 +46,7 @@
   (define listen-result (run-writer-t traced-then-listen))
 
   (: prefix-bang (-> String String))
-  (define (prefix-bang s) (<> "!" s))
+  (define (prefix-bang s) (mappend "!" s))
 
   (: censored-trace
      ((MonadWriter String m) => (m Integer)))
@@ -87,7 +87,7 @@
   (: announce-env ((MonadEnv String m) => (m String)))
   (define announce-env
     (do [r <- ask-en]
-      (pure (<> "hi " r))))
+      (pure (mappend "hi " r))))
 
   (: local-stack (StateT Integer (Env String) String))
   (define local-stack

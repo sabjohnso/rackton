@@ -15,7 +15,7 @@
 
   ;; from data/monoid
   (: s Sum)
-  (define s (<> (Sum 3) (<> (Sum 4) mempty))))
+  (define s (mappend (Sum 3) (mappend (Sum 4) mempty))))
 
 (test-case "batteries re-exports data/maybe and data/monoid"
   (check-equal? r 9)

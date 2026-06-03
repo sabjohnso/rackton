@@ -29,10 +29,10 @@
   (: greet (Env String String))
   (define greet
     (do [name <- ask]
-      (pure (<> "hello, " name))))
+      (pure (mappend "hello, " name))))
 
   (: shouted (Env String String))
-  (define shouted (local (lambda (s) (<> s "!!")) greet))
+  (define shouted (local (lambda (s) (mappend s "!!")) greet))
 
   (: greeted String)
   (define greeted ((run-env greet) "world"))
@@ -67,7 +67,7 @@
   (: shouted-io (EnvT String IO String))
   (define shouted-io
     (do [name <- ask-t]
-      (pure (<> "[CONFIG] " name))))
+      (pure (mappend "[CONFIG] " name))))
 
   ;; ----- lift-state-t round-trip --------------------------
   (: rounded (Maybe (Pair Integer Integer)))

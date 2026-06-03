@@ -35,7 +35,7 @@
 
 ;; First failure wins; otherwise pass.
 (instance (Semigroup Assertion)
-  (define (<> x y)
+  (define (mappend x y)
     (match x
       [(Assertion (CheckFail _)) x]
       [(Assertion (CheckPass))   y])))
@@ -72,4 +72,4 @@
 ;; Combine a list of assertions, keeping the first failure.
 (: all-checks (-> (List Assertion) Assertion))
 (define (all-checks xs)
-  (foldr (lambda (a acc) (<> a acc)) pass xs))
+  (foldr (lambda (a acc) (mappend a acc)) pass xs))

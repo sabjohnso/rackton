@@ -145,7 +145,7 @@ random generator.  Everything is in @racket[IO]:
 (define greet
   (do [name <- (getenv "USER")]
       (println (match name
-                 [(Some u) (<> "hi " u)]
+                 [(Some u) (mappend "hi " u)]
                  [(None)   "hi stranger"]))))
 }|
 

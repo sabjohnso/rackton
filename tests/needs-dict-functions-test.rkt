@@ -8,7 +8,7 @@
 ;; ----- User-defined Monoid fold ------------------------
 (: my-concat ((Monoid a) => (-> (List a) a)))
 (define (my-concat xs)
-  (foldr (lambda (x acc) (<> x acc)) mempty xs))
+  (foldr (lambda (x acc) (mappend x acc)) mempty xs))
 
 (: glued String)
 (define glued (my-concat (Cons "a" (Cons "b" (Cons "c" Nil)))))
@@ -42,10 +42,10 @@
 (: pair-io (IO (Pair Integer Integer)))
 (define pair-io (my-pure-pair 1))
 
-;; ----- Body mixes runtime-dispatch <> and dict-passed mempty
+;; ----- Body mixes runtime-dispatch mappend and dict-passed mempty
 (: wrap-with-empty ((Monoid a) => (-> a a)))
 (define (wrap-with-empty x)
-  (<> (<> mempty x) mempty))
+  (mappend (mappend mempty x) mempty))
 
 (: wrapped-str String)
 (define wrapped-str (wrap-with-empty "hello"))
@@ -74,9 +74,9 @@
        (check-equal? pair-result (Ok (Pair 7 7))))
    (it "user my-pure-pair into IO"
        (check-equal? (run-io pair-io) (Pair 1 1)))
-   (it "user body mixes runtime <> and dict-passed mempty (String)"
+   (it "user body mixes runtime mappend and dict-passed mempty (String)"
        (check-equal? wrapped-str "hello"))
-   (it "user body mixes runtime <> and dict-passed mempty (Sum)"
+   (it "user body mixes runtime mappend and dict-passed mempty (Sum)"
        (check-equal? (get-sum wrapped-sum) 99))))
 
 (: _ran Unit)

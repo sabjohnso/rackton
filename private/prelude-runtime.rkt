@@ -119,7 +119,7 @@
  poke
  bimap first second
  foldr length to-list sum
- <>
+ mappend
  traverse
  mconcat
 
@@ -176,7 +176,7 @@
  $dispatch:foldr
  $dispatch:length
  $dispatch:to-list
- $dispatch:<>
+ $dispatch:mappend
  $dispatch:traverse
  $dispatch:float-div
  ;; Positional mtl-method tables — exposed so the carved transformer
@@ -381,9 +381,9 @@
 (define $dispatch:foldr   (make-hasheq))(define-class-method foldr   $dispatch:foldr   2 3)
 (define $dispatch:length  (make-hasheq))(define-class-method length  $dispatch:length  0 1)
 (define $dispatch:to-list (make-hasheq))(define-class-method to-list $dispatch:to-list 0 1)
-;; Semigroup's <> dispatches on the first arg (the value carrying the
+;; Semigroup's mappend dispatches on the first arg (the value carrying the
 ;; Semigroup-constrained type).
-(define $dispatch:<> (make-hasheq))(define-class-method <> $dispatch:<> 0 2)
+(define $dispatch:mappend (make-hasheq))(define-class-method mappend $dispatch:mappend 0 2)
 ;; Traversable's traverse: user sees (a -> f b) -> t a -> f (t b), so
 ;; the t-container is at user-position 1.  The elaborator prepends one
 ;; dict argument (the resolved pure-impl), shifting dispatch position
@@ -764,15 +764,15 @@
 (define |$mempty:String|  "")
 (define |$mempty:List|    Nil)
 
-;; ----- Semigroup <> -----------------------------------------------
-(define (semigroup-list-<> xs ys)
+;; ----- Semigroup mappend -----------------------------------------------
+(define (semigroup-list-mappend xs ys)
   (match xs
     [(Nil)      ys]
-    [(Cons h t) (Cons h (semigroup-list-<> t ys))]))
-(register-instance-method! $dispatch:<> 'String
+    [(Cons h t) (Cons h (semigroup-list-mappend t ys))]))
+(register-instance-method! $dispatch:mappend 'String
                            (lambda (a b) (rkt:string-append a b)))
-(register-instance-method! $dispatch:<> '$ctor:Nil  semigroup-list-<>)
-(register-instance-method! $dispatch:<> '$ctor:Cons semigroup-list-<>)
+(register-instance-method! $dispatch:mappend '$ctor:Nil  semigroup-list-mappend)
+(register-instance-method! $dispatch:mappend '$ctor:Cons semigroup-list-mappend)
 
 ;; ----- Traversable traverse ---------------------------------------
 ;; Each impl receives the resolved `pure-impl` as its leading argument
@@ -1600,7 +1600,7 @@
 (define (list-flatmap f xs)
   (match xs
     [(Nil)        Nil]
-    [(Cons h t)   (semigroup-list-<> (f h) (list-flatmap f t))]))
+    [(Cons h t)   (semigroup-list-mappend (f h) (list-flatmap f t))]))
 (register-instance-method! $dispatch:flatmap '$ctor:Nil   list-flatmap)
 (register-instance-method! $dispatch:flatmap '$ctor:Cons  list-flatmap)
 
@@ -1755,11 +1755,11 @@
 ;; ----- mconcat (free function with needs-dict signature) ----------
 ;; Receives the resolved `mempty` for `a` as a leading argument (the
 ;; elaborator inserts it at every call site based on the free-
-;; function detection in var-dict-requirements).  Inner `<>`
+;; function detection in var-dict-requirements).  Inner `mappend`
 ;; calls dispatch on the running accumulator's tag and remain
 ;; generic.
 (define/curried (mconcat mempty-impl xs)
-  (foldr (lambda (x acc) (<> x acc)) mempty-impl xs))
+  (foldr (lambda (x acc) (mappend x acc)) mempty-impl xs))
 
 (for ([tag (in-list '($ctor:Nil $ctor:Cons $ctor:None $ctor:Some))])
   (register-instance-method! $dispatch:length  tag default-length)
@@ -1887,7 +1887,7 @@
 
 ;; WriterT w m runtime moved to rackton/control/monad/writer (pure
 ;; Rackton — value-dispatched fmap/fapply/flatmap combine logs via
-;; runtime-dispatched <>; pure/tell thread inner pure + the log mempty).
+;; runtime-dispatched mappend; pure/tell thread inner pure + the log mempty).
 
 ;; ----- Per-instance compile-time-direct impls ---------
 ;;

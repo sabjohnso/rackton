@@ -6,18 +6,18 @@
 (require rackton/data/monoid
          "../unit.rkt")
 
-;; --- Endo: <> is composition, mempty is identity ----------------
+;; --- Endo: mappend is composition, mempty is identity ----------------
 (: endo-comp Integer)
 (define endo-comp
-  ((app-endo (<> (Endo (lambda (n) (+ n 1)))
+  ((app-endo (mappend (Endo (lambda (n) (+ n 1)))
                  (Endo (lambda (n) (* n 2))))) 3))
 
 (: endo-id Integer)
 (define endo-id ((app-endo (ann mempty (Endo Integer))) 7))
 
-;; --- Dual: <> flips the inner Semigroup, mempty lifts inner ------
+;; --- Dual: mappend flips the inner Semigroup, mempty lifts inner ------
 (: dual-flip String)
-(define dual-flip (get-dual (<> (Dual "a") (Dual "b"))))
+(define dual-flip (get-dual (mappend (Dual "a") (Dual "b"))))
 
 (: dual-mempty String)
 (define dual-mempty (get-dual (ann mempty (Dual String))))

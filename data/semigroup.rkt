@@ -1,7 +1,7 @@
 #lang rackton
 
 ;; rackton/data/semigroup — Data.Semigroup.  Selection newtypes whose
-;; `<>` keeps the smaller / larger / first / last operand.  (`<>` itself
+;; `mappend` keeps the smaller / larger / first / last operand.  (`mappend` itself
 ;; and the Semigroup/Monoid classes are in the prelude.)
 ;;
 ;; Min/Max carry only Semigroup (no Monoid: that would need a bounded
@@ -20,15 +20,15 @@
 (: get-last  (-> (Last a) a))  (define (get-last m)  (match m [(Last x) x]))
 
 (instance ((Ord a) => (Semigroup (Min a)))
-  (define (<> a b)
+  (define (mappend a b)
     (match a [(Min x) (match b [(Min y) (if (< x y) a b)])])))
 
 (instance ((Ord a) => (Semigroup (Max a)))
-  (define (<> a b)
+  (define (mappend a b)
     (match a [(Max x) (match b [(Max y) (if (> x y) a b)])])))
 
 (instance (Semigroup (First a))
-  (define (<> a _b) a))
+  (define (mappend a _b) a))
 
 (instance (Semigroup (Last a))
-  (define (<> _a b) b))
+  (define (mappend _a b) b))

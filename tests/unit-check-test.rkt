@@ -33,7 +33,7 @@
   ;; Combining assertions keeps the first failure.
   (: first-failure-wins Boolean)
   (define first-failure-wins
-    (match (assertion-result (<> (fail "first") (fail "second")))
+    (match (assertion-result (mappend (fail "first") (fail "second")))
       [(CheckFail m) (== m "first")]
       [(CheckPass)   #f])))
 
@@ -43,5 +43,5 @@
 (ru:test-case "check-equal? failure names expected and actual"
   (ru:check-equal? fail-eq-msg "expected 2 but got 1"))
 
-(ru:test-case "Assertion <> keeps the first failure"
+(ru:test-case "Assertion mappend keeps the first failure"
   (ru:check-true first-failure-wins))

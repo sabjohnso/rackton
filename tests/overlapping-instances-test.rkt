@@ -21,7 +21,7 @@
   (instance ((Show a) => (Show (Box a)))
     (define (show b)
       (match b
-        [(MkBox v) (<> "generic-box(" (<> (show v) ")"))])))
+        [(MkBox v) (mappend "generic-box(" (mappend (show v) ")"))])))
 
   (instance (Show (Box Integer))
     (define (show b)
@@ -48,7 +48,7 @@
     (define (show xs)
       (match xs
         [(SNil)      "seq[]"]
-        [(SCons h _) (<> "seq[" (<> (show h) "]"))])))
+        [(SCons h _) (mappend "seq[" (mappend (show h) "]"))])))
 
   (instance (Show (Seq Char))
     (define (show _) "<chars>"))

@@ -33,7 +33,7 @@
 (define pair-pure-result (pair-pure 7))
 
 ;; ----- inferred Monoid fold (unascribed my-concat) -------
-(define (cat xs) (foldr (lambda (x acc) (<> x acc)) mempty xs))
+(define (cat xs) (foldr (lambda (x acc) (mappend x acc)) mempty xs))
 
 (: cat-string String)
 (define cat-string (cat (Cons "a" (Cons "b" (Cons "c" Nil)))))
@@ -42,7 +42,7 @@
 (define cat-sum (cat (Cons (Sum 3) (Cons (Sum 5) Nil))))
 
 ;; ----- self-recursion in a needs-dict function -----------
-;; replicate-pure n x = a singleton-list-like fold-up using pure/<>
+;; replicate-pure n x = a singleton-list-like fold-up using pure/mappend
 ;; In Maybe, this collapses to `Just x` when n > 0 (combining `Some x`
 ;; with `Some x` under First-style semantics).
 ;; Use a Monoid+Applicative pairing on Maybe to validate that the

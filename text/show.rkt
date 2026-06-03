@@ -3,7 +3,7 @@
 ;; rackton/text/show — Text.Show's ShowS machinery.  A ShowS is a
 ;; @racket[(-> String String)]: a function that prepends some text to a
 ;; continuation string.  Building output by composing ShowS values
-;; (rather than repeatedly @racket[<>]-ing Strings) keeps concatenation
+;; (rather than repeatedly @racket[mappend]-ing Strings) keeps concatenation
 ;; linear, since each piece is prepended to the tail exactly once.
 ;;
 ;; The Show class itself and @racket[show] are in the prelude; these are

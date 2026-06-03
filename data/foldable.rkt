@@ -10,11 +10,11 @@
 ;; fold-map: map each element into a monoid and combine (Haskell foldMap).
 (: fold-map ((Monoid b) (Foldable t) => (-> (-> a b) (-> (t a) b))))
 (define (fold-map f t)
-  (foldr (lambda (x acc) (<> (f x) acc)) mempty t))
+  (foldr (lambda (x acc) (mappend (f x) acc)) mempty t))
 
 ;; fold: combine a foldable of monoid values (Haskell fold / mconcat).
 (: fold ((Monoid m) (Foldable t) => (-> (t m) m)))
-(define (fold t) (foldr (lambda (x acc) (<> x acc)) mempty t))
+(define (fold t) (foldr (lambda (x acc) (mappend x acc)) mempty t))
 
 ;; any-of / all-of: existential / universal over a foldable.
 (: any-of ((Foldable t) => (-> (-> a Boolean) (-> (t a) Boolean))))

@@ -16,7 +16,7 @@
   ;; A tiny helper used by the local-en / censor tests since the
   ;; prelude doesn't yet ship a string-upcase combinator.
   (: prefix-x (-> String String))
-  (define (prefix-x s) (<> "X-" s))
+  (define (prefix-x s) (mappend "X-" s))
 
   ;; ----- local-en lifted -----------------------------------
 

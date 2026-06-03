@@ -131,7 +131,7 @@ behaviour; the type and its constructor share the name.
 @racket[Sum : (-> Integer Sum)].
 
 Instance: @racket[Semigroup] / @racket[Monoid] (@racket[mempty] is
-@racket[(Sum 0)]; @racket[<>] adds).}
+@racket[(Sum 0)]; @racket[mappend] adds).}
 
 @defidform[#:kind "type & constructor" Product]{
 
@@ -140,7 +140,7 @@ behaviour; the type and its constructor share the name.
 @racket[Product : (-> Integer Product)].
 
 Instance: @racket[Semigroup] / @racket[Monoid] (@racket[mempty] is
-@racket[(Product 1)]; @racket[<>] multiplies).}
+@racket[(Product 1)]; @racket[mappend] multiplies).}
 
 @section{IO, references, and concurrency}
 
