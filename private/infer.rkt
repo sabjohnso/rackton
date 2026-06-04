@@ -4048,6 +4048,21 @@
                   (pretty-pred head-pred-raw))
           stx))))
   (define inst-args-raw (pred-args head-pred-raw))
+  ;; The instance head must supply exactly as many type arguments as the
+  ;; class was declared with.  An under-applied head — e.g. `(Arrow
+  ;; (Kleisli m))` for the two-parameter `Arrow cat p` — would otherwise
+  ;; leave a class parameter as an undetermined skolem and only fail
+  ;; later as a confusing method-body mismatch.  Name the arity at the
+  ;; head instead.
+  (let ([param-count (length (class-info-params cinfo))]
+        [arg-count   (length inst-args-raw)])
+    (unless (= arg-count param-count)
+      (raise-syntax-error 'infer
+        (format "instance head for class ~s expects ~a type argument~a ~s, but got ~a: ~s"
+                class-name param-count (if (= param-count 1) "" "s")
+                (class-info-params cinfo) arg-count
+                (pretty-pred head-pred-raw))
+        stx)))
   (define ctx-preds-raw (for/list ([c (in-list ctx)]) (resolve-constraint c)))
   ;; If the qual context introduces tvars that pin a
   ;; return-typed-bearing class (e.g. `(HasUnit m) =>` on a lifted

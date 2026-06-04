@@ -184,8 +184,9 @@
 (rackton
   (: inc-then-double (-> Integer Integer))
   (define inc-then-double
-    (comp (arr (lambda (n) (+ n 1)))
-          (arr (lambda (n) (* n 2)))))
+    ;; comp is right-to-left: the second arrow (+1) runs first, then (*2).
+    (comp (arr (lambda (n) (* n 2)))
+          (arr (lambda (n) (+ n 1)))))
 
   (: id2-result Integer)
   (define id2-result (inc-then-double 5))

@@ -1806,7 +1806,7 @@
 ;; method is registered concretely; the prelude's derived defaults for
 ;; on-second/split/fanout are typing-only, so their runtime impls are
 ;; spelled out here directly.
-(define arrow-comp      (lambda (f g) (lambda (x) (g (f x)))))
+(define arrow-comp      (lambda (f g) (lambda (x) (f (g x)))))
 (define arrow-on-first  (lambda (f) (lambda (p) (match p [(Pair a c) (Pair (f a) c)]))))
 (define arrow-on-second (lambda (g) (lambda (p) (match p [(Pair c a) (Pair c (g a))]))))
 (define arrow-split     (lambda (f g) (lambda (p) (match p [(Pair a c) (Pair (f a) (g c))]))))

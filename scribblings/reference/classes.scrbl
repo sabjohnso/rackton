@@ -329,10 +329,11 @@ functions.
 
 @deftogether[(
   @defthing[ident (cat a a)]
-  @defproc[(comp [f (cat a b)] [g (cat b c)]) (cat a c)])]{
+  @defproc[(comp [f (cat b c)] [g (cat a b)]) (cat a c)])]{
 
-@racket[ident] is the identity arrow; @racket[comp] is forward
-composition — @racket[(comp f g)] runs @racket[f], then @racket[g].}
+@racket[ident] is the identity arrow; @racket[comp] is standard
+(right-to-left) composition — @racket[(comp f g)] runs @racket[g], then
+@racket[f], like function @racket[compose].}
 
 Built-in instance: @racket[(->)] (functions, where @racket[ident] is the
 identity function and @racket[comp] is composition).}

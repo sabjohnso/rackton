@@ -402,12 +402,13 @@
       (define (inj-right b) (Right b))
       (define (co-elim f g s) (match s [(Left a) (f a)] [(Right b) (g b)])))
 
-    ;; Category is unchanged — it has no product.  `ident`/`comp` are
-    ;; distinct from the standalone `id` / backward `compose`; `ident` is
-    ;; return-typed (resolved from the expected type, like `pure`).
+    ;; Category has no product.  `comp` is standard (right-to-left)
+    ;; composition, matching function `compose` and Haskell's `.`:
+    ;; `(comp g f)` runs `f` first, then `g`.  `ident` is return-typed
+    ;; (resolved from the expected type, like `pure`).
     (protocol (Category (cat :: (-> * (-> * *))))
       (: ident (cat a a))
-      (: comp (-> (cat a b) (-> (cat b c) (cat a c)))))
+      (: comp (-> (cat b c) (-> (cat a b) (cat a c)))))
 
     ;; Arrow over a product `p` (determined by the arrow via the fundep).
     ;; Signatures use `(p a c)` in place of the old `(Pair a c)`.
@@ -427,7 +428,7 @@
 
     (instance (Category (->))
       (define ident (lambda (x) x))
-      (define (comp f g) (lambda (x) (g (f x)))))
+      (define (comp f g) (lambda (x) (f (g x)))))
 
     (instance (Arrow (->) Pair)
       (define (arr f) f)

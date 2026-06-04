@@ -7,7 +7,7 @@
 ;; combinators reduce to ordinary function plumbing:
 ;;
 ;;   ident         = the identity function
-;;   (comp f g)   = forward composition  (run f, then g)
+;;   (comp f g)    = standard composition  (run g, then f)
 ;;   (arr f)       = f itself             (a function IS its own arrow)
 ;;   (on-first f)  = map f over the first  half of a Pair
 ;;   (on-second f) = map f over the second half of a Pair
@@ -27,9 +27,10 @@
 
 ;; ----- Category: ident / comp -------------------------------------
 
-;; comp is forward composition: (comp (arr inc) (arr dbl)) = dbl ∘ inc.
+;; comp is standard (right-to-left) composition: the right arrow runs
+;; first.  (comp (arr dbl) (arr inc)) = dbl ∘ inc = "inc, then dbl".
 (: inc-then-dbl (-> Integer Integer))
-(define (inc-then-dbl x) ((comp (arr inc) (arr dbl)) x))
+(define (inc-then-dbl x) ((comp (arr dbl) (arr inc)) x))
 
 ;; ident is the two-sided identity of `comp`.
 (: id-int (-> Integer Integer))
@@ -75,7 +76,7 @@
   (list
    (it "arr over (->) is the function itself"
        (check-equal? ((arr inc) 4) 5))
-   (it "comp is forward composition"
+   (it "comp is standard composition (the right arrow runs first)"
        (all-checks
         (list (check-equal? (inc-then-dbl 3) 8)     ; inc 3 = 4, dbl 4 = 8
               (check-equal? (inc-then-dbl 0) 2))))
@@ -97,9 +98,9 @@
        (check-equal? (split-incdbl (Pair 3 5)) (Pair 4 10)))
    (it "fanout feeds one input to both arrows"
        (check-equal? (fanout-incdbl 3) (Pair 4 6)))
-   (it "arr respects composition: arr (g∘f) = comp (arr f) (arr g)"
+   (it "arr respects composition: arr (f∘g) = comp (arr f) (arr g)"
        (check-equal?
-        ((arr (lambda (x) (dbl (inc x)))) 5)
+        ((arr (lambda (x) (inc (dbl x)))) 5)
         ((comp (arr inc) (arr dbl)) 5)))
    ;; ArrowChoice — Left is the Left/active branch, Right the Right.
    (it "on-left maps the Left branch, passes Right through"

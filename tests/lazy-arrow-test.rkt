@@ -60,7 +60,7 @@
 (define nats-no-sig
   (run-lfun
    (proc (_)
-     (rec [ns <- (feed (comp (arr (stream-map inc)) (lcons 0)) ns)])
+     (rec [ns <- (feed (comp (lcons 0) (arr (stream-map inc))) ns)])
      (feed (arr (lambda (z) z)) ns))
    0))
 

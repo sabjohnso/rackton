@@ -53,20 +53,21 @@
    0))
 
 ;; nats = 0 : map (+1) nats
-;; Fold the recurrence into ONE arrow so it stays a single self-reference:
-;;   comp (arr (stream-map inc)) (lcons 0)
+;; Fold the recurrence into ONE arrow so it stays a single self-reference.
+;; comp is right-to-left, so the right arrow runs first:
+;;   comp (lcons 0) (arr (stream-map inc))
 ;;   applied to `ns` = lcons 0 (map (+1) ns) = 0 : map (+1) ns.
 ;; `lcons 0` is the outermost step, so the feedback is deferred.
 (: nats (Stream Integer))
 (define nats
   (run-lfun
    (proc (_)
-     (rec [ns <- (feed (comp (arr (stream-map inc)) (lcons 0)) ns)])
+     (rec [ns <- (feed (comp (lcons 0) (arr (stream-map inc))) ns)])
      (feed (arr (lambda (z) z)) ns))
    0))
 
 ;; fibs = 0 : 1 : zipWith (+) fibs (tail fibs)
-;;   comp (arr tails-plus) (comp (lcons 1) (lcons 0))
+;;   comp (lcons 0) (comp (lcons 1) (arr tails-plus))
 ;;   applied to `fs` = 0 : 1 : (fs + tail fs).
 ;; The two `lcons`es supply the 0 and 1 base cases and defer the
 ;; feedback; `tails-plus` (under `arr`) is forced only once the prefix it
@@ -75,7 +76,7 @@
 (define fibs
   (run-lfun
    (proc (_)
-     (rec [fs <- (feed (comp (arr tails-plus) (comp (lcons 1) (lcons 0))) fs)])
+     (rec [fs <- (feed (comp (lcons 0) (comp (lcons 1) (arr tails-plus))) fs)])
      (feed (arr (lambda (z) z)) fs))
    0))
 

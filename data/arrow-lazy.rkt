@@ -67,7 +67,7 @@
   (define ident (LFun (lambda (la) la)))
   (define (comp x y)
     (match x
-      [(LFun f) (match y [(LFun g) (LFun (lambda (la) (g (f la))))])])))
+      [(LFun f) (match y [(LFun g) (LFun (lambda (la) (f (g la))))])])))
 
 (instance (Arrow LFun LPair)
   ;; lift a strict function, deferring its application until the output is

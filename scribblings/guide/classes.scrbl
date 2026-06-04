@@ -30,8 +30,9 @@ class constraint.
 @section{Superclasses}
 
 A class can demand its parameters already satisfy another class.  The
-requirement is written as a @tech{bound} on the parameter, after
-@racket[=>]:
+requirement is written as a
+@tech[#:doc '(lib "rackton/scribblings/reference/rackton-reference.scrbl")]{bound}
+on the parameter, after @racket[=>]:
 
 @codeblock|{
 (protocol (Ord [a => Eq])

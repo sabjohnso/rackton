@@ -1042,14 +1042,27 @@
                          "only quoted symbols are supported as Symbol literals"
                          stx #'other)]
 
-    [(lambda (p:id ...) body)
-     (e:lam (map syntax->datum (syntax->list #'(p ...)))
-            (parse-expr #'body)
-            stx)]
-    [(λ (p:id ...) body)
-     (e:lam (map syntax->datum (syntax->list #'(p ...)))
-            (parse-expr #'body)
-            stx)]
+    ;; `lambda` / `λ` — each parameter is a bare identifier or a
+    ;; constructor pattern like `(Pair x y)`, desugared via the same
+    ;; single-clause, irrefutable mechanism as `define` function heads
+    ;; (see `parse-fn-params+body`).  The fn-clauses record is for the
+    ;; multi-clause `define` combiner only, so it is suppressed here.
+    [(lambda (param ...) body)
+     (parameterize ([current-fn-clauses-record #f])
+       (define-values (names wrapped)
+         (parse-fn-params+body #'(param ...) #'body stx))
+       (e:lam names wrapped stx))]
+    [(λ (param ...) body)
+     (parameterize ([current-fn-clauses-record #f])
+       (define-values (names wrapped)
+         (parse-fn-params+body #'(param ...) #'body stx))
+       (e:lam names wrapped stx))]
+    ;; Any other `lambda` / `λ` shape is malformed.  Diagnose it by name
+    ;; instead of letting it fall through to a function-application
+    ;; reading and an "unbound identifier: lambda" error (mirrors the
+    ;; let&/let%/let+ guards below).
+    [(lambda . _) (raise-bad-lambda 'lambda stx)]
+    [(λ . _)      (raise-bad-lambda 'λ stx)]
 
     ;; Named (loop) let — Scheme-style: `loop` is a recursive procedure
     ;; bound in the body, seeded by the initial RHS.  Matched before the
@@ -1328,6 +1341,30 @@
 ;; "unbound identifier: let&".  This procedure is invoked from an
 ;; explicit error clause so the diagnosis names the form and points at
 ;; the offending binding clause.  `who` is the form's keyword symbol.
+;; A `lambda` / `λ` form whose parameter list or body is malformed.  The
+;; well-formed clauses in `parse-expr` accept `(lambda (param ...) body)`
+;; with one body and each param an identifier or a constructor pattern;
+;; anything else lands here.  Without this, the form would be read as a
+;; function application and report the unhelpful "unbound identifier:
+;; lambda".  `who` is the form's keyword symbol.
+(define (raise-bad-lambda who full-stx)
+  (syntax-parse full-stx
+    [(_ params . _)
+     #:when (not (syntax->list #'params))
+     (raise-syntax-error
+      who
+      (format
+       "malformed ~a: the parameter list ~s must be a parenthesized list of identifiers and/or patterns, as in (~a (x (Pair a b)) body)"
+       who (syntax->datum #'params) who)
+      full-stx #'params)]
+    [_
+     (raise-syntax-error
+      who
+      (format
+       "malformed ~a: expected (~a (param ...) body) with a single body expression; each param is an identifier or a constructor pattern like (Pair x y)"
+       who who)
+      full-stx)]))
+
 (define (raise-bad-monadic-let who full-stx)
   (define (generic)
     (raise-syntax-error
@@ -1547,7 +1584,10 @@
 ;; object per reference while preserving the source location for errors.
 (define (fresh-op-stx ctx) (datum->syntax ctx 'arrow-op ctx))
 (define (arrow-arr g stx)      (e:app (e:var 'arr (fresh-op-stx stx))   (list g) stx))
-(define (arrow-comp a b stx)   (e:app (e:var 'comp (fresh-op-stx stx))  (list a b) stx))
+;; `comp` is standard (right-to-left) composition: `(comp g f)` runs `f`
+;; then `g`.  A `proc` pipeline reads left-to-right ("do `a`, then `b`"),
+;; so the two arrows are passed to `comp` in reverse: `(comp b a)`.
+(define (arrow-comp a b stx)   (e:app (e:var 'comp (fresh-op-stx stx))  (list b a) stx))
 (define (arrow-fanout a b stx) (e:app (e:var 'fanout (fresh-op-stx stx))(list a b) stx))
 (define (arrow-fanin a b stx)  (e:app (e:var 'fanin (fresh-op-stx stx)) (list a b) stx))
 (define (arrow-ident stx)      (e:var 'ident (fresh-op-stx stx)))
