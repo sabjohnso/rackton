@@ -10,8 +10,8 @@
   (: pure-maybe-int (Maybe Integer))
   (define pure-maybe-int (pure 5))
 
-  ;; ----- pure for Result ------------------------------------
-  (: pure-result-int (Result String Integer))
+  ;; ----- pure for Either ------------------------------------
+  (: pure-result-int (Either String Integer))
   (define pure-result-int (pure 42))
 
   ;; ----- pure for List --------------------------------------
@@ -52,8 +52,8 @@
 (test-case "pure resolves to Maybe.pure"
   (check-equal? pure-maybe-int (Some 5)))
 
-(test-case "pure resolves to Result.pure (Ok)"
-  (check-equal? pure-result-int (Ok 42)))
+(test-case "pure resolves to Either.pure (Right)"
+  (check-equal? pure-result-int (Right 42)))
 
 (test-case "pure resolves to List.pure (singleton)"
   (check-equal? pure-list-int (Cons 7 Nil)))

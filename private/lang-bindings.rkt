@@ -93,7 +93,7 @@
   ;; Primitive types
   Integer Float Rational Complex Boolean String Char Bytes
   ;; Sum / product types (distinct ctor names)
-  Maybe List Result
+  Maybe List Either
   ;; IO, refs, concurrency
   IO Ref MVar Chan ThreadId Future TVar STM
   ;; Containers

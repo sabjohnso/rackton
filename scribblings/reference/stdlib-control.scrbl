@@ -1,6 +1,6 @@
 #lang scribble/manual
 @require[scribble/manual
-         (for-label rackton rackton/control/applicative rackton/control/concurrent rackton/control/monad rackton/control/monad/except rackton/control/monad/reader rackton/control/monad/state rackton/control/monad/writer rackton/control/stm)]
+         (for-label rackton rackton/control/applicative rackton/control/concurrent rackton/control/monad rackton/control/monad/except rackton/control/monad/reader rackton/control/monad/state rackton/control/monad/writer rackton/control/stm rackton/data/result)]
 
 @title[#:tag "stdlib-control"]{@tt{rackton/control} — applicative, monad, transformers}
 

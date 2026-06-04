@@ -4,6 +4,7 @@
 ;; across the transformer stack.
 
 (require rackton/control/monad/trans
+         rackton/data/result
          "../unit.rkt")
 
 ;; lift a pure inner action into a transformer (MonadTrans)

@@ -13,6 +13,7 @@
   (require rackton/control/monad/state)
   (require rackton/control/monad/writer)
   (require rackton/control/monad/except)
+  (require rackton/data/result)
   ;; ----- WriterT do-notation in a polymorphic body --------
   ;; The MonadWriter inferred body's `do` chain runtime-dispatches
   ;; `flatmap` on WriterT — already registered.  This is a

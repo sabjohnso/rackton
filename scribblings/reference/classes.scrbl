@@ -167,7 +167,7 @@ Built-in instances: @racket[Integer], @racket[Float], @racket[Rational],
 
 Type constructors @racket[(f :: (-> * *))] supporting a map.
 
-Built-in instances: @racket[Maybe], @racket[List], @racket[Result e],
+Built-in instances: @racket[Maybe], @racket[List], @racket[Either a],
 @racket[IO], @racket[STM], @racket[Identity], @racket[State s],
 @racket[Env r], @racket[StateT s m], @racket[EnvT r m],
 @racket[WriterT w m], @racket[ExceptT e m].}
@@ -260,7 +260,7 @@ two-sided map.
 @racket[first] and @racket[second] have defaults expressed via
 @racket[bimap].}
 
-Built-in instances: @racket[Pair], @racket[Result].  Derived via
+Built-in instances: @racket[Pair], @racket[Either].  Derived via
 @racket[#:deriving Bifunctor].}
 
 @section{Category and Arrow}
@@ -268,7 +268,7 @@ Built-in instances: @racket[Pair], @racket[Result].  Derived via
 Arrows generalize plain functions and Kleisli arrows.  The hierarchy is
 @racket[Category] → @racket[Arrow] → @racket[ArrowChoice] /
 @racket[ArrowApply] / @racket[ArrowLoop].  Rather than hard-wiring the
-strict @racket[Pair] and @racket[Result], the arrows are
+strict @racket[Pair] and @racket[Either], the arrows are
 @emph{monoidal-category} arrows parameterized over their own product
 @racket[p] and coproduct @racket[s] — the @racket[Prod] and
 @racket[Coprod] tensors below.  A functional dependency
@@ -276,7 +276,7 @@ strict @racket[Pair] and @racket[Result], the arrows are
 arrow, so a use site never has to name them.  This is what lets an arrow
 choose a @emph{lazy} product and so define a lawful @racket[ArrowLoop]
 (see @racket[LFun] in @secref["stdlib-data"]); the strict @racket[(->)]
-arrow keeps @racket[Pair] / @racket[Result] and behaves as before.
+arrow keeps @racket[Pair] / @racket[Either] and behaves as before.
 
 Method names are non-infix and distinct from existing prelude names
 (@racket[ident]/@racket[comp] rather than @racket[id]/@racket[compose];
@@ -319,7 +319,7 @@ injections plus the eliminator, dual to @racket[Prod].
 summand; @racket[co-elim] case-analyzes.  The injections are
 return-typed.}
 
-Built-in instance: @racket[Result] (@racket[Err] left, @racket[Ok]
+Built-in instance: @racket[Either] (@racket[Left] left, @racket[Right]
 right).}
 
 @defidform[#:kind "class" Category]{
@@ -381,7 +381,7 @@ runs one arrow per branch and collapses the result.  Like
 @racket[Arrow]'s combinators these are primitives over the concrete
 coproduct.}
 
-Built-in instance: @racket[(ArrowChoice (->) Pair Result)].}
+Built-in instance: @racket[(ArrowChoice (->) Pair Either)].}
 
 @defidform[#:kind "class" ArrowApply]{
 

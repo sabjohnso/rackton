@@ -44,7 +44,7 @@ per-instance @italic{names} as Racket bindings.  The naming
 convention is @racketidfont{$}@racket[_method]@racketidfont{:}@racket[_Tcon]:
 
 @itemlist[
-@item{@racketidfont{$pure:Maybe}, @racketidfont{$pure:List}, @racketidfont{$pure:Result},
+@item{@racketidfont{$pure:Maybe}, @racketidfont{$pure:List}, @racketidfont{$pure:Either},
       @racketidfont{$pure:IO}, @racketidfont{$pure:State}, @racketidfont{$pure:Env} —
       the per-instance @racket[pure] impls.}
 @item{@racketidfont{$flatmap:ExceptT}, @racketidfont{$fapply:ExceptT}, @racketidfont{$liftA2:ExceptT}

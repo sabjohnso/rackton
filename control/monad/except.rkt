@@ -14,6 +14,7 @@
 ;; This module owns every mtl instance where ExceptT is the OUTER
 ;; transformer.  (ExceptT over Identity plays the role of a bare Except.)
 
+(require rackton/data/result)
 (provide (all-defined-out))
 
 (newtype (ExceptT e m a)

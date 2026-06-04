@@ -65,6 +65,7 @@
     ;; pure-via-witness registry + helper — runtime internals the carved
     ;; transformer modules register against (see ExceptT); never written
     ;; in user surface code.
+    register-pure-impl!
     register-pure-witness-deriver!
     inner-pure-from-witness
     inner-pure-from-args

@@ -93,7 +93,7 @@
  rackton-inlined-sites
 
  ;; ADTs (constructors usable as expressions and as match patterns)
- None Some Nil Cons Pair Ok Err Unit
+ None Some Nil Cons Pair Left Right Unit
  ;; IO-action constructor — exposed so sibling runtime modules (e.g.
  ;; private/ffi-runtime) can build IO actions sharing run-io's struct.
  ;; Excepted from main.rkt's re-export, so it stays internal.
@@ -140,12 +140,12 @@
 
  ;; Return-typed class methods (resolved at compile time per call site;
  ;; the `$pure:TCon` names are what the codegen emits after resolution).
- |$pure:Maybe| |$pure:List| |$pure:Result| |$pure:IO|
+ |$pure:Maybe| |$pure:List| |$pure:Either| |$pure:IO|
  ;; (transformer $pure / $flatmap / mtl impls are regenerated in the
  ;; carved rackton/control/monad/* modules.)
  |$mempty:String| |$mempty:List|
  |$ident:->| |$arr:->| |$arrow-app:->|
- |$mk-prod:Pair| |$inj-left:Result| |$inj-right:Result|
+ |$mk-prod:Pair| |$inj-left:Either| |$inj-right:Either|
  ;; Runtime dispatchers for the positional class methods
  ;; introduced by mtl polish (local-en already covered above).
  ;; catch-e is exported so carved transformer modules
@@ -161,6 +161,7 @@
  ;; ExceptT's flatmap/catch-e, and for nesting one transformer in
  ;; another).  inner-pure-from-witness is what codegen emits at those
  ;; registrations' call sites.
+ register-pure-impl!
  register-pure-witness-deriver! inner-pure-from-witness inner-pure-from-args
  pure-via-witness
  ;; Dispatch tables — exposed so user modules that declare new
@@ -331,8 +332,8 @@
 
 (define-data-ctor Pair 2)
 
-(define-data-ctor Ok  1)
-(define-data-ctor Err 1)
+(define-data-ctor Left  1)
+(define-data-ctor Right 1)
 
 (define-data-ctor Unit 0)
 
@@ -486,7 +487,7 @@
             "no pure-via-witness impl for tag: ~v" tag)]))
 
 ;; Derive the INNER monad's pure from a transformer witness whose single
-;; field IS the inner monad value (e.g. ExceptT holding (m (Result e
+;; field IS the inner monad value (e.g. ExceptT holding (m (Either e
 ;; a))).  Codegen emits calls to this from the runtime registrations of
 ;; value-dispatched needs-dict methods (ExceptT's flatmap/catch-e/...).
 (define (inner-pure-from-witness wrapped)
@@ -792,18 +793,18 @@
 
 (define (|$pure:Maybe|  x) (Some x))
 (define (|$pure:List|   x) (Cons x Nil))
-(define (|$pure:Result| x) (Ok x))
+(define (|$pure:Either| x) (Right x))
 (define (|$pure:IO|     x) ($io (lambda () x)))
 
 ;; Register the non-needs-dict pures with their witness
 ;; ctor tags so pure-via-witness can find them at runtime.  Lists
-;; have two ctors (Nil, Cons); register both.  Result has two too.
+;; have two ctors (Nil, Cons); register both.  Either has two too.
 (register-pure-impl! '$ctor:None  |$pure:Maybe|)
 (register-pure-impl! '$ctor:Some  |$pure:Maybe|)
 (register-pure-impl! '$ctor:Nil   |$pure:List|)
 (register-pure-impl! '$ctor:Cons  |$pure:List|)
-(register-pure-impl! '$ctor:Ok    |$pure:Result|)
-(register-pure-impl! '$ctor:Err   |$pure:Result|)
+(register-pure-impl! '$ctor:Right |$pure:Either|)
+(register-pure-impl! '$ctor:Left  |$pure:Either|)
 (register-pure-impl! '$io          |$pure:IO|)
 
 ;; ----- Monoid mempty (return-typed) -------------------------------
@@ -1447,11 +1448,14 @@
 
 ;; ----- try / raise-io ---------------------------------------
 
+;; Low-level primitive: reify a raised error as (Left message), success
+;; as (Right value).  Stdlib `system/exception` wraps this into the
+;; stdlib `Result` type via `either->result`.
 (define (try io)
   ($io (lambda ()
          (with-handlers ([exn:fail?
-                          (lambda (e) (Err (exn-message e)))])
-           (Ok (run-io io))))))
+                          (lambda (e) (Left (exn-message e)))])
+           (Right (run-io io))))))
 
 (define (raise-io msg)
   ($io (lambda () (error 'rackton-raise-io msg))))
@@ -1659,22 +1663,22 @@
 (register-instance-method! $dispatch:flatmap '$ctor:Nil   list-flatmap)
 (register-instance-method! $dispatch:flatmap '$ctor:Cons  list-flatmap)
 
-;; Result e
-(define result-fmap
+;; Either a
+(define either-fmap
   (lambda (f r)
     (match r
-      [(Err x) (Err x)]
-      [(Ok  v) (Ok (f v))])))
-(register-instance-method! $dispatch:fmap '$ctor:Err   result-fmap)
-(register-instance-method! $dispatch:fmap '$ctor:Ok    result-fmap)
+      [(Left x)  (Left x)]
+      [(Right v) (Right (f v))])))
+(register-instance-method! $dispatch:fmap '$ctor:Left  either-fmap)
+(register-instance-method! $dispatch:fmap '$ctor:Right either-fmap)
 
-(define result-flatmap
+(define either-flatmap
   (lambda (f r)
     (match r
-      [(Err x) (Err x)]
-      [(Ok  v) (f v)])))
-(register-instance-method! $dispatch:flatmap '$ctor:Err   result-flatmap)
-(register-instance-method! $dispatch:flatmap '$ctor:Ok    result-flatmap)
+      [(Left x)  (Left x)]
+      [(Right v) (f v)])))
+(register-instance-method! $dispatch:flatmap '$ctor:Left  either-flatmap)
+(register-instance-method! $dispatch:flatmap '$ctor:Right either-flatmap)
 
 ;; State monad runtime -> rackton/control/monad/state, Env (Reader)
 ;; runtime -> rackton/control/monad/reader (Phase 2 slim; the modules
@@ -1736,24 +1740,24 @@
 (register-instance-method! $dispatch:liftA2 '$ctor:Nil  list-liftA2)
 (register-instance-method! $dispatch:liftA2 '$ctor:Cons list-liftA2)
 
-;; Result e
-(define result-ap
+;; Either a
+(define either-ap
   (lambda (rf rx)
     (match rf
-      [(Err e) (Err e)]
-      [(Ok  f) (fmap f rx)])))
-(register-instance-method! $dispatch:fapply '$ctor:Err result-ap)
-(register-instance-method! $dispatch:fapply '$ctor:Ok  result-ap)
+      [(Left e)  (Left e)]
+      [(Right f) (fmap f rx)])))
+(register-instance-method! $dispatch:fapply '$ctor:Left  either-ap)
+(register-instance-method! $dispatch:fapply '$ctor:Right either-ap)
 
-(define (result-liftA2 g rx ry)
+(define (either-liftA2 g rx ry)
   (match rx
-    [(Err e) (Err e)]
-    [(Ok x)
+    [(Left e)  (Left e)]
+    [(Right x)
      (match ry
-       [(Err e) (Err e)]
-       [(Ok y)  (Ok (g x y))])]))
-(register-instance-method! $dispatch:liftA2 '$ctor:Err result-liftA2)
-(register-instance-method! $dispatch:liftA2 '$ctor:Ok  result-liftA2)
+       [(Left e)  (Left e)]
+       [(Right y) (Right (g x y))])]))
+(register-instance-method! $dispatch:liftA2 '$ctor:Left  either-liftA2)
+(register-instance-method! $dispatch:liftA2 '$ctor:Right either-liftA2)
 
 ;; ----- Bifunctor instances --------------------------------------
 
@@ -1767,19 +1771,19 @@
 (register-instance-method! $dispatch:first  '$ctor:Pair pair-first)
 (register-instance-method! $dispatch:second '$ctor:Pair pair-second)
 
-(define result-bimap
+(define either-bimap
   (lambda (f g r)
     (match r
-      [(Err e) (Err (f e))]
-      [(Ok  v) (Ok  (g v))])))
-(register-instance-method! $dispatch:bimap '$ctor:Err result-bimap)
-(register-instance-method! $dispatch:bimap '$ctor:Ok  result-bimap)
-(define result-first  (lambda (f r) (result-bimap f id    r)))
-(define result-second (lambda (g r) (result-bimap id    g r)))
-(register-instance-method! $dispatch:first  '$ctor:Err result-first)
-(register-instance-method! $dispatch:first  '$ctor:Ok  result-first)
-(register-instance-method! $dispatch:second '$ctor:Err result-second)
-(register-instance-method! $dispatch:second '$ctor:Ok  result-second)
+      [(Left e)  (Left  (f e))]
+      [(Right v) (Right (g v))])))
+(register-instance-method! $dispatch:bimap '$ctor:Left  either-bimap)
+(register-instance-method! $dispatch:bimap '$ctor:Right either-bimap)
+(define either-first  (lambda (f r) (either-bimap f id    r)))
+(define either-second (lambda (g r) (either-bimap id    g r)))
+(register-instance-method! $dispatch:first  '$ctor:Left  either-first)
+(register-instance-method! $dispatch:first  '$ctor:Right either-first)
+(register-instance-method! $dispatch:second '$ctor:Left  either-second)
+(register-instance-method! $dispatch:second '$ctor:Right either-second)
 
 ;; ----- Category/Arrow instance for the function arrow (->) --------
 ;; A procedure dispatches as the `->` tycon (see dispatch-tag).  Every
@@ -1800,11 +1804,11 @@
 (register-instance-method! $dispatch:ident '-> |$ident:->|)
 (register-instance-method! $dispatch:arr   '-> |$arr:->|)
 
-;; ArrowChoice for (->): Err is the Left branch, Ok the Right.
-(define arrow-on-left  (lambda (f) (lambda (r) (match r [(Err a) (Err (f a))] [(Ok x) (Ok x)]))))
-(define arrow-on-right (lambda (g) (lambda (r) (match r [(Ok a) (Ok (g a))] [(Err x) (Err x)]))))
-(define arrow-fork     (lambda (f g) (lambda (r) (match r [(Err a) (Err (f a))] [(Ok c) (Ok (g c))]))))
-(define arrow-fanin    (lambda (f g) (lambda (r) (match r [(Err a) (f a)] [(Ok b) (g b)]))))
+;; ArrowChoice for (->): Left and Right are the two branches.
+(define arrow-on-left  (lambda (f) (lambda (r) (match r [(Left a) (Left (f a))] [(Right x) (Right x)]))))
+(define arrow-on-right (lambda (g) (lambda (r) (match r [(Right a) (Right (g a))] [(Left x) (Left x)]))))
+(define arrow-fork     (lambda (f g) (lambda (r) (match r [(Left a) (Left (f a))] [(Right c) (Right (g c))]))))
+(define arrow-fanin    (lambda (f g) (lambda (r) (match r [(Left a) (f a)] [(Right b) (g b)]))))
 (register-instance-method! $dispatch:on-left  '-> arrow-on-left)
 (register-instance-method! $dispatch:on-right '-> arrow-on-right)
 (register-instance-method! $dispatch:fork     '-> arrow-fork)
@@ -1812,7 +1816,7 @@
 ;; ArrowApply for (->): arrow-app is return-typed, keyed by tycon `->`.
 (register-instance-method! $dispatch:arrow-app '-> |$arrow-app:->|)
 
-;; ----- Product (Pair) / Coproduct (Result) instances ------------
+;; ----- Product (Pair) / Coproduct (Either) instances ------------
 ;; mk-prod / inj-left / inj-right are return-typed (keyed by the result
 ;; type's tycon); prod-fst / prod-snd / co-elim dispatch on the value's
 ;; ctor tag.
@@ -1822,13 +1826,13 @@
 (register-instance-method! $dispatch:mk-prod  'Pair       |$mk-prod:Pair|)
 (register-instance-method! $dispatch:prod-fst '$ctor:Pair pair-prod-fst)
 (register-instance-method! $dispatch:prod-snd '$ctor:Pair pair-prod-snd)
-(define (|$inj-left:Result|  a) (Err a))
-(define (|$inj-right:Result| b) (Ok  b))
-(define result-co-elim (lambda (f g s) (match s [(Err a) (f a)] [(Ok b) (g b)])))
-(register-instance-method! $dispatch:inj-left  'Result   |$inj-left:Result|)
-(register-instance-method! $dispatch:inj-right 'Result   |$inj-right:Result|)
-(register-instance-method! $dispatch:co-elim '$ctor:Err result-co-elim)
-(register-instance-method! $dispatch:co-elim '$ctor:Ok  result-co-elim)
+(define (|$inj-left:Either|  a) (Left  a))
+(define (|$inj-right:Either| b) (Right b))
+(define either-co-elim (lambda (f g s) (match s [(Left a) (f a)] [(Right b) (g b)])))
+(register-instance-method! $dispatch:inj-left  'Either   |$inj-left:Either|)
+(register-instance-method! $dispatch:inj-right 'Either   |$inj-right:Either|)
+(register-instance-method! $dispatch:co-elim '$ctor:Left  either-co-elim)
+(register-instance-method! $dispatch:co-elim '$ctor:Right either-co-elim)
 
 ;; ----- Foldable instances ---------------------------------------
 
@@ -1903,18 +1907,18 @@
      (match p2 [(Pair x2 y2) (if (== x1 x2) (== y1 y2) #f)])]))
 (register-instance-method! $dispatch:== '$ctor:Pair pair-eq)
 
-(define (result-eq r1 r2)
+(define (either-eq r1 r2)
   (match r1
-    [(Err x) (match r2 [(Err y) (== x y)] [(Ok  _) #f])]
-    [(Ok  x) (match r2 [(Err _) #f]        [(Ok  y) (== x y)])]))
-(register-instance-method! $dispatch:== '$ctor:Err result-eq)
-(register-instance-method! $dispatch:== '$ctor:Ok  result-eq)
+    [(Left x)  (match r2 [(Left y)  (== x y)] [(Right _) #f])]
+    [(Right x) (match r2 [(Left _)  #f]       [(Right y) (== x y)])]))
+(register-instance-method! $dispatch:== '$ctor:Left  either-eq)
+(register-instance-method! $dispatch:== '$ctor:Right either-eq)
 
 (define (unit-eq _u1 _u2) #t)
 (register-instance-method! $dispatch:== '$ctor:Unit unit-eq)
 
 (for ([tag (in-list '($ctor:None $ctor:Some $ctor:Nil $ctor:Cons
-                      $ctor:Pair $ctor:Err $ctor:Ok $ctor:Unit))])
+                      $ctor:Pair $ctor:Left $ctor:Right $ctor:Unit))])
   (register-instance-method! $dispatch:/= tag (lambda (x y) (rkt:not (== x y)))))
 
 ;; -- Ord (< is primitive; the rest derive from generic < and ==) --
@@ -1979,12 +1983,12 @@
                       (string-append ", " (string-append (show y) ")"))))]))
 (register-instance-method! $dispatch:show '$ctor:Pair pair-show)
 
-(define (result-show r)
+(define (either-show r)
   (match r
-    [(Err x) (string-append "(Err " (string-append (show x) ")"))]
-    [(Ok  x) (string-append "(Ok " (string-append (show x) ")"))]))
-(register-instance-method! $dispatch:show '$ctor:Err result-show)
-(register-instance-method! $dispatch:show '$ctor:Ok  result-show)
+    [(Left x)  (string-append "(Left "  (string-append (show x) ")"))]
+    [(Right x) (string-append "(Right " (string-append (show x) ")"))]))
+(register-instance-method! $dispatch:show '$ctor:Left  either-show)
+(register-instance-method! $dispatch:show '$ctor:Right either-show)
 
 (define (unit-show _u) "Unit")
 (register-instance-method! $dispatch:show '$ctor:Unit unit-show)
@@ -2112,7 +2116,7 @@
 ;; the direct provided reference, not this table.
 (register-instance-method! $dispatch:pure 'Maybe    |$pure:Maybe|)
 (register-instance-method! $dispatch:pure 'List     |$pure:List|)
-(register-instance-method! $dispatch:pure 'Result   |$pure:Result|)
+(register-instance-method! $dispatch:pure 'Either   |$pure:Either|)
 (register-instance-method! $dispatch:pure 'IO       |$pure:IO|)
 ;; $pure:State / $pure:Env register from rackton/control/monad/state +
 ;; reader; $pure:STM from rackton/control/stm.

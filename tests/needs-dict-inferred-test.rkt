@@ -20,8 +20,8 @@
 (: madd-maybe-none (Maybe Integer))
 (define madd-maybe-none (madd None (Some 99)))
 
-(: madd-result (Result String Integer))
-(define madd-result (madd (Ok 10) (Ok 32)))
+(: madd-result (Either String Integer))
+(define madd-result (madd (Right 10) (Right 32)))
 
 ;; ----- the unascribed counterpart of my-pure-pair --------
 (define (pair-pure x) (pure (Pair x x)))
@@ -29,7 +29,7 @@
 (: pair-pure-maybe (Maybe (Pair Integer Integer)))
 (define pair-pure-maybe (pair-pure 42))
 
-(: pair-pure-result (Result String (Pair Integer Integer)))
+(: pair-pure-result (Either String (Pair Integer Integer)))
 (define pair-pure-result (pair-pure 7))
 
 ;; ----- inferred Monoid fold (unascribed my-concat) -------
@@ -57,7 +57,7 @@
 (: rep-maybe (Maybe Integer))
 (define rep-maybe (replicate-pure 3 7))
 
-(: rep-result (Result String Integer))
+(: rep-result (Either String Integer))
 (define rep-result (replicate-pure 4 99))
 
 ;; ---------- assertions -----------------------------------
@@ -69,20 +69,20 @@
        (check-equal? madd-maybe-some (Some 7)))
    (it "inferred madd over Maybe (None short-circuits)"
        (check-equal? madd-maybe-none None))
-   (it "inferred madd over Result (Ok/Ok)"
-       (check-equal? madd-result (Ok 42)))
+   (it "inferred madd over Either (Right/Right)"
+       (check-equal? madd-result (Right 42)))
    (it "inferred pair-pure into Maybe"
        (check-equal? pair-pure-maybe (Some (Pair 42 42))))
-   (it "inferred pair-pure into Result"
-       (check-equal? pair-pure-result (Ok (Pair 7 7))))
+   (it "inferred pair-pure into Either"
+       (check-equal? pair-pure-result (Right (Pair 7 7))))
    (it "inferred Monoid cat on String"
        (check-equal? cat-string "abc"))
    (it "inferred Monoid cat on Sum"
        (check-equal? (get-sum cat-sum) 8))
    (it "recursive needs-dict function over Maybe"
        (check-equal? rep-maybe (Some 7)))
-   (it "recursive needs-dict function over Result"
-       (check-equal? rep-result (Ok 99)))))
+   (it "recursive needs-dict function over Either"
+       (check-equal? rep-result (Right 99)))))
 
 (: _ran Unit)
 (define _ran (run-io (run-suite "needs-dict-inferred" suite)))

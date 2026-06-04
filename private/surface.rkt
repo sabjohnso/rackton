@@ -1473,7 +1473,7 @@
 ;;   comp a b         run a, then b (forward composition)
 ;;   ident            the identity arrow
 ;;   fanout a b       env ~> (Pair (a env) (b env))   (used to keep env)
-;;   fanin  a b       (Result x y) ~> out             (used by if/match)
+;;   fanin  a b       (Either x y) ~> out             (used by if/match)
 ;;   arrow-app        run a fed-in arrow on its argument (feed-apply)
 ;;
 ;; Sequencing a command and binding its result to `p` keeps the old
@@ -1499,9 +1499,9 @@
 (define (arrow-loop a stx)     (e:app (e:var 'arrow-loop (fresh-op-stx stx)) (list a) stx))
 ;; Product / coproduct intro + projection, expressed through the
 ;; tensor-class methods (Prod / Coprod) rather than the strict
-;; `Pair` / `Result` constructors.  This keeps the whole proc translation
+;; `Pair` / `Either` constructors.  This keeps the whole proc translation
 ;; polymorphic in the arrow's product and coproduct: over `(->)` these
-;; resolve to `Pair` / `Result` (identical behavior), and over a lazy
+;; resolve to `Pair` / `Either` (identical behavior), and over a lazy
 ;; arrow they resolve to its lazy product / coproduct.
 (define (mk-prod-e a b stx)    (e:app (e:var 'mk-prod (fresh-op-stx stx))   (list a b) stx))
 (define (prod-fst-e v stx)     (e:app (e:var 'prod-fst (fresh-op-stx stx))  (list v) stx))
@@ -1662,7 +1662,7 @@
     ;; (match e [pat c] …) — choose a command by matching `e` (read from
     ;; the env).  Each branch runs in the env extended by its pattern's
     ;; bindings.  Routing tags the (env-carrying) value into a right-
-    ;; nested `Result`, then a right-nested `fanin` dispatches the
+    ;; nested `Either`, then a right-nested `fanin` dispatches the
     ;; branches.  See `translate-proc-case`.
     [(match e [pat c] ...+)
      (translate-proc-case #'e
@@ -1684,7 +1684,7 @@
 ;; branch except the last, which sits on the final right-injection.
 ;; n = 1 needs no tag at all.  `inj-left`/`inj-right` are the Coproduct
 ;; methods, so this is polymorphic in the arrow's coproduct (over `(->)`
-;; they are `Err`/`Ok`).
+;; they are `Left`/`Right`).
 (define (case-wrap i n v stx)
   (define inner
     (if (= i (sub1 n))

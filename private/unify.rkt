@@ -96,8 +96,8 @@
 
 ;; Unify two flat type applications, allowing for arity mismatches by
 ;; peeling off arguments from the right.  This is what lets `(c a)`
-;; unify with `(Result String Integer)` by binding c to the partial
-;; application `(Result String)` and a to Integer — the kind of
+;; unify with `(Either String Integer)` by binding c to the partial
+;; application `(Either String)` and a to Integer — the kind of
 ;; partial-application that higher-kinded polymorphism demands.
 (define (unify-tapp h1 args1 h2 args2 outer-l outer-r)
   (cond

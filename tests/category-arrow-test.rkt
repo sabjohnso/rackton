@@ -49,18 +49,18 @@
 (: fanout-incdbl (-> Integer (Pair Integer Integer)))
 (define (fanout-incdbl n) ((fanout (arr inc) (arr dbl)) n))
 
-;; ----- ArrowChoice over Result (Err ↔ Left, Ok ↔ Right) ------------
+;; ----- ArrowChoice over Either (Left / Right branches) ------------
 
-(: left-inc (-> (Result Integer Integer) (Result Integer Integer)))
+(: left-inc (-> (Either Integer Integer) (Either Integer Integer)))
 (define (left-inc r) ((on-left (arr inc)) r))
 
-(: right-inc (-> (Result Integer Integer) (Result Integer Integer)))
+(: right-inc (-> (Either Integer Integer) (Either Integer Integer)))
 (define (right-inc r) ((on-right (arr inc)) r))
 
-(: fork-incdbl (-> (Result Integer Integer) (Result Integer Integer)))
+(: fork-incdbl (-> (Either Integer Integer) (Either Integer Integer)))
 (define (fork-incdbl r) ((fork (arr inc) (arr dbl)) r))
 
-(: fanin-incdbl (-> (Result Integer Integer) Integer))
+(: fanin-incdbl (-> (Either Integer Integer) Integer))
 (define (fanin-incdbl r) ((fanin (arr inc) (arr dbl)) r))
 
 ;; ----- ArrowApply --------------------------------------------------
@@ -101,23 +101,23 @@
        (check-equal?
         ((arr (lambda (x) (dbl (inc x)))) 5)
         ((comp (arr inc) (arr dbl)) 5)))
-   ;; ArrowChoice — Err is the Left/active branch, Ok the Right.
-   (it "on-left maps the Err branch, passes Ok through"
+   ;; ArrowChoice — Left is the Left/active branch, Right the Right.
+   (it "on-left maps the Left branch, passes Right through"
        (all-checks
-        (list (check-equal? (left-inc (Err 3)) (Err 4))
-              (check-equal? (left-inc (Ok 3))  (Ok 3)))))
-   (it "on-right maps the Ok branch, passes Err through"
+        (list (check-equal? (left-inc (Left 3)) (Left 4))
+              (check-equal? (left-inc (Right 3))  (Right 3)))))
+   (it "on-right maps the Right branch, passes Left through"
        (all-checks
-        (list (check-equal? (right-inc (Ok 3))  (Ok 4))
-              (check-equal? (right-inc (Err 3)) (Err 3)))))
+        (list (check-equal? (right-inc (Right 3))  (Right 4))
+              (check-equal? (right-inc (Left 3)) (Left 3)))))
    (it "fork runs one arrow per branch"
        (all-checks
-        (list (check-equal? (fork-incdbl (Err 3)) (Err 4))
-              (check-equal? (fork-incdbl (Ok 3))  (Ok 6)))))
+        (list (check-equal? (fork-incdbl (Left 3)) (Left 4))
+              (check-equal? (fork-incdbl (Right 3))  (Right 6)))))
    (it "fanin collapses both branches to one result"
        (all-checks
-        (list (check-equal? (fanin-incdbl (Err 3)) 4)
-              (check-equal? (fanin-incdbl (Ok 3))  6))))
+        (list (check-equal? (fanin-incdbl (Left 3)) 4)
+              (check-equal? (fanin-incdbl (Right 3))  6))))
    ;; ArrowApply — feeds an arrow and its argument through `arrow-app`.
    (it "arrow-app applies a captured arrow to its argument"
        (check-equal? (apply-arrow (Pair inc 5)) 6))))

@@ -1,6 +1,6 @@
 #lang scribble/manual
 @require[scribble/manual
-         (for-label rackton)]
+         (for-label rackton rackton/data/result)]
 
 @title[#:tag "types"]{Built-in types}
 This chapter enumerates every type constructor and every data
@@ -105,19 +105,24 @@ Two-element product type; the type and its constructor share the name.
 
 Instances: @racket[Bifunctor].}
 
-@defidform[#:kind "type" Result]{
+@defidform[#:kind "type" Either]{
 
-Tagged-union for fallible computations.  @racket[(Result e a)] is
-either an error of type @racket[e] or a success of type @racket[a].
+Tagged-union coproduct.  @racket[(Either a b)] is either a @racket[Left]
+of type @racket[a] or a @racket[Right] of type @racket[b].  By convention
+the @racket[Left] carries an error and the @racket[Right] a success, but
+@racket[Either] is the neutral, foundational coproduct — it is what the
+arrow @racket[Coprod] / @racket[ArrowChoice] machinery is defined over.
+For code that reads better with @tt{Ok}/@tt{Err} naming, the isomorphic
+@racket[Result] lives in @racketmodname[rackton/data/result].
 
-@deftogether[(@defidform[#:kind "constructor" Err]
-              @defidform[#:kind "constructor" Ok])]{
+@deftogether[(@defidform[#:kind "constructor" Left]
+              @defidform[#:kind "constructor" Right])]{
 
-@racket[Err : (-> e (Result e a))] / @racket[Ok : (-> a (Result e a))].}
+@racket[Left : (-> a (Either a b))] / @racket[Right : (-> b (Either a b))].}
 
 Instances: @racket[Functor], @racket[Applicative], @racket[Monad]
-(over the @racket[a]; @racket[e] is fixed per chain),
-@racket[Bifunctor].}
+(over the @racket[b]; @racket[a] is fixed per chain),
+@racket[Bifunctor], @racket[Coprod].}
 
 @section{Monoid wrappers}
 

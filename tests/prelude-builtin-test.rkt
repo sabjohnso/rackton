@@ -1,7 +1,7 @@
 #lang rackton
 
 ;; Exercises the built-in prelude: Num, Eq, Ord, Show, plus
-;; the prelude ADTs (Maybe, List, Pair, Result, Unit) and combinators.
+;; the prelude ADTs (Maybe, List, Pair, Either, Unit) and combinators.
 ;; User code does NOT redeclare any of these — they're inherited.
 
 (require "../unit.rkt")

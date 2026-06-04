@@ -25,7 +25,8 @@
 (define stdlib-modules
   '(;; data
     rackton/data/bits rackton/data/bool rackton/data/char
-    rackton/data/complex rackton/data/either rackton/data/foldable
+    rackton/data/complex rackton/data/either rackton/data/result
+    rackton/data/foldable
     rackton/data/function rackton/data/functor rackton/data/lazy
     rackton/data/arrow-lazy
     rackton/data/lens rackton/data/list rackton/data/list/nonempty

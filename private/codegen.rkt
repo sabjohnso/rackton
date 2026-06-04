@@ -798,7 +798,7 @@
        (cond
          [(eq? (hash-ref (class-info-dispatchpos cinfo) name #f) 'return)
           (compile-instance-return-method
-           name body head-pred-class head-tcon-names pure-impl-name stx)]
+           name body head-pred-class head-tcon-names pure-impl-name tags stx)]
          [else
           (compile-instance-positional-method
            name body cinfo head-pred-class head-tcon-names head-arg-types
@@ -829,7 +829,7 @@
 ;; dict) instances, also register it in the per-method dispatch table so
 ;; cross-module call sites can find it.  Returns a list of forms.
 (define (compile-instance-return-method
-         name body head-pred-class head-tcon-names pure-impl-name stx)
+         name body head-pred-class head-tcon-names pure-impl-name tags stx)
   ;; Return-typed methods don't dispatch on a runtime value;
   ;; emit one top-level `(define $method:Tcon impl)` whose
   ;; name matches what `infer.rkt` synthesizes in
@@ -879,7 +879,22 @@
                      [tag       (datum->syntax stx tag-sym stx)]
                      [impl-name (datum->syntax stx impl-name-sym stx)])
          #'(register-instance-method! table 'tag impl-name)))
-     (list def-form reg-form)]))
+     ;; A plain `pure` ALSO registers into the $pure-by-tag witness table,
+     ;; keyed by the type's constructor tags, so the monad can serve as a
+     ;; transformer base at runtime-dispatched sites (e.g. nested ExceptT,
+     ;; where `pure-via-witness` reconstructs the inner pure from a value).
+     ;; Restricted to `$ctor:` ADT tags — opaque/runtime-tag monads
+     ;; (STM, IO) are hand-registered in prelude-runtime.
+     (define witness-forms
+       (if (eq? name 'pure)
+           (for/list ([t (in-list tags)]
+                      #:when (regexp-match? #rx"^[$]ctor:"
+                                            (symbol->string t)))
+             (with-syntax ([ctor-tag  (datum->syntax stx t stx)]
+                           [impl-name (datum->syntax stx impl-name-sym stx)])
+               #'(register-pure-impl! 'ctor-tag impl-name)))
+           '()))
+     (list* def-form reg-form witness-forms)]))
 
 ;; Compile a positional (value-dispatched) instance method.  These key
 ;; on a runtime argument's tag.  Handles three sub-cases: instance-qual

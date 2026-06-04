@@ -7,7 +7,7 @@
 Rackton's auto-imported prelude is deliberately small — the class
 hierarchy (@racket[Eq], @racket[Ord], @racket[Functor], @racket[Monad],
 …), the core ADTs (@racket[Maybe], @racket[List], @racket[Pair],
-@racket[Result]), the numeric tower, and a handful of combinators.
+@racket[Either]), the numeric tower, and a handful of combinators.
 Everything else lives in modules you @racket[require] explicitly, laid
 out to mirror Haskell's @tt{base}:
 @tt{rackton/data}, @tt{rackton/control}, @tt{rackton/numeric},

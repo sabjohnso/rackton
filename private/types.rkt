@@ -144,8 +144,8 @@
 ;; (make-tapp head args) collapses (tapp head '()) into head so that
 ;; nullary applications stay normalized, and flattens nested tapps so
 ;; partial applications combine.  This matters for higher-kinded type
-;; variables: after substituting `f ↦ (Result e)` into `(f a)`, we get
-;; a single `(tapp (tcon Result) (list e a))` rather than a nested form.
+;; variables: after substituting `f ↦ (Either e)` into `(f a)`, we get
+;; a single `(tapp (tcon Either) (list e a))` rather than a nested form.
 (define (make-tapp head args)
   (cond
     [(null? args) head]

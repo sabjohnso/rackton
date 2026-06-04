@@ -35,7 +35,7 @@
 (: rev-present (Opt Integer))
 (define rev-present (review Opt-Present-prism 99))
 
-;; ----- Result-like (two unary ctors) -------------------
+;; ----- Either-like (two unary ctors) -------------------
 
 (data (Either2 e a)
   (Lft e)

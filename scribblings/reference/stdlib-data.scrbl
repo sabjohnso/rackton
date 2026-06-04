@@ -1,6 +1,6 @@
 #lang scribble/manual
 @require[scribble/manual
-         (for-label rackton rackton/data/bits rackton/data/bool rackton/data/char rackton/data/complex rackton/data/either rackton/data/foldable rackton/data/function rackton/data/functor rackton/data/lazy rackton/data/arrow-lazy rackton/data/lens rackton/data/list rackton/data/list/nonempty rackton/data/map rackton/data/maybe rackton/data/monoid rackton/data/ord rackton/data/ratio rackton/data/semigroup rackton/data/set rackton/data/traversable rackton/data/tuple)]
+         (for-label rackton rackton/data/bits rackton/data/bool rackton/data/char rackton/data/complex rackton/data/either rackton/data/result rackton/data/foldable rackton/data/function rackton/data/functor rackton/data/lazy rackton/data/arrow-lazy rackton/data/lens rackton/data/list rackton/data/list/nonempty rackton/data/map rackton/data/maybe rackton/data/monoid rackton/data/ord rackton/data/ratio rackton/data/semigroup rackton/data/set rackton/data/traversable rackton/data/tuple)]
 
 @title[#:tag "stdlib-data"]{@tt{rackton/data} — containers and structures}
 
@@ -146,13 +146,67 @@ names stay usable inside @racket[(racket …)] escapes.
 @defmodule[rackton/data/either #:no-declare]
 @declare-exporting[rackton/data/either]
 
-Data.Either over the prelude's @racket[Result] type, where @racket[Err] plays
-Haskell's @tt{Left} and @racket[Ok] plays @tt{Right}. The
+Data.Either over the prelude's @racket[Either] type (@racket[Left] /
+@racket[Right]). The
 @racket[Functor]/@racket[Applicative]/@racket[Monad]/@racket[Bifunctor]
-instances for @racket[Result] live in the prelude; this module provides the
-non-class eliminators and collectors.
+instances for @racket[Either] live in the prelude; this module provides the
+non-class eliminators, predicates, and collectors.
 
-@defproc[(either [f (-> e c)] [g (-> a c)] [r (Result e a)]) c]{
+@defproc[(either [f (-> a c)] [g (-> b c)] [r (Either a b)]) c]{
+  Eliminator: applies @racket[f] to a @racket[Left] payload and @racket[g] to
+  a @racket[Right] payload.}
+
+@deftogether[(@defproc[(is-left [r (Either a b)]) Boolean]
+              @defproc[(is-right [r (Either a b)]) Boolean])]{
+  Test whether @racket[r] is a @racket[Left] or a @racket[Right], respectively.}
+
+@deftogether[(@defproc[(from-left [default a] [r (Either a b)]) a]
+              @defproc[(from-right [default b] [r (Either a b)]) b])]{
+  Extract the @racket[Left] (resp. @racket[Right]) payload, falling back to
+  @racket[default] when @racket[r] is the other variant.}
+
+@deftogether[(@defproc[(lefts [rs (List (Either a b))]) (List a)]
+              @defproc[(rights [rs (List (Either a b))]) (List b)])]{
+  Collect all @racket[Left] payloads (Haskell @tt{lefts}) or all @racket[Right]
+  payloads (Haskell @tt{rights}), respectively, preserving order.}
+
+@defproc[(partition-eithers [rs (List (Either a b))]) (Pair (List a) (List b))]{
+  Split @racket[rs] into a @racket[Pair] of the @racket[Left] payloads and the
+  @racket[Right] payloads (Haskell @tt{partitionEithers}), preserving order.}
+
+@defproc[(right->maybe [r (Either a b)]) (Maybe b)]{
+  Convert @racket[Right] to @racket[Some] and @racket[Left] to @racket[None].}
+
+@defproc[(maybe->either [left a] [m (Maybe b)]) (Either a b)]{
+  Convert @racket[Some] to @racket[Right] and @racket[None] to
+  @racket[(Left left)].}
+
+@section{rackton/data/result}
+@defmodule[rackton/data/result #:no-declare]
+@declare-exporting[rackton/data/result]
+
+A result/success-flavored coproduct.  @racket[Result] is isomorphic to the
+prelude's @racket[Either] (@racket[Err] ↔ @racket[Left], @racket[Ok] ↔
+@racket[Right]) but a @emph{distinct nominal type}, for code where the
+@tt{Ok}/@tt{Err} naming reads better than @tt{Left}/@tt{Right}.  Unlike the
+helpers in @racketmodname[rackton/data/either], this module also defines
+@racket[Result]'s own class instances; @racket[result->either] /
+@racket[either->result] bridge to the prelude coproduct.
+
+@defidform[#:kind "type" Result]{
+
+Tagged-union for fallible computations.  @racket[(Result e a)] is either an
+@racket[Err] of type @racket[e] or an @racket[Ok] of type @racket[a].
+Instances: @racket[Functor], @racket[Applicative], @racket[Monad]
+(over the @racket[a]; @racket[e] is fixed per chain), @racket[Bifunctor],
+@racket[Eq], @racket[Show].
+
+@deftogether[(@defidform[#:kind "constructor" Err]
+              @defidform[#:kind "constructor" Ok])]{
+
+@racket[Err : (-> e (Result e a))] / @racket[Ok : (-> a (Result e a))].}}
+
+@defproc[(result [f (-> e c)] [g (-> a c)] [r (Result e a)]) c]{
   Eliminator: applies @racket[f] to an @racket[Err] payload and @racket[g] to
   an @racket[Ok] payload.}
 
@@ -167,18 +221,23 @@ non-class eliminators and collectors.
 
 @deftogether[(@defproc[(oks [rs (List (Result e a))]) (List a)]
               @defproc[(errs [rs (List (Result e a))]) (List e)])]{
-  Collect all @racket[Ok] payloads (Haskell @tt{rights}) or all @racket[Err]
-  payloads (Haskell @tt{lefts}), respectively.}
+  Collect all @racket[Ok] payloads or all @racket[Err] payloads, respectively,
+  preserving order.}
 
 @defproc[(partition-results [rs (List (Result e a))]) (Pair (List e) (List a))]{
   Split @racket[rs] into a @racket[Pair] of the @racket[Err] payloads and the
-  @racket[Ok] payloads (Haskell @tt{partitionEithers}), preserving order.}
+  @racket[Ok] payloads, preserving order.}
 
 @defproc[(ok->maybe [r (Result e a)]) (Maybe a)]{
   Convert @racket[Ok] to @racket[Some] and @racket[Err] to @racket[None].}
 
 @defproc[(maybe->result [e e] [m (Maybe a)]) (Result e a)]{
   Convert @racket[Some] to @racket[Ok] and @racket[None] to @racket[(Err e)].}
+
+@deftogether[(@defproc[(result->either [r (Result e a)]) (Either e a)]
+              @defproc[(either->result [x (Either e a)]) (Result e a)])]{
+  Bridge to and from the prelude @racket[Either]: @racket[Err] ↔ @racket[Left]
+  and @racket[Ok] ↔ @racket[Right].}
 
 
 @section{rackton/data/foldable}

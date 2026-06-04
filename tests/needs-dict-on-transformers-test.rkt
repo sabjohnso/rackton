@@ -7,6 +7,7 @@
 
 (require rackton/control/monad/state
          rackton/control/monad/except
+         rackton/data/result
          "../unit.rkt")
 
 ;; ----- regression: base ExceptT flatmap ----------------

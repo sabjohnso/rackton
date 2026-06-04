@@ -11,6 +11,7 @@
          rackton/system/time
          rackton/system/ref
          rackton/system/exception
+         rackton/data/result
          "../unit.rkt")
 
 ;; ref round-trip

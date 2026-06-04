@@ -1,67 +1,68 @@
 #lang rackton
 
-;; rackton/data/either — Data.Either, over the prelude's @racket[Result]
-;; type: @racket[Err] is Haskell's @tt{Left}, @racket[Ok] is @tt{Right}.
-;; The @racket[Functor] / @racket[Applicative] / @racket[Monad] /
-;; @racket[Bifunctor] instances for @racket[Result] are in the prelude;
-;; these are the non-class eliminators and collectors.
+;; rackton/data/either — Data.Either, over the prelude's @racket[Either]
+;; type (@racket[Left] / @racket[Right]).  The @racket[Functor] /
+;; @racket[Applicative] / @racket[Monad] / @racket[Bifunctor] instances
+;; for @racket[Either] live in the prelude; these are the non-class
+;; eliminators, predicates, and collectors.  For result/success-flavored
+;; code that prefers @tt{Ok}/@tt{Err} naming, see rackton/data/result.
 
 (provide (all-defined-out))
 
-;; Eliminator: @racket[(either f g r)] applies @racket[f] to an
-;; @racket[Err] payload, @racket[g] to an @racket[Ok] payload.
-(: either (-> (-> e c) (-> (-> a c) (-> (Result e a) c))))
+;; Eliminator: @racket[(either f g r)] applies @racket[f] to a
+;; @racket[Left] payload, @racket[g] to a @racket[Right] payload.
+(: either (-> (-> a c) (-> (-> b c) (-> (Either a b) c))))
 (define (either f g r)
   (match r
-    [(Err e) (f e)]
-    [(Ok  a) (g a)]))
+    [(Left  a) (f a)]
+    [(Right b) (g b)]))
 
-(: is-ok (-> (Result e a) Boolean))
-(define (is-ok r) (match r [(Ok _) #t] [(Err _) #f]))
+(: is-left (-> (Either a b) Boolean))
+(define (is-left r) (match r [(Left _) #t] [(Right _) #f]))
 
-(: is-err (-> (Result e a) Boolean))
-(define (is-err r) (match r [(Ok _) #f] [(Err _) #t]))
+(: is-right (-> (Either a b) Boolean))
+(define (is-right r) (match r [(Left _) #f] [(Right _) #t]))
 
-;; @racket[(from-ok default r)] — the Ok payload, or @racket[default].
-(: from-ok (-> a (-> (Result e a) a)))
-(define (from-ok d r) (match r [(Ok a) a] [(Err _) d]))
+;; @racket[(from-left default r)] — the Left payload, or @racket[default].
+(: from-left (-> a (-> (Either a b) a)))
+(define (from-left d r) (match r [(Left a) a] [(Right _) d]))
 
-;; @racket[(from-err default r)] — the Err payload, or @racket[default].
-(: from-err (-> e (-> (Result e a) e)))
-(define (from-err d r) (match r [(Err e) e] [(Ok _) d]))
+;; @racket[(from-right default r)] — the Right payload, or @racket[default].
+(: from-right (-> b (-> (Either a b) b)))
+(define (from-right d r) (match r [(Right b) b] [(Left _) d]))
 
-;; All Ok payloads (Haskell @tt{rights}).
-(: oks (-> (List (Result e a)) (List a)))
-(define (oks rs)
+;; All Left payloads (Haskell @tt{lefts}), order preserved.
+(: lefts (-> (List (Either a b)) (List a)))
+(define (lefts rs)
   (match rs
-    [(Nil)            Nil]
-    [(Cons (Ok a) t)  (Cons a (oks t))]
-    [(Cons (Err _) t) (oks t)]))
+    [(Nil)              Nil]
+    [(Cons (Left a) t)  (Cons a (lefts t))]
+    [(Cons (Right _) t) (lefts t)]))
 
-;; All Err payloads (Haskell @tt{lefts}).
-(: errs (-> (List (Result e a)) (List e)))
-(define (errs rs)
+;; All Right payloads (Haskell @tt{rights}), order preserved.
+(: rights (-> (List (Either a b)) (List b)))
+(define (rights rs)
   (match rs
-    [(Nil)            Nil]
-    [(Cons (Err e) t) (Cons e (errs t))]
-    [(Cons (Ok _) t)  (errs t)]))
+    [(Nil)              Nil]
+    [(Cons (Right b) t) (Cons b (rights t))]
+    [(Cons (Left _) t)  (rights t)]))
 
-;; @racket[(partition-results rs)] — @racket[(Pair errs oks)]
-;; (Haskell @tt{partitionEithers}), order preserved.
-(: partition-results (-> (List (Result e a)) (Pair (List e) (List a))))
-(define (partition-results rs)
+;; @racket[(partition-eithers rs)] — @racket[(Pair lefts rights)]
+;; (Haskell @tt{partitionEithers}), order preserved within each side.
+(: partition-eithers (-> (List (Either a b)) (Pair (List a) (List b))))
+(define (partition-eithers rs)
   (foldr (lambda (r acc)
            (match r
-             [(Err e) (Pair (Cons e (fst acc)) (snd acc))]
-             [(Ok  a) (Pair (fst acc) (Cons a (snd acc)))]))
+             [(Left  a) (Pair (Cons a (fst acc)) (snd acc))]
+             [(Right b) (Pair (fst acc) (Cons b (snd acc)))]))
          (Pair Nil Nil)
          rs))
 
-;; @racket[Ok] → @racket[Some]; @racket[Err] → @racket[None].
-(: ok->maybe (-> (Result e a) (Maybe a)))
-(define (ok->maybe r) (match r [(Ok a) (Some a)] [(Err _) None]))
+;; @racket[Right] → @racket[Some]; @racket[Left] → @racket[None].
+(: right->maybe (-> (Either a b) (Maybe b)))
+(define (right->maybe r) (match r [(Right b) (Some b)] [(Left _) None]))
 
-;; @racket[(maybe->result e m)] — @racket[Some]→@racket[Ok];
-;; @racket[None]→@racket[(Err e)].
-(: maybe->result (-> e (-> (Maybe a) (Result e a))))
-(define (maybe->result e m) (match m [(Some a) (Ok a)] [(None) (Err e)]))
+;; @racket[(maybe->either left m)] — @racket[Some]→@racket[Right];
+;; @racket[None]→@racket[(Left left)].
+(: maybe->either (-> a (-> (Maybe b) (Either a b))))
+(define (maybe->either l m) (match m [(Some b) (Right b)] [(None) (Left l)]))

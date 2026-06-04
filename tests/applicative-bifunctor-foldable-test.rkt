@@ -11,9 +11,9 @@
 (: maybe-ap2 (Maybe Integer))
 (define maybe-ap2 (fapply None (Some 41)))
 
-;; ----- Applicative fapply over Result --------------------------
-(: result-ap (Result String Integer))
-(define result-ap (fapply (Ok (lambda (x) (* x 2))) (Ok 21)))
+;; ----- Applicative fapply over Either --------------------------
+(: result-ap (Either String Integer))
+(define result-ap (fapply (Right (lambda (x) (* x 2))) (Right 21)))
 
 ;; ----- Applicative fapply over List ----------------------------
 (: list-ap (List Integer))
@@ -39,18 +39,18 @@
          (lambda (s) (string-append s "!"))
          (Pair 41 "hi")))
 
-;; ----- Bifunctor bimap over Result --------------------------
-(: result-bimapped (Result Integer Integer))
+;; ----- Bifunctor bimap over Either --------------------------
+(: result-bimapped (Either Integer Integer))
 (define result-bimapped
   (bimap (lambda (e) (string-length e))
          (lambda (v) (* v 10))
-         (Ok 7)))
+         (Right 7)))
 
-(: result-bimapped-err (Result Integer Integer))
+(: result-bimapped-err (Either Integer Integer))
 (define result-bimapped-err
   (bimap (lambda (e) (string-length e))
          (lambda (v) (* v 10))
-         (Err "oops")))
+         (Left "oops")))
 
 ;; ----- Bifunctor first / second defaults --------------------
 (: pair-first (Pair Integer String))
@@ -103,8 +103,8 @@
        (all-checks
         (list (check-equal? maybe-ap1 (Some 42))
               (check-equal? maybe-ap2 None))))
-   (it "Applicative fapply on Result"
-       (check-equal? result-ap (Ok 42)))
+   (it "Applicative fapply on Either"
+       (check-equal? result-ap (Right 42)))
    (it "Applicative fapply on List (cartesian)"
        (check-equal? list-ap
                      (Cons 11 (Cons 12 (Cons 2 (Cons 4 Nil))))))
@@ -114,10 +114,10 @@
        (check-equal? io-ap-result 105))
    (it "Bifunctor bimap on Pair"
        (check-equal? pair-bimapped (Pair 42 "hi!")))
-   (it "Bifunctor bimap on Result Ok"
-       (check-equal? result-bimapped (Ok 70)))
-   (it "Bifunctor bimap on Result Err"
-       (check-equal? result-bimapped-err (Err 4)))
+   (it "Bifunctor bimap on Either Right"
+       (check-equal? result-bimapped (Right 70)))
+   (it "Bifunctor bimap on Either Left"
+       (check-equal? result-bimapped-err (Left 4)))
    (it "Bifunctor first on Pair"
        (check-equal? pair-first (Pair 101 "k")))
    (it "Bifunctor second on Pair"

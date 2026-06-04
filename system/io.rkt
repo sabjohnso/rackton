@@ -10,7 +10,8 @@
 ;; at runtime, exactly as Haskell's does.  The runtime primitives live
 ;; in private/prelude-runtime and are reached via `foreign`.
 
-(require rackton/system/exception)
+(require rackton/system/exception
+         rackton/data/result)
 (provide (all-defined-out))
 
 ;; Opaque handle type.

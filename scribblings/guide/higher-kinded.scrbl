@@ -98,7 +98,7 @@ definition.
 @section{Built-in instances}
 
 The prelude ships @racket[Functor], @racket[Applicative], and
-@racket[Monad] instances for @racket[Maybe], @racket[Result e],
+@racket[Monad] instances for @racket[Maybe], @racket[Either a],
 @racket[List], @racket[IO], @racket[State s], @racket[Env r],
 @racket[Identity], @racket[STM], and the four transformers
 @racket[StateT], @racket[EnvT], @racket[WriterT], @racket[ExceptT].

@@ -1,6 +1,6 @@
 #lang scribble/manual
 @require[scribble/manual
-         (for-label rackton rackton/system/directory rackton/system/environment rackton/system/exception rackton/system/exit rackton/system/file rackton/system/io rackton/system/random rackton/system/ref rackton/system/time)]
+         (for-label rackton rackton/system/directory rackton/system/environment rackton/system/exception rackton/system/exit rackton/system/file rackton/system/io rackton/system/random rackton/system/ref rackton/system/time rackton/data/result)]
 
 @title[#:tag "stdlib-system"]{@tt{rackton/system} — IO and the outside world}
 

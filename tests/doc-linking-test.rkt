@@ -41,7 +41,7 @@
   ;; reference's for-label, not this list.  `Pair`/`Unit`/`Identity` are
   ;; bound here because their constructor (same name) is in the prelude.
   '(Integer Float Rational Complex Boolean String Char Bytes Unit
-    Maybe List Pair Result
+    Maybe List Pair Either
     IO Future
     Identity))
 

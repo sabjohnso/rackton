@@ -1,7 +1,7 @@
 #lang rackton
 
 ;; End-to-end tests for higher-kinded type classes:
-;; Functor and Monad with instances for Maybe, List, and Result e.
+;; Functor and Monad with instances for Maybe, List, and Either e.
 
 (require "../unit.rkt")
 
@@ -17,15 +17,15 @@
   (flatmap (lambda (m) (Some (* m 2)))
            (Some (+ n 1))))
 
-;; Result-typed plumbing.
-(: safe-divide (-> Integer (-> Integer (Result String Integer))))
+;; Either-typed plumbing.
+(: safe-divide (-> Integer (-> Integer (Either String Integer))))
 (define (safe-divide x y)
   (if (== y 0)
-      (Err "divide by zero")
-      (Ok (racket Integer (x y) (quotient x y)))))
+      (Left "divide by zero")
+      (Right (racket Integer (x y) (quotient x y)))))
 
-;; Bind chain composing Result errors.
-(: div-chain (-> Integer (-> Integer (Result String Integer))))
+;; Bind chain composing Either errors.
+(: div-chain (-> Integer (-> Integer (Either String Integer))))
 (define (div-chain a b)
   (flatmap (lambda (q) (safe-divide q 1))
            (safe-divide a b)))
@@ -44,20 +44,20 @@
         (list (check-equal? (square-all (Cons 1 (Cons 2 (Cons 3 Nil))))
                             (Cons 1 (Cons 4 (Cons 9 Nil))))
               (check-equal? (square-all Nil) Nil))))
-   (it "fmap over Result e"
+   (it "fmap over Either e"
        (all-checks
-        (list (check-equal? (square-all (ann (Ok 4) (Result String Integer)))
-                            (ann (Ok 16) (Result String Integer)))
-              (check-equal? (square-all (ann (Err "bad") (Result String Integer)))
-                            (ann (Err "bad") (Result String Integer))))))
+        (list (check-equal? (square-all (ann (Right 4) (Either String Integer)))
+                            (ann (Right 16) (Either String Integer)))
+              (check-equal? (square-all (ann (Left "bad") (Either String Integer)))
+                            (ann (Left "bad") (Either String Integer))))))
    (it "Monad Maybe — bind chain"
        (all-checks
         (list (check-equal? (add-one-then-double 4)  (Some 10))
               (check-equal? (add-one-then-double 10) (Some 22)))))
-   (it "Monad Result — bind chain composes errors"
+   (it "Monad Either — bind chain composes errors"
        (all-checks
-        (list (check-equal? (div-chain 10 2) (Ok 5))
-              (check-equal? (div-chain 10 0) (Err "divide by zero")))))))
+        (list (check-equal? (div-chain 10 2) (Right 5))
+              (check-equal? (div-chain 10 0) (Left "divide by zero")))))))
 
 (: _ran Unit)
 (define _ran (run-io (run-suite "hkt" suite)))

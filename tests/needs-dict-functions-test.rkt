@@ -36,7 +36,7 @@
 (: pair-list (List (Pair String String)))
 (define pair-list (my-pure-pair "hi"))
 
-(: pair-result (Result String (Pair Integer Integer)))
+(: pair-result (Either String (Pair Integer Integer)))
 (define pair-result (my-pure-pair 7))
 
 (: pair-io (IO (Pair Integer Integer)))
@@ -70,8 +70,8 @@
        (check-equal? pair-maybe (Some (Pair 42 42))))
    (it "user my-pure-pair into List"
        (check-equal? pair-list (Cons (Pair "hi" "hi") Nil)))
-   (it "user my-pure-pair into Result"
-       (check-equal? pair-result (Ok (Pair 7 7))))
+   (it "user my-pure-pair into Either"
+       (check-equal? pair-result (Right (Pair 7 7))))
    (it "user my-pure-pair into IO"
        (check-equal? (run-io pair-io) (Pair 1 1)))
    (it "user body mixes runtime mappend and dict-passed mempty (String)"

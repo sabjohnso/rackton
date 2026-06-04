@@ -18,7 +18,8 @@
 
 (require "property.rkt"
          "check.rkt"
-         rackton/system)   ;; `try` (runs a Property, catching panics)
+         rackton/system        ;; `try` (runs a Property, catching panics)
+         rackton/data/result)  ;; `try` reifies failures as (Err …) / (Ok …)
 
 (provide (data-out Test)
          (data-out Outcome)

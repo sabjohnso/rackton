@@ -63,7 +63,7 @@ A bare expression clause discards its result (via
 
 @itemlist[
 @item{@racket[Maybe]   — short-circuiting on @racket[None].}
-@item{@racket[Result e] — short-circuiting on @racket[Err].}
+@item{@racket[Either a] — short-circuiting on @racket[Left].}
 @item{@racket[List]    — non-deterministic choice; @racket[flatmap] is
       concatMap and @racket[do] gives cartesian-product semantics.}
 @item{@racket[IO]      — sequential side-effects (see @secref["io-and-mutation"]).}

@@ -4,6 +4,7 @@
 ;; try / raise-io for structured error recovery.
 
 (require rackton/system
+         rackton/data/result
          "../unit.rkt")
 
 ;; Float literals + arithmetic.  Use values whose binary repr is

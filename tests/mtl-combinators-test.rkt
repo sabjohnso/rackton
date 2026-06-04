@@ -13,6 +13,7 @@
   (require rackton/control/monad/reader)
   (require rackton/control/monad/writer)
   (require rackton/control/monad/except)
+  (require rackton/data/result)
   ;; A tiny helper used by the local-en / censor tests since the
   ;; prelude doesn't yet ship a string-upcase combinator.
   (: prefix-x (-> String String))

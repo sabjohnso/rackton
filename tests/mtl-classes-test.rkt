@@ -12,6 +12,7 @@
   (require rackton/control/monad/reader)
   (require rackton/control/monad/writer)
   (require rackton/control/monad/except)
+  (require rackton/data/result)
   ;; ----- MonadState polymorphic increment -----------------
   (: incr-by ((MonadState Integer m) => (-> Integer (m Unit))))
   (define (incr-by n)

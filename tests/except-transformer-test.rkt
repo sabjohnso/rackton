@@ -3,6 +3,7 @@
 ;; Class-method dict-passing + ExceptT.
 
 (require rackton/control/monad/except
+         rackton/data/result
          "../unit.rkt")
 
 ;; ----- ExceptT String IO --------------------------------

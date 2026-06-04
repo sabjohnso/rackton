@@ -17,12 +17,12 @@
       [_ <- None]            ;; short-circuits
     (Some 99)))
 
-(: divide-or-fail (-> Integer (-> Integer (Result String Integer))))
+(: divide-or-fail (-> Integer (-> Integer (Either String Integer))))
 (define (divide-or-fail x y)
   (do [v <- (if (== y 0)
-                (Err "divide by zero")
-                (Ok (racket Integer (x y) (quotient x y))))]
-    (Ok v)))
+                (Left "divide by zero")
+                (Right (racket Integer (x y) (quotient x y))))]
+    (Right v)))
 
 ;; Bare-expression clauses: sequenced without binding the result.
 ;; (do (Some 1) [x <- (Some 2)] (Some (+ x 10))) ≡
@@ -51,10 +51,10 @@
               (check-equal? (triple-some 5) (Some 18))))) ; 5+6+7
    (it "None in the middle short-circuits the chain"
        (check-equal? (short-circuit 7) None))
-   (it "do over Result propagates Err"
+   (it "do over Either propagates Left"
        (all-checks
-        (list (check-equal? (divide-or-fail 10 2) (Ok 5))
-              (check-equal? (divide-or-fail 10 0) (Err "divide by zero")))))
+        (list (check-equal? (divide-or-fail 10 2) (Right 5))
+              (check-equal? (divide-or-fail 10 0) (Left "divide by zero")))))
    (it "bare-expression do clauses sequence without binding"
        (all-checks
         (list (check-equal? bare-clause-seq (Some 12))

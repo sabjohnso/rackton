@@ -30,16 +30,16 @@
 (: maybe-of-list-empty (Maybe (List Integer)))
 (define maybe-of-list-empty (traverse parse-positive Nil))
 
-;; ----- traverse over List, into Result ------------------------
-(: keep-or-err (-> Integer (Result String Integer)))
+;; ----- traverse over List, into Either ------------------------
+(: keep-or-err (-> Integer (Either String Integer)))
 (define (keep-or-err n)
-  (if (> n 0) (Ok n) (Err "non-positive")))
+  (if (> n 0) (Right n) (Left "non-positive")))
 
-(: result-of-list-all (Result String (List Integer)))
+(: result-of-list-all (Either String (List Integer)))
 (define result-of-list-all
   (traverse keep-or-err (Cons 5 (Cons 6 Nil))))
 
-(: result-of-list-fail (Result String (List Integer)))
+(: result-of-list-fail (Either String (List Integer)))
 (define result-of-list-fail
   (traverse keep-or-err (Cons 5 (Cons -6 Nil))))
 
@@ -59,10 +59,10 @@
        (check-equal? maybe-of-list-fail None))
    (it "traverse List into Maybe (empty list -> pure Nil)"
        (check-equal? maybe-of-list-empty (Some Nil)))
-   (it "traverse List into Result (all succeed)"
-       (check-equal? result-of-list-all (Ok (Cons 5 (Cons 6 Nil)))))
-   (it "traverse List into Result (short-circuit on Err)"
-       (check-equal? result-of-list-fail (Err "non-positive")))))
+   (it "traverse List into Either (all succeed)"
+       (check-equal? result-of-list-all (Right (Cons 5 (Cons 6 Nil)))))
+   (it "traverse List into Either (short-circuit on Left)"
+       (check-equal? result-of-list-fail (Left "non-positive")))))
 
 (: _ran Unit)
 (define _ran (run-io (run-suite "traversable" suite)))

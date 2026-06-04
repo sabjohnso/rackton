@@ -28,7 +28,7 @@ Racket.  Highlights:
   `Functor`/`Applicative`/`Monad`/`Bifunctor`/`Foldable`/`Traversable`,
   `Semigroup`/`Monoid`, MTL-style `MonadState`/`MonadEnv`/`MonadWriter`/
   `MonadError`, the corresponding transformers (`StateT`, `EnvT`,
-  `WriterT`, `ExceptT`, `Identity`), `Maybe`/`List`/`Result`/`Pair`/
+  `WriterT`, `ExceptT`, `Identity`), `Maybe`/`List`/`Either`/`Pair`/
   `Unit`/`IO`/`Ref`, lens/prism/traversal combinators, a full numeric
   tower (`Integer`/`Float`/`Rational`/`Complex`/`Char`/`Bytes`),
   string/list/IO/file/Map/Set primitives, and `panic`.

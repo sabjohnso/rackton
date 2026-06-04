@@ -100,7 +100,7 @@
     (data (Maybe a)    None (Some a))
     (data (List a)     Nil  (Cons a (List a)))
     (data (Pair a b)   (Pair a b))
-    (data (Result e a) (Err e) (Ok a))
+    (data (Either a b) (Left a) (Right b))
     (data Unit Unit)
 
     ;; --- Char and Bytes primitives (opaque ADTs; values come from
@@ -304,31 +304,31 @@
             [(Nil)        Nil]
             [(Cons h t)   (cat (f h) (flatmap f t))]))))
 
-    ;; Result e (the error type is fixed; we map over the success type)
-    (instance (Functor (Result e))
+    ;; Either a (the left type is fixed; we map over the right)
+    (instance (Functor (Either a))
       (define (fmap f r)
         (match r
-          [(Err x) (Err x)]
-          [(Ok  v) (Ok (f v))])))
+          [(Left x)  (Left x)]
+          [(Right v) (Right (f v))])))
 
-    (instance (Applicative (Result e))
-      (define (pure x) (Ok x))
+    (instance (Applicative (Either a))
+      (define (pure x) (Right x))
       (define (fapply rf rx)
         (match rf
-          [(Err e) (Err e)]
-          [(Ok  f) (fmap f rx)])))
+          [(Left e)  (Left e)]
+          [(Right f) (fmap f rx)])))
 
-    (instance (Monad (Result e))
+    (instance (Monad (Either a))
       (define (flatmap f r)
         (match r
-          [(Err x) (Err x)]
-          [(Ok  v) (f v)])))
+          [(Left x)  (Left x)]
+          [(Right v) (f v)])))
 
     ;; --- Bifunctor ---------------------------------------------
     ;;
     ;; Two-parameter higher-kinded class for shapes with TWO "slots"
     ;; that can be mapped over independently — `Pair a b` and
-    ;; `Result e a` are the canonical instances.  `bimap` dispatches
+    ;; `Either a b` are the canonical instances.  `bimap` dispatches
     ;; on the third positional argument (the `p a b` value); `first`
     ;; and `second` are derived defaults that fix one side via `id`.
 
@@ -344,20 +344,20 @@
         (match p
           [(Pair x y) (Pair (f x) (g y))])))
 
-    (instance (Bifunctor Result)
+    (instance (Bifunctor Either)
       (define (bimap f g r)
         (match r
-          [(Err e) (Err (f e))]
-          [(Ok  v) (Ok  (g v))])))
+          [(Left e)  (Left  (f e))]
+          [(Right v) (Right (g v))])))
 
     ;; --- Category / Arrow (monoidal-category generalization) ---
     ;;
     ;; Arrows (Hughes) generalize plain functions and Kleisli arrows.
     ;; The hierarchy is Category → Arrow → {ArrowChoice, ArrowApply,
-    ;; ArrowLoop}.  Rather than hard-wiring the strict `Pair`/`Result`,
+    ;; ArrowLoop}.  Rather than hard-wiring the strict `Pair`/`Either`,
     ;; each arrow carries its own PRODUCT `p` and COPRODUCT `s`, each
     ;; determined by the arrow via a functional dependency.  `(->)` uses
-    ;; the strict `Pair`/`Result`; a lazy arrow can use lazy ones, which
+    ;; the strict `Pair`/`Either`; a lazy arrow can use lazy ones, which
     ;; is what makes a lawful `ArrowLoop` possible (the strict product
     ;; forces the loop's feedback channel).
     ;;
@@ -382,10 +382,10 @@
       (define (prod-fst q) (match q [(Pair a _) a]))
       (define (prod-snd q) (match q [(Pair _ b) b])))
 
-    (instance (Coprod Result)
-      (define (inj-left  a) (Err a))
-      (define (inj-right b) (Ok  b))
-      (define (co-elim f g s) (match s [(Err a) (f a)] [(Ok b) (g b)])))
+    (instance (Coprod Either)
+      (define (inj-left  a) (Left  a))
+      (define (inj-right b) (Right b))
+      (define (co-elim f g s) (match s [(Left a) (f a)] [(Right b) (g b)])))
 
     ;; Category is unchanged — it has no product.  `ident`/`comp` are
     ;; distinct from the standalone `id` / backward `compose`; `ident` is
@@ -440,15 +440,15 @@
       (: fork     (-> (cat a b) (-> (cat c d) (cat (s a c) (s b d)))))
       (: fanin    (-> (cat a c) (-> (cat b c) (cat (s a b) c)))))
 
-    (instance (ArrowChoice (->) Pair Result)
+    (instance (ArrowChoice (->) Pair Either)
       (define (on-left f)
-        (lambda (r) (match r [(Err a) (Err (f a))] [(Ok x) (Ok x)])))
+        (lambda (r) (match r [(Left a) (Left (f a))] [(Right x) (Right x)])))
       (define (on-right g)
-        (lambda (r) (match r [(Ok a) (Ok (g a))] [(Err x) (Err x)])))
+        (lambda (r) (match r [(Right a) (Right (g a))] [(Left x) (Left x)])))
       (define (fork f g)
-        (lambda (r) (match r [(Err a) (Err (f a))] [(Ok c) (Ok (g c))])))
+        (lambda (r) (match r [(Left a) (Left (f a))] [(Right c) (Right (g c))])))
       (define (fanin f g)
-        (lambda (r) (match r [(Err a) (f a)] [(Ok b) (g b)]))))
+        (lambda (r) (match r [(Left a) (f a)] [(Right b) (g b)]))))
 
     ;; ArrowApply makes the arrow a first-class value fed in with its
     ;; argument.  `arrow-app` is return-typed (a constant arrow).
@@ -1106,7 +1106,7 @@
 
     ;; --- Eq / Ord / Show for the core containers ----------------
     ;;
-    ;; Structural instances for Maybe / List / Pair / Result / Unit,
+    ;; Structural instances for Maybe / List / Pair / Either / Unit,
     ;; defined in pure Rackton (element ops come from the element
     ;; constraints).  Placed late so the `Show` bodies can use
     ;; `string-append`.  These let `==`, comparison, and `show` (and
@@ -1133,11 +1133,11 @@
           [(Pair x1 y1)
            (match p2 [(Pair x2 y2) (if (== x1 x2) (== y1 y2) #f)])])))
 
-    (instance ((Eq e) (Eq a) => (Eq (Result e a)))
+    (instance ((Eq a) (Eq b) => (Eq (Either a b)))
       (define (== r1 r2)
         (match r1
-          [(Err x) (match r2 [(Err y) (== x y)] [(Ok  _) #f])]
-          [(Ok  x) (match r2 [(Err _) #f]        [(Ok  y) (== x y)])])))
+          [(Left x)  (match r2 [(Left y)  (== x y)] [(Right _) #f])]
+          [(Right x) (match r2 [(Left _)  #f]       [(Right y) (== x y)])])))
 
     (instance (Eq Unit)
       (define (== _u1 _u2) #t))
@@ -1194,11 +1194,11 @@
            (string-append "(" (string-append (show x)
                             (string-append ", " (string-append (show y) ")"))))])))
 
-    (instance ((Show e) (Show a) => (Show (Result e a)))
+    (instance ((Show a) (Show b) => (Show (Either a b)))
       (define (show r)
         (match r
-          [(Err x) (string-append "(Err " (string-append (show x) ")"))]
-          [(Ok  x) (string-append "(Ok " (string-append (show x) ")"))])))
+          [(Left x)  (string-append "(Left "  (string-append (show x) ")"))]
+          [(Right x) (string-append "(Right " (string-append (show x) ")"))])))
 
     (instance (Show Unit)
       (define (show _u) "Unit"))

@@ -1,6 +1,6 @@
 #lang scribble/manual
 @require[scribble/manual
-         (for-label rackton)]
+         (for-label rackton rackton/data/result)]
 
 @title[#:tag "values"]{Built-in values}
 This chapter documents the value bindings Rackton ships, grouped by
