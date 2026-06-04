@@ -1097,6 +1097,16 @@
                          (parse-expr #'body)
                          stx)]
 
+    ;; Malformed monadic / parallel let — the binding group did not match
+    ;; `([var expr] ...+)`.  Diagnose the offending clause here instead of
+    ;; letting the form fall through to a function-application reading and
+    ;; an "unbound identifier: let&" error.  These come AFTER every
+    ;; well-formed let&/let%/let+ clause above, so only ill-formed uses
+    ;; reach them.
+    [(let& . _) (raise-bad-monadic-let 'let& stx)]
+    [(let% . _) (raise-bad-monadic-let 'let% stx)]
+    [(let+ . _) (raise-bad-monadic-let 'let+ stx)]
+
     [(letrec ([x:id rhs] ...) body)
      (e:letrec (for/list ([id (in-list (syntax->list #'(x ...)))]
                           [r  (in-list (syntax->list #'(rhs ...)))])
@@ -1303,6 +1313,46 @@
   (for/list ([id (in-list (syntax->list ids-stx))]
              [r  (in-list (syntax->list rhss-stx))])
     (cons (syntax->datum id) (parse-expr r))))
+
+;; The monadic / parallel let forms (let&, let%, let+) all bind with the
+;; shape `([var expr] ...+)`.  When that pattern fails to match — say the
+;; user wrote `[_ <> (println …)]` with a stray token between the
+;; variable and its expression — the bare syntax-parse fallthrough would
+;; mis-read `(let& …)` as a function application and report an unhelpful
+;; "unbound identifier: let&".  This procedure is invoked from an
+;; explicit error clause so the diagnosis names the form and points at
+;; the offending binding clause.  `who` is the form's keyword symbol.
+(define (raise-bad-monadic-let who full-stx)
+  (define (generic)
+    (raise-syntax-error
+     who
+     (format "expected (~a ([var expr] ...+) body)" who)
+     full-stx))
+  (syntax-parse full-stx
+    [(_ (clause ...) . _)
+     (for ([c (in-list (syntax->list #'(clause ...)))])
+       (syntax-parse c
+         [[_x:id _rhs] (void)]                         ;; well-formed clause
+         [[x:id mid rest ...]
+          ;; e.g. [_ <> (println …)] — stray token(s) after the variable.
+          (raise-syntax-error
+           who
+           (format
+            "malformed binding clause ~s: a ~a binding has the form [var expr]; the `~a` after the variable `~a` is not allowed."
+            (syntax->datum c) who (syntax->datum #'mid) (syntax->datum #'x))
+           full-stx c)]
+         [_
+          ;; A clause that is not even [var …]: empty, [var] (missing the
+          ;; expression), or a non-identifier on the left.
+          (raise-syntax-error
+           who
+           (format "malformed binding clause ~s: a ~a binding has the form [var expr]"
+                   (syntax->datum c) who)
+           full-stx c)]))
+     ;; Every clause was individually well-formed, so the failure lay
+     ;; elsewhere (e.g. a missing or extra body).
+     (generic)]
+    [_ (generic)]))
 
 ;; ----- destructuring let / where -----------------------------------
 ;;
