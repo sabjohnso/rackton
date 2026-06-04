@@ -112,7 +112,7 @@
 ;; (needs-dict) body is never forced here — it is never run (no concrete
 ;; instance exists to run it on).
 
-(: build-feedback ((ArrowLoop cat) => (-> Boolean (cat Integer Integer))))
+(: build-feedback ((ArrowLoop cat p) => (-> Boolean (cat Integer Integer))))
 (define (build-feedback _ignore)
   (proc (x)
     (rec [s <- (feed (arr inc) s)])

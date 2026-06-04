@@ -127,8 +127,10 @@
   Functor Applicative Monad
   ;; Folding and traversal
   Foldable Traversable Bifunctor
-  ;; Arrows (Category hierarchy)
-  Category Arrow ArrowChoice ArrowApply ArrowLoop
+  ;; Arrows (Category hierarchy) and the monoidal tensors they abstract
+  ;; over (`Prod`/`Coprod` — named to avoid clashing with the
+  ;; multiplicative-monoid newtype `Product` in rackton/data/monoid).
+  Category Arrow ArrowChoice ArrowApply ArrowLoop Prod Coprod
   ;; Semigroup / monoid
   Semigroup Monoid
   ;; MTL-style monadic classes
@@ -175,4 +177,7 @@
   ;; Floating
   pi
   ;; Arrows (return-typed: the class param appears only in the result)
-  ident arr arrow-app)
+  ident arr arrow-app
+  ;; Monoidal tensors (return-typed introductions; the projections /
+  ;; eliminator prod-fst/prod-snd/co-elim have ordinary runtime bindings)
+  mk-prod inj-left inj-right)

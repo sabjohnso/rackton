@@ -350,94 +350,126 @@
           [(Err e) (Err (f e))]
           [(Ok  v) (Ok  (g v))])))
 
-    ;; --- Category / Arrow --------------------------------------
+    ;; --- Category / Arrow (monoidal-category generalization) ---
     ;;
     ;; Arrows (Hughes) generalize plain functions and Kleisli arrows.
-    ;; The hierarchy is Category → Arrow.  Method names are non-infix
-    ;; and chosen to avoid clashing with existing prelude names:
-    ;; `ident`/`comp` (Category — distinct from the standalone `id`
-    ;; function and the backward `compose`) and
-    ;; `arr`/`on-first`/`on-second`/`split`/`fanout` (Arrow — distinct
-    ;; from `Bifunctor`'s `first`/`second`).  `ident` and `arr` are
-    ;; return-typed: the class parameter `cat` appears only in the
-    ;; result, so each call site resolves the instance at compile time
-    ;; from the expected type — the same mechanism as `pure`/`mempty`.
-    ;; The canonical instance is the function arrow `(->)`, where every
-    ;; combinator collapses to ordinary function plumbing.
+    ;; The hierarchy is Category → Arrow → {ArrowChoice, ArrowApply,
+    ;; ArrowLoop}.  Rather than hard-wiring the strict `Pair`/`Result`,
+    ;; each arrow carries its own PRODUCT `p` and COPRODUCT `s`, each
+    ;; determined by the arrow via a functional dependency.  `(->)` uses
+    ;; the strict `Pair`/`Result`; a lazy arrow can use lazy ones, which
+    ;; is what makes a lawful `ArrowLoop` possible (the strict product
+    ;; forces the loop's feedback channel).
+    ;;
+    ;; `Prod`/`Coprod` are the monoidal tensors — intro + elim — so the
+    ;; `proc` notation can build and take apart products/coproducts without
+    ;; naming a concrete type.  (Named `Prod`/`Coprod`, matching the
+    ;; `mk-prod`/`prod-fst` method prefix, to avoid clashing with the
+    ;; multiplicative-monoid newtype `Product` in rackton/data/monoid.)
 
+    (protocol (Prod (p :: (-> * (-> * *))))
+      (: mk-prod   (-> a (-> b (p a b))))
+      (: prod-fst  (-> (p a b) a))
+      (: prod-snd  (-> (p a b) b)))
+
+    (protocol (Coprod (s :: (-> * (-> * *))))
+      (: inj-left  (-> a (s a b)))
+      (: inj-right (-> b (s a b)))
+      (: co-elim   (-> (-> a c) (-> (-> b c) (-> (s a b) c)))))
+
+    (instance (Prod Pair)
+      (define (mk-prod a b) (Pair a b))
+      (define (prod-fst q) (match q [(Pair a _) a]))
+      (define (prod-snd q) (match q [(Pair _ b) b])))
+
+    (instance (Coprod Result)
+      (define (inj-left  a) (Err a))
+      (define (inj-right b) (Ok  b))
+      (define (co-elim f g s) (match s [(Err a) (f a)] [(Ok b) (g b)])))
+
+    ;; Category is unchanged — it has no product.  `ident`/`comp` are
+    ;; distinct from the standalone `id` / backward `compose`; `ident` is
+    ;; return-typed (resolved from the expected type, like `pure`).
     (protocol (Category (cat :: (-> * (-> * *))))
       (: ident (cat a a))
       (: comp (-> (cat a b) (-> (cat b c) (cat a c)))))
 
-    (protocol (Arrow [cat => Category])
+    ;; Arrow over a product `p` (determined by the arrow via the fundep).
+    ;; Signatures use `(p a c)` in place of the old `(Pair a c)`.
+    (protocol (Arrow (cat :: (-> * (-> * *))) (p :: (-> * (-> * *))))
+      (#:requires (Category cat) (Prod p))
+      (#:fundep cat -> p)
+      ;; All combinators are primitives: deriving on-second/split/fanout
+      ;; from on-first would build products with `mk-prod` over the
+      ;; abstract `p`, which the checker can't tie back to the instance's
+      ;; product, so each instance supplies them against its concrete
+      ;; product type instead.
       (: arr       (-> (-> a b) (cat a b)))
-      (: on-first  (-> (cat a b) (cat (Pair a c) (Pair b c))))
-      (: on-second (-> (cat a b) (cat (Pair c a) (Pair c b))))
-      (: split     (-> (cat a b) (-> (cat c d) (cat (Pair a c) (Pair b d)))))
-      (: fanout    (-> (cat a b) (-> (cat a c) (cat a (Pair b c)))))
-      ;; on-second/split/fanout derive from `arr`, `on-first`, and the
-      ;; superclass `comp`, so an instance need only supply `arr` and
-      ;; `on-first` (plus Category's `ident`/`comp`).  `swap`/`dup` are
-      ;; inlined as lambdas.
-      (define (on-second g)
-        (comp (arr (lambda (p) (match p [(Pair a b) (Pair b a)])))
-              (comp (on-first g)
-                    (arr (lambda (p) (match p [(Pair a b) (Pair b a)]))))))
-      (define (split f g) (comp (on-first f) (on-second g)))
-      (define (fanout f g)
-        (comp (arr (lambda (x) (Pair x x))) (split f g))))
+      (: on-first  (-> (cat a b) (cat (p a c) (p b c))))
+      (: on-second (-> (cat a b) (cat (p c a) (p c b))))
+      (: split     (-> (cat a b) (-> (cat c d) (cat (p a c) (p b d)))))
+      (: fanout    (-> (cat a b) (-> (cat a c) (cat a (p b c))))))
 
     (instance (Category (->))
       (define ident (lambda (x) x))
       (define (comp f g) (lambda (x) (g (f x)))))
 
-    (instance (Arrow (->))
+    (instance (Arrow (->) Pair)
       (define (arr f) f)
       (define (on-first f)
-        (lambda (p) (match p [(Pair a c) (Pair (f a) c)]))))
+        (lambda (q) (match q [(Pair a c) (Pair (f a) c)])))
+      (define (on-second g)
+        (lambda (q) (match q [(Pair c a) (Pair c (g a))])))
+      (define (split f g)
+        (lambda (q) (match q [(Pair a c) (Pair (f a) (g c))])))
+      (define (fanout f g)
+        (lambda (x) (Pair (f x) (g x)))))
 
-    ;; ArrowChoice routes a `Result` through one of two arrows by
-    ;; branch.  `Err` is the Left (active) branch and `Ok` the Right, so
-    ;; `on-left` transforms the `Err` payload and passes `Ok` through.
-    ;; on-right/fork/fanin derive from on-left + arr + comp, so an
-    ;; instance need only supply `on-left`.  `mirror` (swap branches)
-    ;; and the same-typed-Result collapse are inlined as lambdas.
-    (protocol (ArrowChoice [cat => Arrow])
-      (: on-left  (-> (cat a b) (cat (Result a x) (Result b x))))
-      (: on-right (-> (cat a b) (cat (Result x a) (Result x b))))
-      (: fork     (-> (cat a b) (-> (cat c d) (cat (Result a c) (Result b d)))))
-      (: fanin    (-> (cat a c) (-> (cat b c) (cat (Result a b) c))))
-      (define (on-right g)
-        (comp (arr (lambda (r) (match r [(Err x) (Ok x)] [(Ok x) (Err x)])))
-              (comp (on-left g)
-                    (arr (lambda (r) (match r [(Err x) (Ok x)] [(Ok x) (Err x)]))))))
-      (define (fork f g) (comp (on-left f) (on-right g)))
-      (define (fanin f g)
-        (comp (fork f g)
-              (arr (lambda (r) (match r [(Err c) c] [(Ok c) c]))))))
+    ;; ArrowChoice routes a coproduct `s` through one of two arrows by
+    ;; branch; on-right/fork/fanin derive from on-left via `inj-*`/`co-elim`.
+    (protocol (ArrowChoice (cat :: (-> * (-> * *)))
+                           (p :: (-> * (-> * *)))
+                           (s :: (-> * (-> * *))))
+      (#:requires (Arrow cat p) (Coprod s))
+      (#:fundep cat -> p s)
+      ;; Like Arrow, the combinators are primitives: deriving them would
+      ;; build coproducts with `inj-*`/`co-elim` over the abstract `s`,
+      ;; which the checker can't tie to the instance's coproduct.
+      (: on-left  (-> (cat a b) (cat (s a x) (s b x))))
+      (: on-right (-> (cat a b) (cat (s x a) (s x b))))
+      (: fork     (-> (cat a b) (-> (cat c d) (cat (s a c) (s b d)))))
+      (: fanin    (-> (cat a c) (-> (cat b c) (cat (s a b) c)))))
 
-    (instance (ArrowChoice (->))
+    (instance (ArrowChoice (->) Pair Result)
       (define (on-left f)
-        (lambda (r) (match r [(Err a) (Err (f a))] [(Ok x) (Ok x)]))))
+        (lambda (r) (match r [(Err a) (Err (f a))] [(Ok x) (Ok x)])))
+      (define (on-right g)
+        (lambda (r) (match r [(Ok a) (Ok (g a))] [(Err x) (Err x)])))
+      (define (fork f g)
+        (lambda (r) (match r [(Err a) (Err (f a))] [(Ok c) (Ok (g c))])))
+      (define (fanin f g)
+        (lambda (r) (match r [(Err a) (f a)] [(Ok b) (g b)]))))
 
-    ;; ArrowApply makes the arrow a first-class value that can be fed in
-    ;; alongside its argument and run.  `arrow-app` is return-typed (a
-    ;; constant arrow), so it resolves at compile time like `ident`.
-    (protocol (ArrowApply [cat => Arrow])
-      (: arrow-app (cat (Pair (cat a b) a) b)))
+    ;; ArrowApply makes the arrow a first-class value fed in with its
+    ;; argument.  `arrow-app` is return-typed (a constant arrow).
+    (protocol (ArrowApply (cat :: (-> * (-> * *))) (p :: (-> * (-> * *))))
+      (#:requires (Arrow cat p))
+      (#:fundep cat -> p)
+      (: arrow-app (cat (p (cat a b) a) b)))
 
-    (instance (ArrowApply (->))
-      (define arrow-app (lambda (p) (match p [(Pair f x) (f x)]))))
+    (instance (ArrowApply (->) Pair)
+      (define arrow-app (lambda (q) (match q [(Pair f x) (f x)]))))
 
-    ;; ArrowLoop ties a feedback channel: the `c` half of the output is
-    ;; fed back as the `c` half of the input.  Deliberately NO instance
-    ;; for `(->)`: a lawful function-arrow loop needs laziness to tie the
-    ;; recursive knot, which strict Rackton functions cannot do, so
-    ;; `arrow-loop` (and proc `rec`) over a plain function is correctly a
-    ;; type error.  A user arrow whose representation supports feedback
-    ;; (e.g. a circuit/stream arrow with a unit delay) can define one.
-    (protocol (ArrowLoop [cat => Arrow])
-      (: arrow-loop (-> (cat (Pair a c) (Pair b c)) (cat a b))))
+    ;; ArrowLoop ties a feedback channel: the second half of the output is
+    ;; fed back as the second half of the input.  No `(->)` instance — a
+    ;; lawful function-arrow loop needs laziness to tie the recursive knot,
+    ;; which the strict `Pair` cannot, so `arrow-loop` / proc `rec` over a
+    ;; plain function is correctly a type error.  An arrow with a lazy
+    ;; product (see rackton/data/lazy's lazy-function arrow) can define one.
+    (protocol (ArrowLoop (cat :: (-> * (-> * *))) (p :: (-> * (-> * *))))
+      (#:requires (Arrow cat p))
+      (#:fundep cat -> p)
+      (: arrow-loop (-> (cat (p a c) (p b c)) (cat a b))))
 
     ;; --- Small stdlib ------------------------------------------
 

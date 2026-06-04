@@ -27,6 +27,7 @@
     rackton/data/bits rackton/data/bool rackton/data/char
     rackton/data/complex rackton/data/either rackton/data/foldable
     rackton/data/function rackton/data/functor rackton/data/lazy
+    rackton/data/arrow-lazy
     rackton/data/lens rackton/data/list rackton/data/list/nonempty
     rackton/data/map rackton/data/maybe rackton/data/monoid
     rackton/data/ord rackton/data/ratio rackton/data/semigroup

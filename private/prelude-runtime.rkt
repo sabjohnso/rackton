@@ -124,6 +124,7 @@
  comp on-first on-second split fanout
  on-left on-right fork fanin
  arrow-loop
+ prod-fst prod-snd co-elim
  foldr length to-list sum
  mappend
  traverse
@@ -144,6 +145,7 @@
  ;; carved rackton/control/monad/* modules.)
  |$mempty:String| |$mempty:List|
  |$ident:->| |$arr:->| |$arrow-app:->|
+ |$mk-prod:Pair| |$inj-left:Result| |$inj-right:Result|
  ;; Runtime dispatchers for the positional class methods
  ;; introduced by mtl polish (local-en already covered above).
  ;; catch-e is exported so carved transformer modules
@@ -183,6 +185,8 @@
  $dispatch:comp $dispatch:on-first $dispatch:on-second $dispatch:split $dispatch:fanout
  $dispatch:on-left $dispatch:on-right $dispatch:fork $dispatch:fanin
  $dispatch:arrow-loop
+ $dispatch:prod-fst $dispatch:prod-snd $dispatch:co-elim
+ $dispatch:mk-prod $dispatch:inj-left $dispatch:inj-right
  $dispatch:ident $dispatch:arr $dispatch:arrow-app
  $dispatch:foldr
  $dispatch:length
@@ -407,6 +411,12 @@
 ;; base instance ships (strict `(->)` cannot tie the recursive knot), so
 ;; the table stays empty until a user arrow registers a lawful impl.
 (define $dispatch:arrow-loop (make-hasheq))(define-class-method arrow-loop $dispatch:arrow-loop 0 1)
+;; Product/Coproduct elims: prod-fst/prod-snd dispatch on the product value
+;; (arg 0); co-elim on the coproduct value (arg 2).  (mk-prod / inj-left /
+;; inj-right are return-typed — see below.)
+(define $dispatch:prod-fst (make-hasheq))(define-class-method prod-fst $dispatch:prod-fst 0 1)
+(define $dispatch:prod-snd (make-hasheq))(define-class-method prod-snd $dispatch:prod-snd 0 1)
+(define $dispatch:co-elim  (make-hasheq))(define-class-method co-elim  $dispatch:co-elim  2 3)
 ;; Foldable's foldr dispatches on the container (arg 2). length/to-list
 ;; dispatch on the container as arg 0.
 (define $dispatch:foldr   (make-hasheq))(define-class-method foldr   $dispatch:foldr   2 3)
@@ -776,6 +786,9 @@
 (define $dispatch:ident     (make-hasheq))  ; Category.ident   (return-typed)
 (define $dispatch:arr       (make-hasheq))  ; Arrow.arr        (return-typed)
 (define $dispatch:arrow-app (make-hasheq))  ; ArrowApply.arrow-app (return-typed)
+(define $dispatch:mk-prod   (make-hasheq))  ; Product.mk-prod    (return-typed)
+(define $dispatch:inj-left  (make-hasheq))  ; Coproduct.inj-left  (return-typed)
+(define $dispatch:inj-right (make-hasheq))  ; Coproduct.inj-right (return-typed)
 
 (define (|$pure:Maybe|  x) (Some x))
 (define (|$pure:List|   x) (Cons x Nil))
@@ -1798,6 +1811,24 @@
 (register-instance-method! $dispatch:fanin    '-> arrow-fanin)
 ;; ArrowApply for (->): arrow-app is return-typed, keyed by tycon `->`.
 (register-instance-method! $dispatch:arrow-app '-> |$arrow-app:->|)
+
+;; ----- Product (Pair) / Coproduct (Result) instances ------------
+;; mk-prod / inj-left / inj-right are return-typed (keyed by the result
+;; type's tycon); prod-fst / prod-snd / co-elim dispatch on the value's
+;; ctor tag.
+(define (|$mk-prod:Pair| a b) (Pair a b))
+(define pair-prod-fst (lambda (q) (match q [(Pair a _) a])))
+(define pair-prod-snd (lambda (q) (match q [(Pair _ b) b])))
+(register-instance-method! $dispatch:mk-prod  'Pair       |$mk-prod:Pair|)
+(register-instance-method! $dispatch:prod-fst '$ctor:Pair pair-prod-fst)
+(register-instance-method! $dispatch:prod-snd '$ctor:Pair pair-prod-snd)
+(define (|$inj-left:Result|  a) (Err a))
+(define (|$inj-right:Result| b) (Ok  b))
+(define result-co-elim (lambda (f g s) (match s [(Err a) (f a)] [(Ok b) (g b)])))
+(register-instance-method! $dispatch:inj-left  'Result   |$inj-left:Result|)
+(register-instance-method! $dispatch:inj-right 'Result   |$inj-right:Result|)
+(register-instance-method! $dispatch:co-elim '$ctor:Err result-co-elim)
+(register-instance-method! $dispatch:co-elim '$ctor:Ok  result-co-elim)
 
 ;; ----- Foldable instances ---------------------------------------
 

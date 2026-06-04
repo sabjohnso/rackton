@@ -527,6 +527,55 @@
        (apply-subst-to-preds! s′)
        (loop s′)])))
 
+;; FD improvement against a set of HYPOTHESES (rather than concrete
+;; instances).  For a polymorphic definition whose context carries a
+;; fundep-bearing constraint — e.g. `(ArrowLoop cat p) => …`, with
+;; `cat -> p` — the hypothesis pins the determined param for that scope:
+;; if a pending pred and a hypothesis are the same class and their
+;; determining (lhs) args unify, the fundep forces their determined (rhs)
+;; args to unify too.  This is what lets a `proc rec` over an abstract
+;; arrow discharge its `(Arrow cat a)` / `(Prod a)` residuals against the
+;; declared `(ArrowLoop cat p)` (so `a := p`).  Without it the body's
+;; fresh product var never connects to the signature's `p`.
+(define (improve-by-hyp-fds env hypotheses)
+  (let loop ([s empty-subst])
+    (define preds (snapshot-preds))
+    (define s′ s)
+    (for ([p (in-list preds)])
+      (define cinfo (env-ref-class env (pred-class p)))
+      (when (and cinfo (not (null? (class-info-fundeps cinfo))))
+        (define class-params (class-info-params cinfo))
+        (define param-index
+          (for/hasheq ([param (in-list class-params)] [i (in-naturals)])
+            (values param i)))
+        (for ([fd (in-list (class-info-fundeps cinfo))])
+          (define lhs-pos (for/list ([d (in-list (car fd))]) (hash-ref param-index d)))
+          (define rhs-pos (for/list ([d (in-list (cdr fd))]) (hash-ref param-index d)))
+          (define p-args (for/list ([a (in-list (pred-args p))]) (apply-subst s′ a)))
+          (for ([h (in-list hypotheses)]
+                #:when (eq? (pred-class h) (pred-class p)))
+            (define h-args (for/list ([a (in-list (pred-args h))]) (apply-subst s′ a)))
+            (when (= (length h-args) (length p-args))
+              ;; unify the determining args; on success the fundep forces
+              ;; the determined args to agree too.
+              (with-handlers ([exn:fail:unify? (lambda (_) (void))])
+                (define σl
+                  (for/fold ([σ empty-subst]) ([i (in-list lhs-pos)])
+                    (subst-compose (unify (apply-subst σ (list-ref h-args i))
+                                          (apply-subst σ (list-ref p-args i)))
+                                   σ)))
+                (define σ
+                  (for/fold ([σ σl]) ([i (in-list rhs-pos)])
+                    (subst-compose (unify (apply-subst σ (list-ref h-args i))
+                                          (apply-subst σ (list-ref p-args i)))
+                                   σ)))
+                (set! s′ (subst-compose σ s′))))))))
+    (cond
+      [(equal? s′ s) s]
+      [else
+       (apply-subst-to-preds! s′)
+       (loop s′)])))
+
 (define (match-many srcs dsts)
   ;; Borrowed from entail.rkt: one-way match returning a substitution.
   (cond
@@ -2370,10 +2419,26 @@
                    (scheme->datum decl-scheme))
            stx))])
      (unify (normalize-type env (apply-subst s t)) decl-ty)))
-  (define final-subst (subst-compose s-u s))
-  (apply-subst-to-preds! final-subst)
+  (define final-subst0 (subst-compose s-u s))
+  (apply-subst-to-preds! final-subst0)
+  ;; Run functional-dependency improvement before reducing, exactly as the
+  ;; undeclared path does inside `generalize`.  A leftover constraint like
+  ;; `(Arrow LFun a)` — where the product `a` appears only in the
+  ;; constraint, never in the declared type — is closed by the fundep
+  ;; `cat -> p` against the matching instance (`a := LPair`), so it reduces
+  ;; instead of being reported as unsolved.
+  (define fd-sub (improve-by-fds env))
+  ;; Also improve against the declared constraints themselves: a
+  ;; fundep-bearing hypothesis (e.g. `(ArrowLoop cat p)`) determines the
+  ;; product/coproduct for the body, connecting the body's fresh tensor
+  ;; vars to the signature's `p` / `s`.
+  (define hyp-closure
+    (append-map (lambda (p) (by-super env (apply-subst fd-sub p))) decl-preds))
+  (define hyp-fd-sub (improve-by-hyp-fds env hyp-closure))
+  (define final-subst (subst-compose hyp-fd-sub (subst-compose fd-sub final-subst0)))
   (define remaining-preds
-    (reduce-context env decl-preds (snapshot-preds)))
+    (reduce-context env (map (lambda (p) (apply-subst final-subst p)) decl-preds)
+                    (snapshot-preds)))
   (cond
     [(not (null? remaining-preds))
      (raise-syntax-error 'infer

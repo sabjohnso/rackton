@@ -1222,6 +1222,10 @@
     [(eq? head-tcon 'Boolean) '(Boolean)]
     [(eq? head-tcon 'String)  '(String)]
     [(eq? head-tcon 'Float)   '(Float)]
+    ;; The function arrow has no tcon-info shell; a procedure value
+    ;; dispatches as the `->` tycon (see dispatch-tag), so a `->`-headed
+    ;; instance registers under that tag.
+    [(eq? head-tcon '->)      '(->)]
     [else
      (define ti (env-ref-tcon env head-tcon))
      (unless ti

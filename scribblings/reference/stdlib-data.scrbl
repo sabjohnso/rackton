@@ -1,6 +1,6 @@
 #lang scribble/manual
 @require[scribble/manual
-         (for-label rackton rackton/data/bits rackton/data/bool rackton/data/char rackton/data/complex rackton/data/either rackton/data/foldable rackton/data/function rackton/data/functor rackton/data/lazy rackton/data/lens rackton/data/list rackton/data/list/nonempty rackton/data/map rackton/data/maybe rackton/data/monoid rackton/data/ord rackton/data/ratio rackton/data/semigroup rackton/data/set rackton/data/traversable rackton/data/tuple)]
+         (for-label rackton rackton/data/bits rackton/data/bool rackton/data/char rackton/data/complex rackton/data/either rackton/data/foldable rackton/data/function rackton/data/functor rackton/data/lazy rackton/data/arrow-lazy rackton/data/lens rackton/data/list rackton/data/list/nonempty rackton/data/map rackton/data/maybe rackton/data/monoid rackton/data/ord rackton/data/ratio rackton/data/semigroup rackton/data/set rackton/data/traversable rackton/data/tuple)]
 
 @title[#:tag "stdlib-data"]{@tt{rackton/data} — containers and structures}
 
@@ -298,6 +298,60 @@ repeated value.}
 
 @defproc[(list->stream [xs (List a)]) (Stream a)]{A finite stream built from a
 @racket[List].}
+
+
+@section{rackton/data/arrow-lazy}
+@defmodule[rackton/data/arrow-lazy #:no-declare]
+@declare-exporting[rackton/data/arrow-lazy]
+
+A lazy-function arrow whose @racket[ArrowLoop] can tie a value-recursion
+knot — the first arrow over which @racket[proc] @racket[rec] is runnable.
+The strict @racket[(->)] arrow has no @racket[ArrowLoop] (feeding an
+output back forces it before it is produced).  @racket[LFun] is a
+function on @emph{lazy} values paired with the lazy-component product
+@racket[LPair], so @racket[arrow-loop] threads the feedback unforced.
+
+The instances supplied are @racket[Prod] for @racket[LPair],
+@racket[Coprod] for @racket[LEither], and @racket[Category],
+@racket[Arrow], @racket[ArrowChoice], @racket[ArrowApply], and
+@racket[ArrowLoop] for @racket[LFun].
+
+@defidform[#:kind "type & constructor" LFun]{A lazy-function arrow:
+@racket[(LFun (-> (Lazy a) (Lazy b)))] wraps a function on lazy values.}
+
+@defidform[#:kind "type & constructor" LPair]{The lazy product:
+@racket[(LPair (Lazy a) (Lazy b))] — both components are deferred, so
+projecting one never forces the other (the feedback channel of a loop).}
+
+@defidform[#:kind "type" LEither]{The lazy coproduct, dual to
+@racket[LPair], with constructors @racket[LLeft] / @racket[LRight].}
+
+@deftogether[(
+  @defproc[(LLeft  [la (Lazy a)]) (LEither a b)]
+  @defproc[(LRight [lb (Lazy b)]) (LEither a b)])]{
+The left and right injections of @racket[LEither].}
+
+@defproc[(run-lfun [lf (LFun a b)] [x a]) b]{Run a lazy arrow on a strict
+input and force the result.}
+
+@defproc[(lcons [x a]) (LFun (Stream a) (Stream a))]{The arrow that
+prepends @racket[x] to a stream, dropping its (lazy) input into the new
+@racket[SCons]'s deferred tail.  Because it never forces its argument it
+can sit in a @racket[proc] @racket[rec] feedback path and stay
+productive, unlike an @racket[arr]-lifted function — which forces.  A
+runnable example, the self-referential infinite stream of @racket[1]s:
+
+@codeblock|{
+(: ones (Stream Integer))
+(define ones
+  (run-lfun
+   (proc (_)
+     (rec [s <- (feed (lcons 1) s)])
+     (feed (arr (lambda (z) z)) s))
+   0))
+;; (stream-head ones)   => (Some 1)
+;; (stream-take 5 ones) => (1 1 1 1 1)
+}|}
 
 
 @section{rackton/data/lens}

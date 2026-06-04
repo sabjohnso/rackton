@@ -267,16 +267,60 @@ Built-in instances: @racket[Pair], @racket[Result].  Derived via
 
 Arrows generalize plain functions and Kleisli arrows.  The hierarchy is
 @racket[Category] → @racket[Arrow] → @racket[ArrowChoice] /
-@racket[ArrowApply] / @racket[ArrowLoop].  Method names are non-infix and
-distinct from existing prelude names (@racket[ident]/@racket[comp] rather
-than @racket[id]/@racket[compose]; @racket[on-first]/@racket[on-second]
-rather than @racket[Bifunctor]'s @racket[first]/@racket[second]).  The
-canonical instance is the function arrow @racket[(->)].  @racket[ident],
-@racket[arr], and @racket[arrow-app] are return-typed (the class
-parameter @racket[cat] appears only in the result), so each call site
-resolves its instance from the expected type, like @racket[pure].  The
-@racket[proc] notation (see @secref["arrow-notation"]) desugars to these
-combinators.
+@racket[ArrowApply] / @racket[ArrowLoop].  Rather than hard-wiring the
+strict @racket[Pair] and @racket[Result], the arrows are
+@emph{monoidal-category} arrows parameterized over their own product
+@racket[p] and coproduct @racket[s] — the @racket[Prod] and
+@racket[Coprod] tensors below.  A functional dependency
+(@racket[cat -> p], @racket[cat -> p s]) determines the tensors from the
+arrow, so a use site never has to name them.  This is what lets an arrow
+choose a @emph{lazy} product and so define a lawful @racket[ArrowLoop]
+(see @racket[LFun] in @secref["stdlib-data"]); the strict @racket[(->)]
+arrow keeps @racket[Pair] / @racket[Result] and behaves as before.
+
+Method names are non-infix and distinct from existing prelude names
+(@racket[ident]/@racket[comp] rather than @racket[id]/@racket[compose];
+@racket[on-first]/@racket[on-second] rather than @racket[Bifunctor]'s
+@racket[first]/@racket[second]).  @racket[ident], @racket[arr],
+@racket[arrow-app], and the tensor introductions @racket[mk-prod] /
+@racket[inj-left] / @racket[inj-right] are return-typed (the class
+parameter appears only in the result), so each call site resolves its
+instance from the expected type, like @racket[pure].  The @racket[proc]
+notation (see @secref["arrow-notation"]) desugars to these combinators
+and is therefore polymorphic in the arrow's tensors.
+
+@defidform[#:kind "class" Prod]{
+
+A binary product tensor @racket[(p :: (-> * (-> * *)))] — introduction
+plus the two projections.  (Named @racket[Prod], not @tt{Product}, to
+avoid clashing with the multiplicative-monoid newtype @racket[Product].)
+
+@deftogether[(
+  @defproc[(mk-prod  [a a] [b b]) (p a b)]
+  @defproc[(prod-fst [q (p a b)]) a]
+  @defproc[(prod-snd [q (p a b)]) b])]{
+
+@racket[mk-prod] builds a product; @racket[prod-fst] / @racket[prod-snd]
+project the halves.  @racket[mk-prod] is return-typed.}
+
+Built-in instance: @racket[Pair] (the strict prelude product).}
+
+@defidform[#:kind "class" Coprod]{
+
+A binary coproduct tensor @racket[(s :: (-> * (-> * *)))] — two
+injections plus the eliminator, dual to @racket[Prod].
+
+@deftogether[(
+  @defproc[(inj-left  [a a]) (s a b)]
+  @defproc[(inj-right [b b]) (s a b)]
+  @defproc[(co-elim   [f (-> a c)] [g (-> b c)] [x (s a b)]) c])]{
+
+@racket[inj-left] / @racket[inj-right] inject into the left / right
+summand; @racket[co-elim] case-analyzes.  The injections are
+return-typed.}
+
+Built-in instance: @racket[Result] (@racket[Err] left, @racket[Ok]
+right).}
 
 @defidform[#:kind "class" Category]{
 
@@ -295,71 +339,80 @@ identity function and @racket[comp] is composition).}
 
 @defidform[#:kind "class" Arrow]{
 
-@racket[Category] arrows that can lift a plain function and act on one
-component of a @racket[Pair].
+@racket[Category] arrows over a product @racket[p] (determined by
+@racket[cat]) that can lift a plain function and act on one component of
+a @racket[p].  Superclasses / obligations: @racket[(Category cat)] and
+@racket[(Prod p)], with @racket[cat -> p].
 
 @deftogether[(
   @defproc[(arr       [g (-> a b)])               (cat a b)]
-  @defproc[(on-first  [f (cat a b)])              (cat (Pair a c) (Pair b c))]
-  @defproc[(on-second [f (cat a b)])              (cat (Pair c a) (Pair c b))]
-  @defproc[(split     [f (cat a b)] [g (cat c d)]) (cat (Pair a c) (Pair b d))]
-  @defproc[(fanout    [f (cat a b)] [g (cat a c)]) (cat a (Pair b c))])]{
+  @defproc[(on-first  [f (cat a b)])              (cat (p a c) (p b c))]
+  @defproc[(on-second [f (cat a b)])              (cat (p c a) (p c b))]
+  @defproc[(split     [f (cat a b)] [g (cat c d)]) (cat (p a c) (p b d))]
+  @defproc[(fanout    [f (cat a b)] [g (cat a c)]) (cat a (p b c))])]{
 
 @racket[arr] lifts a function into the arrow.  @racket[on-first] /
-@racket[on-second] run an arrow on the first / second half of a
-@racket[Pair].  @racket[split] runs two arrows on the two halves;
-@racket[fanout] feeds one input to two arrows and pairs the results.
-@racket[on-second], @racket[split], and @racket[fanout] have defaults
-expressed via @racket[arr], @racket[on-first], and @racket[comp], so an
-instance need only supply @racket[arr] and @racket[on-first].}
+@racket[on-second] run an arrow on the first / second half of a product;
+@racket[split] runs two arrows on the two halves; @racket[fanout] feeds
+one input to two arrows and pairs the results.  All four combinators are
+primitives (no derived defaults): deriving them would build products
+with @racket[mk-prod] over the abstract @racket[p], which the checker
+cannot tie back to the instance's product, so each instance supplies
+them against its concrete product.}
 
-Built-in instance: @racket[(->)].}
+Built-in instance: @racket[(Arrow (->) Pair)].}
 
 @defidform[#:kind "class" ArrowChoice]{
 
-@racket[Arrow]s that route a @racket[Result] through one of two arrows
-by branch (@racket[Err] is the left/active branch, @racket[Ok] the
-right).
+@racket[Arrow]s that route a coproduct @racket[s] through one of two
+arrows by branch (the left injection is the active branch).  Obligations:
+@racket[(Arrow cat p)] and @racket[(Coprod s)], with
+@racket[cat -> p s].
 
 @deftogether[(
-  @defproc[(on-left  [f (cat a b)])               (cat (Result a x) (Result b x))]
-  @defproc[(on-right [f (cat a b)])               (cat (Result x a) (Result x b))]
-  @defproc[(fork     [f (cat a b)] [g (cat c d)]) (cat (Result a c) (Result b d))]
-  @defproc[(fanin    [f (cat a c)] [g (cat b c)]) (cat (Result a b) c)])]{
+  @defproc[(on-left  [f (cat a b)])               (cat (s a x) (s b x))]
+  @defproc[(on-right [f (cat a b)])               (cat (s x a) (s x b))]
+  @defproc[(fork     [f (cat a b)] [g (cat c d)]) (cat (s a c) (s b d))]
+  @defproc[(fanin    [f (cat a c)] [g (cat b c)]) (cat (s a b) c)])]{
 
 @racket[on-left] / @racket[on-right] transform one branch and pass the
 other through; @racket[fork] runs one arrow per branch; @racket[fanin]
-runs one arrow per branch and collapses the result.  All derive from
-@racket[on-left].}
+runs one arrow per branch and collapses the result.  Like
+@racket[Arrow]'s combinators these are primitives over the concrete
+coproduct.}
 
-Built-in instance: @racket[(->)].}
+Built-in instance: @racket[(ArrowChoice (->) Pair Result)].}
 
 @defidform[#:kind "class" ArrowApply]{
 
 @racket[Arrow]s in which an arrow can be fed in as data alongside its
-argument and run.
+argument and run.  Obligation: @racket[(Arrow cat p)], with
+@racket[cat -> p].
 
-@defthing[arrow-app (cat (Pair (cat a b) a) b)]{
+@defthing[arrow-app (cat (p (cat a b) a) b)]{
 
-Runs the arrow in the first half of the @racket[Pair] on the value in
-the second half.}
+Runs the arrow in the first half of the product on the value in the
+second half.}
 
-Built-in instance: @racket[(->)].}
+Built-in instance: @racket[(ArrowApply (->) Pair)].}
 
 @defidform[#:kind "class" ArrowLoop]{
 
 @racket[Arrow]s supporting value recursion — the @racket[c] half of the
-output is fed back as the @racket[c] half of the input.
+output is fed back as the @racket[c] half of the input.  Obligation:
+@racket[(Arrow cat p)], with @racket[cat -> p].
 
-@defproc[(arrow-loop [f (cat (Pair a c) (Pair b c))]) (cat a b)]{
+@defproc[(arrow-loop [f (cat (p a c) (p b c))]) (cat a b)]{
 
 Ties the recursive feedback channel.}
 
 There is deliberately @bold{no} instance for @racket[(->)]: tying the
-recursive knot needs laziness, which strict Rackton functions cannot
+recursive knot needs laziness, which the strict @racket[Pair] cannot
 provide, so @racket[arrow-loop] (and @racket[proc] @racket[rec]) over a
-plain function is a type error.  A user arrow whose representation
-supports feedback can define one.}
+plain function is a type error.  An arrow with a @emph{lazy} product can
+define one — see @racket[LFun] / @racket[LPair] in
+@secref["stdlib-data"], which give the first runnable @racket[proc]
+@racket[rec].}
 
 @section{Semigroup and Monoid}
 

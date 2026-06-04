@@ -1497,7 +1497,17 @@
 (define (arrow-ident stx)      (e:var 'ident (fresh-op-stx stx)))
 (define (arrow-app-ref stx)    (e:var 'arrow-app (fresh-op-stx stx)))
 (define (arrow-loop a stx)     (e:app (e:var 'arrow-loop (fresh-op-stx stx)) (list a) stx))
-(define (mk-pair a b stx)      (e:app (e:var 'Pair (fresh-op-stx stx))  (list a b) stx))
+;; Product / coproduct intro + projection, expressed through the
+;; tensor-class methods (Prod / Coprod) rather than the strict
+;; `Pair` / `Result` constructors.  This keeps the whole proc translation
+;; polymorphic in the arrow's product and coproduct: over `(->)` these
+;; resolve to `Pair` / `Result` (identical behavior), and over a lazy
+;; arrow they resolve to its lazy product / coproduct.
+(define (mk-prod-e a b stx)    (e:app (e:var 'mk-prod (fresh-op-stx stx))   (list a b) stx))
+(define (prod-fst-e v stx)     (e:app (e:var 'prod-fst (fresh-op-stx stx))  (list v) stx))
+(define (prod-snd-e v stx)     (e:app (e:var 'prod-snd (fresh-op-stx stx))  (list v) stx))
+(define (inj-left-e v stx)     (e:app (e:var 'inj-left (fresh-op-stx stx))  (list v) stx))
+(define (inj-right-e v stx)    (e:app (e:var 'inj-right (fresh-op-stx stx)) (list v) stx))
 
 ;; Right-nest a non-empty list of items into binary pairs via `mk`:
 ;; [a b c] → (mk a (mk b c)).  Used to build the recursive-binding tuple
@@ -1506,18 +1516,40 @@
   (let loop ([xs items])
     (if (null? (cdr xs)) (car xs) (mk (car xs) (loop (cdr xs))))))
 
-;; Build `arr (λ g. match g [env-pat body])` — a pure arrow that
-;; destructures the environment value and computes `body`.  The match is
-;; flagged irrefutable: env-pat is a tuple/var pattern we constructed, so
-;; it always fits.
+;; Bind every variable in `env-pat` from the product value `val-expr`,
+;; then evaluate `body`.  The pattern's `Pair` spine — the bookkeeping
+;; tuple the proc translation builds with `mk-prod` — is taken apart by
+;; `prod-fst` / `prod-snd` projections rather than a constructor match, so
+;; the carried environment can be ANY arrow's product (strict `Pair`, a
+;; lazy `LPair`, …).  A non-`Pair` leaf (a user pattern bound by `[p <- c]`
+;; or a `match` branch) is matched ordinarily and irrefutably: the value
+;; was placed there by an earlier binding that already matched it.
+(define (bind-env-pat env-pat val-expr body stx)
+  (cond
+    [(p:wild? env-pat) body]
+    [(p:var? env-pat)
+     (e:let (list (cons (p:var-name env-pat) val-expr)) body stx)]
+    [(and (p:ctor? env-pat)
+          (eq? (p:ctor-name env-pat) 'Pair)
+          (= 2 (length (p:ctor-args env-pat))))
+     (define g (gensym '$prod))
+     (e:let (list (cons g val-expr))
+            (bind-env-pat (car (p:ctor-args env-pat))
+                          (prod-fst-e (e:var g stx) stx)
+                          (bind-env-pat (cadr (p:ctor-args env-pat))
+                                        (prod-snd-e (e:var g stx) stx)
+                                        body stx)
+                          stx)
+            stx)]
+    [else
+     (e:match val-expr (list (clause env-pat #f body stx)) #t stx)]))
+
+;; Build `arr (λ g. ⟦bind env-pat from g⟧ body)` — a pure arrow that
+;; projects the environment value and computes `body`.
 (define (env-arr env-pat body stx)
   (define g (gensym '$env))
   (arrow-arr
-   (e:lam (list g)
-          (e:match (e:var g stx)
-                   (list (clause env-pat #f body stx))
-                   #t stx)
-          stx)
+   (e:lam (list g) (bind-env-pat env-pat (e:var g stx) body stx) stx)
    stx))
 
 ;; Translate a command sequence in environment `env-pat`.  The final
@@ -1547,7 +1579,7 @@
         ;; loopbody : (Pair env R) ~> (Pair R R) — produce R as output and
         ;; feedback both.
         (define r (gensym '$rec))
-        (define dup (arrow-arr (e:lam (list r) (mk-pair (e:var r stx) (e:var r stx) stx) stx) stx))
+        (define dup (arrow-arr (e:lam (list r) (mk-prod-e (e:var r stx) (e:var r stx) stx) stx) stx))
         (define loopbody (arrow-comp fanout-tree dup stx))
         (define looped (arrow-loop loopbody stx))
         ;; extend the outer env with the produced bindings, then continue.
@@ -1563,32 +1595,26 @@
                     (translate-proc-seq (cdr cmds) env-pat* stx)
                     stx)]
        ;; (let ([v e] …) — pure bindings that extend the environment for
-       ;; the remaining commands.  e's may reference earlier variables.
+       ;; the remaining commands.  Each binding is prepended with
+       ;; @racket[fanout], NOT a single @racket[mk-prod] tuple: a
+       ;; @racket[fanout] output has the arrow's own product type @racket[p]
+       ;; (pinned by the fundep @racket[cat -> p]), whereas a bare
+       ;; @racket[mk-prod] inside an @racket[arr] makes an ambiguous
+       ;; product that never reaches a @racket[p]-typed position.  Every
+       ;; binding's rhs reads the @emph{original} env (each @racket[fanout]
+       ;; feeds the same input to both sides), so the bindings are mutually
+       ;; independent — parallel @racket[let], as before.
        [(let ([v:id e] ...+))
         (define vs (map syntax->datum (syntax->list #'(v ...))))
-        (define es (map parse-expr (syntax->list #'(e ...))))
-        (define g (gensym '$env))
-        ;; new env value: (Pair v1 (Pair v2 … g)), built inside a let that
-        ;; binds each v to its parsed rhs (rhs sees the destructured env).
-        (define tuple
-          (for/foldr ([acc (e:var g stx)])
-                     ([v (in-list vs)])
-            (mk-pair (e:var v stx) acc stx)))
-        (define ext-body
-          (e:let (for/list ([v (in-list vs)] [e (in-list es)]) (cons v e))
-                 tuple stx))
+        (define es (syntax->list #'(e ...)))
         (define ext-arr
-          (arrow-arr
-           (e:lam (list g)
-                  (e:match (e:var g stx)
-                           (list (clause env-pat #f ext-body stx))
-                           #t stx)
-                  stx)
-           stx))
+          (foldr (lambda (e acc)
+                   (arrow-fanout (env-arr env-pat (parse-expr e) stx) acc stx))
+                 (arrow-ident stx)
+                 es))
         (define env-pat*
-          (for/foldr ([acc env-pat])
-                     ([v (in-list vs)])
-            (p:ctor 'Pair (list (p:var v stx) acc) stx)))
+          (foldr (lambda (v acc) (p:ctor 'Pair (list (p:var v stx) acc) stx))
+                 env-pat vs))
         (arrow-comp ext-arr (translate-proc-seq (cdr cmds) env-pat* stx) stx)]
        ;; bare command — run it for effect, discard its output, continue.
        [_
@@ -1609,24 +1635,23 @@
                  stx)]
     ;; (feed-apply af e) — `af -<< e`: the arrow itself reads the env.
     [(feed-apply f e)
-     (arrow-comp (env-arr env-pat (mk-pair (parse-expr #'f) (parse-expr #'e) stx) stx)
+     (arrow-comp (env-arr env-pat (mk-prod-e (parse-expr #'f) (parse-expr #'e) stx) stx)
                  (arrow-app-ref stx)
                  stx)]
     ;; (if test c1 c2) — choose a command by a Boolean test.  Route the
-    ;; whole env left (Err) or right (Ok), then fan the branches back in.
+    ;; whole env into the coproduct's left (inj-left) or right (inj-right),
+    ;; then fan the branches back in with `fanin`.
     [(if test c1 c2)
      (define g (gensym '$env))
      (define route
        (arrow-arr
         (e:lam (list g)
-               (e:match (e:var g stx)
-                        (list (clause env-pat #f
-                                      (e:if (parse-expr #'test)
-                                            (e:app (e:var 'Err stx) (list (e:var g stx)) stx)
-                                            (e:app (e:var 'Ok  stx) (list (e:var g stx)) stx)
-                                            stx)
-                                      stx))
-                        #t stx)
+               (bind-env-pat env-pat (e:var g stx)
+                             (e:if (parse-expr #'test)
+                                   (inj-left-e  (e:var g stx) stx)
+                                   (inj-right-e (e:var g stx) stx)
+                                   stx)
+                             stx)
                stx)
         stx))
      (arrow-comp route
@@ -1652,46 +1677,52 @@
               (translate-proc-cmd ci env-pat stx))
             stx)]))
 
-;; Build a `Result`-nesting wrapper for branch `i` of `n` (0-based) to
+;; Build a coproduct-nesting wrapper for branch `i` of `n` (0-based) to
 ;; feed a right-nested `fanin` consumer
-;; `(fanin c0 (fanin c1 (… c_{n-1})))`: branch i is `i` Oks deep, then an
-;; `Err` (the fanin's left/active side) for every branch except the last,
-;; which sits on the final Ok.  n = 1 needs no tag at all.
+;; `(fanin c0 (fanin c1 (… c_{n-1})))`: branch i is `i` right-injections
+;; deep, then a left-injection (the fanin's left/active side) for every
+;; branch except the last, which sits on the final right-injection.
+;; n = 1 needs no tag at all.  `inj-left`/`inj-right` are the Coproduct
+;; methods, so this is polymorphic in the arrow's coproduct (over `(->)`
+;; they are `Err`/`Ok`).
 (define (case-wrap i n v stx)
   (define inner
     (if (= i (sub1 n))
         v
-        (e:app (e:var 'Err (fresh-op-stx stx)) (list v) stx)))
+        (inj-left-e v stx)))
   (let loop ([k i] [acc inner])
     (if (= k 0)
         acc
-        (loop (sub1 k) (e:app (e:var 'Ok (fresh-op-stx stx)) (list acc) stx)))))
+        (loop (sub1 k) (inj-right-e acc stx)))))
 
 ;; Translate `(match e [pat c] …)` to a routing arrow followed by a
 ;; right-nested fanin over the branch arrows.
 (define (translate-proc-case e-stx pat-stxs cmd-stxs env-pat stx)
   (define n (length pat-stxs))
   (define pats (map parse-pattern pat-stxs))
-  (define ev (gensym '$case))
-  (define g  (gensym '$env))
-  ;; Routing arrow: destructure env, bind `ev` = e, then match ev to
-  ;; pick a branch, tagging (Pair ev env) into the nested Result.
+  (define g (gensym '$case))
+  ;; First pair the scrutinee `e` with the env using @racket[fanout], so
+  ;; the carried @racket[(p ev env)] product has the arrow's own product
+  ;; type @racket[p] (pinned by the fundep) rather than an ambiguous
+  ;; @racket[mk-prod] product — the same reason @racket[let] uses
+  ;; @racket[fanout].  @racket[pre : env ~> (p ev env)].
+  (define pre
+    (arrow-fanout (env-arr env-pat (parse-expr e-stx) stx)
+                  (arrow-ident stx) stx))
+  ;; Route on the scrutinee half (its @racket[prod-fst]), injecting the
+  ;; whole @racket[(p ev env)] product into the nested coproduct for the
+  ;; matching branch.
   (define route-clauses
     (for/list ([p (in-list pats)] [i (in-naturals)])
-      (clause p #f (case-wrap i n (mk-pair (e:var ev stx) (e:var g stx) stx) stx) stx)))
+      (clause p #f (case-wrap i n (e:var g stx) stx) stx)))
   (define route
     (arrow-arr
      (e:lam (list g)
-            (e:match (e:var g stx)
-                     (list (clause env-pat #f
-                                   (e:let (list (cons ev (parse-expr e-stx)))
-                                          (e:match (e:var ev stx) route-clauses #f stx)
-                                          stx)
-                                   stx))
-                     #t stx)
+            (e:match (prod-fst-e (e:var g stx) stx) route-clauses #f stx)
             stx)
      stx))
-  ;; Each branch consumes (Pair ev env) with its pattern re-bound.
+  ;; Each branch consumes (p ev env) with its pattern re-bound on the
+  ;; scrutinee half.
   (define branch-arrs
     (for/list ([p (in-list pats)] [c (in-list cmd-stxs)])
       (translate-proc-cmd c (p:ctor 'Pair (list p env-pat) stx) stx)))
@@ -1702,7 +1733,7 @@
       (cond
         [(null? (cdr bs)) (car bs)]
         [else (arrow-fanin (car bs) (loop (cdr bs)) stx)])))
-  (arrow-comp route consumer stx))
+  (arrow-comp pre (arrow-comp route consumer stx) stx))
 
 ;; ----- patterns -----------------------------------------------------
 
