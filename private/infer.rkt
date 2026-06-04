@@ -622,6 +622,18 @@
 ;; improvement first, so an instance whose determining args match the
 ;; pred's can pin the determined args before generalisation.
 (define (generalize env ty [hypotheses '()])
+  (define-values (sch _fd-sub) (generalize* env ty hypotheses))
+  sch)
+
+;; Like `generalize`, but also returns the functional-dependency
+;; improvement substitution it computed.  Callers that go on to resolve
+;; return-typed method uses (in the undeclared-def path) need that exact
+;; substitution so a method whose target type is fundep-determined (e.g.
+;; `mk-prod` over an arrow whose product is fixed by `cat -> p`) resolves
+;; against the improved type rather than an ambiguous tvar.  Returning the
+;; subst — instead of re-running `improve-by-fds`, which mutates the shared
+;; pred box again — keeps generalization behavior identical.
+(define (generalize* env ty [hypotheses '()])
   (define fd-sub (improve-by-fds env))
   (define ty* (apply-subst fd-sub ty))
   (define env-fv (env-vars-free-vars env))
@@ -639,8 +651,9 @@
     (for/fold ([s empty-subst]) ([old (in-list quantified-raw)]
                                  [new (in-list nice)])
       (subst-extend s old (tvar new))))
-  (scheme nice (mqual (for/list ([p (in-list reduced)]) (apply-subst σ p))
-                      (apply-subst σ ty*))))
+  (values (scheme nice (mqual (for/list ([p (in-list reduced)]) (apply-subst σ p))
+                              (apply-subst σ ty*)))
+          fd-sub))
 
 ;; For user-facing diagnostic output: rename a type's free tvars to
 ;; nice sequential names (a, b, c, …) before converting to a datum.
@@ -2515,8 +2528,13 @@
          p)]))
   (cond
     [(null? dict-bearing-preds)
-     (define generalized (generalize env-for-gen final-ty))
-     (resolve-method-uses! s* env)
+     ;; Resolve method uses against the SAME functional-dependency
+     ;; improvement `generalize` computed.  Otherwise a return-typed
+     ;; method whose target type is fundep-determined (e.g. `mk-prod` in a
+     ;; `proc` over an arrow whose product `p` is fixed by `cat -> p`) is
+     ;; resolved against an unimproved tvar and reported as ambiguous.
+     (define-values (generalized fd-sub) (generalize* env-for-gen final-ty))
+     (resolve-method-uses! (subst-compose fd-sub s*) env)
      (env-extend-var env name generalized)]
     [else
      (define dict-tvar-names

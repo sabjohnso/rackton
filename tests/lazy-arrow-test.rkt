@@ -9,7 +9,8 @@
 ;; finite prefix of it.
 
 (require "../unit.rkt"
-         rackton/data/arrow-lazy)
+         rackton/data/arrow-lazy
+         rackton/data/lazy)
 
 ;; ----- ordinary proc over LFun (no recursion) -----------------------
 
@@ -50,6 +51,19 @@
      (feed (arr (lambda (z) z)) s))
    0))
 
+;; Same shape, but with NO type signature, so it goes through the
+;; undeclared-definition inference path.  This regresses a bug where that
+;; path resolved the proc's return-typed `mk-prod` before functional-
+;; dependency improvement pinned the arrow's product `p` (= `LPair`),
+;; reporting "ambiguous use of mk-prod".  `nats = 0 : map (+1) nats`,
+;; folded into one self-reference so the knot stays productive.
+(define nats-no-sig
+  (run-lfun
+   (proc (_)
+     (rec [ns <- (feed (comp (arr (stream-map inc)) (lcons 0)) ns)])
+     (feed (arr (lambda (z) z)) ns))
+   0))
+
 (: suite (List Test))
 (define suite
   (list
@@ -65,7 +79,10 @@
        (check-equal? (stream-head ones) (Some 1)))
    (it "the looped stream really is infinitely many 1s (finite prefix)"
        (check-equal? (stream-take 5 ones)
-                     (Cons 1 (Cons 1 (Cons 1 (Cons 1 (Cons 1 Nil)))))))))
+                     (Cons 1 (Cons 1 (Cons 1 (Cons 1 (Cons 1 Nil)))))))
+   (it "proc rec resolves return-typed tensor ops with no type signature"
+       (check-equal? (stream-take 4 nats-no-sig)
+                     (Cons 0 (Cons 1 (Cons 2 (Cons 3 Nil))))))))
 
 (: _ran Unit)
 (define _ran (run-io (run-suite "lazy-arrow" suite)))
