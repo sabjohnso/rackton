@@ -69,6 +69,7 @@
                     char-upcase char-downcase
                     char-alphabetic? char-numeric? char-whitespace?
                     char->integer integer->char
+                    symbol->string string->symbol
                     string-ref string->list
                     bytes-length bytes-ref bytes-append
                     bytes->list list->bytes make-bytes

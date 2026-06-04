@@ -43,6 +43,7 @@
     [(string? v)        'String]
     [(char? v)          'Char]
     [(bytes? v)         'Bytes]
+    [(symbol? v)        'Symbol]
     ;; Functions are the canonical Arrow/Category instance: a procedure
     ;; value dispatches as the function-arrow tycon `->`, matching the
     ;; `(register-instance-method! … '-> …)` registrations for `then`,

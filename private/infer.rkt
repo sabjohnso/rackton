@@ -884,6 +884,7 @@
     [(string? v)        t-string]
     [(char? v)          t-char]
     [(bytes? v)         t-bytes]
+    [(symbol? v)        t-symbol]
     [else (error 'literal-type "unsupported literal: ~e" v)]))
 
 ;; ----- core inference ----------------------------------------------

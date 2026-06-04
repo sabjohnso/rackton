@@ -113,6 +113,21 @@
     (instance (Ord Char)  (define (< x y) (racket Boolean (x y) #f)))
     (instance (Show Char) (define (show c) (racket String (c) "")))
 
+    ;; --- Symbol primitive (opaque ADT; values come from the reader as
+    ;; quoted identifiers, e.g. `'foo`) --------------------------------
+
+    (data Symbol)
+
+    (instance (Eq Symbol)   (define (== x y) (racket Boolean (x y) #f)))
+    (instance (Ord Symbol)  (define (< x y) (racket Boolean (x y) #f)))
+    (instance (Show Symbol) (define (show s) (racket String (s) "")))
+
+    (: symbol->string (-> Symbol String))
+    (define (symbol->string s) (racket String (s) ""))
+
+    (: string->symbol (-> String Symbol))
+    (define (string->symbol s) (racket Symbol (s) 'x))
+
     (instance (Eq Bytes)  (define (== x y) (racket Boolean (x y) #f)))
     (instance (Show Bytes)(define (show b) (racket String (b) "")))
 

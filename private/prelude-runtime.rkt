@@ -64,6 +64,8 @@
                     [char-whitespace? rkt:char-whitespace?]
                     [char->integer  rkt:char->integer]
                     [integer->char  rkt:integer->char]
+                    [symbol->string rkt:symbol->string]
+                    [string->symbol rkt:string->symbol]
                     [void           rkt:void]
                     [when           rkt:when]
                     [unless         rkt:unless])
@@ -220,6 +222,9 @@
  bytes-length bytes-ref make-bytes bytes-append
  bytes->list list->bytes
  string->bytes bytes->string
+
+ ;; Symbol
+ symbol->string string->symbol
 
  ;; Numeric helpers (mod/div → Integral, abs/negate → Num, min/max → Ord)
  abs negate min max integer->string string->integer
@@ -588,6 +593,14 @@
 (register-instance-method! $dispatch:/=   'Bytes (lambda (x y) (not (bytes=? x y))))
 (register-instance-method! $dispatch:show 'Bytes (lambda (b) (~v b)))
 
+(register-instance-method! $dispatch:==   'Symbol (lambda (x y) (eq? x y)))
+(register-instance-method! $dispatch:/=   'Symbol (lambda (x y) (not (eq? x y))))
+(register-instance-method! $dispatch:<    'Symbol (lambda (x y) (symbol<? x y)))
+(register-instance-method! $dispatch:>    'Symbol (lambda (x y) (symbol<? y x)))
+(register-instance-method! $dispatch:<=   'Symbol (lambda (x y) (not (symbol<? y x))))
+(register-instance-method! $dispatch:>=   'Symbol (lambda (x y) (not (symbol<? x y))))
+(register-instance-method! $dispatch:show 'Symbol (lambda (s) (~v s)))
+
 ;; ----- Combinators ----------------------------------------------
 
 (define (id x) x)
@@ -686,6 +699,9 @@
 (define (char-numeric?    c) (rkt:char-numeric?    c))
 (define (char-whitespace? c) (rkt:char-whitespace? c))
 (define (char->string c)  (rkt:string c))
+
+(define (symbol->string s) (rkt:symbol->string s))
+(define (string->symbol s) (rkt:string->symbol s))
 
 (define/curried (string-ref s i)
   (cond

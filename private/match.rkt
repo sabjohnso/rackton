@@ -14,6 +14,8 @@
 ;;   p:wild  → _
 ;;   p:var x → x
 ;;   p:lit v → v   (literal datum, comparison by equal?)
+;;                 — except a symbol literal lowers to (quote v); a bare
+;;                   symbol in a Racket match pattern is a wildcard binding.
 ;;   p:ctor C (p ...) → (C compiled-p ...)
 
 (provide compile-pattern)
@@ -27,6 +29,9 @@
      (datum->syntax stx '_ stx)]
     [(p:var name stx)
      (datum->syntax stx name stx)]
+    [(p:lit v stx)
+     #:when (symbol? v)
+     (datum->syntax stx (list 'quote v) stx)]
     [(p:lit v stx)
      (datum->syntax stx v stx)]
     [(p:ctor name args stx)

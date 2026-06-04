@@ -49,6 +49,7 @@
                                   char-upcase char-downcase
                                   char-alphabetic? char-numeric? char-whitespace?
                                   char->integer integer->char
+                                  symbol->string string->symbol
                                   string-ref string->list
                                   bytes-length bytes-ref bytes-append
                                   bytes->list list->bytes make-bytes
@@ -123,6 +124,11 @@
 
 (define (compile-expr e)
   (match e
+    ;; Symbols are the one literal kind that isn't self-quoting: a bare
+    ;; symbol datum lowers to an identifier (a variable reference), so a
+    ;; Symbol literal must be wrapped in `quote`.  Every other literal
+    ;; value is self-evaluating.
+    [(e:literal (? symbol? v) stx) (datum->syntax stx (list 'quote v) stx)]
     [(e:literal v stx)   (datum->syntax stx v stx)]
     [(e:var name stx)
      ;; Return-typed class methods have been resolved by inference

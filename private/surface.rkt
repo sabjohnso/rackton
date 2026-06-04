@@ -1029,12 +1029,18 @@
 
 (define (parse-expr stx)
   (syntax-parse stx
-    #:datum-literals (lambda λ let let& let% let+ letrec let* if cond else ann match racket do proc delay <- update handle return describe context list ->)
+    #:datum-literals (lambda λ let let& let% let+ letrec let* if cond else ann match racket do proc delay <- update handle return describe context list -> quote)
     [n:number  (e:literal (syntax->datum #'n) stx)]
     [b:boolean (e:literal (syntax->datum #'b) stx)]
     [s:string  (e:literal (syntax->datum #'s) stx)]
     [c:char    (e:literal (syntax->datum #'c) stx)]
     [by:bytes  (e:literal (syntax->datum #'by) stx)]
+    ;; Quoted symbol literal: 'foo evaluates to the Symbol 'foo.
+    [(quote s:id) (e:literal (syntax->datum #'s) stx)]
+    [(quote other)
+     (raise-syntax-error 'rackton
+                         "only quoted symbols are supported as Symbol literals"
+                         stx #'other)]
 
     [(lambda (p:id ...) body)
      (e:lam (map syntax->datum (syntax->list #'(p ...)))
@@ -1789,9 +1795,16 @@
 
 (define (parse-pattern stx)
   (syntax-parse stx
+    #:datum-literals (quote)
     [n:number  (p:lit (syntax->datum #'n) stx)]
     [b:boolean (p:lit (syntax->datum #'b) stx)]
     [s:string  (p:lit (syntax->datum #'s) stx)]
+    ;; Quoted symbol literal pattern: 'foo matches the Symbol 'foo.
+    [(quote s:id) (p:lit (syntax->datum #'s) stx)]
+    [(quote other)
+     (raise-syntax-error 'rackton
+                         "only quoted symbols are supported as Symbol literals"
+                         stx #'other)]
     [x:id
      (define name (syntax->datum #'x))
      (cond
