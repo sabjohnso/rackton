@@ -308,6 +308,40 @@ Anonymous function with parameters @racket[p ...] and result
 @racket[body].  Currying is implicit: @racket[(lambda (x y) e)] has
 type @racket[(-> a (-> b c))], not a tupled domain.}
 
+@deftogether[(
+  @defform[(case-lambda clause ...+)]
+  @defform[(case-λ clause ...+)
+           #:grammar
+           [(clause  [(pattern ...) body]
+                     [(pattern ...) #:when guard body])]])]{
+
+Anonymous function that pattern-matches on @emph{all} of its arguments
+at once.  Each @racket[clause] leads with a parenthesised list of
+argument patterns and is tried in source order, evaluating the first
+matching @racket[body].  The number of patterns fixes the arity; every
+clause must share it (a mismatch is a parse-time error), and at least
+one clause is required.
+
+The form desugars to a @racket[lambda] over @racket[match] on fresh
+argument names — @racket[(case-lambda [(p ...) body] ...)] is
+equivalent to @racket[(lambda (a ...) (match* (a ...) [(p ...) body]
+...))] — so the same currying as @racket[lambda] applies and a clause
+may carry a @racket[#:when] @racket[guard] just as in @racket[match].
+
+Because the first element of a clause is always the argument list, a
+single argument that is itself a constructor pattern needs its own
+parentheses (@racket[((Some x))], not @racket[(Some x)] — the latter
+reads as a two-pattern argument list).
+
+@racketblock[
+(case-lambda
+  [((Some x) (Some y)) (Some (+ x y))]
+  [(_ _)               None])
+
+(case-λ
+  [(None)     0]
+  [((Some x)) x])]}
+
 @defform*[[(let (binding ...) body)
            (let loop ([var init] ...) body)]
           #:grammar ([binding [pattern expr]])]{
