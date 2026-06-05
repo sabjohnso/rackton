@@ -37,6 +37,15 @@
                                          #f))
                                (e:match-irrefutable? v)
                                #f)]
+      [(e:match*?  v) (e:match* (map strip (e:match*-scrutinees v))
+                                (for/list ([c (in-list (e:match*-clauses v))])
+                                  (clause* (map strip (clause*-patterns c))
+                                           (and (clause*-guard c)
+                                                (strip (clause*-guard c)))
+                                           (strip (clause*-body c))
+                                           #f))
+                                (e:match*-irrefutable? v)
+                                #f)]
       [(ty:var?    v) (ty:var (ty:var-name v) #f)]
       [(ty:con?    v) (ty:con (ty:con-name v) #f)]
       [(ty:app?    v) (ty:app (strip (ty:app-head v))
@@ -99,6 +108,84 @@
                 (e:lam '(x) (e:var 'x #f) #f))
   (check-equal? (pe '(λ (x y) y))
                 (e:lam '(x y) (e:var 'y #f) #f))
+
+  ;; ----- case-lambda / case-λ -------------------------------------
+  ;;
+  ;; A `case-lambda` desugars to an `e:lam` over fresh argument names
+  ;; whose body is an `e:match*` matching all arguments at once — the
+  ;; same shape the multi-clause `define` combiner emits.  The fresh
+  ;; parameter names are gensyms, so the assertions reconstruct the
+  ;; expected scrutinees from the actual params rather than pinning
+  ;; literal symbols.
+
+  (let ([v (pe '(case-lambda
+                  [((Some x) (Some y)) (Some (+ x y))]
+                  [(_ _)               None]))])
+    (check-pred e:lam? v)
+    (define params (e:lam-params v))
+    (check-equal? (length params) 2)
+    (define body (e:lam-body v))
+    (check-pred e:match*? body)
+    (check-equal? (e:match*-scrutinees body)
+                  (list (e:var (car params) #f) (e:var (cadr params) #f)))
+    (check-equal?
+     (e:match*-clauses body)
+     (list (clause* (list (p:ctor 'Some (list (p:var 'x #f)) #f)
+                          (p:ctor 'Some (list (p:var 'y #f)) #f))
+                    #f
+                    (e:app (e:var 'Some #f)
+                           (list (e:app (e:var '+ #f)
+                                        (list (e:var 'x #f) (e:var 'y #f)) #f))
+                           #f)
+                    #f)
+           (clause* (list (p:wild #f) (p:wild #f))
+                    #f
+                    (e:var 'None #f)
+                    #f))))
+
+  ;; `case-λ` is an alias for `case-lambda`; single-argument form.  The
+  ;; first element of each clause is the parameter list, so a lone
+  ;; constructor-pattern argument needs its own parens: `((Some x))`.
+  (let ([v (pe '(case-λ
+                  [(None)     0]
+                  [((Some x)) x]))])
+    (check-pred e:lam? v)
+    (define params (e:lam-params v))
+    (check-equal? (length params) 1)
+    (define body (e:lam-body v))
+    (check-pred e:match*? body)
+    (check-equal? (e:match*-scrutinees body)
+                  (list (e:var (car params) #f)))
+    (check-equal?
+     (e:match*-clauses body)
+     (list (clause* (list (p:ctor 'None '() #f)) #f (e:literal 0 #f) #f)
+           (clause* (list (p:ctor 'Some (list (p:var 'x #f)) #f))
+                    #f (e:var 'x #f) #f))))
+
+  ;; A clause may carry a `#:when` guard, just like `match`.
+  (let ([v (pe '(case-lambda
+                  [(x) #:when (> x 0) x]
+                  [(_)               0]))])
+    (define body (e:lam-body v))
+    (check-pred e:match*? body)
+    (check-equal?
+     (e:match*-clauses body)
+     (list (clause* (list (p:var 'x #f))
+                    (e:app (e:var '> #f)
+                           (list (e:var 'x #f) (e:literal 0 #f)) #f)
+                    (e:var 'x #f)
+                    #f)
+           (clause* (list (p:wild #f)) #f (e:literal 0 #f) #f))))
+
+  ;; All clauses must share one arity.
+  (check-exn exn:fail:syntax?
+             (lambda () (pe '(case-lambda
+                               [(x)   x]
+                               [(_ _) 0]))))
+
+  ;; At least one clause is required.
+  (check-exn exn:fail:syntax?
+             (lambda () (pe '(case-lambda))))
 
   ;; ----- application ----------------------------------------------
 

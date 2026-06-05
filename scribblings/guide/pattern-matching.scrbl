@@ -89,3 +89,46 @@ panic — use a pattern binding only when the pattern is irrefutable
 @racket[struct] constructor).  A @racket[let] evaluates every right-hand
 side in the surrounding scope, so its pattern bindings are independent;
 use @racket[let*] when a later binding must see an earlier one.
+
+@section{Matching in a lambda: @racket[case-lambda]}
+
+@racket[case-lambda] (also spelled @racket[case-λ]) is an anonymous
+function that matches on @emph{all} of its arguments at once.  Each
+clause begins with a parenthesized list of argument patterns, followed
+by a body:
+
+@codeblock|{
+(case-lambda
+  [((Some x) (Some y)) (Some (+ x y))]
+  [(_ _)               None])
+}|
+
+The number of patterns in the argument list fixes the arity, and every
+clause must share it.  The form above is equivalent to a two-argument
+@racket[lambda] over @racket[match]:
+
+@codeblock|{
+(lambda (a b)
+  (match* (a b)
+    [((Some x) (Some y)) (Some (+ x y))]
+    [(_ _)               None]))
+}|
+
+Because the first element of a clause is always the argument list, a
+single argument that is itself a constructor pattern needs its own
+parentheses:
+
+@codeblock|{
+(case-λ
+  [(None)     0]
+  [((Some x)) x])
+}|
+
+Clauses may carry a @racket[#:when] guard, just as in @racket[match]:
+
+@codeblock|{
+(case-lambda
+  [(n) #:when (> n 0)  1]
+  [(n) #:when (< n 0) -1]
+  [(_)                 0])
+}|

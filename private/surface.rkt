@@ -1029,7 +1029,7 @@
 
 (define (parse-expr stx)
   (syntax-parse stx
-    #:datum-literals (lambda λ let let& let% let+ letrec let* if cond else ann match racket do proc delay <- update handle return describe context list -> quote)
+    #:datum-literals (lambda λ case-lambda case-λ let let& let% let+ letrec let* if cond else ann match racket do proc delay <- update handle return describe context list -> quote)
     [n:number  (e:literal (syntax->datum #'n) stx)]
     [b:boolean (e:literal (syntax->datum #'b) stx)]
     [s:string  (e:literal (syntax->datum #'s) stx)]
@@ -1063,6 +1063,18 @@
     ;; let&/let%/let+ guards below).
     [(lambda . _) (raise-bad-lambda 'lambda stx)]
     [(λ . _)      (raise-bad-lambda 'λ stx)]
+
+    ;; `case-lambda` / `case-λ` — an anonymous function that pattern
+    ;; matches on *all* of its arguments at once.  Each clause's
+    ;; parenthesized pattern list fixes the arity; the form desugars
+    ;; into a lambda over fresh argument names whose body is an
+    ;; `e:match*` (the same shape the multi-clause `define` combiner
+    ;; emits, see `combine-fn-clauses`), so inference and codegen need
+    ;; no new cases.
+    [(case-lambda cl ...+) (parse-case-lambda 'case-lambda (syntax->list #'(cl ...)) stx)]
+    [(case-λ      cl ...+) (parse-case-lambda 'case-λ      (syntax->list #'(cl ...)) stx)]
+    [(case-lambda . _) (raise-bad-case-lambda 'case-lambda stx)]
+    [(case-λ      . _) (raise-bad-case-lambda 'case-λ      stx)]
 
     ;; Named (loop) let — Scheme-style: `loop` is a recursive procedure
     ;; bound in the body, seeded by the initial RHS.  Matched before the
@@ -1364,6 +1376,66 @@
        "malformed ~a: expected (~a (param ...) body) with a single body expression; each param is an identifier or a constructor pattern like (Pair x y)"
        who who)
       full-stx)]))
+
+;; `case-lambda` / `case-λ` desugaring.  Each clause is `[(pat ...) body]`
+;; or `[(pat ...) #:when guard body]`; the parenthesized pattern list
+;; gives the argument patterns, and every clause must share one arity.
+;; The form becomes `(λ (a ...) (match* (a ...) clause ...))` over fresh
+;; argument names, reusing the existing `e:match*` core node.  `who` is
+;; the form's keyword symbol (for diagnostics).
+(define (parse-case-lambda who clause-stxs stx)
+  (define clauses (map (lambda (c) (parse-case-lambda-clause who c)) clause-stxs))
+  (define arity (length (clause*-patterns (car clauses))))
+  (for ([cl (in-list clauses)] [c-stx (in-list clause-stxs)])
+    (unless (= (length (clause*-patterns cl)) arity)
+      (raise-syntax-error
+       who
+       (format
+        "all ~a clauses must take the same number of arguments; expected ~a pattern(s) but got ~a"
+        who arity (length (clause*-patterns cl)))
+       stx c-stx)))
+  (define fresh-names
+    (for/list ([_ (in-range arity)]) (gensym '$arg)))
+  (define scrutinees
+    (for/list ([n (in-list fresh-names)]) (e:var n stx)))
+  (e:lam fresh-names
+         (e:match* scrutinees clauses #f stx)
+         stx))
+
+;; Parse one `case-lambda` clause into a `clause*` (multi-scrutinee
+;; clause).  Mirrors `parse-match-clause`, but the pattern position is a
+;; parenthesized list of patterns rather than a single pattern.
+(define (parse-case-lambda-clause who stx)
+  (syntax-parse stx
+    [[(pat ...) #:when guard body]
+     (clause* (map parse-pattern (syntax->list #'(pat ...)))
+              (parse-expr #'guard)
+              (parse-expr #'body)
+              stx)]
+    [[(pat ...) body]
+     (clause* (map parse-pattern (syntax->list #'(pat ...)))
+              #f
+              (parse-expr #'body)
+              stx)]
+    [_
+     (raise-syntax-error
+      who
+      (format
+       "malformed ~a clause: expected [(pat ...) body] or [(pat ...) #:when guard body]"
+       who)
+      stx)]))
+
+;; A `case-lambda` / `case-λ` form with no clauses or a non-clause shape.
+;; The well-formed `parse-expr` branches require at least one clause, so
+;; anything else lands here named instead of falling through to an
+;; "unbound identifier: case-lambda" application reading.
+(define (raise-bad-case-lambda who full-stx)
+  (raise-syntax-error
+   who
+   (format
+    "malformed ~a: expected (~a [(pat ...) body] ...+) with at least one clause; each clause matches all arguments at once"
+    who who)
+   full-stx))
 
 (define (raise-bad-monadic-let who full-stx)
   (define (generic)
