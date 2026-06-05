@@ -35,6 +35,7 @@
          current-method-dict-resolutions
          current-dict-skolems
          current-needs-dict-defs
+         current-instance-default-bodies
          current-instance-exported-impls
          current-prelude-build?
          resolve-method-uses!)
@@ -93,6 +94,20 @@
 ;;                              when prepending lambda params.
 (define current-dict-skolems    (make-parameter (hasheq)))
 (define current-needs-dict-defs (make-parameter #f))
+
+;;   current-instance-default-bodies : equal?-keyed hash from
+;;     (list class-name head-tcon method-name) → the per-instance
+;;     FRESHENED default-method body.  When an instance inherits a
+;;     class default, inference freshens the default to the instance
+;;     site and infers it there, so its return-typed method calls (e.g.
+;;     a `mk-prod`/`pure` over the carrier) resolve against THIS
+;;     instance's type.  Codegen reuses this exact AST instead of
+;;     relocating class-info-defaults afresh, so the syntax handles the
+;;     resolutions are keyed by line up.  (relocate-ast gives every node
+;;     one shared handle; that collapses multiple uses when inferred —
+;;     hence freshen-ast here.  See surface.rkt.)  #f outside an
+;;     elaborate.
+(define current-instance-default-bodies (make-parameter #f))
 
 ;; The compile-time monomorphization & inlining logs
 ;; (current-monomorphized-sites, current-inlinable-bodies,
@@ -879,6 +894,10 @@
 (define (literal-type v)
   (cond
     [(exact-integer? v) t-int]
+    ;; Exact non-integer rationals (e.g. 3/4) are Rational literals.  The
+    ;; predicate mirrors dict.rkt's dispatch-tag so the static type and the
+    ;; runtime tag agree.
+    [(and (rational? v) (exact? v) (not (exact-integer? v))) t-rational]
     [(inexact-real? v)  t-float]
     [(boolean? v)       t-bool]
     [(string? v)        t-string]
@@ -4162,7 +4181,21 @@
       (define body
         (cond
           [(hash-ref user-impls method-name #f)]
-          [(hash-ref (class-info-defaults cinfo) method-name #f)]
+          [(hash-ref (class-info-defaults cinfo) method-name #f)
+           => (lambda (default-expr)
+                ;; Inherited class default.  Freshen it to THIS
+                ;; instance's site (distinct handles, anchored at the
+                ;; instance stx) before inferring, so its return-typed
+                ;; method calls resolve against this instance's carrier
+                ;; rather than the protocol's abstract class parameter.
+                ;; Hand the freshened AST to codegen so the syntax
+                ;; handles the method resolutions are keyed by agree.
+                (define fresh-body (freshen-ast default-expr stx))
+                (when (current-instance-default-bodies)
+                  (hash-set! (current-instance-default-bodies)
+                             (list class-name head-tcon method-name)
+                             fresh-body))
+                fresh-body)]
           [else
            (raise-syntax-error 'infer
              (format "instance ~s missing method ~s with no default"
@@ -4253,15 +4286,35 @@
                          (type->datum expected-type))
                  stx))])
            (unify (apply-subst s t) expected-type)))
-        (define final-subst (subst-compose s-u s))
-        (apply-subst-to-preds! final-subst)
+        (define final-subst0 (subst-compose s-u s))
+        (apply-subst-to-preds! final-subst0)
         ;; The instance head itself is a hypothesis during method
         ;; checking — plus any constraints from the method's own
         ;; qualifying context (e.g. `Applicative f` for traverse).
+        (define hyp-preds
+          (append (cons head-pred-sk ctx-preds-sk) method-extra-preds))
+        ;; Run fundep improvement before reducing, exactly as the top-def
+        ;; path does.  A default method body that builds products through
+        ;; the abstract tensor — e.g. on-second's `mk-prod`/`arr`, whose
+        ;; class param `p` is phantom in `arr`'s type — leaves residual
+        ;; `(Arrow cat a)` / `(Prod a)` constraints.  This instance isn't
+        ;; registered yet while its own bodies are checked, so improve
+        ;; against the head hypothesis (`cat -> p` forces `a := p`),
+        ;; connecting the body's fresh tensor var to the instance product
+        ;; so the residuals reduce instead of being reported unsolved.
+        ;; The improved subst also feeds `resolve-method-uses!` below, so
+        ;; the body's return-typed `mk-prod`/`arr`/`inj-*` resolve against
+        ;; the concrete tensor rather than an ambiguous tvar.
+        (define m-fd-sub (improve-by-fds env))
+        (define m-hyp-closure
+          (append-map (lambda (p) (by-super env (apply-subst m-fd-sub p)))
+                      hyp-preds))
+        (define m-hyp-fd-sub (improve-by-hyp-fds env m-hyp-closure))
+        (define final-subst
+          (subst-compose m-hyp-fd-sub (subst-compose m-fd-sub final-subst0)))
         (define leftovers
           (reduce-context env
-                          (append (cons head-pred-sk ctx-preds-sk)
-                                  method-extra-preds)
+                          (map (lambda (p) (apply-subst final-subst p)) hyp-preds)
                           (snapshot-preds)))
         (unless (null? leftovers)
           (raise-syntax-error 'infer

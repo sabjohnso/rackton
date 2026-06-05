@@ -117,6 +117,10 @@
                  ;; for instance method lookups.  Symbol-
                  ;; keyed top-def names compare equal? fine too.
                  [current-needs-dict-defs         (make-hash)]
+                 ;; Per-instance freshened default-method bodies,
+                 ;; equal?-keyed by (class head-tcon method); inference
+                 ;; populates, codegen consumes (see infer.rkt).
+                 [current-instance-default-bodies (make-hash)]
                  ;; Monomorphization log starts empty per elaborate,
                  ;; accumulates each resolved site.
                  [current-monomorphized-sites     (make-monomorph-log)]

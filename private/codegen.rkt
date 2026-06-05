@@ -714,7 +714,7 @@
 ;; Resolve each class method to its impl body for this instance: the
 ;; user-supplied impl if present, else the class default relocated to
 ;; the instance's lexical context, else an error.
-(define (instance-method-bodies cinfo user-impls head-pred-class stx)
+(define (instance-method-bodies cinfo user-impls head-pred-class head-tcon stx)
   (let loop ([rest (hash-keys (class-info-methods cinfo))]
              [acc  '()])
     (cond
@@ -724,10 +724,24 @@
        (define body
          (cond
            [(assq m user-impls) => cdr]
+           ;; Inherited class default.  Inference already freshened it
+           ;; to this instance's site and resolved its return-typed
+           ;; method calls against this instance's carrier, recording
+           ;; the freshened AST under current-instance-default-bodies.
+           ;; Reuse that exact AST so the syntax handles its method
+           ;; resolutions are keyed by match (relocating afresh would
+           ;; produce different handles and the resolutions would miss,
+           ;; leaving the call as a bare, unbound identifier).
+           [(and head-tcon
+                 (current-instance-default-bodies)
+                 (hash-ref (current-instance-default-bodies)
+                           (list head-pred-class head-tcon m) #f))
+            => values]
            [(hash-ref (class-info-defaults cinfo) m #f)
             => (lambda (default)
-                 ;; A class default was originally parsed in the
-                 ;; defining module's lexical context.  Relocate its
+                 ;; Fallback (e.g. paths that didn't populate the
+                 ;; channel): a class default was originally parsed in
+                 ;; the defining module's lexical context.  Relocate its
                  ;; syntax handles to the *instance* site so identifier
                  ;; references resolve via the user module's imports.
                  (relocate-ast default stx))]
@@ -761,8 +775,17 @@
         ;; #:type bindings are compile-time only — no
         ;; runtime code is emitted for an associated-type binding.
         [(inst-type-fam _ _ _) acc])))
+  ;; Filter out tcons at fundep-determined positions so the per-method
+  ;; impl name matches what `resolve-return-impl` synthesizes in
+  ;; infer.rkt.  Single-param classes have no fundeps and pass through.
+  (define head-tcon-names
+    (drop-fundep-determined
+     cinfo
+     (for/list ([t (in-list head-arg-types)]) (head-tcon-name t))))
   (define all-method-bodies0
-    (instance-method-bodies cinfo user-impls head-pred-class stx))
+    (instance-method-bodies cinfo user-impls head-pred-class
+                            (and (pair? head-tcon-names) (car head-tcon-names))
+                            stx))
   ;; Eta-expand point-free / value-form method bodies.  A method given as
   ;; `(define m some-fn)` (a bare value, not `(define (m args) …)`) emits
   ;; an EAGER reference to `some-fn`.  When `some-fn` is a top-level def
@@ -780,13 +803,6 @@
                                    (method-arity cinfo (car mb))
                                    stx))))
 
-  ;; Filter out tcons at fundep-determined positions so the per-method
-  ;; impl name matches what `resolve-return-impl` synthesizes in
-  ;; infer.rkt.  Single-param classes have no fundeps and pass through.
-  (define head-tcon-names
-    (drop-fundep-determined
-     cinfo
-     (for/list ([t (in-list head-arg-types)]) (head-tcon-name t))))
   ;; Cross-method tracking for the pure-via-witness deriver (approach
   ;; (1) for ExceptT): if any value-dispatched method of this instance
   ;; witness-routes its inner `pure`, and the instance also defines a

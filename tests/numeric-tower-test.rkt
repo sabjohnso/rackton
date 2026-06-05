@@ -22,6 +22,30 @@
 (: half-shown String)
 (define half-shown (show half))
 
+;; ----- 40.A' Rational literal syntax (3/4 etc.) -------------
+
+(: q Rational)
+(define q 3/4)
+
+(: neg-q Rational)
+(define neg-q -3/4)
+
+(: lit-sum Rational)
+(define lit-sum (+ 1/4 1/2))
+
+;; A rational literal also works as a match pattern.
+(: classify (-> Rational String))
+(define (classify r)
+  (match r
+    [3/4 "three-quarters"]
+    [_   "other"]))
+
+(: classified String)
+(define classified (classify 3/4))
+
+(: classified-other String)
+(define classified-other (classify 1/2))
+
 ;; ----- 40.B Complex arithmetic ------------------------------
 
 (: c1 Complex)
@@ -111,6 +135,13 @@
         (list (check-equal? five-sixths (make-rational 5 6))
               (check-equal? one-sixth   (make-rational 1 6))
               (check-equal? half-shown  "1/2"))))
+   (it "Rational literal syntax"
+       (all-checks
+        (list (check-equal? q                (make-rational 3 4))
+              (check-equal? neg-q            (make-rational -3 4))
+              (check-equal? lit-sum          (make-rational 3 4))
+              (check-equal? classified       "three-quarters")
+              (check-equal? classified-other "other"))))
    (it "Complex arithmetic"
        (all-checks
         (list (check-equal? c-sum  (make-complex  4.0  6.0))

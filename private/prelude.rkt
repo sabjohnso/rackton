@@ -415,31 +415,48 @@
     (protocol (Arrow (cat :: (-> * (-> * *))) (p :: (-> * (-> * *))))
       (#:requires (Category cat) (Prod p))
       (#:fundep cat -> p)
-      ;; All combinators are primitives: deriving on-second/split/fanout
-      ;; from on-first would build products with `mk-prod` over the
-      ;; abstract `p`, which the checker can't tie back to the instance's
-      ;; product, so each instance supplies them against its concrete
-      ;; product type instead.
+      ;; Minimal complete definition: `arr` plus EITHER `on-first` OR
+      ;; `split` — they derive from each other (an Applicative-style
+      ;; default cycle, broken by defining one).  The swap/dup helpers
+      ;; are built from the product tensor `mk-prod`/`prod-fst`/`prod-snd`.
+      ;; Crucially `split` derives from `on-first` DIRECTLY (via swap),
+      ;; not through `on-second`, so an instance that defines only
+      ;; `on-first` doesn't loop; `on-first`/`on-second` derive from
+      ;; `split` via the Category identity `ident`.  An instance whose
+      ;; product needs special handling — e.g. a LAZY arrow that must
+      ;; leave the untouched component unforced — defines the derived
+      ;; ones itself, overriding the defaults (see rackton/data/arrow-lazy).
       (: arr       (-> (-> a b) (cat a b)))
       (: on-first  (-> (cat a b) (cat (p a c) (p b c))))
       (: on-second (-> (cat a b) (cat (p c a) (p c b))))
       (: split     (-> (cat a b) (-> (cat c d) (cat (p a c) (p b d)))))
-      (: fanout    (-> (cat a b) (-> (cat a c) (cat a (p b c))))))
+      (: fanout    (-> (cat a b) (-> (cat a c) (cat a (p b c)))))
+      ;; first f  = f *** id
+      (define (on-first f) (split f ident))
+      ;; second g = id *** g
+      (define (on-second g) (split ident g))
+      ;; f *** g = first f >>> arr swap >>> first g >>> arr swap
+      ;;           (comp is right-to-left, so reads bottom-up)
+      (define (split f g)
+        (comp (arr (lambda (q) (mk-prod (prod-snd q) (prod-fst q))))
+              (comp (on-first g)
+                    (comp (arr (lambda (q) (mk-prod (prod-snd q) (prod-fst q))))
+                          (on-first f)))))
+      ;; f &&& g = arr dup >>> (f *** g)
+      (define (fanout f g)
+        (comp (split f g) (arr (lambda (x) (mk-prod x x))))))
 
     (instance (Category (->))
       (define ident (lambda (x) x))
       (define (comp f g) (lambda (x) (f (g x)))))
 
+    ;; Only the primitives; on-second/split/fanout come from the Arrow
+    ;; defaults.  (The strict arrow's runtime impls are hand-registered
+    ;; in prelude-runtime.rkt as a direct, swap-free reference version.)
     (instance (Arrow (->) Pair)
       (define (arr f) f)
       (define (on-first f)
-        (lambda (q) (match q [(Pair a c) (Pair (f a) c)])))
-      (define (on-second g)
-        (lambda (q) (match q [(Pair c a) (Pair c (g a))])))
-      (define (split f g)
-        (lambda (q) (match q [(Pair a c) (Pair (f a) (g c))])))
-      (define (fanout f g)
-        (lambda (x) (Pair (f x) (g x)))))
+        (lambda (q) (match q [(Pair a c) (Pair (f a) c)]))))
 
     ;; ArrowChoice routes a coproduct `s` through one of two arrows by
     ;; branch; on-right/fork/fanin derive from on-left via `inj-*`/`co-elim`.
@@ -448,23 +465,39 @@
                            (s :: (-> * (-> * *))))
       (#:requires (Arrow cat p) (Coprod s))
       (#:fundep cat -> p s)
-      ;; Like Arrow, the combinators are primitives: deriving them would
-      ;; build coproducts with `inj-*`/`co-elim` over the abstract `s`,
-      ;; which the checker can't tie to the instance's coproduct.
+      ;; Minimal complete definition: EITHER `on-left` OR `fork` — the
+      ;; coproduct analog of Arrow's on-first/split cycle.  The
+      ;; mirror/untag helpers are built from the coproduct tensor
+      ;; `inj-left`/`inj-right`/`co-elim`.  `fork` derives from `on-left`
+      ;; DIRECTLY (via mirror), not through `on-right`, so an instance
+      ;; defining only `on-left` doesn't loop; `on-left`/`on-right`
+      ;; derive from `fork` via the Category identity `ident`.  A lazy
+      ;; arrow overrides them, as with Arrow.
       (: on-left  (-> (cat a b) (cat (s a x) (s b x))))
       (: on-right (-> (cat a b) (cat (s x a) (s x b))))
       (: fork     (-> (cat a b) (-> (cat c d) (cat (s a c) (s b d)))))
-      (: fanin    (-> (cat a c) (-> (cat b c) (cat (s a b) c)))))
+      (: fanin    (-> (cat a c) (-> (cat b c) (cat (s a b) c))))
+      ;; left f  = f +++ id
+      (define (on-left f) (fork f ident))
+      ;; right g = id +++ g
+      (define (on-right g) (fork ident g))
+      ;; f +++ g = left f >>> arr mirror >>> left g >>> arr mirror
+      ;;           (comp is right-to-left, so reads bottom-up)
+      (define (fork f g)
+        (comp (arr (lambda (e) (co-elim inj-right inj-left e)))
+              (comp (on-left g)
+                    (comp (arr (lambda (e) (co-elim inj-right inj-left e)))
+                          (on-left f)))))
+      ;; f ||| g = (f +++ g) >>> arr untag
+      (define (fanin f g)
+        (comp (arr (lambda (e) (co-elim (lambda (x) x) (lambda (x) x) e)))
+              (fork f g))))
 
+    ;; Only the primitive; on-right/fork/fanin come from the ArrowChoice
+    ;; defaults.  Runtime impls are hand-registered in prelude-runtime.rkt.
     (instance (ArrowChoice (->) Pair Either)
       (define (on-left f)
-        (lambda (r) (match r [(Left a) (Left (f a))] [(Right x) (Right x)])))
-      (define (on-right g)
-        (lambda (r) (match r [(Right a) (Right (g a))] [(Left x) (Left x)])))
-      (define (fork f g)
-        (lambda (r) (match r [(Left a) (Left (f a))] [(Right c) (Right (g c))])))
-      (define (fanin f g)
-        (lambda (r) (match r [(Left a) (f a)] [(Right b) (g b)]))))
+        (lambda (r) (match r [(Left a) (Left (f a))] [(Right x) (Right x)]))))
 
     ;; ArrowApply makes the arrow a first-class value fed in with its
     ;; argument.  `arrow-app` is return-typed (a constant arrow).

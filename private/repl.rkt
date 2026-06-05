@@ -44,6 +44,7 @@
        fresh-box preds-box
        method-uses method-resolutions method-dict-resolutions
        needs-dict-defs
+       instance-default-bodies
        nsp
        expr-counter
        quit?)
@@ -61,6 +62,7 @@
                       (make-hasheq)
                       (make-hasheq)
                       (make-hasheq)
+                      (make-hash)
                       (make-hash)
                       ns
                       0
@@ -198,7 +200,9 @@
                  [current-method-dict-resolutions
                    (rackton-repl-state-method-dict-resolutions state)]
                  [current-needs-dict-defs
-                   (rackton-repl-state-needs-dict-defs state)])
+                   (rackton-repl-state-needs-dict-defs state)]
+                 [current-instance-default-bodies
+                   (rackton-repl-state-instance-default-bodies state)])
     (define parsed (parse-toplevel-list (list stx)))
     ;; Run the full 4-phase pipeline over the parsed list so that
     ;; multi-form REPL input (a single `(define …) (define …)` block,

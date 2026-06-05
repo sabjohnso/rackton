@@ -55,6 +55,7 @@
 
          ;; pre-built primitive types
          t-int t-bool t-string t-symbol t-unit t-float t-char t-bytes
+         t-rational
          t-arrow t-list
 
          ;; arrows and other shape predicates
@@ -124,6 +125,7 @@
 (define t-float  (tcon 'Float))
 (define t-char   (tcon 'Char))
 (define t-bytes  (tcon 'Bytes))
+(define t-rational (tcon 'Rational))
 (define t-arrow  (tcon '->))
 (define t-list   (tcon 'List))
 

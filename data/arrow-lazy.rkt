@@ -75,7 +75,11 @@
   (define (arr h) (LFun (lambda (la) (delay (h (force la))))))
   ;; on-first/on-second/split/fanout force only the product *spine*
   ;; (inside the output `delay`); the untouched component passes through
-  ;; still-lazy.
+  ;; still-lazy.  on-second/split/fanout are defined explicitly here to
+  ;; OVERRIDE the Arrow class defaults: those route through `arr swap`,
+  ;; and `swap` (built from `prod-fst`/`prod-snd`) forces BOTH components,
+  ;; which would break the laziness ArrowLoop depends on.  Do not delete
+  ;; these in favor of the defaults.
   (define (on-first x)
     (match x
       [(LFun f)
@@ -105,7 +109,9 @@
 
 ;; ----- ArrowChoice -------------------------------------------------
 ;; Choosing a branch must inspect which injection arrived, so these force
-;; the coproduct spine (never the component).
+;; the coproduct spine (never the component).  Like Arrow above, on-right/
+;; fork/fanin are defined explicitly to OVERRIDE the class defaults, whose
+;; `mirror`/`untag` (via `co-elim` + `inj-*`) would force the components.
 
 (instance (ArrowChoice LFun LPair LEither)
   (define (on-left x)
