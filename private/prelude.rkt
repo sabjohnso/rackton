@@ -1060,6 +1060,36 @@
     (instance (Fractional Complex)
       (define (float-div x y) (racket Complex (x y) #f)))
 
+    ;; --- Exact complex (ComplexExact) --------------
+    ;; The exact counterpart of Complex, backed by Racket's exact
+    ;; non-real numbers.  Components are exact integers (the Gaussian
+    ;; integers); the constructor and accessors are integer-valued, the
+    ;; exact parallel of make-rational / numerator / denominator.  No
+    ;; Ord (complex has no total order), no Fractional / Floating (those
+    ;; leave the exact-integer world).
+
+    (data ComplexExact)
+
+    (: make-complex-exact (-> Integer (-> Integer ComplexExact)))
+    (define (make-complex-exact re im) (racket ComplexExact (re im) #f))
+
+    (: real-part-exact (-> ComplexExact Integer))
+    (define (real-part-exact c) (racket Integer (c) 0))
+
+    (: imag-part-exact (-> ComplexExact Integer))
+    (define (imag-part-exact c) (racket Integer (c) 0))
+
+    (instance (Eq ComplexExact)
+      (define (== x y) (racket Boolean (x y) #f)))
+    (instance (Show ComplexExact)
+      (define (show x) (racket String (x) "")))
+    (instance (Num ComplexExact)
+      (define (+ x y) (racket ComplexExact (x y) #f))
+      (define (- x y) (racket ComplexExact (x y) #f))
+      (define (* x y) (racket ComplexExact (x y) #f))
+      (define (abs    x) (racket ComplexExact (x) #f))
+      (define (negate x) (racket ComplexExact (x) #f)))
+
     ;; --- Integral class ----------------------------
 
     (protocol (Integral [a => Num])

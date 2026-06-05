@@ -899,6 +899,12 @@
     ;; runtime tag agree.
     [(and (rational? v) (exact? v) (not (exact-integer? v))) t-rational]
     [(inexact-real? v)  t-float]
+    ;; Non-real numbers (a nonzero imaginary part).  An exact complex —
+    ;; both parts exact, e.g. 3+4i — is the exact-complex type; anything
+    ;; else with an imaginary part (3.0+4.0i) is the inexact Complex.
+    ;; Exactness splits them, mirroring dict.rkt's dispatch-tag.
+    [(and (number? v) (not (real? v)) (exact? v)) t-complex-exact]
+    [(and (number? v) (not (real? v)))            t-complex]
     [(boolean? v)       t-bool]
     [(string? v)        t-string]
     [(char? v)          t-char]

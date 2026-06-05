@@ -34,9 +34,31 @@ Instances: @racket[Num], @racket[Eq], @racket[Ord], @racket[Show],
 
 @defidform[#:kind "type" Complex]{
 
-Complex numbers (Racket's @racket[number?] with non-zero imaginary
-part).  Built with @racket[make-complex].  Instances: @racket[Num],
-@racket[Eq], @racket[Show], @racket[Fractional], @racket[Floating].}
+Inexact complex numbers (Racket's @racket[number?] with a non-zero
+imaginary part and inexact components).  Written as a literal with an
+imaginary suffix, like @racket[3.0+4.0i], or built with
+@racket[make-complex].  Instances: @racket[Num], @racket[Eq],
+@racket[Show], @racket[Fractional], @racket[Floating].}
+
+@defidform[#:kind "type" ComplexExact]{
+
+Exact complex numbers — the exact counterpart of @racket[Complex],
+backed by Racket's exact non-real numbers.  An exact imaginary literal
+such as @racket[3+4i] has type @racket[ComplexExact]; values are also
+built with @racket[make-complex-exact] from two @racket[Integer]
+components (the Gaussian integers).  The accessors
+@racket[real-part-exact] and @racket[imag-part-exact] recover the
+components.  Instances: @racket[Num], @racket[Eq], @racket[Show] — no
+@racket[Ord] (complex numbers have no total order) and no
+@racket[Fractional] / @racket[Floating] (those leave the exact-integer
+world).
+
+Like @racket[Rational], the type is closed only up to Racket's exact
+arithmetic: a result whose imaginary part cancels to zero collapses to a
+real (for instance @racket[(* 3+4i 3-4i)] is the @racket[Integer]
+@racket[25]), and dividing two exact complex numbers yields exact
+rational components that the integer accessors do not describe — widen
+with @racket[complex-exact->complex] first.}
 
 @defidform[#:kind "type" Boolean]{
 

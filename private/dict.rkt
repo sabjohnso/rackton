@@ -38,6 +38,10 @@
     [(and (rational? v) (exact? v) (not (exact-integer? v)))
      'Rational]
     [(inexact-real? v)  'Float]
+    ;; A nonzero imaginary part.  Exact complex (both parts exact, e.g.
+    ;; 3+4i) maps to ComplexExact; anything else (3.0+4.0i) to Complex.
+    ;; Exactness splits them — mirrors infer.rkt's literal-type.
+    [(and (number? v) (not (real? v)) (exact? v)) 'ComplexExact]
     [(and (number? v) (not (real? v))) 'Complex]
     [(boolean? v)       'Boolean]
     [(string? v)        'String]

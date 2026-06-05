@@ -29,3 +29,26 @@
 ;; (magnitude, phase) pair.
 (: polar (-> Complex (Pair Float Float)))
 (define (polar z) (Pair (magnitude z) (phase z)))
+
+;; ----- exact complex (ComplexExact) --------------------------
+;; The prelude ships ComplexExact with make-complex-exact /
+;; real-part-exact / imag-part-exact; these are the derived ops.
+
+;; exact conjugate: negate the imaginary part.
+(: conjugate-exact (-> ComplexExact ComplexExact))
+(define (conjugate-exact z)
+  (make-complex-exact (real-part-exact z) (negate (imag-part-exact z))))
+
+;; Gaussian norm re² + im² — an exact non-negative Integer (no sqrt, so
+;; it stays exact, unlike `magnitude`).
+(: complex-exact-norm (-> ComplexExact Integer))
+(define (complex-exact-norm z)
+  (let ([re (real-part-exact z)]
+        [im (imag-part-exact z)])
+    (+ (* re re) (* im im))))
+
+;; widen an exact complex to the inexact Complex type.
+(: complex-exact->complex (-> ComplexExact Complex))
+(define (complex-exact->complex z)
+  (make-complex (integer->float (real-part-exact z))
+                (integer->float (imag-part-exact z))))

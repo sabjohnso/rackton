@@ -141,6 +141,21 @@ names stay usable inside @racket[(racket …)] escapes.
 @defproc[(polar [z Complex]) (Pair Float Float)]{
   The @tt{(magnitude, phase)} pair.}
 
+The exact counterpart @racket[ComplexExact] (the prelude's
+@racket[make-complex-exact] / @racket[real-part-exact] /
+@racket[imag-part-exact]) gets its derived operations here too.
+
+@defproc[(conjugate-exact [z ComplexExact]) ComplexExact]{
+  Exact conjugate: negate the imaginary part.}
+
+@defproc[(complex-exact-norm [z ComplexExact]) Integer]{
+  The Gaussian norm @tt{re² + im²}, an exact non-negative
+  @racket[Integer].  Unlike @tt{magnitude} it takes no square root, so
+  it stays exact.}
+
+@defproc[(complex-exact->complex [z ComplexExact]) Complex]{
+  Widen an exact complex number to the inexact @racket[Complex] type.}
+
 
 @section{rackton/data/either}
 @defmodule[rackton/data/either #:no-declare]

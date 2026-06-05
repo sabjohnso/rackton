@@ -26,8 +26,8 @@ Equality and disequality.  The default for @racket[/=] negates
 @racket[==].}
 
 Built-in instances: @racket[Integer], @racket[Float], @racket[Rational],
-@racket[Complex], @racket[Boolean], @racket[String], @racket[Char],
-@racket[Bytes].}
+@racket[Complex], @racket[ComplexExact], @racket[Boolean],
+@racket[String], @racket[Char], @racket[Bytes].}
 
 @defidform[#:kind "class" Ord]{
 
@@ -62,7 +62,7 @@ Additive and multiplicative arithmetic.
 The basic arithmetic operations.}
 
 Built-in instances: @racket[Integer], @racket[Float], @racket[Rational],
-@racket[Complex].}
+@racket[Complex], @racket[ComplexExact].}
 
 @defidform[#:kind "class" Fractional]{
 
@@ -157,9 +157,9 @@ Conversion to a printable @racket[String].
 Render @racket[x] for display.}
 
 Built-in instances: @racket[Integer], @racket[Float], @racket[Rational],
-@racket[Complex], @racket[Boolean], @racket[String], @racket[Char],
-@racket[Bytes].  Derived @racket[Show] is available on any
-@racket[data] via @racket[#:deriving Show].}
+@racket[Complex], @racket[ComplexExact], @racket[Boolean],
+@racket[String], @racket[Char], @racket[Bytes].  Derived @racket[Show]
+is available on any @racket[data] via @racket[#:deriving Show].}
 
 @section{Functor hierarchy}
 

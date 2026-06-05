@@ -102,6 +102,14 @@
   (check-equal? (pe '"hello")   (e:literal "hello" #f))
   (check-equal? (pe 'x)         (e:var 'x #f))
 
+  ;; Complex literals: Racket's reader produces native complex numbers,
+  ;; which reach `e:literal` unchanged — inexact (3.0+4.0i) and exact
+  ;; (3+4i) alike.
+  (check-equal? (pe (read (open-input-string "3.0+4.0i")))
+                (e:literal 3.0+4.0i #f))
+  (check-equal? (pe (read (open-input-string "3+4i")))
+                (e:literal 3+4i #f))
+
   ;; ----- lambda ----------------------------------------------------
 
   (check-equal? (pe '(lambda (x) x))

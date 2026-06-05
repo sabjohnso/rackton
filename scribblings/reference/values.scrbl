@@ -79,7 +79,21 @@ Constructs an exact rational @racket[n/d].}
 
 @defproc[(make-complex [re Float] [im Float]) Complex]{
 
-Constructs a complex number with the given real and imaginary parts.}
+Constructs an inexact complex number with the given real and imaginary
+parts.  The literal @racket[3.0+4.0i] is equivalent to
+@racket[(make-complex 3.0 4.0)].}
+
+@defproc[(make-complex-exact [re Integer] [im Integer]) ComplexExact]{
+
+Constructs an exact complex number from two @racket[Integer]
+components.  The literal @racket[3+4i] is equivalent to
+@racket[(make-complex-exact 3 4)].}
+
+@defproc[(real-part-exact [z ComplexExact]) Integer]{
+Real component of an exact complex number.}
+
+@defproc[(imag-part-exact [z ComplexExact]) Integer]{
+Imaginary component of an exact complex number.}
 
 @defproc[(get-sum     [s Sum])     Integer]{Extracts the wrapped integer.}
 @defproc[(get-product [p Product]) Integer]{Extracts the wrapped integer.}

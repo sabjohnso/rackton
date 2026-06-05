@@ -16,7 +16,8 @@
     (check-equal? (dispatch-tag 5)        'Integer)
     (check-equal? (dispatch-tag 1/2)      'Rational)   ; exact non-integer
     (check-equal? (dispatch-tag 3.14)     'Float)
-    (check-equal? (dispatch-tag 1+2i)     'Complex)    ; non-real number
+    (check-equal? (dispatch-tag 1.0+2.0i) 'Complex)      ; inexact non-real
+    (check-equal? (dispatch-tag 1+2i)     'ComplexExact) ; exact non-real
     (check-equal? (dispatch-tag #t)       'Boolean)
     (check-equal? (dispatch-tag "s")      'String)
     (check-equal? (dispatch-tag #\a)      'Char)

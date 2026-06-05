@@ -276,6 +276,7 @@
  ;; Numeric tower
  make-rational numerator denominator
  make-complex real-part imag-part magnitude
+ make-complex-exact real-part-exact imag-part-exact
  div mod quot rem
  sqrt exp log sin cos tan **
  floor-real ceiling-real round-real truncate-real
@@ -1314,6 +1315,13 @@
 (define (imag-part c) (rkt:imag-part c))
 (define (magnitude c) (rkt:magnitude c))
 
+;; ComplexExact = exact complex (exact integer parts).  Built and torn
+;; apart with the same Racket primitives; exactness of the components
+;; keeps the value on the ComplexExact dispatch branch (dict.rkt).
+(define/curried (make-complex-exact re im) (rkt:make-rectangular re im))
+(define (real-part-exact c) (rkt:real-part c))
+(define (imag-part-exact c) (rkt:imag-part c))
+
 ;; Num / Eq / Ord / Show for Rational + Complex.  The existing
 ;; $dispatch:+ / $dispatch:- / etc. tables get new entries.
 (register-instance-method! $dispatch:+ 'Rational (lambda (x y) (rkt:+ x y)))
@@ -1346,6 +1354,19 @@
                            (lambda (c) (format "~v" c)))
 (register-instance-method! $dispatch:float-div 'Complex
                            (lambda (x y) (rkt:/ x y)))
+
+;; Num / Eq / Show for ComplexExact.  Arithmetic stays on exact Racket
+;; numbers; `abs` is the magnitude, exactly as for Complex (it may be a
+;; real when the parts form a Pythagorean pair, e.g. (abs 3+4i) = 5).
+(register-instance-method! $dispatch:+ 'ComplexExact (lambda (x y) (rkt:+ x y)))
+(register-instance-method! $dispatch:- 'ComplexExact (lambda (x y) (rkt:- x y)))
+(register-instance-method! $dispatch:* 'ComplexExact (lambda (x y) (rkt:* x y)))
+(register-instance-method! $dispatch:abs    'ComplexExact (lambda (x) (rkt:magnitude x)))
+(register-instance-method! $dispatch:negate 'ComplexExact (lambda (x) (rkt:- x)))
+(register-instance-method! $dispatch:== 'ComplexExact (lambda (x y) (rkt:= x y)))
+(register-instance-method! $dispatch:/= 'ComplexExact (lambda (x y) (not (rkt:= x y))))
+(register-instance-method! $dispatch:show 'ComplexExact
+                           (lambda (c) (format "~v" c)))
 
 ;; ----- Integral class ---------------------------------------
 
