@@ -254,6 +254,16 @@ cannot be derived from @racket[Monad] (none of @racket[fmap],
 bare @racket[a]), so it must always be supplied; omitting it is a
 compile-time error.
 
+Because @racket[#:derive-superclasses] auto-fills both a class's own
+defaulted methods and its synthesized superclass methods, the two can
+form a loop that would only manifest as infinite recursion at runtime:
+the deriving class leaves a method to its default, that default calls a
+superclass method, and the superclass method is filled from the
+@tech{cross-class derivation} table in terms of the first.  The compiler
+detects such a cross-class default/derived cycle and rejects the
+instance, naming the methods involved; defining any one of them directly
+in the instance breaks the cycle.
+
 Instances always escape regardless of @racket[provide]; coherence is a
 module-level property.}
 

@@ -238,6 +238,68 @@
 (test-case "new #:derive list: derived Applic (combine) works"
   (check-equal? cap-combine 42))
 
+;; ----- cross-class default/derived cycle detection -----------------
+;; A `#:derive-superclasses` instance can leave BOTH ends of a cross-class
+;; loop to be auto-filled: a deriving-class method left to its class
+;; default that calls a superclass method, and that superclass method
+;; filled from the `#:derive` table in terms of the first.  Here Comonad's
+;; `extend` (class default) calls `fmap`, and the derived `fmap` calls
+;; `extend` — neither is user-defined, so a runtime call would loop.  The
+;; per-class cycle check can't see this (the edges cross a class boundary);
+;; the cross-class check at derive-expansion must reject it.
+
+(test-case "cross-class derive cycle (extend ↔ derived fmap) is rejected"
+  (define ((expand src))
+    (parameterize ([current-namespace (make-base-namespace)])
+      (eval src)))
+  (check-exn
+   #rx"cyclic default/derived chain"
+   (expand
+    '(module comonad-loop racket/base
+       (require rackton)
+       (rackton
+        (protocol (Comonad [w => Functor])
+          (: extract (-> (w a) a))
+          (: duplicate (-> (w a) (w (w a))))
+          (: extend (-> (-> (w a) b) (-> (w a) (w b))))
+          (define (duplicate wa) (extend id wa))
+          (define (extend f wa) (fmap f (duplicate wa)))
+          #:derive
+          ([Functor
+            (define (fmap f wa) (extend (compose f extract) wa))]))
+        ;; defines extract + duplicate but NOT extend → extend (default)
+        ;; and fmap (derived) form a cross-class loop.
+        (instance (Comonad (Pair a)) #:derive-superclasses
+          (define (extract (Pair a b)) b)
+          (define (duplicate (Pair a b)) (Pair a (Pair a b)))))))))
+
+;; Defining `extend` directly breaks the cycle: the instance is accepted
+;; and the derived `fmap` (which now bottoms out in the user's `extend`)
+;; computes normally.
+
+(rackton
+  (protocol (Comonad2 [w => Functor])
+    (: extract (-> (w a) a))
+    (: duplicate (-> (w a) (w (w a))))
+    (: extend (-> (-> (w a) b) (-> (w a) (w b))))
+    (define (duplicate wa) (extend id wa))
+    (define (extend f wa) (fmap f (duplicate wa)))
+    #:derive
+    ([Functor
+      (define (fmap f wa) (extend (compose f extract) wa))]))
+
+  (instance (Comonad2 (Pair a)) #:derive-superclasses
+    (define (extract (Pair a b)) b)
+    (define (duplicate (Pair a b)) (Pair a (Pair a b)))
+    (define (extend f (Pair a b)) (Pair a (f (Pair a b)))))
+
+  (define (sqr x) (* x x))
+  (: cmd-res Integer)
+  (define cmd-res (match (fmap sqr (Pair 0 3)) [(Pair a b) b])))
+
+(test-case "breaking the cycle (extend defined) compiles and computes"
+  (check-equal? cmd-res 9))
+
 ;; ----- negative: the old (#:derive Super …) form is rejected --------
 
 (test-case "old parenthesized (#:derive Super …) form is now a parse error"

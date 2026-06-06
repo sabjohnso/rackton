@@ -2042,10 +2042,19 @@
   ;; deriving Monad's `flatmap` and Applicative's `pure`), which must
   ;; already be registered for its concrete-type constraint to discharge.
   (define surface-args (constraint-args surface-head))
-  (define synth
+  ;; the superclasses we will actually synthesize here (the rest already
+  ;; have an instance for this carrier and are left untouched).
+  (define synth-supers
     (for/list ([S (in-list closure)]
                #:unless (or (hash-ref existing (cons S spine) #f)
                             (instance-already-in-env? env S spine)))
+      S))
+  ;; Reject a cross-class default/derived cycle among the methods this
+  ;; instance leaves to be auto-filled, before emitting instances that
+  ;; would only loop at runtime.
+  (check-derived-instance-cycle C synth-supers merged bundled env head-pred stx)
+  (define synth
+    (for/list ([S (in-list synth-supers)])
       (synthesize-one-superclass S surface-args ctx merged bundled env stx)))
   (cons base-inst synth))
 
@@ -4045,6 +4054,62 @@
         "instance ~s is incomplete: methods ~s form a cyclic default chain "
         "(~a); at least one must be defined directly to break the cycle.")
        (pred->datum head-pred-raw)
+       cyc
+       (string-join (map symbol->string cyc) " → "))
+      stx)))
+
+;; Cross-class default/derived cycle check for a `#:derive-superclasses`
+;; instance.  `check-instance-default-cycle` above is intra-class: it
+;; only sees edges between methods of ONE class, so it cannot detect a
+;; loop that runs between a deriving-class method (left to its class
+;; default) and a superclass method whose body comes from the deriving
+;; class's `#:derive` table.  That is exactly the loop the user can write
+;; by leaving both ends to be auto-filled, e.g. Comonad's `extend`
+;; (default `(fmap … (duplicate …))`) and a derived `fmap`
+;; (`(extend … …)`): each is synthesized, neither is user-written, so a
+;; runtime call recurses forever.
+;;
+;; Build one call graph over the deriving class `C` and the superclasses
+;; actually synthesized for this instance (`synth-supers`).  A method is
+;; *solid* (it breaks cycles) when the user wrote it directly in the
+;; instance body — i.e. it is in `bundled`.  A superclass that was NOT
+;; synthesized (a real instance for the carrier already exists) supplies
+;; its methods elsewhere; those names stay out of the graph, so edges to
+;; them are cut and cannot raise a false positive.  Method names have
+;; unique owners across classes, so the union by name never conflates two
+;; distinct methods.
+(define (check-derived-instance-cycle C synth-supers merged bundled env head-pred stx)
+  (define classes (cons C synth-supers))
+  (define (class-methods K) (hash-keys (class-info-methods (env-ref-class env K))))
+  (define all-methods (append* (map class-methods classes)))
+  (define name-set (for/hasheq ([m (in-list all-methods)]) (values m #t)))
+  ;; the body that fills method `m` of class `K` when the user did not
+  ;; write it: a `#:derive`-table entry (superclass methods only) else the
+  ;; owning class's intra-class default; #f when neither exists.
+  (define (filled-body K m)
+    (or (and (not (eq? K C))
+             (hash-ref (hash-ref merged K (hasheq)) m #f))
+        (hash-ref (class-info-defaults (env-ref-class env K)) m #f)))
+  ;; m → methods its filling body calls (restricted to this method set).
+  ;; User-written methods (in `bundled`) are solid: no outgoing edges.
+  (define adj
+    (for/fold ([h (hasheq)]) ([K (in-list classes)])
+      (for/fold ([h h]) ([m (in-list (class-methods K))])
+        (define body (and (not (hash-ref bundled m #f)) (filled-body K m)))
+        (hash-set h m
+                  (if body
+                      (hash-keys (collect-class-method-refs body name-set))
+                      '())))))
+  (define live (filter (lambda (m) (not (hash-ref bundled m #f))) all-methods))
+  (define cyc (find-method-cycle live adj))
+  (when cyc
+    (raise-syntax-error 'infer
+      (format
+       (string-append
+        "instance ~s is incomplete: methods ~s form a cyclic "
+        "default/derived chain across classes (~a); define at least one "
+        "of them directly in the instance to break the cycle.")
+       (pred->datum head-pred)
        cyc
        (string-join (map symbol->string cyc) " → "))
       stx)))
