@@ -4290,11 +4290,29 @@
       ;; normalize-type rewrites any associated-type
       ;; references (e.g. `(Index (List a))`) to their concrete rhs
       ;; for this instance before unify.
-      (define expected-type
+      (define expected-type/flex
         (normalize-type env-with-inst
           (apply-subst method-sk-subst (qual-body-deep inst-method-qual))))
+      ;; Skolemize every type variable still free in the expected method
+      ;; type.  These are the class method's own universally-quantified
+      ;; variables (e.g. fmap's `a`/`b`) plus the instance head's
+      ;; variables (e.g. the `a` in `(Functor (Pair a))`).  Left flexible
+      ;; they would let an over-specific body unify them together — an
+      ;; `fmap` mapping the fixed field of a pair, or ignoring its
+      ;; function argument, would wrongly typecheck.  Made rigid they
+      ;; force the body to be as general as the class signature demands.
+      ;; The same substitution is applied to the body-checking
+      ;; hypotheses below so constraint resolution stays consistent with
+      ;; these skolems.
+      (define generality-sk-subst
+        (for/fold ([s empty-subst])
+                  ([v (in-set (type-vars expected-type/flex))])
+          (subst-extend s v (tcon (gensym (format "$gen-skolem.~a." v))))))
+      (define expected-type
+        (apply-subst generality-sk-subst expected-type/flex))
       (define method-extra-preds
-        (map (lambda (p) (apply-subst method-sk-subst p))
+        (map (lambda (p)
+               (apply-subst generality-sk-subst (apply-subst method-sk-subst p)))
              raw-method-qual-preds))
       (parameterize ([current-pending-preds (box '())])
         ;; Make the instance-qual + method-qual skolem map visible
@@ -4319,7 +4337,10 @@
         ;; checking — plus any constraints from the method's own
         ;; qualifying context (e.g. `Applicative f` for traverse).
         (define hyp-preds
-          (append (cons head-pred-sk ctx-preds-sk) method-extra-preds))
+          (append (cons (apply-subst generality-sk-subst head-pred-sk)
+                        (map (lambda (p) (apply-subst generality-sk-subst p))
+                             ctx-preds-sk))
+                  method-extra-preds))
         ;; Run fundep improvement before reducing, exactly as the top-def
         ;; path does.  A default method body that builds products through
         ;; the abstract tensor — e.g. on-second's `mk-prod`/`arr`, whose
