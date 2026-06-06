@@ -62,8 +62,10 @@ Two macros share @racket[rackton-elaborate]:
       custom @racketidfont{#%module-begin} in @filepath{main.rkt}).  At most
       one per Racket module.}]
 
-Both bind into the same shared inference parameters declared in
-@filepath{infer.rkt}, allowing user code to inspect the optimisation
+Both bind into the same shared inference parameters (the
+monomorphization/inlining logs are declared in
+@filepath{private/monomorph-log.rkt} and re-exported through
+@filepath{infer.rkt}), allowing user code to inspect the optimisation
 log via @racket[rackton-monomorphized-sites] and
 @racket[rackton-inlined-sites] after each elaborate.
 

@@ -92,7 +92,8 @@ not a nuisance.
 
 CI (@filepath{.github/workflows/ci.yml}) runs the matrix Racket-stable
 crossed with BC and CS, plus a @racket[current] row that's allowed to
-fail.  Local @racket[raco test] suffices for development; CI catches
+fail.  Local @racket[raco test] suffices for development; CI runs the
+same suite with @Flag{x} (skip collections with no tests) and catches
 version regressions.
 
 @section{Style notes}

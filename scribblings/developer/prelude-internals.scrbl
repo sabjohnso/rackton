@@ -45,27 +45,41 @@ convention is @racketidfont{$}@racket[_method]@racketidfont{:}@racket[_Tcon]:
 
 @itemlist[
 @item{@racketidfont{$pure:Maybe}, @racketidfont{$pure:List}, @racketidfont{$pure:Either},
-      @racketidfont{$pure:IO}, @racketidfont{$pure:State}, @racketidfont{$pure:Env} —
+      @racketidfont{$pure:IO}, @racketidfont{$pure:Identity}, @racketidfont{$pure:STM} —
       the per-instance @racket[pure] impls.}
-@item{@racketidfont{$flatmap:ExceptT}, @racketidfont{$fapply:ExceptT}, @racketidfont{$liftA2:ExceptT}
-      — needs-dict impls for ExceptT.}
-@item{@racketidfont{$mempty:String}, @racketidfont{$mempty:List}, @racketidfont{$mempty:Sum},
-      @racketidfont{$mempty:Product} — return-typed @racket[mempty] impls.}
-@item{@racketidfont{$get-st:State}, @racketidfont{$put-st:State},
-      @racketidfont{$modify-st:State} and analogues for StateT, EnvT,
-      WriterT, ExceptT — MonadState method impls.}
-@item{Similar families for @racketidfont{$ask-en}, @racketidfont{$local-en},
-      @racketidfont{$tell-w}, @racketidfont{$listen}, @racketidfont{$censor},
-      @racketidfont{$throw-e}, @racketidfont{$catch-e}.}]
+@item{@racketidfont{$mempty:String}, @racketidfont{$mempty:List} —
+      return-typed @racket[mempty] impls.}]
 
 These names are exported from @filepath{prelude-runtime.rkt} but are
 not part of the public language.  The elaborator emits direct calls
 to them at call sites where the type-class dispatch is fully resolved
 at compile time.
 
+After the ``Phase 2 slim'' refactor, many per-instance impls no longer
+live in @filepath{prelude-runtime.rkt} at all.  They follow the same
+@racketidfont{$}@racket[_method]@racketidfont{:}@racket[_Tcon] convention
+but @racketidfont{register-instance-method!} from the feature module that
+owns the instance.  For example, the @racket[State] / @racket[Env]
+@racket[pure] and @racket[MonadState] / @racket[MonadEnv] method impls
+register from @racketmodname[rackton/control/monad/state] and
+@racketmodname[rackton/control/monad/reader]; the @racket[WriterT] and
+@racket[ExceptT] impls (@racketidfont{$tell-w}, @racketidfont{$censor},
+@racketidfont{$throw-e}, @racketidfont{$catch-e}, and the needs-dict
+@racket[flatmap] / @racket[fapply] / @racket[liftA2] families) from
+@racketmodname[rackton/control/monad/writer] and
+@racketmodname[rackton/control/monad/except]; and
+@racketidfont{$mempty:Sum} / @racketidfont{$mempty:Product} from
+@racketmodname[rackton/data/monoid].
+
 @section{Adding a new prelude binding}
 
-The two halves must stay in sync.  When adding a new name:
+This applies to bindings that genuinely belong in the auto-prelude.  A
+binding that belongs to a feature area already slimmed out into a module
+(concurrency, STM, the monad transformers, optics, the system interface,
+the larger @tt{Data.List} / @tt{Data.Map} / @tt{Data.Set} libraries, …)
+should be added to @emph{that} module and its runtime instead, so the
+prelude stays small.  For a genuine prelude binding, the two halves must
+stay in sync.  When adding a new name:
 
 @itemlist[#:style 'ordered
 @item{In @filepath{private/prelude.rkt}, add the @racket[:] signature

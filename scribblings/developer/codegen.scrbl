@@ -98,8 +98,10 @@ impls and inserts them as leading arguments before the user's
 arguments.
 
 The receiving impl is defined to accept exactly those leading
-arguments — see e.g.\ @racketidfont{$catch-e:StateT} in
-@filepath{private/prelude-runtime.rkt}.  The order of dict arguments
+arguments.  (The monad-transformer impls that exercise this path —
+@racket[StateT], @racket[EnvT], @racket[WriterT], @racket[ExceptT] —
+live in the @tt{rackton/control/monad/*} modules, not the prelude
+runtime.)  The order of dict arguments
 follows a fixed convention: own return-typed methods sorted
 alphabetically, then the closure over superclass return-typed
 methods, then per-extra-constraint methods.  See

@@ -16,13 +16,16 @@ The AST has three top-level categories:
 @itemlist[
 @item{@bold{Expressions} — @racket[e:literal], @racket[e:var],
       @racket[e:lam], @racket[e:app], @racket[e:let], @racket[e:if],
-      @racket[e:ann], @racket[e:match], @racket[e:letrec],
+      @racket[e:ann], @racket[e:match] (and the internal multi-scrutinee
+      variant @racket[e:match*]), @racket[e:letrec],
       @racket[e:update], @racket[e:escape], @racket[e:handle].}
 @item{@bold{Top-level forms} — @racket[top:def], @racket[top:dec]
       (the @racket[:] signature), @racket[top:data], @racket[top:class],
-      @racket[top:instance], @racket[top:alias],
-      @racket[top:struct-fields], @racket[top:effect],
-      @racket[top:require], @racket[top:provide].}
+      @racket[top:instance], @racket[top:derive-instance] (an instance
+      synthesized from a superclass's derivation table),
+      @racket[top:alias], @racket[top:struct-fields], @racket[top:effect],
+      @racket[top:foreign] (FFI import) and @racket[top:foreign-c]
+      (inline C-function import), @racket[top:require], @racket[top:provide].}
 @item{@bold{Patterns} — @racket[p:wild], @racket[p:var],
       @racket[p:lit], @racket[p:ctor].}]
 

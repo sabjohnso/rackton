@@ -20,8 +20,8 @@ that the inference pipeline expects to find through parameters:
 @item{@racket[fresh-box] / @racket[preds-box] — boxes for the
       per-program fresh-counter and pending-pred bag.}
 @item{@racket[method-uses] / @racket[method-resolutions] /
-      @racket[method-dict-resolutions] / @racket[needs-dict-defs] —
-      hashes for codegen consumption.}
+      @racket[method-dict-resolutions] / @racket[needs-dict-defs] /
+      @racket[instance-default-bodies] — hashes for codegen consumption.}
 @item{@racket[nsp] — the live Racket namespace that executes
       compiled code.}
 @item{@racket[expr-counter] — a counter used to generate fresh names

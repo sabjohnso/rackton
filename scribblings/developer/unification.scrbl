@@ -12,7 +12,7 @@ component allowed to invent new bindings of type variables to types.
 
 Given two types @racket[τ₁] and @racket[τ₂], unification produces
 either a substitution @racket[σ] such that
-@racket[(apply-sub σ τ₁) = (apply-sub σ τ₂)], or an error.  The
+@racket[(apply-subst σ τ₁) = (apply-subst σ τ₂)], or an error.  The
 recursive rules:
 
 @itemlist[
@@ -25,9 +25,12 @@ recursive rules:
       Different names: error.  Skolems are @racket[tcon]s with
       synthetic names, so the same rule rejects unifying a skolem
       with anything other than itself.}
-@item{@bold{Application vs.\ application.}  Unify the heads; apply the
-      resulting substitution to both argument lists; unify
-      element-wise.}]
+@item{@bold{Application vs.\ application.}  Peel the rightmost argument
+      from each side and unify those, then recurse on the partial
+      applications (each head applied to its remaining arguments) under
+      the resulting substitution.  Working right-to-left lets a partially
+      applied type constructor unify with a more-saturated one, which the
+      higher-kinded cases need.}]
 
 @section{The occurs check}
 

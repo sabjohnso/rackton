@@ -58,18 +58,20 @@ The two operations on schemes are:
 @section{Substitutions}
 
 A substitution is a finite map from type-variable names to types.
-The composition operation is left-biased: @racket[(compose σ₁ σ₂)]
+The composition operation is left-biased: @racket[(subst-compose σ₁ σ₂)]
 first applies @racket[σ₂], then @racket[σ₁] to the result.
 
 The two key operations:
 
 @itemlist[
-@item{@racket[apply-sub] — replaces every @racket[tvar] in a type
+@item{@racket[apply-subst] — replaces every @racket[tvar] in a type
       with its image under the substitution.  Recurses through
       @racket[tapp] and chases through @racket[qual] and
-      @racket[tforall] (with care for binding).}
-@item{@racket[free-vars] — the set of type-variable names occurring
-      in a type, scheme, or environment.}]
+      @racket[tforall] (with care for binding).  @racket[apply-subst/scheme]
+      is the scheme-aware variant.}
+@item{@racket[type-vars] / @racket[scheme-free-vars] / @racket[pred-vars]
+      — the free type-variable names of a type, a scheme, and a
+      predicate, respectively.}]
 
 Substitutions are the universal currency of unification (see
 @secref["unification"]) and inference.

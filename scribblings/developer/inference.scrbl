@@ -5,7 +5,7 @@
 @title[#:tag "inference"]{Type inference}
 
 @filepath{private/infer.rkt} is the largest file in the codebase
-(~3 KLoC / ~130 KB).  It implements Algorithm W with skolemization,
+(~4400 lines / ~200 KB).  It implements Algorithm W with skolemization,
 GADT refinement, class-constraint collection, and the bookkeeping for
 monomorphization and inlining.
 
@@ -63,7 +63,7 @@ the same scrutinee type @racket[(Term a)].
 
 @section{Class-constraint collection and reduction}
 
-The inferer collects @racket[ty:qual] constraints from instantiated
+The inferer collects @racket[qual] constraints from instantiated
 schemes and accumulates them in a pending-pred bag (a box-of-list
 parameter, @racket[current-pending-preds]).  At each generalisation
 point — @racket[let], @racket[define], top-level — the inferer:
@@ -109,8 +109,10 @@ between the inferer and the codegen:
       @racket['dict] entries on recursive @racket[e:var] references
       to the def's own name, and runs @racket[resolve-method-uses!]
       with the skolem map in scope.}
-@item{@racket[current-monomorphized-sites] and
-      @racket[current-inlined-sites] — logs accessible to user code
+@item{@racket[current-monomorphized-sites], @racket[current-inlinable-bodies],
+      and @racket[current-inlined-sites] — the monomorphization/inlining
+      logs (declared in @filepath{private/monomorph-log.rkt} and
+      re-exported through @filepath{infer.rkt}), accessible to user code
       via @racket[rackton-monomorphized-sites] and
       @racket[rackton-inlined-sites].}]
 
