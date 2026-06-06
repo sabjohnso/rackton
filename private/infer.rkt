@@ -4238,7 +4238,23 @@
                   ([p (in-list (class-info-params cinfo))]
                    [a (in-list inst-args-sk)])
           (subst-extend s p a)))
-      (define inst-method-qual (apply-subst σ (scheme-body method-sch)))
+      ;; Freshen the method scheme's own quantified variables before
+      ;; substituting class params.  Without this, a method universal
+      ;; that happens to share a name with an instance-head variable is
+      ;; captured by σ: for `(Functor (Pair a))` the class param goes
+      ;; `f := (Pair a)`, and fmap's signature `(-> (f a) (f b))` —
+      ;; whose own `a` is a distinct quantified variable — would collapse
+      ;; to `(-> (Pair a a) (Pair a b))`, conflating the fixed first
+      ;; component with the mapped one.  Renaming the scheme's bound vars
+      ;; to fresh names keeps the head variable and the method universals
+      ;; distinct.
+      (define method-fresh-subst
+        (for/fold ([s empty-subst])
+                  ([v (in-list (scheme-vars method-sch))]
+                   #:unless (memq v (class-info-params cinfo)))
+          (subst-extend s v (fresh-tvar v))))
+      (define inst-method-qual
+        (apply-subst σ (apply-subst method-fresh-subst (scheme-body method-sch))))
       ;; Skolemize method-local tvars that appear in this method's
       ;; qual context (e.g. `(Applicative f) =>` on traverse).
       ;; Without this, the body's polymorphic class-method references

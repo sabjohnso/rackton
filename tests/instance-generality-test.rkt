@@ -29,6 +29,28 @@
      (eval #'(rackton form ...)
            (variable-reference->namespace (#%variable-reference))))))
 
+;; --- the exact reported case: prelude Pair, no synthetic data type -----
+;;
+;; `(Functor (Pair a))` with `fmap` mapping the *fixed* first component
+;; rather than the varying second one.  This pins both that the instance
+;; is rejected and — via the partner positive case — that a correct
+;; instance over the same prelude `Pair` still compiles, guarding against
+;; the variable-capture defect (the class param `f := (Pair a)` must not
+;; capture fmap's own quantified `a`).
+
+(test-case "reported case: Functor (Pair a) over the prelude Pair, fixed field, rejected"
+  (check-rackton-compile-error
+   (instance (Functor (Pair a))
+     (define (fmap f (Pair a b))
+       (Pair (f a) b)))))
+
+(test-case "reported case partner: Functor (Pair a) over the prelude Pair, varying field, compiles"
+  (check-rackton-compiles
+   (instance (Functor (Pair a))
+     (define (fmap f (Pair a b))
+       (Pair a (f b))))
+   (define demo (fmap (lambda (x) (+ x 1)) (Pair "k" 41)))))
+
 ;; --- negative cases: over-specific instance methods --------------------
 
 (test-case "fmap that ignores its function argument is rejected"

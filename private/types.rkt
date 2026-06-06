@@ -374,6 +374,67 @@
   (for-each walk ts)
   (reverse out))
 
+;; A skolem constant is represented as a `tcon` whose name is a gensym of
+;; the form `$<flavour>skolem.<origin>.<n>` (see the skolemize helpers in
+;; infer.rkt).  Such names are internal — they must read as ordinary
+;; type variables in diagnostics, not as concrete type constructors.
+(define (skolem-tcon-name? n)
+  (define s (symbol->string n))
+  (and (> (string-length s) 0)
+       (char=? (string-ref s 0) #\$)
+       (regexp-match? #rx"skolem" s)))
+
+;; Renameable display names across `ts` in first-occurrence order: free
+;; type variables plus skolem tcons, sharing one letter sequence so a
+;; rigid skolem and the flexible variables around it read as distinct
+;; consecutive letters (a, b, c, …) rather than as `$gen-skolem.a0.42`.
+(define (ordered-display-names ts)
+  (define freeset
+    (for/fold ([acc (seteq)]) ([t (in-list ts)])
+      (set-union acc (type-vars t))))
+  (define seen (make-hasheq))
+  (define out '())
+  (define (note! a)
+    (unless (hash-has-key? seen a)
+      (hash-set! seen a #t)
+      (set! out (cons a out))))
+  (define (walk t)
+    (match t
+      [(tvar a) (when (set-member? freeset a) (note! a))]
+      [(tcon n) (when (skolem-tcon-name? n) (note! n))]
+      [(tapp h args) (walk h) (for-each walk args)]
+      [(qual cs body) (for-each walk cs) (walk body)]
+      [(tforall _ body) (walk body)]
+      [(pred _ args) (for-each walk args)]))
+  (for-each walk ts)
+  (reverse out))
+
+;; Like `type->pretty-datum`, but additionally rewrite any skolem tcon
+;; whose name is in `skmap` to its assigned display symbol.
+(define (type->pretty-datum/sk t skmap)
+  (let recur ([t t])
+    (match t
+      [(tvar a) a]
+      [(tcon n) (hash-ref skmap n n)]
+      [(tapp (tcon '->) (list d c))
+       (let loop ([acc (list (recur d))] [rest c])
+         (match rest
+           [(tapp (tcon '->) (list d2 c2))
+            (loop (cons (recur d2) acc) c2)]
+           [_ `(-> ,@(reverse (cons (recur rest) acc)))]))]
+      [(tapp h args)
+       `(,(recur h) ,@(map recur args))]
+      [(qual cs body)
+       `(,@(map (lambda (p) (pred->pretty-datum/sk p skmap)) cs)
+         => ,(recur body))]
+      [(tforall vs body)
+       `(All ,vs ,(recur body))])))
+
+(define (pred->pretty-datum/sk p skmap)
+  (match p
+    [(pred c args)
+     `(,c ,@(map (lambda (a) (type->pretty-datum/sk a skmap)) args))]))
+
 ;; Build the display substitution: i-th free var (in order) → i-th letter.
 (define (display-subst ordered-vars)
   (for/fold ([s empty-subst]) ([old (in-list ordered-vars)] [i (in-naturals)])
@@ -384,9 +445,19 @@
 ;; expected/got pair: a variable common to both reads as the same letter
 ;; on both sides.
 (define (format-types ts)
-  (define σ (display-subst (ordered-free-vars ts)))
+  ;; Assign one shared letter sequence to free tvars AND skolem tcons in
+  ;; first-occurrence order; tvars are renamed by substitution, skolems
+  ;; by a name→letter map applied while building the pretty datum.
+  (define-values (σ skmap)
+    (for/fold ([σ empty-subst] [skmap (hasheq)])
+              ([old (in-list (ordered-display-names ts))]
+               [i (in-naturals)])
+      (define nice (display-tvar-name i))
+      (if (skolem-tcon-name? old)
+          (values σ (hash-set skmap old nice))
+          (values (subst-extend σ old (tvar nice)) skmap))))
   (for/list ([t (in-list ts)])
-    (format-pretty-datum (type->pretty-datum (apply-subst σ t)))))
+    (format-pretty-datum (type->pretty-datum/sk (apply-subst σ t) skmap))))
 
 (define (format-type t)
   (car (format-types (list t))))
