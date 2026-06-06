@@ -231,8 +231,9 @@
       ;; Cross-class derivation of the Functor superclass: an Applicative
       ;; instance written with `#:derive-superclasses` (supplying `pure`
       ;; and `fapply`) gets `Functor` for free via `fmap f = pure f <*>`.
-      (#:derive Functor
-        (define (fmap f x) (fapply (pure f) x))))
+      #:derive
+      ([Functor
+        (define (fmap f x) (fapply (pure f) x))]))
 
     ;; Monad has two derivable methods — flatmap and join — with mutual
     ;; defaults.  An instance must define at least one.  flatmap takes
@@ -253,16 +254,17 @@
       ;; forward-references a class registered after it.  `liftA2` is
       ;; provided too (not left to its default, which would call `fmap`);
       ;; `product` then derives from `liftA2`.
-      (#:derive Functor
-        (define (fmap f x) (flatmap (lambda (a) (pure (f a))) x)))
-      (#:derive Applicative
+      #:derive
+      ([Functor
+        (define (fmap f x) (flatmap (lambda (a) (pure (f a))) x))]
+       [Applicative
         (define (fapply ff fx)
           (flatmap (lambda (g) (flatmap (lambda (x) (pure (g x))) fx)) ff))
         ;; Apply `g` with an n-ary call `(g a b)`, not a curried `((g a) b)`:
         ;; `product`'s default passes the raw 2-ary `Pair` constructor as
         ;; `g`, and a constructor cannot be partially applied.
         (define (liftA2 g x y)
-          (flatmap (lambda (a) (flatmap (lambda (b) (pure (g a b))) y)) x))))
+          (flatmap (lambda (a) (flatmap (lambda (b) (pure (g a b))) y)) x))]))
 
     ;; Maybe
     (instance (Functor Maybe)

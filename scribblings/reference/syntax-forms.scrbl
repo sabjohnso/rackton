@@ -165,7 +165,8 @@ field-lens family.}
                           (code:line (define (method-name p ...) body))
                           (code:line #:requires constraint ...)
                           (code:line #:fundep var ... -> var ...)
-                          (code:line (#:derive SuperClass (define …) ...))]
+                          (code:line #:derive (derivation ...))]
+           [derivation    (SuperClass (define …) ...)]
            [constraint    (ClassName type ...)])]{
 
 Declares a type class.  Each method signature
@@ -201,9 +202,11 @@ superclass.  Kinds are written as @racket[*] for ordinary types or
 A class may declare one or more functional dependencies via
 @racket[#:fundep] clauses inside the body.
 
-A @racket[#:derive] clause declares a @deftech{cross-class derivation}:
-canonical bodies that fill a @emph{superclass}'s methods in terms of
-@emph{this} class's methods.  It is the inter-class analogue of a default
+A single @racket[#:derive] keyword introduces a list of
+@deftech{cross-class derivation}s, one bracketed
+@racket[(SuperClass (define …) ...)] clause per superclass.  Each clause
+gives canonical bodies that fill that @emph{superclass}'s methods in terms
+of @emph{this} class's methods; it is the inter-class analogue of a default
 method.  For example, @racket[Monad] derives its @racket[Functor] and
 @racket[Applicative] superclasses from @racket[flatmap] and @racket[pure].
 The bodies are consumed only when an instance opts in with

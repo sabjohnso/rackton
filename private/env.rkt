@@ -113,7 +113,7 @@
 ;; bindings for every declared family.
 ;;   super-derives : (HashEq superclass-name → (HashEq method-name →
 ;;                   surface-expr)) — cross-class derivation table.  For
-;;                   each `(#:derive Super …)` clause in the class body,
+;;                   each `[Super …]` clause in the body's `#:derive` list,
 ;;                   the canonical bodies that fill `Super`'s methods in
 ;;                   terms of this class's own methods.  Consumed when an
 ;;                   instance opts into `#:derive-superclasses`.  Empty

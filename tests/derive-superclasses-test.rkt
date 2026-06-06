@@ -188,3 +188,73 @@
   (check-equal? prod 7))
 (test-case "derived liftA2 with a function argument"
   (check-equal? la2 12))
+
+;; ----- new #:derive syntax: one keyword, a list of derivations ------
+;; A bare `#:derive` keyword followed by a parenthesized list of
+;; `[Super (define …) …]` clauses replaces the old per-superclass
+;; `(#:derive Super …)` form.  This custom three-level hierarchy mirrors
+;; Functor/Applicative/Monad with fresh names, so it exercises the new
+;; parser end-to-end without leaning on the prelude's derivations.
+
+(rackton
+  (data (Cap a) (MkCap a))
+
+  (protocol (Shape s)
+    (: smap (-> (-> a b) (-> (s a) (s b)))))
+
+  ;; One derivation in the list (single-clause new form).
+  (protocol (Applic [s => Shape])
+    (: unit    (-> a (s a)))
+    (: combine (-> (s (-> a b)) (-> (s a) (s b))))
+    #:derive
+    ([Shape
+      (define (smap f x) (combine (unit f) x))]))
+
+  ;; Two derivations under one #:derive keyword (multi-clause new form).
+  (protocol (Chainer [s => Applic])
+    (: cbind (-> (-> a (s b)) (-> (s a) (s b))))
+    #:derive
+    ([Shape
+      (define (smap f x) (cbind (lambda (a) (unit (f a))) x))]
+     [Applic
+      (define (combine ff fx)
+        (cbind (lambda (g) (cbind (lambda (a) (unit (g a))) fx)) ff))]))
+
+  ;; Bundle only the floors; Shape Cap and Applic Cap are synthesized.
+  (instance (Chainer Cap) #:derive-superclasses
+    (define (unit x)      (MkCap x))
+    (define (cbind f c)   (match c [(MkCap x) (f x)])))
+
+  (: cap-smap Integer)
+  (define cap-smap
+    (match (smap (lambda (x) (+ x 1)) (MkCap 41)) [(MkCap v) v]))
+
+  (: cap-combine Integer)
+  (define cap-combine
+    (match (combine (MkCap (lambda (x) (+ x 1))) (MkCap 41)) [(MkCap v) v])))
+
+(test-case "new #:derive list: derived Shape (smap) works"
+  (check-equal? cap-smap 42))
+(test-case "new #:derive list: derived Applic (combine) works"
+  (check-equal? cap-combine 42))
+
+;; ----- negative: the old (#:derive Super …) form is rejected --------
+
+(test-case "old parenthesized (#:derive Super …) form is now a parse error"
+  (define ((expand src))
+    (parameterize ([current-namespace (make-base-namespace)])
+      (eval src)))
+  (check-exn
+   exn:fail?
+   (expand
+    '(module old-derive racket/base
+       (require rackton)
+       (rackton
+        (data (OCap a) (MkOCap a))
+        (protocol (OShape s)
+          (: osmap (-> (-> a b) (-> (s a) (s b)))))
+        (protocol (OChain [s => OShape])
+          (: obind (-> (-> a (s b)) (-> (s a) (s b))))
+          ;; superseded per-superclass form — must no longer parse
+          (#:derive OShape
+            (define (osmap f x) (obind (lambda (a) (osmap f x)) x)))))))))

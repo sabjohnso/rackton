@@ -185,9 +185,10 @@
 ;; `top:instance` forms by `expand-derive-instances` in infer.rkt before
 ;; any other phase sees it.  Same shape as `top:instance`.
 (struct top:derive-instance (context head methods stx) #:transparent)
-;; A `(#:derive Super (define …) …)` clause inside a `protocol` body:
-;; canonical bodies that fill superclass `super`'s methods in terms of
-;; this class's own methods.  `methods` is a list of `method-default`.
+;; A `[Super (define …) …]` clause from the `#:derive (… …)` list in a
+;; `protocol` body: canonical bodies that fill superclass `super`'s methods
+;; in terms of this class's own methods.  `methods` is a list of
+;; `method-default`.
 (struct class-super-derive  (super methods stx) #:transparent)
 
 ;; Re-anchor every syntax handle in a parsed AST.  A class default (or a
@@ -2413,30 +2414,61 @@
 ;; Split a protocol body into superclass constraints contributed by
 ;; `(#:requires c …)` clauses and the remaining method items.  Keyword
 ;; clauses self-quote in syntax-parse, like `#:fundep` / `#:type`.
+;;
+;; A bare `#:derive` keyword is special: it consumes the *following* item,
+;; a parenthesized list of `[Super (define …) …]` derivation clauses, and
+;; turns each into a `class-super-derive` node kept inside the methods list
+;; (the class handler in infer.rkt separates them from real methods).
 (define (parse-class-body items)
-  (for/fold ([supers '()] [methods '()]
-             #:result (values (reverse supers) (reverse methods)))
-            ([item (in-list items)])
-    (syntax-parse item
-      [(#:requires c ...+)
-       (values (append (reverse (for/list ([cs (in-list (syntax->list #'(c ...)))])
-                                  (parse-constraint cs)))
-                       supers)
-               methods)]
-      ;; (#:derive Super (define …) …) — cross-class derivation bodies for
-      ;; a superclass.  Kept inside the methods list as a class-super-derive
-      ;; item; the class handler in infer.rkt separates it from real methods.
-      [(#:derive super:id m ...+)
-       #:fail-unless (not (lowercase-id? (syntax->datum #'super)))
-       "superclass in #:derive must be a non-lowercase class name"
-       (values supers
-               (cons (class-super-derive
-                      (syntax->datum #'super)
-                      (for/list ([md (in-list (syntax->list #'(m ...)))])
-                        (parse-class-method md))
-                      item)
-                     methods))]
-      [_ (values supers (cons (parse-class-method item) methods))])))
+  (let loop ([items items] [supers '()] [methods '()])
+    (cond
+      [(null? items) (values (reverse supers) (reverse methods))]
+      [(derive-keyword? (car items))
+       (when (null? (cdr items))
+         (raise-syntax-error
+          #f "#:derive must be followed by a list of [Super (define …) …] clauses"
+          (car items)))
+       (loop (cddr items)
+             supers
+             (append (reverse (parse-derive-list (cadr items))) methods))]
+      [else
+       (define item (car items))
+       (syntax-parse item
+         [(#:requires c ...+)
+          (loop (cdr items)
+                (append (reverse (for/list ([cs (in-list (syntax->list #'(c ...)))])
+                                   (parse-constraint cs)))
+                        supers)
+                methods)]
+         [_ (loop (cdr items) supers (cons (parse-class-method item) methods))])])))
+
+;; Is `stx` the bare `#:derive` keyword?
+(define (derive-keyword? stx)
+  (eq? (syntax-e stx) '#:derive))
+
+;; Parse the list following a bare `#:derive` keyword: one or more
+;; `[Super (define …) …]` clauses, each producing a `class-super-derive`.
+(define (parse-derive-list stx)
+  (syntax-parse stx
+    [(clause ...+)
+     (for/list ([c (in-list (syntax->list #'(clause ...)))])
+       (parse-derive-clause c))]
+    [_ (raise-syntax-error
+        #f "#:derive expects a non-empty list of [Super (define …) …] clauses"
+        stx)]))
+
+;; A single `[Super (define …) …]` derivation clause: canonical bodies that
+;; fill superclass `Super`'s methods in terms of this class's own methods.
+(define (parse-derive-clause stx)
+  (syntax-parse stx
+    [(super:id m ...+)
+     #:fail-unless (not (lowercase-id? (syntax->datum #'super)))
+     "superclass in #:derive must be a non-lowercase class name"
+     (class-super-derive
+      (syntax->datum #'super)
+      (for/list ([md (in-list (syntax->list #'(m ...)))])
+        (parse-class-method md))
+      stx)]))
 
 ;; A method form inside `protocol`: either a `(: name type)` signature,
 ;; a `(define ...)` providing a default implementation, or a functional

@@ -3086,7 +3086,7 @@
     (for/list ([m (in-list methods)] #:when (class-type-fam? m))
       (class-type-fam-name m)))
   ;; Cross-class derivation table: superclass-name → (method-name → expr),
-  ;; built from each `(#:derive Super (define …) …)` clause in the body.
+  ;; built from each `[Super (define …) …]` clause in the body's `#:derive` list.
   (define super-derives
     (for/fold ([acc (hasheq)]) ([m (in-list methods)] #:when (class-super-derive? m))
       (define inner
