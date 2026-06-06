@@ -1,12 +1,16 @@
 #lang scribble/manual
 @require[scribble/manual
-         (for-label rackton)]
+         (for-label rackton
+                    rackton/control/monad
+                    rackton/control/monad/state)
+         "../rackton-eval.rkt"]
+@(define ev (make-rackton-eval))
 
 @title[#:tag "do-and-monads"]{do-notation and monads}
 
 Rackton ships the full @racket[Functor] / @racket[Applicative] /
 @racket[Monad] hierarchy plus @racket[do]-notation for sequencing.
-This chapter assumes you've read @secref["classes"] and
+This chapter assumes you've read @secref["type-classes"] and
 @secref["higher-kinded"].
 
 @section{The Monad class}
@@ -14,10 +18,10 @@ This chapter assumes you've read @secref["classes"] and
 A @racket[Monad] is a higher-kinded class providing @racket[flatmap]
 (the function-first cousin of Haskell's @tt{>>=}):
 
-@codeblock|{
+@rackton-example[#:eval ev #:mode 'display]{
 (protocol (Monad [m => Applicative])
   (: flatmap (-> (-> a (m b)) (-> (m a) (m b)))))
-}|
+}
 
 Pronounced: take a function from @racket[a] to @racket[(m b)] and an
 @racket[(m a)], yield @racket[(m b)].
@@ -27,21 +31,20 @@ Pronounced: take a function from @racket[a] to @racket[(m b)] and an
 Writing nested @racket[flatmap] calls by hand quickly becomes
 unreadable:
 
-@codeblock|{
+@rackton-example[#:eval ev #:mode 'value]{
 (flatmap (lambda (x)
            (flatmap (lambda (y) (Some (+ x y)))
                     (Some 4)))
          (Some 3))
-}|
+}
 
 The @racket[do] form is sugar for the same shape:
 
-@codeblock|{
+@rackton-example[#:eval ev #:mode 'value]{
 (do [x <- (Some 3)]
     [y <- (Some 4)]
   (Some (+ x y)))
-;; ⇒ (Some 7)
-}|
+}
 
 Each @racket[[var <- expr]] clause desugars to a nested
 @racket[flatmap] call binding @racket[var] to the unwrapped result.
@@ -50,11 +53,11 @@ must be a monad of the same shape as the preceding clauses.
 
 You can also write a clause without binding:
 
-@codeblock|{
+@rackton-example[#:eval ev #:mode 'display]{
 (do (println "hello")
     [name <- read-line]
   (println (string-append "hi, " name)))
-}|
+}
 
 A bare expression clause discards its result (via
 @racket[(flatmap (lambda (_) _) _)]).
@@ -88,20 +91,20 @@ its single argument fixes @racket[a], but the outer constructor
 @racket[f] — the instance — is determined only by the call's expected
 return type:
 
-@codeblock|{
+@rackton-example[#:eval ev #:mode 'defs]{
 (: greet (IO Unit))
-(define greet (pure Unit))   (code:comment "pure here is (IO Unit)'s pure")
+(define greet (pure Unit))   ;; pure here is (IO Unit)'s pure
 
 (: many  (Maybe Integer))
-(define many  (pure 3))         (code:comment "pure here is Maybe's pure")
-}|
+(define many  (pure 3))         ;; pure here is Maybe's pure
+}
 
 When the expected type is ambiguous (e.g., the result of @racket[pure]
 is fed to a polymorphic function), use @racket[ann]:
 
-@codeblock|{
-((lambda (x) x) (ann (pure 5) (Maybe Integer)))   ;; (Some 5)
-}|
+@rackton-example[#:eval ev #:mode 'value]{
+((lambda (x) x) (ann (pure 5) (Maybe Integer)))
+}
 
 @racket[mempty] (in @racket[Monoid]) is similar: its type is the
 identity element, ambiguous without context.
@@ -113,13 +116,13 @@ A function whose body produces its result via @racket[pure] (or
 polymorphic in that variable, with the appropriate constraint in its
 scheme:
 
-@codeblock|{
+@rackton-example[#:eval ev #:mode 'defs]{
 (define (madd mx my)
   (do [x <- mx]
       [y <- my]
     (pure (+ x y))))
 ;; inferred:  madd :: ((Monad m) (Num a) => (-> (m a) (m a) (m a)))
-}|
+}
 
 No signature is required.  Internally this routes through the same
 dict-passing path as a user-written
@@ -132,9 +135,9 @@ a signature.
 The inferred path only fires when the right-hand side is a lambda.  A
 bare value binding such as
 
-@codeblock|{
-(define x (pure 5))   ;; rejected: ambiguous use of pure
-}|
+@rackton-example[#:eval ev #:mode 'display]{
+(define x (pure 5))   (code:comment "rejected: ambiguous use of pure")
+}
 
 is still rejected at compile time --- ascribe it
 (@racket[(: x (Maybe Integer))]) or wrap it in a function.
@@ -145,7 +148,9 @@ The four MTL classes — @racket[MonadState], @racket[MonadEnv],
 @racket[MonadWriter], @racket[MonadError] — let you write a single
 function body that runs against any monad supporting the effect:
 
-@codeblock|{
+@rackton-example[#:eval ev #:mode 'display]{
+(require rackton/control/monad/state)
+
 (: count-down ((MonadState Integer m) => (m (List Integer))))
 (define (count-down)
   (do [n <- get-st]
@@ -154,7 +159,7 @@ function body that runs against any monad supporting the effect:
         (do (put-st (- n 1))
             [rest <- (count-down)]
           (pure (Cons n rest))))))
-}|
+}
 
 This @racket[count-down] runs against the bare @racket[State Integer]
 monad, or against @racket[(StateT Integer IO)], or even

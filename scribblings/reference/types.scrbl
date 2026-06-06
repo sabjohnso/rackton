@@ -9,7 +9,7 @@ declaration.  Type classes and their methods are documented in
 @secref["classes"]; the value bindings that operate on these types are
 in @secref["values"].
 
-@section{Primitive types}
+@section[#:tag "ref-primitive-types"]{Primitive types}
 
 @defidform[#:kind "type" Integer]{
 
@@ -214,7 +214,7 @@ used by the @racket[Concurrent] class).}
 The result of a concurrent computation spawned with @racket[fork-c].
 Read via the @racket[Concurrent] class's @racket[await-c] method.}
 
-@section{Software transactional memory}
+@section[#:tag "ref-stm"]{Software transactional memory}
 
 @para{@bold{Module} — @racket[(require rackton/control/stm)]
 (see @secref["stdlib"]).}
@@ -231,7 +231,7 @@ The STM monad — a transactional computation that may read and write
 TVars.  Run a transaction with @racket[atomically].  Instances:
 @racket[Functor], @racket[Applicative], @racket[Monad].}
 
-@section{Optics}
+@section[#:tag "ref-optics"]{Optics}
 
 @para{@bold{Module} — @racket[(require rackton/data/lens)]
 (see @secref["stdlib"]).}

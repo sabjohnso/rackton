@@ -1,6 +1,8 @@
 #lang scribble/manual
 @require[scribble/manual
-         (for-label rackton)]
+         (for-label rackton)
+         "../rackton-eval.rkt"]
+@(define ev (make-rackton-eval))
 
 @title[#:tag "adts-and-records"]{Algebraic data types and records}
 
@@ -13,23 +15,23 @@ Rackton offers three closely-related ways to declare your own data:
 
 @section{Sums of products with @racket[data]}
 
-@codeblock|{
+@rackton-example[#:eval ev #:mode 'defs #:context? #t]{
 (data (Tree a)
   Leaf
   (Node (Tree a) a (Tree a)))
-}|
+}
 
 This declares a type @racket[(Tree a)] with two constructors:
 @racket[Leaf : (Tree a)] and @racket[Node : (-> (Tree a) (-> a (-> (Tree a) (Tree a))))].
 Use them as expressions and as patterns:
 
-@codeblock|{
+@rackton-example[#:eval ev #:mode 'defs #:context? #t]{
 (: tree-sum (-> (Tree Integer) Integer))
 (define (tree-sum t)
   (match t
     [(Leaf)        0]
     [(Node l x r)  (+ x (+ (tree-sum l) (tree-sum r)))]))
-}|
+}
 
 @section{Recursion and parameterisation}
 
@@ -41,9 +43,9 @@ without further work.
 
 @section{Newtypes}
 
-@codeblock|{
+@rackton-example[#:eval ev #:mode 'defs]{
 (newtype Distance (MkDistance Float))
-}|
+}
 
 A newtype is a single-constructor type whose constructor takes exactly
 one field.  Runtime representation is a single struct tag plus the
@@ -55,35 +57,35 @@ type, so the type checker won't accidentally treat a
 
 When you want named fields and accessors:
 
-@codeblock|{
+@rackton-example[#:eval ev #:mode 'value #:context? #t]{
 (struct Point
   [x : Integer]
   [y : Integer])
 
 (define p (Point 3 4))
-(Point-x p)   ;; ⇒ 3
-(Point-y p)   ;; ⇒ 4
-}|
+(Point-x p)
+}
 
 The constructor is the struct name; accessors are
 @racket[Point-x] / @racket[Point-y].  Parameterised structs add type
 parameters on the head:
 
-@codeblock|{
+@rackton-example[#:eval ev #:mode 'defs]{
 (struct (Tagged a)
   [v   : a]
   [tag : String])
-}|
+}
 
 @section{Functional record update}
 
 The @racket[update] form returns a fresh struct with selected fields
 replaced:
 
-@codeblock|{
+@rackton-example[#:eval ev #:mode 'value #:context? #t]{
 (define p1 (Point 3 4))
-(define p2 (update p1 [x 99]))   ;; Point { x=99, y=4 }
-}|
+(define p2 (update p1 [x 99]))
+(Point-x p2)
+}
 
 Untouched fields are copied verbatim.  This is the only way to
 "modify" a record value — structs are immutable.
@@ -93,12 +95,12 @@ Untouched fields are copied verbatim.  This is the only way to
 Listing @racket[#:deriving] at the end of a @racket[data] or
 @racket[struct] synthesises the named class instances:
 
-@codeblock|{
+@rackton-example[#:eval ev #:mode 'defs]{
 (data (Tree a)
   Leaf
   (Node (Tree a) a (Tree a))
   #:deriving Eq Show Functor)
-}|
+}
 
 Available classes for deriving include @racket[Eq], @racket[Ord]
 (which auto-derives @racket[Eq] as well), @racket[Show],

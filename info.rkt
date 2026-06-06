@@ -4,7 +4,10 @@
 (define build-deps '("scribble-lib"
                      "racket-doc"
                      "rackunit-lib"
-                     "rackcheck-lib"))
+                     "rackcheck-lib"
+                     ;; sandbox-lib: scribblings/rackton-eval.rkt runs the
+                     ;; doc examples in a sandbox at build time.
+                     "sandbox-lib"))
 (define scribblings
   '(("scribblings/rackton.scrbl"                               ()           (language))
     ("scribblings/guide/rackton-guide.scrbl"                   (multi-page) (language))

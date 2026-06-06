@@ -1,6 +1,10 @@
 #lang scribble/manual
 @require[scribble/manual
-         (for-label rackton)]
+         (for-label rackton
+                    rackton/system
+                    rackton/data/result)
+         "../rackton-eval.rkt"]
+@(define ev (make-rackton-eval))
 
 @title[#:tag "io-and-mutation"]{IO, refs, and files}
 
@@ -11,21 +15,20 @@ just like any other @racket[Monad].
 
 @section{Hello, IO}
 
-@codeblock|{
+@rackton-example[#:eval ev #:mode 'io #:run "main"]{
 (: greet (-> String (IO Unit)))
 (define (greet name)
   (println (string-append "hello, " name)))
 
 (define main (greet "world"))
-(define _    (run-io main))
-}|
+}
 
 @racket[println] returns an @racket[IO Unit] action.  It does
 @italic{not} perform IO when called — it just builds an action.
 @racket[run-io] is the bridge that hands the action to the surrounding
 Racket runtime to execute.
 
-@section{Standard streams}
+@section[#:tag "guide-standard-streams"]{Standard streams}
 
 @itemlist[
 @item{@racket[print]      — @racket[(-> String (IO Unit))]}
@@ -39,13 +42,15 @@ Racket runtime to execute.
 A @racket[(Ref a)] is an opaque mutable cell.  All operations are IO
 actions:
 
-@codeblock|{
+@rackton-example[#:eval ev #:mode 'defs]{
+(require rackton/system)
+
 (: counter-up (-> (Ref Integer) (IO Integer)))
 (define (counter-up r)
   (do [n <- (read-ref r)]
       (write-ref r (+ n 1))
     (read-ref r)))
-}|
+}
 
 The primitives are @racket[make-ref], @racket[read-ref], and
 @racket[write-ref].  Because they're in @racket[IO], the type system
@@ -54,12 +59,14 @@ context.
 
 @section{File I/O}
 
-@codeblock|{
+@rackton-example[#:eval ev #:mode 'defs]{
+(require rackton/system)
+
 (: read-greeting (-> String (IO String)))
 (define (read-greeting path)
   (do [body <- (read-file path)]
     (pure-io (string-append "from file: " body))))
-}|
+}
 
 The primitives are @racket[read-file], @racket[write-file], and
 @racket[file-exists?].  Each is @racket[IO]-typed; the file system is
@@ -71,16 +78,19 @@ treated as an opaque source of effects.
 Its return type is universally quantified, so it can stand in any
 branch:
 
-@codeblock|{
+@rackton-example[#:eval ev #:mode 'defs]{
 (: pick-positive (-> Integer Integer))
 (define (pick-positive n)
   (if (< n 0) (panic "negative not allowed") n))
-}|
+}
 
 For recoverable failures inside @racket[IO], @racket[try] catches any
 exception and delivers the result as a @racket[Result]:
 
-@codeblock|{
+@rackton-example[#:eval ev #:mode 'value]{
+(require rackton/system
+         rackton/data/result)
+
 (: safe-read (-> String (IO (Result String String))))
 (define (safe-read path)
   (try (read-file path)))
@@ -88,7 +98,7 @@ exception and delivers the result as a @racket[Result]:
 (match (run-io (safe-read "missing.txt"))
   [(Ok body) body]
   [(Err msg) "<file missing>"])
-}|
+}
 
 @racket[raise-io] is the typed counterpart that fails an @racket[IO]
 action with a message; it pairs naturally with @racket[try].
@@ -100,12 +110,12 @@ The prelude wraps a small set of common system operations as
 @racket[current-time-seconds], @racket[list-directory],
 @racket[getenv], @racket[argv], @racket[delete-file],
 @racket[make-directory].  Each is documented in the
-@secref["system" #:doc '(lib "rackton/scribblings/reference/rackton-reference.scrbl")]
+@secref["stdlib-system" #:doc '(lib "rackton/scribblings/reference/rackton-reference.scrbl")]
 section of the reference.
 
 @section{A complete IO-driven program}
 
-@codeblock|{
+@rackton-example[#:eval ev #:mode 'display]{
 #lang rackton
 
 (: prompt-and-greet (IO Unit))
@@ -115,4 +125,4 @@ section of the reference.
     (println (string-append "hi, " name))))
 
 (define _ (run-io prompt-and-greet))
-}|
+}

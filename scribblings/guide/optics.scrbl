@@ -1,6 +1,9 @@
 #lang scribble/manual
 @require[scribble/manual
-         (for-label rackton)]
+         (for-label rackton
+                    rackton/data/lens)
+         "../rackton-eval.rkt"]
+@(define ev (make-rackton-eval))
 
 @title[#:tag "optics"]{Optics: lenses, prisms, traversals}
 
@@ -16,16 +19,19 @@ inside an @racket[s].  Add @racket[#:deriving Lens] to a
 @racket[struct] to synthesise one lens per field, named
 @racketidfont{T}@racketidfont{-}@racket[_field]@racketidfont{-lens}:
 
-@codeblock|{
+@rackton-example[#:eval ev #:mode 'value]{
+(require rackton/data/lens)
+
 (struct Point [x : Integer] [y : Integer]
-  #:deriving Lens)
+  #:deriving Lens Show)
 
 (define p (Point 3 4))
 
-(view Point-x-lens p)        ;; ⇒ 3
-(set  Point-x-lens 99 p)     ;; ⇒ (Point 99 4)
-(over Point-x-lens (lambda (n) (+ n 1)) p)   ;; ⇒ (Point 4 4)
-}|
+(Tuple3
+  (view Point-x-lens p)
+  (set  Point-x-lens 99 p)
+  (over Point-x-lens (lambda (n) (+ n 1)) p))
+}
 
 Without @racket[#:deriving Lens] no lenses are generated — you can
 still write them by hand with @racket[Lens] (see below).
@@ -33,26 +39,30 @@ still write them by hand with @racket[Lens] (see below).
 Compose lenses with @racket[lens-compose] to drill into nested
 structure:
 
-@codeblock|{
-(struct Address [city : String] [zip : Integer] #:deriving Lens)
-(struct Person  [name : String] [addr : Address] #:deriving Lens)
+@rackton-example[#:eval ev #:mode 'value]{
+(require rackton/data/lens)
+
+(struct Address [city : String] [zip : Integer] #:deriving Lens Show)
+(struct Person  [name : String] [addr : Address] #:deriving Lens Show)
 
 (define alice (Person "Alice" (Address "NYC" 10001)))
 
 (define addr-city (lens-compose Person-addr-lens Address-city-lens))
-(view addr-city alice)                       ;; ⇒ "NYC"
-(over addr-city (lambda (_) "LA") alice)
-;; ⇒ Person { name="Alice", addr=Address { city="LA", zip=10001 } }
-}|
+(Pair
+  (view addr-city alice)
+  (over addr-city (lambda (_) "LA") alice))
+}
 
 You can also construct a lens directly with @racket[Lens]:
 
-@codeblock|{
+@rackton-example[#:eval ev #:mode 'defs]{
+(require rackton/data/lens)
+
 (: first-of-pair (Lens (Pair a b) a))
 (define first-of-pair
   (Lens fst
           (lambda (p) (lambda (a) (Pair a (snd p))))))
-}|
+}
 
 @section{Prisms}
 
@@ -60,22 +70,31 @@ A @racket[(Prism s a)] is a pattern: either it extracts an @racket[a]
 from an @racket[s] or it doesn't.  Add @racket[#:deriving Prism] to a
 @racket[data] to synthesise one prism per constructor.
 
-@codeblock|{
+@rackton-example[#:eval ev #:mode 'defs]{
+(require rackton/data/lens)
+
 (data Opt
   Absent
   (Present Integer)
   #:deriving Prism)
-}|
+}
 
 @racket[#:deriving Prism] generates a prism for each constructor,
 named @racketidfont{T}@racketidfont{-}@racket[_Ctor]@racketidfont{-prism}:
 
-@codeblock|{
-(preview Opt-Present-prism (Present 7))   ;; ⇒ (Some 7)
-(preview Opt-Present-prism Absent)         ;; ⇒ None
+@rackton-example[#:eval ev #:mode 'value]{
+(require rackton/data/lens)
 
-(review  Opt-Present-prism 42)             ;; ⇒ (Present 42)
-}|
+(data Opt
+  Absent
+  (Present Integer)
+  #:deriving Prism Show)
+
+(Tuple3
+  (preview Opt-Present-prism (Present 7))
+  (preview Opt-Present-prism Absent)
+  (review  Opt-Present-prism 42))
+}
 
 @racket[preview] tries to focus; @racket[review] builds a value at the
 focused position.
@@ -90,18 +109,21 @@ c))].  @racket[Pair] is the 2-tuple; @racket[Tuple3] through
 extra import) cover arities 3–7.  A constructor with more than seven
 fields is a compile error.
 
-@codeblock|{
+@rackton-example[#:eval ev #:mode 'value]{
+(require rackton/data/lens)
+
 (data Shape
   (Circle Integer)
   (Rect   Integer Integer)
   (Tri    Integer Integer Integer)
-  #:deriving Prism)
+  #:deriving Prism Show)
 
-(preview Shape-Rect-prism (Rect 3 4))     ;; ⇒ (Some (Pair 3 4))
-(review  Shape-Rect-prism (Pair 7 8))   ;; ⇒ (Rect 7 8)
-(preview Shape-Tri-prism  (Tri 1 2 3))    ;; ⇒ (Some (Tuple3 1 2 3))
-(review  Shape-Tri-prism  (Tuple3 4 5 6)) ;; ⇒ (Tri 4 5 6)
-}|
+(Tuple4
+  (preview Shape-Rect-prism (Rect 3 4))
+  (review  Shape-Rect-prism (Pair 7 8))
+  (preview Shape-Tri-prism  (Tri 1 2 3))
+  (review  Shape-Tri-prism  (Tuple3 4 5 6)))
+}
 
 (Prism deriving is unavailable on @racket[struct] — a
 single-constructor record has nothing to discriminate; use
@@ -113,21 +135,28 @@ A @racket[(Traversal s a)] visits zero or more @racket[a]s inside an
 @racket[s].  Use @racket[to-list-of] to collect them and
 @racket[over-of] to modify them all:
 
-@codeblock|{
+@rackton-example[#:eval ev #:mode 'value]{
+(require rackton/data/lens)
+
 (define xs (Cons 1 (Cons 2 (Cons 3 Nil))))
 
-(to-list-of list-traversal xs)         ;; ⇒ (1 2 3) as a List
-(over-of    list-traversal (lambda (n) (* n 2)) xs)
-;; ⇒ Cons 2 (Cons 4 (Cons 6 Nil))
-}|
+(Pair
+  (to-list-of list-traversal xs)
+  (over-of    list-traversal (lambda (n) (* n 2)) xs))
+}
 
 Convert a lens to a single-element traversal with
 @racket[lens-as-traversal]:
 
-@codeblock|{
+@rackton-example[#:eval ev #:mode 'value]{
+(require rackton/data/lens)
+
+(struct Point [x : Integer] [y : Integer]
+  #:deriving Lens Show)
+
 (define point-x-traversal (lens-as-traversal Point-x-lens))
-(to-list-of point-x-traversal (Point 3 4))   ;; ⇒ (Cons 3 Nil)
-}|
+(to-list-of point-x-traversal (Point 3 4))
+}
 
 @section{Which optic do you want?}
 

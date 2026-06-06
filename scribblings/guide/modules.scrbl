@@ -1,6 +1,8 @@
 #lang scribble/manual
 @require[scribble/manual
-         (for-label rackton)]
+         (for-label rackton)
+         "../rackton-eval.rkt"]
+@(define ev (make-rackton-eval))
 
 @title[#:tag "modules"]{Modules: require, provide, multi-file}
 
@@ -15,7 +17,7 @@ A Rackton module exports nothing by default.  Every binding,
 constructor, type, class, and class method is module-private unless
 listed in a @racket[(provide …)] form.
 
-@codeblock|{
+@rackton-example[#:eval ev #:mode 'display]{
 #lang rackton
 
 (provide tree-sum
@@ -26,7 +28,7 @@ listed in a @racket[(provide …)] form.
 
 (: tree-sum (-> (Tree Integer) Integer))
 (define (tree-sum t) ...)
-}|
+}
 
 Supported spec forms include bare identifiers, @racket[(all-defined-out)],
 @racket[(data-out T)], @racket[(struct-out S)], @racket[(protocol-out C)],
@@ -48,7 +50,7 @@ Inside a @racket[(rackton …)] block, @racket[(require "path.rkt")]
 imports both the runtime bindings and (if the target is a
 @hash-lang[] @racketmodfont{rackton} module) its typing schemes.
 
-@codeblock|{
+@rackton-example[#:eval ev #:mode 'display]{
 ;; lib.rkt
 #lang rackton
 (provide tree-sum (data-out Tree))
@@ -61,7 +63,7 @@ imports both the runtime bindings and (if the target is a
 (require "lib.rkt")
 (: result Integer)
 (define result (tree-sum (Node Leaf 1 (Node Leaf 2 Leaf))))
-}|
+}
 
 The importer's type checker reads @filepath{lib.rkt}'s
 @racketmodfont{rackton-schemes} sidecar submodule to recover the
@@ -76,7 +78,7 @@ declarations and instance registrations.  An importing module sees
 both, so the type checker can discharge constraints against imported
 instances without local redeclaration:
 
-@codeblock|{
+@rackton-example[#:eval ev #:mode 'display]{
 ;; lib.rkt
 #lang rackton
 (provide (protocol-out Container) (data-out Stack))
@@ -93,7 +95,7 @@ instances without local redeclaration:
 #lang rackton
 (require "lib.rkt")
 (define result (empty? (Push 1 Empty)))
-}|
+}
 
 Class default-method bodies still bind in the @italic{defining}
 module's lexical scope; when an importing module uses a default, the
@@ -106,7 +108,7 @@ A single Racket module may contain any number of @racket[(rackton …)]
 invocations.  Each block elaborates independently against the
 prelude:
 
-@codeblock|{
+@rackton-example[#:eval ev #:mode 'display]{
 #lang racket/base
 (require rackton)
 
@@ -115,7 +117,7 @@ prelude:
 
 ;; both x and y are visible at runtime
 (printf "~a ~a\n" x y)
-}|
+}
 
 Cross-block imports go via Racket's normal binding system at runtime
 only.  At elaboration time, each @racket[(rackton …)] block sees only

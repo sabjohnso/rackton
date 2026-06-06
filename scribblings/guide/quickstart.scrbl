@@ -1,6 +1,8 @@
 #lang scribble/manual
 @require[scribble/manual
-         (for-label rackton)]
+         (for-label rackton)
+         "../rackton-eval.rkt"]
+@(define ev (make-rackton-eval))
 
 @title[#:tag "quickstart"]{Quickstart}
 
@@ -18,12 +20,12 @@ from the package's working directory.  After install, the
 
 Save the following as @filepath{hello.rkt}:
 
-@codeblock|{
+@rackton-example[#:eval ev]{
 #lang rackton
 
 (define main (println "hello, world"))
 (define _    (run-io main))
-}|
+}
 
 Run it with @exec{racket hello.rkt}.  @racket[println] is typed
 @racket[(-> String (IO Unit))] — it doesn't perform IO when called; it
@@ -32,7 +34,7 @@ executes the action in the surrounding Racket runtime.
 
 @section{Your first typed function}
 
-@codeblock|{
+@rackton-example[#:eval ev]{
 #lang rackton
 
 (provide fact)
@@ -40,7 +42,7 @@ executes the action in the surrounding Racket runtime.
 (: fact (-> Integer Integer))
 (define (fact n)
   (if (= n 0) 1 (* n (fact (- n 1)))))
-}|
+}
 
 The @racket[:] form is the type signature.  The @racket[define] is
 checked against it.  Drop the signature and Rackton still infers
@@ -83,7 +85,7 @@ This guide proceeds top-down: each chapter builds on the previous.
       and the type signature form.}
 @item{@secref["pattern-matching"] — destructuring with @racket[match].}
 @item{@secref["adts-and-records"] — your own data types.}
-@item{@secref["classes"] — type classes and instances.}]
+@item{@secref["type-classes"] — type classes and instances.}]
 
 For exhaustive signatures of every binding the prelude ships, see the
 @other-doc['(lib "rackton/scribblings/reference/rackton-reference.scrbl")].

@@ -1,6 +1,8 @@
 #lang scribble/manual
 @require[scribble/manual
-         (for-label rackton)]
+         (for-label rackton)
+         "../rackton-eval.rkt"]
+@(define ev (make-rackton-eval))
 
 @title[#:tag "foreign"]{Foreign function interface}
 
@@ -25,13 +27,13 @@ can call it.  Use it for primitives the prelude does not surface — for
 example something from @racketmodname[racket/string] or
 @racketmodname[racket/set].
 
-@codeblock|{
+@rackton-example[#:eval ev #:mode 'defs]{
 (foreign str-replace (-> String (-> String (-> String String)))
          #:from racket/string #:as string-replace)
 
 (: slashify (-> String String))
 (define (slashify s) (str-replace s "." "/"))
-}|
+}
 
 @racket[#:from] names the Racket module (a collection path, or a
 string for a relative file).  Without @racket[#:as] the host binding
@@ -49,13 +51,13 @@ raises at runtime.
 a hand-written @racketmodname[ffi/unsafe] shim imported via
 @racket[foreign].
 
-@codeblock|{
+@rackton-example[#:eval ev #:mode 'defs]{
 (foreign-c c-cbrt (-> Float Float)
            #:lib #f #:symbol "cbrt" #:sig (double -> double))
 
 (foreign-c c-getpid (IO Integer)
            #:lib #f #:symbol "getpid" #:sig (-> int))
-}|
+}
 
 @racket[#:lib] is the shared library — @racket[#f] for the running
 process (libc, and whatever it already links, such as libm) or a
@@ -87,7 +89,7 @@ polymorphic @racket[peek] / @racket[poke]; its instances (for
 is return-typed, so the element type comes from the expected result —
 usually an @racket[ann].
 
-@codeblock|{
+@rackton-example[#:eval ev #:mode 'io #:run "round-trip"]{
 (require rackton/foreign/ptr)
 
 (: round-trip (IO Integer))
@@ -96,8 +98,9 @@ usually an @racket[ann].
       [_ <- (poke p 99)]
       [v <- (ann (peek p) (IO Integer))]
       [_ <- (free-ptr p)]
+      (println (string-append "round-trip: " (show v)))
       (pure v)))
-}|
+}
 
 This layer is @bold{thoroughly unsafe}: there is no bounds checking, no
 use-after-free protection, and @racket[malloc-bytes] hands back raw

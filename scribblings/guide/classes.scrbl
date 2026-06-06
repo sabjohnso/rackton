@@ -1,8 +1,10 @@
 #lang scribble/manual
 @require[scribble/manual
-         (for-label rackton)]
+         (for-label rackton)
+         "../rackton-eval.rkt"]
+@(define ev (make-rackton-eval))
 
-@title[#:tag "classes"]{Type classes}
+@title[#:tag "type-classes"]{Type classes}
 
 Type classes let you overload an operation across many types while
 keeping each call site fully resolved at type-check time.  Rackton's
@@ -13,12 +15,12 @@ operations it needs.
 
 @section{Declaring a class}
 
-@codeblock|{
+@rackton-example[#:eval ev #:mode 'defs #:context? #t]{
 (protocol (Eq a)
   (: ==  (-> a (-> a Boolean)))
   (: /= (-> a (-> a Boolean)))
   (define (/= x y) (if (== x y) #f #t)))
-}|
+}
 
 A class declaration introduces zero or more @italic{method signatures}
 (@racket[(: name type)]) and zero or more @italic{default
@@ -34,10 +36,10 @@ requirement is written as a
 @tech[#:doc '(lib "rackton/scribblings/reference/rackton-reference.scrbl")]{bound}
 on the parameter, after @racket[=>]:
 
-@codeblock|{
+@rackton-example[#:eval ev #:mode 'defs]{
 (protocol (Ord [a => Eq])
   (: < (-> a (-> a Boolean))))
-}|
+}
 
 A bound @racket[[a => Eq]] reads ``@racket[a] is an @racket[Eq]'' and
 desugars to the superclass constraint @racket[(Eq a)].  Several classes
@@ -63,7 +65,7 @@ Superclass closure is followed during entailment: any program with an
 
 @section{Declaring an instance}
 
-@codeblock|{
+@rackton-example[#:eval ev #:mode 'defs #:context? #t]{
 (instance (Eq Integer)
   (define (== x y) (= x y)))
 
@@ -72,7 +74,7 @@ Superclass closure is followed during entailment: any program with an
     (match x
       [(None)   (match y [(None) #t] [(Some _) #f])]
       [(Some u) (match y [(None) #f] [(Some v) (== u v)])])))
-}|
+}
 
 The head of an instance can carry a context (@racket[((Eq a) => …)])
 that becomes a hypothesis available to the body and required at use
@@ -83,13 +85,13 @@ sites.  Omitted methods fall back to the class's default.
 A function that uses a class method picks up its constraint
 automatically:
 
-@codeblock|{
+@rackton-example[#:eval ev #:mode 'defs #:context? #t]{
 (: contains? ((Eq a) => (-> a (-> (Maybe a) Boolean))))
 (define (contains? target m)
   (match m
     [(None)   #f]
     [(Some x) (== x target)]))
-}|
+}
 
 The inferred scheme is
 @racket[(All (a) ((Eq a) => (-> a (-> (Maybe a) Boolean))))].  Rackton
@@ -103,7 +105,7 @@ code.
 A default method body inside a class declaration is used by any
 instance that omits it:
 
-@codeblock|{
+@rackton-example[#:eval ev #:mode 'defs]{
 (protocol (Eq a)
   (: == (-> a (-> a Boolean)))
   (: /= (-> a (-> a Boolean)))
@@ -112,7 +114,7 @@ instance that omits it:
 (instance (Eq Integer)
   (define (== x y) (= x y)))
 ;; /= for Integer falls back to the class default.
-}|
+}
 
 Defaults can call other methods of the same class — Rackton resolves
 each call to the eventual instance's body.
@@ -123,26 +125,26 @@ Some classes arrange their defaults in a cycle so an instance can pick
 whichever method is most natural and the others derive.  The prelude's
 @racket[Monad] is a 2-cycle:
 
-@codeblock|{
+@rackton-example[#:eval ev #:mode 'defs]{
 (protocol (Monad [m => Applicative])
   (: flatmap (-> (-> a (m b)) (-> (m a) (m b))))
   (: join    (-> (m (m a)) (m a)))
   (define (flatmap f ma) (join (fmap f ma)))
   (define (join mma)     (flatmap (lambda (m) m) mma)))
-}|
+}
 
 An instance must define at least one of @racket[flatmap] or
 @racket[join]; the other is derived.  Defining neither would loop at
 runtime, so Rackton rejects such an instance at compile time:
 
-@codeblock|{
+@rackton-example[#:eval ev #:mode 'display]{
 (instance (Monad MyType))   ;; → instance is incomplete:
                             ;;   methods (flatmap join) form a
                             ;;   cyclic default chain
                             ;;   (flatmap → join → flatmap); at
                             ;;   least one must be defined directly
                             ;;   to break the cycle.
-}|
+}
 
 @racket[Applicative] is a 3-cycle (@racket[fapply] ← @racket[product]
 ← @racket[liftA2] ← @racket[fapply]); defining any single member

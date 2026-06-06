@@ -1,6 +1,8 @@
 #lang scribble/manual
 @require[scribble/manual
-         (for-label rackton)]
+         (for-label rackton)
+         "../rackton-eval.rkt"]
+@(define ev (make-rackton-eval))
 
 @title[#:tag "interfaces"]{The three interfaces}
 
@@ -13,14 +15,14 @@ only in how the user's source is delivered to that pipeline.
 The canonical interface.  An entire file is Rackton; the file's
 reader wraps every form into one elaborator invocation.
 
-@codeblock|{
+@rackton-example[#:eval ev]{
 #lang rackton
 
 (provide fact)
 
 (: fact (-> Integer Integer))
 (define (fact n) (if (= n 0) 1 (* n (fact (- n 1)))))
-}|
+}
 
 A @hash-lang[] @racketmodfont{rackton} module also emits a
 @racketmodfont{rackton-schemes} sidecar submodule so other Rackton
@@ -33,7 +35,7 @@ from another module.
 Use this when most of a module is Racket but a few definitions want
 type-checked Rackton:
 
-@codeblock|{
+@rackton-example[#:eval ev #:mode 'display]{
 #lang racket/base
 (require rackton)
 
@@ -44,7 +46,7 @@ type-checked Rackton:
 
 ;; from-maybe is now a normal Racket procedure here.
 (from-maybe 0 (Some 7))
-}|
+}
 
 Multiple @racket[(rackton …)] blocks may coexist in one Racket module.
 Each elaborates independently against the prelude.  At runtime,
@@ -55,7 +57,7 @@ an earlier block fails with @racket[infer: unbound identifier].  The
 workaround is to redeclare the binding with a fresh @racket[:]
 signature at the top of the later block:
 
-@codeblock|{
+@rackton-example[#:eval ev #:mode 'display]{
 (rackton
   (: greet (-> String String))
   (define (greet name) (string-append "hi " name)))
@@ -63,7 +65,7 @@ signature at the top of the later block:
 (rackton
   (: greet (-> String String))   (code:comment "redeclare so inference can see it")
   (define hello (greet "world")))
-}|
+}
 
 @section{The @racket[(module @#,racketidfont{name} rackton …)] form}
 
@@ -71,7 +73,7 @@ The bridge interface.  A submodule whose language is @racket[rackton]
 gets the same treatment as a @hash-lang[] @racketmodfont{rackton}
 file:
 
-@codeblock|{
+@rackton-example[#:eval ev #:mode 'display]{
 #lang racket/base
 
 (module pure rackton
@@ -81,7 +83,7 @@ file:
 
 (require 'pure)
 (step 41)   ;; ⇒ 42
-}|
+}
 
 This is convenient when an existing Racket project has a small chunk
 that benefits from type-checking but you don't want to split it into

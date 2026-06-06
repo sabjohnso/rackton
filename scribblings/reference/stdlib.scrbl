@@ -1,5 +1,11 @@
 #lang scribble/manual
-@require[scribble/manual]
+@require[scribble/manual
+         (for-label rackton
+                    rackton/data/map
+                    rackton/control/monad/state
+                    rackton/batteries)
+         "../rackton-eval.rkt"]
+@(define ev (make-rackton-eval))
 @title[#:tag "stdlib"]{Standard library modules}
 
 The auto-prelude is deliberately small — roughly the size of Haskell's
@@ -9,11 +15,11 @@ lives in importable modules under @tt{rackton/}, grouped into families
 that mirror Haskell's @tt{base} layout.  Import a module with the
 @racket[require] surface form inside a Rackton block:
 
-@codeblock|{
+@rackton-example[#:eval ev]{
 #lang rackton
 (require rackton/data/map)
 (require rackton/control/monad/state)
-}|
+}
 
 Type-class @emph{instances} always escape a module regardless of its
 @secref["provide-specs"] form (instance coherence is a global
@@ -67,10 +73,10 @@ sugar over.
 For convenience, @racketmodname[rackton/batteries] re-exports the whole
 standard library — every family above — in one import:
 
-@codeblock|{
+@rackton-example[#:eval ev #:mode 'display]{
 #lang rackton
 (require rackton/batteries)
-}|
+}
 
 Prefer the specific module imports in library code (they make
 dependencies explicit and keep compile times down); @tt{batteries} is

@@ -1,6 +1,8 @@
 #lang scribble/manual
 @require[scribble/manual
-         (for-label rackton)]
+         (for-label rackton)
+         "../rackton-eval.rkt"]
+@(define ev (make-rackton-eval))
 
 @title[#:tag "values-and-types"]{Values and types}
 
@@ -34,7 +36,7 @@ type variable.  But you @italic{can} bind a lowercase value at the
 module level with @racket[(define xs …)] and reference it from
 expression position.
 
-@section{Primitive types}
+@section[#:tag "guide-primitive-types"]{Primitive types}
 
 The prelude ships these primitive types, each with the obvious
 equality and display instances:
@@ -58,34 +60,34 @@ are @racket[Integer].
 
 A top-level definition without a signature is inferred:
 
-@codeblock|{
+@rackton-example[#:eval ev #:mode 'defs]{
 (define (compose f g)
   (lambda (x) (f (g x))))
 ;; inferred :: (∀ a b c) (-> (-> b c) (-> (-> a b) (-> a c)))
-}|
+}
 
 Add a signature and Rackton skolem-checks the body against it:
 
-@codeblock|{
+@rackton-example[#:eval ev #:mode 'defs]{
 (: compose (-> (-> b c) (-> (-> a b) (-> a c))))
 (define (compose f g)
   (lambda (x) (f (g x))))
-}|
+}
 
 A type signature isn't required for mutual recursion: top-level
 forms in a Rackton module are order-invariant.  Every name is
 visible to every other form regardless of where it appears in the
 file:
 
-@codeblock|{
+@rackton-example[#:eval ev #:mode 'defs]{
 (define (even? n) (if (= n 0) #t (odd?  (- n 1))))
 (define (odd?  n) (if (= n 0) #f (even? (- n 1))))
-}|
+}
 
 The same rule applies to data types, classes, instances, and
 references to a value defined later in the file:
 
-@codeblock|{
+@rackton-example[#:eval ev #:mode 'defs]{
 ;; Forward reference between defs:
 (: r Integer)
 (define r (g 3))
@@ -99,7 +101,7 @@ references to a value defined later in the file:
 (define (greet x) (pretty x))
 (protocol (Pretty a)
   (: pretty (-> a String)))
-}|
+}
 
 Inference uses strongly-connected-component analysis on the def
 graph: independent defs are generalized individually (so
@@ -118,13 +120,22 @@ case in @secref["return-typed-methods"]).
 Functions are unary; multi-argument functions are
 curried.  @racket[(-> a b c)] means @racket[(-> a (-> b c))]:
 
-@codeblock|{
+@rackton-example[#:eval ev #:mode 'value]{
 (: add (-> Integer (-> Integer Integer)))
 (define (add x y) (+ x y))
 
-((add 3) 4)   ;; ⇒ 7
-(add 3 4)     ;; ⇒ 7 — partial application is implicit
-}|
+((add 3) 4)
+}
+
+Partial application is implicit, so @racket[(add 3 4)] gives the same
+result:
+
+@rackton-example[#:eval ev #:mode 'value]{
+(: add (-> Integer (-> Integer Integer)))
+(define (add x y) (+ x y))
+
+(add 3 4)
+}
 
 @racket[->] is variadic in source position but always parses
 right-associatively.
@@ -133,10 +144,10 @@ right-associatively.
 
 When you want to be specific about quantification, use @racket[All]:
 
-@codeblock|{
+@rackton-example[#:eval ev #:mode 'defs]{
 (: const (All (a b) (-> a (-> b a))))
 (define (const x) (lambda (_y) x))
-}|
+}
 
 This is exactly equivalent to leaving the type variables implicit;
 explicit @racket[All] is mandatory only when you want rank-N
@@ -146,10 +157,13 @@ polymorphism (see @secref["polymorphism"]).
 
 @racket[(ann expr type)] asserts a type:
 
-@codeblock|{
+@rackton-example[#:eval ev #:mode 'value]{
 (ann Nil (List Integer))   ;; Nil at type (List Integer)
+}
+
+@rackton-example[#:eval ev #:mode 'value]{
 (ann (pure 3) (Maybe Integer))   ;; pure resolved at the Maybe instance
-}|
+}
 
 This is useful for disambiguating return-typed methods (@racket[pure],
 @racket[mempty]) and for forcing the type checker to commit to a
@@ -161,12 +175,12 @@ specific instantiation.
 @racket[body] as Racket, asserting that its value has type
 @racket[τ]:
 
-@codeblock|{
+@rackton-example[#:eval ev #:mode 'defs]{
 (: greet (-> String String))
 (define (greet name)
   (racket String (name)
     (string-append "hello " name)))
-}|
+}
 
 The named Rackton bindings @racket[var ...] are spliced into
 @racket[body] unmodified.  No type-checking is performed on

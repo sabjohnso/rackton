@@ -1,6 +1,12 @@
 #lang scribble/manual
 @require[scribble/manual
-         (for-label rackton)]
+         (for-label rackton
+                    rackton/text/string
+                    rackton/data/map
+                    rackton/data/list
+                    rackton/system)
+         "../rackton-eval.rkt"]
+@(define ev (make-rackton-eval))
 
 @title[#:tag "examples"]{Worked examples}
 

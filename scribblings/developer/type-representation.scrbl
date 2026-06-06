@@ -99,7 +99,7 @@ names rather than as a flag on @racket[tvar].  The unifier treats them as
 ordinary constructors, so they unify only with themselves — which is exactly
 the rigidity skolemisation requires.
 
-@section{Kinds}
+@section[#:tag "dev-kinds"]{Kinds}
 
 Kinds classify types.  Two constructors:
 

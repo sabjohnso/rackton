@@ -1,6 +1,8 @@
 #lang scribble/manual
 @require[scribble/manual
-         (for-label rackton)]
+         (for-label rackton)
+         "../rackton-eval.rkt"]
+@(define ev (make-rackton-eval))
 
 @title[#:tag "pattern-matching"]{Pattern matching}
 
@@ -8,11 +10,11 @@ Pattern matching is the primary way to take a value apart in Rackton.
 
 @section{The basics}
 
-@codeblock|{
-(match m
+@rackton-example[#:eval ev #:mode 'value]{
+(match (Some 5)
   [(None)   "empty"]
   [(Some x) (show x)])
-}|
+}
 
 Each clause is @racket[[pattern body]].  Patterns are tried in order;
 the first to match runs its body.  Pattern variables (lowercase
@@ -34,11 +36,11 @@ identifiers) bind in the body's scope.
 
 Sub-patterns nest arbitrarily:
 
-@codeblock|{
-(match xs
+@rackton-example[#:eval ev #:mode 'value]{
+(match (Cons (Some 0) Nil)
   [(Cons (Some 0) rest) (length rest)]
   [_                    -1])
-}|
+}
 
 @section{Exhaustiveness}
 
@@ -47,41 +49,41 @@ any constructor of an ADT scrutinee, omits @racket[#t] or @racket[#f]
 on a @racket[Boolean] scrutinee, or lacks a catchall on an
 unconstrained scrutinee.
 
-@codeblock|{
+@rackton-example[#:eval ev #:mode 'display]{
 ;; Compile error: missing case (None)
 (match m
   [(Some x) x])
-}|
+}
 
 To opt out, add a wildcard or variable pattern:
 
-@codeblock|{
-(match m
+@rackton-example[#:eval ev #:mode 'value]{
+(match (Some 9)
   [(Some x) x]
   [_        0])
-}|
+}
 
 @section{Guards}
 
 A clause may add a Boolean guard that runs after the pattern matches.
 Guards see the bound pattern variables:
 
-@codeblock|{
-(match n
+@rackton-example[#:eval ev #:mode 'value]{
+(match 7
   [k #:when (> k 0) "positive"]
   [k #:when (< k 0) "negative"]
   [_                "zero"])
-}|
+}
 
 @section{Destructuring in @racket[let] bindings}
 
 A @racket[let] (or @racket[let*]) binding may use a pattern on its
 left-hand side, so a single match needs no @racket[match]:
 
-@codeblock|{
+@rackton-example[#:eval ev #:mode 'value]{
 (let ([(Pair x y) (Pair 3 4)])
-  (+ x y))   ;; ⇒ 7
-}|
+  (+ x y))
+}
 
 The body sees @racket[x] and @racket[y].  A failure to match raises a
 panic — use a pattern binding only when the pattern is irrefutable
@@ -97,38 +99,41 @@ function that matches on @emph{all} of its arguments at once.  Each
 clause begins with a parenthesized list of argument patterns, followed
 by a body:
 
-@codeblock|{
-(case-lambda
-  [((Some x) (Some y)) (Some (+ x y))]
-  [(_ _)               None])
-}|
+@rackton-example[#:eval ev #:mode 'value]{
+(let ([f (case-lambda
+           [((Some x) (Some y)) (Some (+ x y))]
+           [(_ _)               None])])
+  ((f (Some 3)) (Some 4)))
+}
 
 The number of patterns in the argument list fixes the arity, and every
 clause must share it.  The form above is equivalent to a two-argument
 @racket[lambda] over @racket[match]:
 
-@codeblock|{
+@rackton-example[#:eval ev #:mode 'display]{
 (lambda (a b)
   (match* (a b)
     [((Some x) (Some y)) (Some (+ x y))]
     [(_ _)               None]))
-}|
+}
 
 Because the first element of a clause is always the argument list, a
 single argument that is itself a constructor pattern needs its own
 parentheses:
 
-@codeblock|{
-(case-λ
-  [(None)     0]
-  [((Some x)) x])
-}|
+@rackton-example[#:eval ev #:mode 'value]{
+(let ([f (case-λ
+           [(None)     0]
+           [((Some x)) x])])
+  (f (Some 5)))
+}
 
 Clauses may carry a @racket[#:when] guard, just as in @racket[match]:
 
-@codeblock|{
-(case-lambda
-  [(n) #:when (> n 0)  1]
-  [(n) #:when (< n 0) -1]
-  [(_)                 0])
-}|
+@rackton-example[#:eval ev #:mode 'value]{
+(let ([f (case-lambda
+           [(n) #:when (> n 0)  1]
+           [(n) #:when (< n 0) -1]
+           [(_)                 0])])
+  (f 42))
+}

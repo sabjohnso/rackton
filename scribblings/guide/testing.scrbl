@@ -1,5 +1,14 @@
 #lang scribble/manual
-@require[scribble/manual]
+@require[scribble/manual
+         (for-label rackton
+                    rackton/unit
+                    rackton/unit/check
+                    rackton/unit/gen
+                    rackton/unit/laws
+                    rackton/unit/property
+                    rackton/unit/tree)
+         "../rackton-eval.rkt"]
+@(define ev (make-rackton-eval))
 
 @title[#:tag "testing"]{Testing with @tt{rackton/unit}}
 
@@ -18,10 +27,10 @@ provides three layers that share one runner:
 
 Bring it all into scope with a single import:
 
-@codeblock|{
+@rackton-example[#:eval ev #:mode 'display]{
 #lang rackton
 (require rackton/unit)
-}|
+}
 
 A consumer should @racketidfont{require} only @tt{rackton/unit} (not the
 individual submodules); the framework funnels its class instances
@@ -38,7 +47,7 @@ list wrapper.  @racketidfont{run-tests} walks the tree in @racket[IO],
 prints an indented report, and returns a @racketidfont{Summary} of
 pass/fail counts.
 
-@codeblock|{
+@rackton-example[#:eval ev]{
 #lang rackton
 (require rackton/unit)
 
@@ -49,15 +58,7 @@ pass/fail counts.
     (it "doubling"     (check-equal? (* 2 21) 42))))
 
 (define _ (run-io (run-tests suite)))
-}|
-
-This prints:
-
-@codeblock|{
-arithmetic
-  ok - one plus one
-  ok - doubling
-}|
+}
 
 Several checks can be combined in one @racketidfont{it} with @racketidfont{all-checks}
 (a list of assertions, where the first failure wins).
@@ -72,25 +73,29 @@ shrinks for free — there is no separate shrink method to write.
 
 Generators compose with @racket[fmap], @racket[flatmap], and @racket[do]:
 
-@codeblock|{
+@rackton-example[#:eval ev #:mode 'defs]{
+(require rackton/unit)
+
 ;; a generator of even integers in [0, 200]
 (: gen-even (Gen Integer))
 (define gen-even (fmap (lambda (n) (* n 2)) (int-range 0 100)))
 
 ;; a generator of (Pair Integer Integer)
 (define gen-point (gen-pair (int-range 0 9) (int-range 0 9)))
-}|
+}
 
 @racketidfont{for-all} builds a property from a generator and a predicate
 (it uses @racket[show] to render counterexamples):
 
-@codeblock|{
+@rackton-example[#:eval ev #:mode 'defs]{
+(require rackton/unit)
+
 (: addition-commutes Test)
 (define addition-commutes
   (it-prop "addition commutes"
     (for-all (int-range -1000 1000)
              (lambda (x) (== (+ x 0) x)))))
-}|
+}
 
 When a property fails, the runner shrinks the counterexample to a
 minimal value and prints the replay seed:
@@ -115,7 +120,10 @@ The law bundles turn a generator into a group of properties capturing the
 laws of a structure.  Each is parameterised by a generator (and, for
 @racketidfont{monoid-laws}, the identity element, supplied explicitly):
 
-@codeblock|{
+@rackton-example[#:eval ev]{
+#lang rackton
+(require rackton/unit)
+
 (: number-laws Test)
 (define number-laws
   (describe "Integer"
@@ -127,7 +135,7 @@ laws of a structure.  Each is parameterised by a generator (and, for
   (monoid-laws gen-string ""))   ;; "" is the identity for string-append
 
 (define _ (run-io (run-tests (describe "laws" number-laws string-monoid))))
-}|
+}
 
 @racketidfont{eq-laws} checks reflexivity and symmetry; @racketidfont{ord-laws}
 checks reflexivity and totality of @racket[<=]; @racketidfont{semigroup-laws}

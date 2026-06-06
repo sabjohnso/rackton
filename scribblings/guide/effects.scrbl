@@ -1,6 +1,8 @@
 #lang scribble/manual
 @require[scribble/manual
-         (for-label rackton)]
+         (for-label rackton)
+         "../rackton-eval.rkt"]
+@(define ev (make-rackton-eval))
 
 @title[#:tag "effects"]{Algebraic effects}
 
@@ -11,7 +13,7 @@ computation via a captured continuation.
 
 @section{A first effect}
 
-@codeblock|{
+@rackton-example[#:eval ev #:mode 'value]{
 (define-effect Env
   (ask -> Integer))
 
@@ -25,8 +27,8 @@ computation via a captured continuation.
     [ask () k -> (k val)]
     [return v -> v]))
 
-(run-env 7 prog-env)   ;; ⇒ 14
-}|
+(run-env 7 prog-env)
+}
 
 The clause @racket[[ask () k -> (k val)]] runs on each invocation of
 @racket[ask].  The captured continuation @racket[k] is a function
@@ -36,12 +38,12 @@ in place of @racket[ask].
 
 @section{The shape of a handler}
 
-@codeblock|{
+@rackton-example[#:eval ev #:mode 'display]{
 (handle expr
   [op-name (param ...) k-name -> body]   (code:comment "for each op")
   ...
   [return result-var -> body])           (code:comment "for normal return")
-}|
+}
 
 @itemlist[
 @item{Each @racket[op-clause] names an operation, binds its parameters,
@@ -60,7 +62,7 @@ under the same handler.
 
 @subsection{Counter — peek-and-bump}
 
-@codeblock|{
+@rackton-example[#:eval ev #:mode 'display]{
 (define-effect Counter
   (peek -> Integer)
   (bump -> Unit))
@@ -74,11 +76,11 @@ under the same handler.
                [bump () k -> ((loop (+ n 1)) (k Unit))]
                [return v -> v]))])
     (loop start)))
-}|
+}
 
 @subsection{Exception — abort with a fallback}
 
-@codeblock|{
+@rackton-example[#:eval ev #:mode 'display]{
 (define-effect Exn
   (raise-e -> Integer))
 
@@ -87,7 +89,7 @@ under the same handler.
   (handle (prog Unit)
     [raise-e () _ -> fallback]      (code:comment "don't resume; return fallback")
     [return v     -> v]))
-}|
+}
 
 @section{Limitations and design notes}
 

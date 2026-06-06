@@ -1,6 +1,21 @@
 #lang scribble/manual
 @require[scribble/manual
-         (for-label rackton)]
+         (for-label rackton
+                    rackton/data/list
+                    rackton/data/map
+                    rackton/data/monoid
+                    rackton/data/semigroup
+                    rackton/data/lazy
+                    rackton/control/monad
+                    rackton/control/monad/state
+                    rackton/control/monad/trans
+                    rackton/numeric/show
+                    rackton/text/string
+                    rackton/text/printf
+                    rackton/system
+                    rackton/batteries)
+         "../rackton-eval.rkt"]
+@(define ev (make-rackton-eval))
 
 @title[#:tag "stdlib-guide"]{The standard library}
 
@@ -23,21 +38,21 @@ in the reference.
 Require the specific module you need — that keeps dependencies explicit
 and compile times down:
 
-@codeblock|{
+@rackton-example[#:eval ev]{
 #lang rackton
 (require rackton/data/list)
 
 (: evens (List Integer))
 (define evens (filter (lambda (n) (== (mod n 2) 0)) (list 1 2 3 4 5 6)))
-}|
+}
 
 For scripts and exploration, @racketmodname[rackton/batteries]
 re-exports the whole library in one import:
 
-@codeblock|{
+@rackton-example[#:eval ev #:mode 'display]{
 #lang rackton
 (require rackton/batteries)
-}|
+}
 
 @section{@tt{data} — containers and structures}
 
@@ -48,7 +63,7 @@ re-exports the whole library in one import:
 with the usual operations, and @racketmodname[rackton/data/maybe] /
 @racketmodname[rackton/data/either] round out the small sum types:
 
-@codeblock|{
+@rackton-example[#:eval ev #:mode 'defs]{
 (require rackton/data/map)
 
 ;; tally occurrences with map-insert-with
@@ -57,7 +72,7 @@ with the usual operations, and @racketmodname[rackton/data/maybe] /
   (foldr (lambda (w m) (map-insert-with + w 1 m))
          empty-map
          (list "a" "b" "a")))
-}|
+}
 
 The @racket[Monoid] wrappers live in
 @racketmodname[rackton/data/monoid] (@racket[Sum], @racket[Product],
@@ -78,7 +93,7 @@ module — @racketmodname[rackton/control/monad/state],
 @racket[MonadTrans] (@racket[lift]) and @racket[MonadIO]
 (@racket[lift-io]) instances that stack them:
 
-@codeblock|{
+@rackton-example[#:eval ev #:mode 'defs]{
 (require rackton/control/monad/state)
 
 ;; a StateT computation over Maybe
@@ -87,7 +102,7 @@ module — @racketmodname[rackton/control/monad/state],
   (do [n <- get-st]
       [_ <- (put-st (+ n 1))]
       (pure n)))
-}|
+}
 
 @section{@tt{numeric} — beyond the tower}
 
@@ -100,12 +115,14 @@ the extra trig, @racketmodname[rackton/numeric/show] radix and
 float formatting, and @racketmodname[rackton/numeric/natural] the
 @racket[Natural] type:
 
-@codeblock|{
+@rackton-example[#:eval ev #:mode 'value]{
 (require rackton/numeric/show)
 
-(: hex String) (define hex (num-show-hex 255))          ;; "ff"
-(: pi2 String) (define pi2 (num-show-f-float (Some 2) 3.14159))  ;; "3.14"
-}|
+(: hex String) (define hex (num-show-hex 255))
+(: pi2 String) (define pi2 (num-show-f-float (Some 2) 3.14159))
+
+(Pair hex pi2)
+}
 
 @section{@tt{text} — strings, formatting, parsing}
 
@@ -118,7 +135,7 @@ primitives (@racket[lines], @racket[words], @racket[strip],
 @emph{type-safe} formatting: you compose directives, and the argument
 types are checked at compile time.
 
-@codeblock|{
+@rackton-example[#:eval ev #:mode 'value]{
 (require rackton/text/printf)
 
 ;; greeting : (-> String (-> Integer String))   <- inferred
@@ -128,8 +145,8 @@ types are checked at compile time.
            (fmt-cat fmt-str
             (fmt-cat (fmt-lit ", you are ") fmt-int)))))
 
-((greeting "ada") 36)   ;; => "hello ada, you are 36"
-}|
+((greeting "ada") 36)
+}
 
 @section{@tt{system} — the outside world}
 
@@ -138,7 +155,7 @@ family: mutable @racket[Ref]s, file and directory I/O, handles,
 exceptions, the environment, exit codes, clocks, and a splittable
 random generator.  Everything is in @racket[IO]:
 
-@codeblock|{
+@rackton-example[#:eval ev #:mode 'io #:run "greet"]{
 (require rackton/system)
 
 (: greet (IO Unit))
@@ -147,7 +164,7 @@ random generator.  Everything is in @racket[IO]:
       (println (match name
                  [(Some u) (mappend "hi " u)]
                  [(None)   "hi stranger"]))))
-}|
+}
 
 @section{Laziness}
 
@@ -157,28 +174,32 @@ laziness.  The @racket[delay] form defers a computation as a
 (call-by-need).  @racket[delay] is a form, not a function — it does not
 evaluate its argument until forced:
 
-@codeblock|{
+@rackton-example[#:eval ev #:mode 'value]{
 (require rackton/data/lazy)
 
 (: slow (Lazy Integer))
-(define slow (delay (* 6 7)))   (code:comment "not computed yet")
+(define slow (delay (* 6 7)))   ;; not computed yet
 
 (: answer Integer)
-(define answer (force slow))    (code:comment "computes 42 once, then caches")
-}|
+(define answer (force slow))    ;; computes 42 once, then caches
+
+answer
+}
 
 A @racket[Stream] is a lazy cons-list whose tail is a @racket[Lazy], so
 producers may be infinite while consumers force only a finite prefix:
 
-@codeblock|{
+@rackton-example[#:eval ev #:mode 'value]{
 (require rackton/data/lazy)
 
 (: nats (Stream Integer))
-(define nats (stream-iterate (lambda (n) (+ n 1)) 0))   (code:comment "0 1 2 3 …")
+(define nats (stream-iterate (lambda (n) (+ n 1)) 0))   ;; 0 1 2 3 …
 
 (: first5 (List Integer))
-(define first5 (stream-take 5 nats))                    (code:comment "(0 1 2 3 4)")
-}|
+(define first5 (stream-take 5 nats))                    ;; (0 1 2 3 4)
+
+first5
+}
 
 @racket[stream-map], @racket[stream-filter], and @racket[stream-append]
 stay lazy, so they compose over infinite streams as long as the final

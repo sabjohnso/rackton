@@ -1,6 +1,8 @@
 #lang scribble/manual
 @require[scribble/manual
-         (for-label rackton rackton/data/bits rackton/data/bool rackton/data/char rackton/data/complex rackton/data/either rackton/data/result rackton/data/foldable rackton/data/function rackton/data/functor rackton/data/lazy rackton/data/arrow-lazy rackton/data/lens rackton/data/list rackton/data/list/nonempty rackton/data/map rackton/data/maybe rackton/data/monoid rackton/data/ord rackton/data/ratio rackton/data/semigroup rackton/data/set rackton/data/traversable rackton/data/tuple)]
+         (for-label rackton rackton/data/bits rackton/data/bool rackton/data/char rackton/data/complex rackton/data/either rackton/data/result rackton/data/foldable rackton/data/function rackton/data/functor rackton/data/lazy rackton/data/arrow-lazy rackton/data/lens rackton/data/list rackton/data/list/nonempty rackton/data/map rackton/data/maybe rackton/data/monoid rackton/data/ord rackton/data/ratio rackton/data/semigroup rackton/data/set rackton/data/traversable rackton/data/tuple)
+         "../rackton-eval.rkt"]
+@(define ev (make-rackton-eval))
 
 @title[#:tag "stdlib-data"]{@tt{rackton/data} — containers and structures}
 
@@ -415,7 +417,10 @@ can sit in a @racket[proc] @racket[rec] feedback path and stay
 productive, unlike an @racket[arr]-lifted function — which forces.  A
 runnable example, the self-referential infinite stream of @racket[1]s:
 
-@codeblock|{
+@rackton-example[#:eval ev #:mode 'defs #:context? #t]{
+(require rackton/data/arrow-lazy
+         rackton/data/lazy)
+
 (: ones (Stream Integer))
 (define ones
   (run-lfun
@@ -423,9 +428,17 @@ runnable example, the self-referential infinite stream of @racket[1]s:
      (rec [s <- (feed (lcons 1) s)])
      (feed (arr (lambda (z) z)) s))
    0))
-;; (stream-head ones)   => (Some 1)
-;; (stream-take 5 ones) => (1 1 1 1 1)
-}|}
+}
+
+@rackton-example[#:eval ev #:mode 'value #:context? #t]{
+(require rackton/data/lazy)
+(stream-head ones)
+}
+
+@rackton-example[#:eval ev #:mode 'value #:context? #t]{
+(require rackton/data/lazy)
+(stream-take 5 ones)
+}}
 
 
 @section{rackton/data/lens}

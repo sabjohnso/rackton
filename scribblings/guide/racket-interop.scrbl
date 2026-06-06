@@ -1,6 +1,8 @@
 #lang scribble/manual
 @require[scribble/manual
-         (for-label rackton)]
+         (for-label rackton)
+         "../rackton-eval.rkt"]
+@(define ev (make-rackton-eval))
 
 @title[#:tag "racket-interop"]{Racket interoperation}
 
@@ -9,21 +11,21 @@ reach Racket's standard library beyond what the prelude exposes.
 
 @section{The escape form}
 
-@codeblock|{
+@rackton-example[#:eval ev #:mode 'display]{
 (racket Type (var ...) body ...)
-}|
+}
 
 Drops into raw Racket and returns a value asserted to have type
 @racket[Type].  The named Rackton bindings @racket[var ...] are
 spliced into @racket[body] unmodified.  Multiple @racket[body] forms
 are wrapped in an implicit @racket[begin].
 
-@codeblock|{
+@rackton-example[#:eval ev #:mode 'defs]{
 (: greet (-> String String))
 (define (greet name)
   (racket String (name)
     (string-append "hello " name)))
-}|
+}
 
 Inside @racket[body], @racket[name] resolves to the string the caller
 passed.  Identifier resolution inside an escape follows
@@ -55,14 +57,14 @@ The body accepts any number of forms; they're wrapped in an implicit
 @racket[begin], so inner @racket[(define …)], @racket[(let …)], and
 other side-effecting forms work naturally:
 
-@codeblock|{
+@rackton-example[#:eval ev #:mode 'defs]{
 (: report (-> Integer (IO Unit)))
 (define (report n)
   (racket (IO Unit) (n)
     (define msg (format "value is ~a" n))
     (define action ($io (lambda () (displayln msg) Unit)))
     action))
-}|
+}
 
 @section{What's in scope}
 

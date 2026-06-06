@@ -1,6 +1,8 @@
 #lang scribble/manual
 @require[scribble/manual
-         (for-label rackton)]
+         (for-label rackton)
+         "../rackton-eval.rkt"]
+@(define ev (make-rackton-eval))
 
 @title[#:tag "syntax-forms"]{Syntax forms}
 The forms in this chapter are recognised by the Rackton surface parser
@@ -27,11 +29,11 @@ Each parameter @racket[p] is either a bare identifier (binds a
 plain parameter) or a parenthesised pattern (destructures the
 argument):
 
-@codeblock|{
+@rackton-example[#:eval ev #:mode 'display]{
 (struct Point [x : Float] [y : Float])
 (define (distance (Point px py) (Point qx qy))
   (sqrt (+ (sqr (- px qx)) (sqr (- py qy)))))
-}|
+}
 
 A single-form definition with a destructuring pattern desugars
 to an irrefutable match: if the argument doesn't fit the pattern
@@ -43,11 +45,11 @@ Multiple @racket[(define (name p ...) body)] forms for the same
 across every parameter position in source-order priority — a
 Haskell-style equational definition:
 
-@codeblock|{
+@rackton-example[#:eval ev #:mode 'defs]{
 (data MyList Nada (Mcons Integer MyList))
 (define (myhead (Mcons x _)) x)
 (define (myhead Nada)        0)
-}|
+}
 
 In a multi-clause context a bare uppercase identifier @racket[Nada]
 dispatches as a 0-arg constructor pattern (matching the

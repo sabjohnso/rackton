@@ -1,7 +1,9 @@
 #lang scribble/manual
 @require[scribble/manual
          (for-label rackton
-                    (only-in racket/base module))]
+                    (only-in racket/base module))
+         "../rackton-eval.rkt"]
+@(define ev (make-rackton-eval))
 
 @title[#:tag "entry-points"]{Entry points}
 Rackton code reaches the typechecker through three distinct entry
@@ -62,13 +64,13 @@ A file beginning with @hash-lang[] @racketmodfont{rackton} is read by
 @filepath{lang/reader.rkt} into a single @racket[rackton/main]
 invocation:
 
-@codeblock|{
+@rackton-example[#:eval ev]{
 #lang rackton
 
 (provide fact)
 (: fact (-> Integer Integer))
 (define (fact n) (if (= n 0) 1 (* n (fact (- n 1)))))
-}|
+}
 
 This interface is the canonical one for Rackton source files; the
 embedded @racket[(rackton …)] form is intended for using Rackton from

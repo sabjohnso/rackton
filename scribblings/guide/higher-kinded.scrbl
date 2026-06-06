@@ -1,6 +1,8 @@
 #lang scribble/manual
 @require[scribble/manual
-         (for-label rackton)]
+         (for-label rackton)
+         "../rackton-eval.rkt"]
+@(define ev (make-rackton-eval))
 
 @title[#:tag "higher-kinded"]{Higher-kinded and multi-parameter classes}
 
@@ -8,7 +10,7 @@ This chapter covers three orthogonal extensions to single-parameter
 classes: higher-kinded type parameters, multi-parameter classes, and
 functional dependencies.
 
-@section{Kinds}
+@section[#:tag "guide-kinds"]{Kinds}
 
 Kinds classify type-level expressions just as types classify values.
 The base kind is @racket[*]; arrow kinds @racket[(-> k1 k2)] describe
@@ -24,10 +26,10 @@ type constructors.
 
 Kind annotations on class parameters use @racket[::]:
 
-@codeblock|{
+@rackton-example[#:eval ev #:mode 'defs]{
 (protocol (Functor (f :: (-> * *)))
   (: fmap (-> (-> a b) (-> (f a) (f b)))))
-}|
+}
 
 Without the annotation @racket[f] defaults to kind @racket[*], which
 would reject @racket[(f a)] as ill-kinded.
@@ -36,7 +38,7 @@ would reject @racket[(f a)] as ill-kinded.
 
 A class declaration may carry more than one type parameter:
 
-@codeblock|{
+@rackton-example[#:eval ev #:mode 'defs]{
 (protocol (Convertible a b)
   (: convert (-> a b)))
 
@@ -45,7 +47,7 @@ A class declaration may carry more than one type parameter:
 
 (instance (Convertible Boolean String)
   (define (convert b) (if b "yes" "no")))
-}|
+}
 
 Runtime dispatch uses the first argument whose type mentions a class
 parameter — for @racket[convert] that's its single argument.  The
@@ -58,14 +60,14 @@ the result type.
 A multi-parameter class may declare that some parameters are uniquely
 determined by others:
 
-@codeblock|{
+@rackton-example[#:eval ev #:mode 'defs]{
 (protocol (Convert a b)
   (#:fundep a -> b)
   (: convert (-> a b)))
 
 (instance (Convert Integer String)
   (define (convert n) (show n)))
-}|
+}
 
 The @racket[#:fundep a -> b] clause says: @racket[a] determines
 @racket[b].  Rackton uses this to resolve ambiguity — if a call site
@@ -83,10 +85,10 @@ once: because @racket[Functor]'s parameter has kind @racket[(-> * *)],
 the bound @racket[[m => Functor]] makes @racket[m] higher-kinded
 without a separate @racket[::] annotation:
 
-@codeblock|{
+@rackton-example[#:eval ev #:mode 'defs]{
 (protocol (Monad [m => Functor])
   (: flatmap (-> (-> a (m b)) (-> (m a) (m b)))))
-}|
+}
 
 Dispatch for higher-kinded class methods uses the position of the
 first argument whose type mentions a class parameter.  For
@@ -115,25 +117,25 @@ function (@racket[arr]), and pairing computations (@racket[fanout],
 and over richer arrows.  The canonical instance is the function arrow
 @racket[(->)], where every combinator collapses to function plumbing:
 
-@codeblock|{
+@rackton-example[#:eval ev #:mode 'defs]{
 (: inc-then-double (-> Integer Integer))
 (define inc-then-double
   ;; comp is right-to-left: the second arrow (+1) runs first, then (*2).
   (comp (arr (lambda (n) (* n 2)))
         (arr (lambda (n) (+ n 1)))))
-}|
+}
 
 The @racket[proc] form is the point-free analogue of @racket[do]: each
 command feeds a value through an arrow, and bindings stay in scope for
 later commands.
 
-@codeblock|{
+@rackton-example[#:eval ev #:mode 'defs]{
 (: sum-with-succ (-> Integer Integer))
 (define sum-with-succ
   (proc (x)
     [y <- (feed (arr (lambda (n) (+ n 1))) x)]
     (feed (arr (lambda (p) (match p [(Pair a b) (+ a b)]))) (Pair x y))))
-}|
+}
 
 The method names are deliberately non-infix and distinct from existing
 prelude names (@racket[ident]/@racket[comp], not @racket[id]/@racket[compose];

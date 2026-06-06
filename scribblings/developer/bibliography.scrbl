@@ -90,7 +90,7 @@ with brief notes on where each idea lands in the codebase.
       @racket[MonadState] / @racket[MonadEnv] / @racket[MonadWriter] /
       @racket[MonadError] follow.}]
 
-@section{Software transactional memory}
+@section[#:tag "dev-bib-stm"]{Software transactional memory}
 
 @itemlist[
 
@@ -102,7 +102,7 @@ with brief notes on where each idea lands in the codebase.
       equal?-hash log of (read, version) and (write, value),
       committed under a global lock.}]
 
-@section{Optics}
+@section[#:tag "dev-bib-optics"]{Optics}
 
 @itemlist[
 
