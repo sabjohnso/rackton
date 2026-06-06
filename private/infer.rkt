@@ -671,25 +671,46 @@
           fd-sub))
 
 ;; For user-facing diagnostic output: rename a type's free tvars to
-;; nice sequential names (a, b, c, …) before converting to a datum.
-;; Without this, error messages show internal fresh names like `a12`.
-(define (pretty-type t)
-  (define fv (type-vars t))
-  (define vs (sort (set->list fv) symbol<?))
-  (define nice (nice-tvar-names (length vs) (seteq)))
-  (define σ
-    (for/fold ([s empty-subst]) ([old (in-list vs)] [new (in-list nice)])
-      (subst-extend s old (tvar new))))
-  (type->datum (apply-subst σ t)))
+;; nice sequential names (a, b, c, …), flatten curried arrows back to
+;; the n-ary surface form, and wrap wide types across lines.  The pure
+;; layout lives in types.rkt (`format-type` / `format-pred`); this just
+;; hands the type over.  Without it, error messages show internal fresh
+;; names like `a12` and deeply nested binary arrows.
+(define (pretty-type t) (format-type t))
+(define (pretty-pred p) (format-pred p))
 
-(define (pretty-pred p)
-  (define fv (type-vars p))
-  (define vs (sort (set->list fv) symbol<?))
-  (define nice (nice-tvar-names (length vs) (seteq)))
-  (define σ
-    (for/fold ([s empty-subst]) ([old (in-list vs)] [new (in-list nice)])
-      (subst-extend s old (tvar new))))
-  (pred->datum (apply-subst σ p)))
+;; Indent every line after the first by `n` spaces, so a multi-line
+;; pretty-printed type lines up under its label column.
+(define (indent-continuation s n)
+  (define lines (string-split s "\n" #:trim? #f))
+  (cond
+    [(or (null? lines) (null? (cdr lines))) s]
+    [else
+     (define pad (make-string n #\space))
+     (string-join
+      (cons (car lines)
+            (map (lambda (l) (string-append pad l)) (cdr lines)))
+      "\n")]))
+
+;; -------- expected/got block helper --------------------------------
+
+;; The aligned two-line block shared by every "wrong type" diagnostic:
+;;
+;;     expected: <type>
+;;     got:      <type>
+;;
+;; The value column starts at 12 (`"  expected: "` / `"  got:      "`),
+;; so continuation lines of a wrapped type are indented to match.
+(define (expected/got-lines expected-str got-str)
+  (format "  expected: ~a\n  got:      ~a"
+          (indent-continuation expected-str 12)
+          (indent-continuation got-str 12)))
+
+;; Same block for two types, renamed with ONE shared substitution so a
+;; variable common to both reads as the same letter on each side.
+(define (expected/got-block expected got)
+  (match-define (list e g) (format-types (list expected got)))
+  (expected/got-lines e g))
 
 ;; -------- type-mismatch error helper -------------------------------
 
@@ -704,9 +725,7 @@
 ;; whole application form.
 (define (raise-type-mismatch! blame-stx expected got)
   (raise-syntax-error 'infer
-    (format "type mismatch\n  expected: ~a\n  got:      ~a"
-            (pretty-type expected)
-            (pretty-type got))
+    (format "type mismatch\n~a" (expected/got-block expected got))
     blame-stx))
 
 ;; The trailing slot of every e:* / p:* / ty:* AST struct is the
@@ -1509,12 +1528,13 @@
     (with-handlers
      ([exn:fail:unify?
        (lambda (_)
+         (match-define (list got exp)
+           (format-types (list (apply-subst s-acc t-body) refined-result-type)))
          (raise-syntax-error 'infer
            (format (if earlier-arms?
                        "match clause body has type ~a but earlier arms have ~a"
                        "match clause body has type ~a but the expected result type is ~a")
-                   (pretty-type (apply-subst s-acc t-body))
-                   (pretty-type refined-result-type))
+                   got exp)
            (clause-stx cl)))])
      (unify (apply-skolem-subst arm-skolem-subst
                                 (apply-subst s-acc t-body))
@@ -1582,12 +1602,14 @@
     (with-handlers
      ([exn:fail:unify?
        (lambda (_)
+         (match-define (list got exp)
+           (format-types (list (apply-subst s-acc t-body)
+                               (apply-subst s-acc result-type))))
          (raise-syntax-error 'infer
            (format (if earlier-clauses?
                        "match* clause body has type ~a but earlier clauses have ~a"
                        "match* clause body has type ~a but the expected result type is ~a")
-                   (pretty-type (apply-subst s-acc t-body))
-                   (pretty-type (apply-subst s-acc result-type)))
+                   got exp)
            (clause*-stx cl*)))])
      (unify (apply-subst s-acc t-body) (apply-subst s-acc result-type))))
   (values (subst-compose s-u s-acc)
@@ -2452,10 +2474,10 @@
      ([exn:fail:unify?
        (lambda (_)
          (raise-syntax-error 'infer
-           (format "definition of ~s has type ~a, declared as ~a"
+           (format "definition of ~s has the wrong type\n~a"
                    name
-                   (pretty-type (apply-subst s t))
-                   (scheme->datum decl-scheme))
+                   (expected/got-lines (format-scheme decl-scheme)
+                                       (pretty-type (apply-subst s t))))
            stx))])
      (unify (normalize-type env (apply-subst s t)) decl-ty)))
   (define final-subst0 (subst-compose s-u s))
@@ -2719,10 +2741,10 @@
            ([exn:fail:unify?
              (lambda (_)
                (raise-syntax-error 'infer
-                 (format "definition of ~s has type ~a, declared as ~a"
+                 (format "definition of ~s has the wrong type\n~a"
                          name
-                         (pretty-type (apply-subst s t))
-                         (scheme->datum decl-scheme))
+                         (expected/got-lines (format-scheme decl-scheme)
+                                             (pretty-type (apply-subst s t))))
                  stx))])
            (unify (normalize-type env (apply-subst s t)) decl-ty)))
         ;; Discharge any constraints raised inside the body against the
@@ -4286,10 +4308,9 @@
            ([exn:fail:unify?
              (lambda (_)
                (raise-syntax-error 'infer
-                 (format "method ~s body has type ~a, expected ~a"
+                 (format "method ~s body has the wrong type\n~a"
                          method-name
-                         (type->datum (apply-subst s t))
-                         (type->datum expected-type))
+                         (expected/got-block expected-type (apply-subst s t)))
                  stx))])
            (unify (apply-subst s t) expected-type)))
         (define final-subst0 (subst-compose s-u s))

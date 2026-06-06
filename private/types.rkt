@@ -53,6 +53,16 @@
          scheme->datum
          pred->datum
 
+         ;; diagnostic pretty-printing (display only — not serialization)
+         type->pretty-datum
+         pred->pretty-datum
+         format-pretty-datum
+         format-types
+         format-type
+         format-scheme
+         format-preds
+         format-pred
+
          ;; pre-built primitive types
          t-int t-bool t-string t-symbol t-unit t-float t-char t-bytes
          t-rational t-complex t-complex-exact
@@ -66,7 +76,8 @@
          make-tapp)
 
 (require racket/set
-         racket/match)
+         racket/match
+         racket/pretty)
 
 ;; ----- Type AST ------------------------------------------------------
 
@@ -274,3 +285,131 @@
   (match sch
     [(scheme '() body) (type->datum body)]
     [(scheme vs body)  `(All ,vs ,(type->datum body))]))
+
+;; ----- Diagnostic pretty-printing ------------------------------------
+;;
+;; `type->datum` mirrors the *internal* binary-arrow representation
+;; exactly (the scheme codec depends on that shape).  The functions
+;; below are for human-facing diagnostics only: they flatten curried
+;; arrows back into the n-ary surface form `(-> A B C)`, rename internal
+;; fresh tvars to nice single letters, and wrap wide types across lines.
+
+;; Like `type->datum`, but collapse a right-nested chain of binary `->`
+;; applications into a single n-ary `(-> a b … r)` — the form the user
+;; actually wrote.
+(define (type->pretty-datum t)
+  (match t
+    [(tvar a) a]
+    [(tcon n) n]
+    [(tapp (tcon '->) (list d c))
+     (let loop ([acc (list (type->pretty-datum d))] [rest c])
+       (match rest
+         [(tapp (tcon '->) (list d2 c2))
+          (loop (cons (type->pretty-datum d2) acc) c2)]
+         [_ `(-> ,@(reverse (cons (type->pretty-datum rest) acc)))]))]
+    [(tapp h args)
+     `(,(type->pretty-datum h) ,@(map type->pretty-datum args))]
+    [(qual cs body)
+     `(,@(map pred->pretty-datum cs) => ,(type->pretty-datum body))]
+    [(tforall vs body)
+     `(All ,vs ,(type->pretty-datum body))]))
+
+(define (pred->pretty-datum p)
+  (match p
+    [(pred c args) `(,c ,@(map type->pretty-datum args))]))
+
+;; Render a datum to a (possibly multi-line) string, wrapping wide forms
+;; across lines.  `racket/pretty` does the layout; we only strip the
+;; trailing newline it appends.
+;;
+;; The width is the budget *after* the diagnostic's label column
+;; (`"  expected: "` is 12 chars); 66 + 12 keeps a wrapped line inside a
+;; standard 79-column terminal.  Treating `->` / `=>` / `All` like
+;; `lambda` keeps the head together with its first operand on a wrapped
+;; type, instead of orphaning the arrow on its own line.
+(define pretty-type-columns 66)
+(define pretty-type-style-table
+  (pretty-print-extend-style-table #f '(-> => All) '(lambda lambda lambda)))
+(define (format-pretty-datum d)
+  (define s
+    (parameterize ([pretty-print-current-style-table pretty-type-style-table])
+      (pretty-format d pretty-type-columns #:mode 'write)))
+  (if (and (positive? (string-length s))
+           (char=? (string-ref s (sub1 (string-length s))) #\newline))
+      (substring s 0 (sub1 (string-length s)))
+      s))
+
+;; The i-th display name: a, b, …, z, a1, b1, ….
+(define (display-tvar-name i)
+  (if (< i 26)
+      (string->symbol (string (integer->char (+ (char->integer #\a) i))))
+      (string->symbol
+       (format "~a~a"
+               (integer->char (+ (char->integer #\a) (modulo i 26)))
+               (quotient i 26)))))
+
+;; Free type-variable names across `ts`, in left-to-right first-occurrence
+;; order.  Encounter order (rather than sorting by internal name) gives
+;; contiguous letters that start at `a` in the first type, while a
+;; variable shared between types still maps to a single letter.  Bound
+;; tvars are excluded (they are not in the free set computed by
+;; `type-vars`).
+(define (ordered-free-vars ts)
+  (define freeset
+    (for/fold ([acc (seteq)]) ([t (in-list ts)])
+      (set-union acc (type-vars t))))
+  (define seen (make-hasheq))
+  (define out '())
+  (define (walk t)
+    (match t
+      [(tvar a)
+       (when (and (set-member? freeset a) (not (hash-has-key? seen a)))
+         (hash-set! seen a #t)
+         (set! out (cons a out)))]
+      [(tcon _) (void)]
+      [(tapp h args) (walk h) (for-each walk args)]
+      [(qual cs body) (for-each walk cs) (walk body)]
+      [(tforall _ body) (walk body)]
+      [(pred _ args) (for-each walk args)]))
+  (for-each walk ts)
+  (reverse out))
+
+;; Build the display substitution: i-th free var (in order) → i-th letter.
+(define (display-subst ordered-vars)
+  (for/fold ([s empty-subst]) ([old (in-list ordered-vars)] [i (in-naturals)])
+    (subst-extend s old (tvar (display-tvar-name i)))))
+
+;; Rename the free tvars of every type in `ts` with ONE shared
+;; substitution, then flatten + format each.  Sharing matters for an
+;; expected/got pair: a variable common to both reads as the same letter
+;; on both sides.
+(define (format-types ts)
+  (define σ (display-subst (ordered-free-vars ts)))
+  (for/list ([t (in-list ts)])
+    (format-pretty-datum (type->pretty-datum (apply-subst σ t)))))
+
+(define (format-type t)
+  (car (format-types (list t))))
+
+;; Render a type scheme for diagnostics, mirroring `scheme->datum`'s
+;; `(All …)` wrapper but with nice names + flattened arrows.  The
+;; quantified binders are renamed in lock-step with the body.
+(define (format-scheme sch)
+  (match sch
+    [(scheme '() body) (format-type body)]
+    [(scheme vs body)
+     (define order (ordered-free-vars (list body)))
+     (define σ (display-subst order))
+     (define (renamed v)
+       (cond [(subst-ref σ v) => tvar-name] [else v]))
+     (format-pretty-datum
+      `(All ,(map renamed vs) ,(type->pretty-datum (apply-subst σ body))))]))
+
+;; Same shared renaming, for class-constraint predicates.
+(define (format-preds ps)
+  (define σ (display-subst (ordered-free-vars ps)))
+  (for/list ([p (in-list ps)])
+    (format-pretty-datum (pred->pretty-datum (apply-subst σ p)))))
+
+(define (format-pred p)
+  (car (format-preds (list p))))

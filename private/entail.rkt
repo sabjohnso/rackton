@@ -180,10 +180,10 @@
        [(> (length maximal) 1)
         (raise
          (exn:fail
-          (format "overlapping instances for ~s: ~s"
-                  (pred->datum target)
+          (format "overlapping instances for ~a: ~s"
+                  (format-pred target)
                   (for/list ([m (in-list maximal)])
-                    (pred->datum (instance-info-head m))))
+                    (pred->pretty-datum (instance-info-head m))))
           (current-continuation-marks)))]
        [else (car maximal)])]))
 
@@ -253,11 +253,11 @@
              (cond
                [(and (not (has-tvar? (car args)))
                      (not (has-tvar? (cadr args))))
+                (match-define (list l r)
+                  (format-types (list (car args) (cadr args))))
                 (raise
                  (exn:fail
-                  (format "type-equality fails: ~s ≠ ~s"
-                          (type->datum (car args))
-                          (type->datum (cadr args)))
+                  (format "type-equality fails: ~a ≠ ~a" l r)
                   (current-continuation-marks)))]
                [else (loop (cdr ps) (cons p acc))])])]
          [(in-hnf? p)
@@ -286,13 +286,13 @@
                (format "\n  available ~s instances: ~s"
                        cls
                        (for/list ([inst (in-list available)])
-                         (pred->datum (instance-info-head inst))))]))
+                         (pred->pretty-datum (instance-info-head inst))))]))
           (define derive-hint
             (deriving-suggestion env cls (pred-args p)))
           (raise
            (exn:fail
-            (format "no instance for ~s~a~a"
-                    (pred->datum p) avail-msg derive-hint)
+            (format "no instance for ~a~a~a"
+                    (format-pred p) avail-msg derive-hint)
             (current-continuation-marks)))])])))
 
 ;; Suggest `#:deriving Class` when (a) Class is one of

@@ -26,9 +26,14 @@
 (struct exn:fail:unify exn:fail (reason left right) #:transparent)
 
 (define (raise-unify! reason left right)
+  ;; The human-readable message gets the diagnostic treatment (shared
+  ;; tvar renaming, flattened arrows); the structured `left`/`right`
+  ;; fields keep the raw types for programmatic consumers.
+  (define-values (l r)
+    (let ([ss (format-types (list left right))])
+      (values (car ss) (cadr ss))))
   (raise (exn:fail:unify
-          (format "cannot unify ~s with ~s (~a)"
-                  (type->datum left) (type->datum right) reason)
+          (format "cannot unify ~a with ~a (~a)" l r reason)
           (current-continuation-marks)
           reason left right)))
 
