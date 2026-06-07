@@ -84,6 +84,14 @@ Immutable byte strings (Racket's @racket[bytes?]).  Literals like
 @racket[#"hello"] have type @racket[Bytes].  Instances: @racket[Eq],
 @racket[Show].}
 
+@defidform[#:kind "type" Symbol]{
+
+Interned symbols (Racket's @racket[symbol?]).  A @racket[Symbol]
+literal is written as a quoted identifier, like @racket['foo].
+Convert to and from text with @racket[symbol->string] and
+@racket[string->symbol].  Instances: @racket[Eq], @racket[Ord],
+@racket[Show].}
+
 @defidform[#:kind "type & constructor" Unit]{
 
 A nullary type with a single value; the type and its sole constructor

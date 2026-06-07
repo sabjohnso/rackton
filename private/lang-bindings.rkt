@@ -91,7 +91,7 @@
 ;; (erased types, or distinct ctor names like Maybe/List) get a stub.
 (define-rackton-types
   ;; Primitive types
-  Integer Float Rational Complex Boolean String Char Bytes
+  Integer Float Rational Complex ComplexExact Boolean String Char Bytes Symbol
   ;; Sum / product types (distinct ctor names)
   Maybe List Either
   ;; IO, refs, concurrency

@@ -46,15 +46,22 @@ equality and display instances:
           (list @racket[Integer]  "arbitrary-precision integer (42)")
           (list @racket[Float]    "inexact real (3.14)")
           (list @racket[Rational] "exact non-integer rational")
-          (list @racket[Complex]  "complex number")
+          (list @racket[Complex]  "inexact complex number (3.0+4.0i)")
+          (list @racket[ComplexExact] "exact complex number (3+4i)")
           (list @racket[Boolean]  "#t or #f")
           (list @racket[String]   "immutable string (\"hello\")")
           (list @racket[Char]     "Unicode code point (#\\A)")
-          (list @racket[Bytes]    "immutable byte string (#\"hi\")"))]
+          (list @racket[Bytes]    "immutable byte string (#\"hi\")")
+          (list @racket[Symbol]   "quoted identifier ('foo)")
+          (list @racket[Unit]     "the one-value type (Unit)"))]
 
 A numeric literal with a fractional part or exponent
 (@racket[3.14], @racket[1e10]) is @racket[Float]; bare integer literals
 are @racket[Integer].
+
+For each type's full set of instances, its literal syntax, and the
+operations that build and consume it, see
+@secref["ref-primitive-types" #:doc '(lib "rackton/scribblings/reference/rackton-reference.scrbl")].
 
 @section{Type signatures and inference}
 

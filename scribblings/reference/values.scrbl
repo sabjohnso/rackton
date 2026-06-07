@@ -177,6 +177,20 @@ UTF-8 encode.}
 
 UTF-8 decode.  Returns @racket[None] on invalid bytes.}
 
+@section[#:tag "symbols"]{Symbols}
+
+In addition to the @racket[Eq] / @racket[Ord] / @racket[Show] instances,
+the prelude converts between @racket[Symbol] and @racket[String]:
+
+@defproc[(symbol->string [s Symbol]) String]{
+
+The name of the symbol @racket[s] as text.}
+
+@defproc[(string->symbol [s String]) Symbol]{
+
+Interns @racket[s], returning the symbol with that name.  Inverse of
+@racket[symbol->string].}
+
 @section[#:tag "lists"]{Lists}
 
 The @racket[List] type's @racket[Functor] / @racket[Monad] /
