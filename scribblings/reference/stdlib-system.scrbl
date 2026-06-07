@@ -79,12 +79,15 @@ System.Exit: terminate the process with a status code. @racket[ExitCode] is
 a plain Rackton data type, and the lone runtime primitive
 @racket[exit-with-code] is reached via @racket[foreign].
 
-@defidform[#:kind "type" ExitCode]{A process exit status.
-  @deftogether[(@defidform[#:kind "constructor" ExitSuccess]
-                @defidform[#:kind "constructor" ExitFailure])]{
-    @racket[ExitSuccess : ExitCode] is status 0;
-    @racket[ExitFailure : (-> Integer ExitCode)] is status @racket[n],
-    conventionally non-zero.}}
+@deftogether[(
+@defform[#:kind "type" #:id ExitCode #:literals (data ExitSuccess ExitFailure Integer)
+         (data ExitCode
+           ExitSuccess
+           (ExitFailure Integer))]
+@defthing[#:kind "constructor" ExitSuccess ExitCode]
+@defthing[#:kind "constructor" ExitFailure (-> Integer ExitCode)])]{A process
+  exit status.  @racket[ExitSuccess] is status 0; @racket[ExitFailure] is status
+  @racket[n], conventionally non-zero.}
 
 @defproc[(exit-with-code [n Integer]) (IO a)]{The host primitive: terminate
 the process with raw status code @racket[n]. Never returns, so the result
@@ -126,14 +129,17 @@ standard-stream conveniences @racket[print], @racket[println], and
 @defidform[#:kind "type" Handle]{An opaque file or stream handle backed by a
 host port.}
 
-@defidform[#:kind "type" IOMode]{The mode a file is opened in (Haskell's
-@tt{IOMode}, minus @tt{ReadWriteMode}).
-  @deftogether[(@defidform[#:kind "constructor" ReadMode]
-                @defidform[#:kind "constructor" WriteMode]
-                @defidform[#:kind "constructor" AppendMode])]{
-    @racket[ReadMode : (IOMode)] / @racket[WriteMode : (IOMode)] /
-    @racket[AppendMode : (IOMode)] — open for reading, (truncating) writing, or
-    appending respectively.}}
+@deftogether[(
+@defform[#:kind "type" #:id IOMode #:literals (data ReadMode WriteMode AppendMode)
+         (data IOMode
+           ReadMode
+           WriteMode
+           AppendMode)]
+@defthing[#:kind "constructor" ReadMode IOMode]
+@defthing[#:kind "constructor" WriteMode IOMode]
+@defthing[#:kind "constructor" AppendMode IOMode])]{The mode a file is opened in
+  (Haskell's @tt{IOMode}, minus @tt{ReadWriteMode}): open for reading,
+  (truncating) writing, or appending respectively.}
 
 @deftogether[(@defthing[stdin Handle]
               @defthing[stdout Handle]
@@ -205,12 +211,13 @@ This module requires @racket[rackton/data/bits].
 @defproc[(random-r-float [lo Float] [hi Float]) (IO Float)]{
   A uniform @racket[Float] in @tt{[lo hi]}.}
 
-@defidform[#:kind "type & constructor" StdGen]{
+@deftogether[(
+@defform[#:kind "type & constructor" #:link-target? #f #:id StdGen #:literals (data Integer)
+         (data StdGen
+           (StdGen Integer Integer))]
+@defthing[#:kind "type & constructor" StdGen (-> Integer (-> Integer StdGen))])]{
   A pure, splittable SplitMix64 generator carrying a seed and an odd
-  gamma.
-  
-    @racket[StdGen : (-> Integer (-> Integer StdGen))] — build a
-    generator from a seed and a gamma.}
+  gamma, built from a seed and a gamma.}
 
 @defthing[sm-mod Integer]{
   @racket[2^64], the modulus that masks all SplitMix arithmetic.}

@@ -14,16 +14,21 @@ aborting on the first failure. Assertions form a @racket[Semigroup] where the
 first failure wins, and @racket[pass] is the identity element (exported as a
 plain value so it resolves across module boundaries).
 
-@defidform[#:kind "type" CheckResult]{The outcome of a single check.
-  @deftogether[(@defidform[#:kind "constructor" CheckPass]
-                @defidform[#:kind "constructor" CheckFail])]{
-    @racket[CheckPass : (CheckResult)] / @racket[CheckFail : (-> String CheckResult)]
-    — a passing result, or a failure carrying a message.}}
+@deftogether[(
+@defform[#:kind "type" #:id CheckResult #:literals (data CheckPass CheckFail String)
+         (data CheckResult
+           CheckPass
+           (CheckFail String))]
+@defthing[#:kind "constructor" CheckPass CheckResult]
+@defthing[#:kind "constructor" CheckFail (-> String CheckResult)])]{The outcome
+  of a single check: a passing result, or a failure carrying a message.}
 
-@defidform[#:kind "type & constructor" Assertion]{A check result wrapped as a value; forms a
-  @racket[Semigroup] where the first failure wins.
-  
-    @racket[Assertion : (-> CheckResult Assertion)] — wrap a @racket[CheckResult].}
+@deftogether[(
+@defform[#:kind "type & constructor" #:link-target? #f #:id Assertion #:literals (data CheckResult)
+         (data Assertion
+           (Assertion CheckResult))]
+@defthing[#:kind "type & constructor" Assertion (-> CheckResult Assertion)])]{A check result wrapped as a value; forms a
+  @racket[Semigroup] where the first failure wins.}
 
 @defproc[(assertion-result [a Assertion]) CheckResult]{Unwrap an assertion to its underlying @racket[CheckResult].}
 
@@ -51,17 +56,19 @@ generated value with a lazy stream of progressively smaller shrink candidates,
 and a @racket[Gen] maps a size and a seed to such a tree, so every generator
 shrinks for free with no separate shrink method.
 
-@defidform[#:kind "type & constructor" Tree]{A generated value together with a lazy stream of
-  recursively-smaller shrink candidates.
-  
-    @racket[Tree : (-> a (-> (Lazy (Stream (Tree a))) (Tree a)))] — a value paired
-    with the lazy stream of its shrink trees.}
+@deftogether[(
+@defform[#:kind "type & constructor" #:link-target? #f #:id Tree #:literals (data Lazy Stream)
+         (data (Tree a)
+           (Tree a (Lazy (Stream (Tree a)))))]
+@defthing[#:kind "type & constructor" Tree (-> a (-> (Lazy (Stream (Tree a))) (Tree a)))])]{A generated value together with a lazy stream of
+  recursively-smaller shrink candidates.}
 
-@defidform[#:kind "type & constructor" Gen]{A generator: a function from a size and a
-  @racket[Seed] to a shrink @racket[Tree].
-  
-    @racket[Gen : (-> (-> Integer (-> Seed (Tree a))) (Gen a))] — wraps the
-    size-and-seed-to-tree function.}
+@deftogether[(
+@defform[#:kind "type & constructor" #:link-target? #f #:id Gen #:literals (data Integer Seed Tree ->)
+         (data (Gen a)
+           (Gen (-> Integer (-> Seed (Tree a)))))]
+@defthing[#:kind "type & constructor" Gen (-> (-> Integer (-> Seed (Tree a))) (Gen a))])]{A generator: a function from a size and a
+  @racket[Seed] to a shrink @racket[Tree].}
 
 @defproc[(run-gen [g (Gen a)]) (-> Integer (-> Seed (Tree a)))]{Unwraps a
   generator to its underlying size-and-seed function.}
@@ -209,9 +216,11 @@ a printable starting @racket[Integer] seed. The state is a 64-bit LCG
 (the SplitMix/PCG multiplier and odd increment), adequate for test-case
 generation rather than statistical rigor.
 
-@defidform[#:kind "type & constructor" Seed]{A 64-bit LCG state kept in @tt{[0, 2^64)}.
-  
-    @racket[Seed : (-> Integer Seed)] — wraps the raw 64-bit state integer.}
+@deftogether[(
+@defform[#:kind "type & constructor" #:link-target? #f #:id Seed #:literals (data Integer)
+         (data Seed
+           (Seed Integer))]
+@defthing[#:kind "type & constructor" Seed (-> Integer Seed)])]{A 64-bit LCG state kept in @tt{[0, 2^64)}, wrapping the raw 64-bit state integer.}
 
 @defproc[(seed-from [n Integer]) Seed]{Builds a seed from any printable @racket[Integer], the user-visible handle.}
 
@@ -237,18 +246,22 @@ re-exports the generator interface from @racket[rackton/unit/gen] (including
 @racket[Gen], @racket[Tree], @racket[run-gen], @racket[gen-integer], and
 friends) so consumers can require it alone.
 
-@defidform[#:kind "type & constructor" Property]{An opaque computation that quantifies over a
-hidden element type, parameterized by a test count and a start seed.
-  
-    @racket[Property : (-> (-> Integer (-> Integer PropOutcome)) Property)] —
-    wraps a function from number of tests and start seed to a @racket[PropOutcome].}
+@deftogether[(
+@defform[#:kind "type & constructor" #:link-target? #f #:id Property #:literals (data Integer PropOutcome ->)
+         (data Property
+           (Property (-> Integer (-> Integer PropOutcome))))]
+@defthing[#:kind "type & constructor" Property (-> (-> Integer (-> Integer PropOutcome)) Property)])]{An opaque computation that quantifies over a
+hidden element type, parameterized by a test count and a start seed.}
 
-@defidform[#:kind "type" PropOutcome]{The result of running a property.
-  @deftogether[(@defidform[#:kind "constructor" PropPassed]
-                @defidform[#:kind "constructor" PropFailed])]{
-    @racket[PropPassed : (-> Integer PropOutcome)] carries the number of cases
-    that passed; @racket[PropFailed : (-> String (-> Integer PropOutcome))]
-    carries the shown minimal counterexample and the start seed.}}
+@deftogether[(
+@defform[#:kind "type" #:id PropOutcome #:literals (data PropPassed PropFailed String Integer)
+         (data PropOutcome
+           (PropPassed Integer)
+           (PropFailed String Integer))]
+@defthing[#:kind "constructor" PropPassed (-> Integer PropOutcome)]
+@defthing[#:kind "constructor" PropFailed (-> String (-> Integer PropOutcome))])]{The result of running a property.  @racket[PropPassed] carries the number of cases
+    that passed; @racket[PropFailed] carries the shown minimal counterexample and
+    the start seed.}
 
 @defproc[(for-all-gen [render (-> a String)] [g (Gen a)] [pred (-> a Boolean)]) Property]{
 Builds a property from a generator, a predicate, and an explicit renderer for
@@ -276,26 +289,34 @@ and returns a @racket[Summary] of counts. This module also re-exports the
 @racket[rackton/unit/property], @racket[rackton/unit/gen], and @racket[rackton/unit/check]
 surfaces so a consumer requires only this one module.
 
-@defidform[#:kind "type" Outcome]{
-  What a single test leaf carries.
-  @deftogether[(@defidform[#:kind "constructor" Unit-test]
-                @defidform[#:kind "constructor" Prop-test])]{
-    @racket[Unit-test : (-> Assertion Outcome)] wraps an already-evaluated assertion;
-    @racket[Prop-test : (-> Property Outcome)] wraps a property the runner executes
-    inside @racket[try].}}
+@deftogether[(
+@defform[#:kind "type" #:id Outcome #:literals (data Unit-test Prop-test Assertion Property)
+         (data Outcome
+           (Unit-test Assertion)
+           (Prop-test Property))]
+@defthing[#:kind "constructor" Unit-test (-> Assertion Outcome)]
+@defthing[#:kind "constructor" Prop-test (-> Property Outcome)])]{
+  What a single test leaf carries.  @racket[Unit-test] wraps an already-evaluated
+  assertion; @racket[Prop-test] wraps a property the runner executes inside
+  @racket[try].}
 
-@defidform[#:kind "type" Test]{
-  An immutable tree of named leaves and groups.
-  @deftogether[(@defidform[#:kind "constructor" TLeaf]
-                @defidform[#:kind "constructor" TGroup])]{
-    @racket[TLeaf : (-> String (-> Outcome Test))] is one named test;
-    @racket[TGroup : (-> String (-> (List Test) Test))] is a named group of child tests.}}
+@deftogether[(
+@defform[#:kind "type" #:link-target? #f #:id Test #:literals (data TLeaf TGroup String Outcome List)
+         (data Test
+           (TLeaf String Outcome)
+           (TGroup String (List Test)))]
+@defidform[#:kind "type" Test]
+@defthing[#:kind "constructor" TLeaf (-> String (-> Outcome Test))]
+@defthing[#:kind "constructor" TGroup (-> String (-> (List Test) Test))])]{
+  An immutable tree of named leaves and groups.}
 
-@defidform[#:kind "type & constructor" Summary]{
-  A pair of pass/fail counts produced by the runner.
-  
-    @racket[Summary : (-> Integer (-> Integer Summary))] holds the passed count and the
-    failed count, in that order.}
+@deftogether[(
+@defform[#:kind "type & constructor" #:link-target? #f #:id Summary #:literals (data Integer)
+         (data Summary
+           (Summary Integer Integer))]
+@defthing[#:kind "type & constructor" Summary (-> Integer (-> Integer Summary))])]{
+  A pair of pass/fail counts produced by the runner, holding the passed count and
+  the failed count, in that order.}
 
 @defproc[(it [name String] [a Assertion]) Test]{Build a unit-test leaf from an
 already-evaluated assertion.}

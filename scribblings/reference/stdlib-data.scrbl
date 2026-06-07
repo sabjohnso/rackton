@@ -210,18 +210,19 @@ helpers in @racketmodname[rackton/data/either], this module also defines
 @racket[Result]'s own class instances; @racket[result->either] /
 @racket[either->result] bridge to the prelude coproduct.
 
-@defidform[#:kind "type" Result]{
+@deftogether[(
+@defform[#:kind "type" #:id Result #:literals (data Err Ok)
+         (data (Result e a)
+           (Err e)
+           (Ok a))]
+@defthing[#:kind "constructor" Err (-> e (Result e a))]
+@defthing[#:kind "constructor" Ok (-> a (Result e a))])]{
 
 Tagged-union for fallible computations.  @racket[(Result e a)] is either an
 @racket[Err] of type @racket[e] or an @racket[Ok] of type @racket[a].
 Instances: @racket[Functor], @racket[Applicative], @racket[Monad]
 (over the @racket[a]; @racket[e] is fixed per chain), @racket[Bifunctor],
-@racket[Eq], @racket[Show].
-
-@deftogether[(@defidform[#:kind "constructor" Err]
-              @defidform[#:kind "constructor" Ok])]{
-
-@racket[Err : (-> e (Result e a))] / @racket[Ok : (-> a (Result e a))].}}
+@racket[Eq], @racket[Show].}
 
 @defproc[(result [f (-> e c)] [g (-> a c)] [r (Result e a)]) c]{
   Eliminator: applies @racket[f] to an @racket[Err] payload and @racket[g] to
@@ -337,14 +338,19 @@ calling this directly. Provided via @tt{rackton/private/lazy-runtime}.}
 first time and caching the result thereafter. Provided via
 @tt{rackton/private/lazy-runtime}.}
 
-@defidform[#:kind "type" Stream]{A lazy cons-list of type
+@deftogether[(
+@defform[#:kind "type" #:link-target? #f #:id Stream #:literals (data SNil SCons Lazy)
+         (data (Stream a)
+           SNil
+           (SCons a (Lazy (Stream a))))]
+@defidform[#:kind "type" Stream]
+@defthing[#:kind "constructor" SNil (Stream a)]
+@defthing[#:kind "constructor" SCons (-> a (-> (Lazy (Stream a)) (Stream a)))])]{
+A lazy cons-list of type
 @racket[(Stream a)]: the tail of @racket[SCons] is a @racket[Lazy], so a
 producer can be infinite while a consumer forces only the prefix it needs.
-@deftogether[(@defidform[#:kind "constructor" SNil]
-              @defidform[#:kind "constructor" SCons])]{
-  @racket[SNil : (Stream a)] is the empty stream;
-  @racket[SCons : (-> a (-> (Lazy (Stream a)) (Stream a)))] prepends an
-  element with a deferred tail.}}
+@racket[SNil] is the empty stream; @racket[SCons] prepends an element with a
+deferred tail.}
 
 @defproc[(stream-head [s (Stream a)]) (Maybe a)]{The first element, if any.}
 
@@ -392,20 +398,30 @@ The instances supplied are @racket[Prod] for @racket[LPair],
 @racket[Arrow], @racket[ArrowChoice], @racket[ArrowApply], and
 @racket[ArrowLoop] for @racket[LFun].
 
-@defidform[#:kind "type & constructor" LFun]{A lazy-function arrow:
+@deftogether[(
+@defform[#:kind "type & constructor" #:link-target? #f #:id LFun #:literals (data Lazy ->)
+         (data (LFun a b)
+           (LFun (-> (Lazy a) (Lazy b))))]
+@defthing[#:kind "type & constructor" LFun (-> (-> (Lazy a) (Lazy b)) (LFun a b))])]{A lazy-function arrow:
 @racket[(LFun (-> (Lazy a) (Lazy b)))] wraps a function on lazy values.}
 
-@defidform[#:kind "type & constructor" LPair]{The lazy product:
+@deftogether[(
+@defform[#:kind "type & constructor" #:link-target? #f #:id LPair #:literals (data Lazy)
+         (data (LPair a b)
+           (LPair (Lazy a) (Lazy b)))]
+@defthing[#:kind "type & constructor" LPair (-> (Lazy a) (-> (Lazy b) (LPair a b)))])]{The lazy product:
 @racket[(LPair (Lazy a) (Lazy b))] — both components are deferred, so
 projecting one never forces the other (the feedback channel of a loop).}
 
-@defidform[#:kind "type" LEither]{The lazy coproduct, dual to
-@racket[LPair], with constructors @racket[LLeft] / @racket[LRight].}
-
 @deftogether[(
-  @defproc[(LLeft  [la (Lazy a)]) (LEither a b)]
-  @defproc[(LRight [lb (Lazy b)]) (LEither a b)])]{
-The left and right injections of @racket[LEither].}
+@defform[#:kind "type" #:id LEither #:literals (data LLeft LRight Lazy)
+         (data (LEither a b)
+           (LLeft (Lazy a))
+           (LRight (Lazy b)))]
+@defthing[#:kind "constructor" LLeft (-> (Lazy a) (LEither a b))]
+@defthing[#:kind "constructor" LRight (-> (Lazy b) (LEither a b))])]{The lazy
+coproduct, dual to @racket[LPair].  @racket[LLeft] and @racket[LRight] are the
+left and right injections.}
 
 @defproc[(run-lfun [lf (LFun a b)] [x a]) b]{Run a lazy arrow on a strict
 input and force the result.}
@@ -452,13 +468,14 @@ getter/setter pair focusing on exactly one part), @racket[Prism]
 any module using @racket[#:deriving Lens]/@racket[#:deriving Prism] must
 require this module too.
 
-@defidform[#:kind "type & constructor" Lens]{
+@deftogether[(
+@defform[#:kind "type & constructor" #:link-target? #f #:id Lens #:literals (data ->)
+         (data (Lens s a)
+           (Lens (-> s a) (-> s (-> a s))))]
+@defthing[#:kind "type & constructor" Lens (-> (-> s a) (-> s (-> a s)) (Lens s a))])]{
   An optic packing a function to extract an @racket[a] from an @racket[s]
   and a function to inject a new @racket[a] back into an existing
-  @racket[s].
-  
-    @racket[Lens : (-> (-> s a) (-> (-> s (-> a s)) (Lens s a)))] — builds
-    a lens from a getter and a setter.}
+  @racket[s] (a getter and a setter).}
 
 @deftogether[(
 @defproc[(view [l (Lens s a)] [s s]) a]
@@ -473,11 +490,13 @@ require this module too.
 @defproc[(lens-compose [outer (Lens s a)] [inner (Lens a b)]) (Lens s b)]{
   Composes two lenses, focusing through @racket[outer] then @racket[inner].}
 
-@defidform[#:kind "type & constructor" Prism]{
-  An optic focusing on a single sum-type constructor.
-  
-    @racket[Prism : (-> (-> s (Maybe a)) (-> (-> a s) (Prism s a)))] —
-    builds a prism from a partial extractor and a constructor.}
+@deftogether[(
+@defform[#:kind "type & constructor" #:link-target? #f #:id Prism #:literals (data Maybe ->)
+         (data (Prism s a)
+           (Prism (-> s (Maybe a)) (-> a s)))]
+@defthing[#:kind "type & constructor" Prism (-> (-> s (Maybe a)) (-> a s) (Prism s a))])]{
+  An optic focusing on a single sum-type constructor, built from a partial
+  extractor and a constructor.}
 
 @deftogether[(
 @defproc[(preview [p (Prism s a)] [s s]) (Maybe a)]
@@ -487,11 +506,14 @@ require this module too.
   matches and @racket[None] otherwise; @racket[review] always succeeds,
   building the target constructor from @racket[a].}
 
-@defidform[#:kind "type & constructor" Traversal]{
-  An optic focusing on zero-or-more sub-parts.
-  
-    @racket[Traversal : (-> (-> s (List a)) (-> (-> (-> a a) (-> s s)) (Traversal s a)))]
-    — builds a traversal from a gatherer and a modifier.}
+@deftogether[(
+@defform[#:kind "type & constructor" #:link-target? #f #:id Traversal #:literals (data List ->)
+         (data (Traversal s a)
+           (Traversal (-> s (List a))
+                      (-> (-> a a) (-> s s))))]
+@defthing[#:kind "type & constructor" Traversal (-> (-> s (List a)) (-> (-> a a) (-> s s)) (Traversal s a))])]{
+  An optic focusing on zero-or-more sub-parts, built from a gatherer and a
+  modifier.}
 
 @deftogether[(
 @defproc[(to-list-of [t (Traversal s a)] [s s]) (List a)]
@@ -507,18 +529,31 @@ require this module too.
   Promotes a lens to a traversal with a single focus.}
 
 @deftogether[(
-@defidform[#:kind "type & constructor" Tuple3]
-@defidform[#:kind "type & constructor" Tuple4]
-@defidform[#:kind "type & constructor" Tuple5]
-@defidform[#:kind "type & constructor" Tuple6]
-@defidform[#:kind "type & constructor" Tuple7]
+@defform[#:kind "type & constructor" #:link-target? #f #:id Tuple3 #:literals (data)
+         (data (Tuple3 a b c)
+           (Tuple3 a b c))]
+@defthing[#:kind "type & constructor" Tuple3 (-> a (-> b (-> c (Tuple3 a b c))))]
+@defform[#:kind "type & constructor" #:link-target? #f #:id Tuple4 #:literals (data)
+         (data (Tuple4 a b c d)
+           (Tuple4 a b c d))]
+@defthing[#:kind "type & constructor" Tuple4 (-> a (-> b (-> c (-> d (Tuple4 a b c d)))))]
+@defform[#:kind "type & constructor" #:link-target? #f #:id Tuple5 #:literals (data)
+         (data (Tuple5 a b c d e)
+           (Tuple5 a b c d e))]
+@defthing[#:kind "type & constructor" Tuple5 (-> a (-> b (-> c (-> d (-> e (Tuple5 a b c d e))))))]
+@defform[#:kind "type & constructor" #:link-target? #f #:id Tuple6 #:literals (data)
+         (data (Tuple6 a b c d e f)
+           (Tuple6 a b c d e f))]
+@defthing[#:kind "type & constructor" Tuple6 (-> a (-> b (-> c (-> d (-> e (-> f (Tuple6 a b c d e f)))))))]
+@defform[#:kind "type & constructor" #:link-target? #f #:id Tuple7 #:literals (data)
+         (data (Tuple7 a b c d e f g)
+           (Tuple7 a b c d e f g))]
+@defthing[#:kind "type & constructor" Tuple7 (-> a (-> b (-> c (-> d (-> e (-> f (-> g (Tuple7 a b c d e f g))))))))]
 )]{
   Flat tuple focus types (arity 3 through 7) used as the focus of a
   multi-field @racket[#:deriving Prism]; arity 2 reuses the prelude's
   @racket[Pair]. Each derives @racket[Eq], @racket[Ord], and
-  @racket[Show].
-  Each constructor builds its corresponding tuple from its component
-  fields, e.g. @racket[Tuple3 : (-> a (-> b (-> c (Tuple3 a b c))))].}
+  @racket[Show].}
 
 
 @section{rackton/data/list}
@@ -670,11 +705,12 @@ total functions.
 A list guaranteed to have at least one element, so @racket[ne-head] and
 @racket[ne-tail] are total operations.
 
-@defidform[#:kind "type & constructor" NonEmpty]{A non-empty list of @racket[a]: a head element
-  together with a possibly-empty tail.
-  
-    @racket[NonEmpty : (-> a (-> (List a) (NonEmpty a)))] — pairs a head element
-    with a tail @racket[List].}
+@deftogether[(
+@defform[#:kind "type & constructor" #:link-target? #f #:id NonEmpty #:literals (data List)
+         (data (NonEmpty a)
+           (NonEmpty a (List a)))]
+@defthing[#:kind "type & constructor" NonEmpty (-> a (-> (List a) (NonEmpty a)))])]{A non-empty list of @racket[a]: a head element
+  together with a possibly-empty tail.}
 
 @defproc[(nonempty [h a] [t (List a)]) (NonEmpty a)]{Constructs a @racket[NonEmpty]
   from a head and a (possibly empty) tail.}
@@ -822,50 +858,68 @@ endomorphisms under @tt{.}), and the order-flipping wrapper
 (@racket[Dual]). Importing this module brings the @racket[Semigroup] and
 @racket[Monoid] instances for these types into scope.
 
-@defidform[#:kind "type & constructor" Sum]{The additive monoid over @racket[Integer], whose
-  @racket[mappend] adds and whose @racket[mempty] is @racket[(Sum 0)].
-  
-    @racket[Sum : (-> Integer Sum)] — wraps an integer.}
+@deftogether[(
+@defform[#:kind "type & constructor" #:link-target? #f #:id Sum #:literals (newtype Integer)
+         (newtype Sum
+           (Sum Integer))]
+@defthing[#:kind "type & constructor" Sum (-> Integer Sum)])]{
+  The additive monoid over @racket[Integer], whose
+  @racket[mappend] adds and whose @racket[mempty] is @racket[(Sum 0)].}
 
 @defproc[(get-sum [s Sum]) Integer]{Unwraps a @racket[Sum] to its integer.}
 
-@defidform[#:kind "type & constructor" Product]{The multiplicative monoid over @racket[Integer],
+@deftogether[(
+@defform[#:kind "type & constructor" #:link-target? #f #:id Product #:literals (newtype Integer)
+         (newtype Product
+           (Product Integer))]
+@defthing[#:kind "type & constructor" Product (-> Integer Product)])]{
+  The multiplicative monoid over @racket[Integer],
   whose @racket[mappend] multiplies and whose @racket[mempty] is
-  @racket[(Product 1)].
-  
-    @racket[Product : (-> Integer Product)] — wraps an integer.}
+  @racket[(Product 1)].}
 
 @defproc[(get-product [p Product]) Integer]{Unwraps a @racket[Product] to its integer.}
 
-@defidform[#:kind "type" All]{The conjunction monoid over @racket[Boolean], whose
+@deftogether[(
+@defform[#:kind "type" #:id All #:literals (newtype MkAll Boolean)
+         (newtype All
+           (MkAll Boolean))]
+@defthing[#:kind "constructor" MkAll (-> Boolean All)])]{
+  The conjunction monoid over @racket[Boolean], whose
   @racket[mappend] is logical @tt{and} and whose @racket[mempty] is
-  @racket[(MkAll #t)].
-  @deftogether[(@defidform[#:kind "constructor" MkAll])]{
-    @racket[MkAll : (-> Boolean All)] — wraps a boolean.}}
+  @racket[(MkAll #t)].}
 
 @defproc[(get-all [a All]) Boolean]{Unwraps an @racket[All] to its boolean.}
 
-@defidform[#:kind "type & constructor" Any]{The disjunction monoid over @racket[Boolean], whose
+@deftogether[(
+@defform[#:kind "type & constructor" #:link-target? #f #:id Any #:literals (newtype Boolean)
+         (newtype Any
+           (Any Boolean))]
+@defthing[#:kind "type & constructor" Any (-> Boolean Any)])]{
+  The disjunction monoid over @racket[Boolean], whose
   @racket[mappend] is logical @tt{or} and whose @racket[mempty] is
-  @racket[(Any #f)].
-  
-    @racket[Any : (-> Boolean Any)] — wraps a boolean.}
+  @racket[(Any #f)].}
 
 @defproc[(get-any [a Any]) Boolean]{Unwraps an @racket[Any] to its boolean.}
 
-@defidform[#:kind "type & constructor" Endo]{The composition monoid of endomorphisms
+@deftogether[(
+@defform[#:kind "type & constructor" #:link-target? #f #:id Endo #:literals (newtype ->)
+         (newtype (Endo a)
+           (Endo (-> a a)))]
+@defthing[#:kind "type & constructor" Endo (-> (-> a a) (Endo a))])]{
+  The composition monoid of endomorphisms
   @racket[(-> a a)], whose @racket[mappend] composes (left after right) and whose
-  @racket[mempty] is the identity function.
-  
-    @racket[Endo : (-> (-> a a) (Endo a))] — wraps a function from a type to itself.}
+  @racket[mempty] is the identity function.}
 
 @defproc[(app-endo [e (Endo a)]) (-> a a)]{Unwraps an @racket[Endo] to its function.}
 
-@defidform[#:kind "type & constructor" Dual]{The order-flipping wrapper: @racket[mappend] applies
+@deftogether[(
+@defform[#:kind "type & constructor" #:link-target? #f #:id Dual #:literals (newtype)
+         (newtype (Dual a)
+           (Dual a))]
+@defthing[#:kind "type & constructor" Dual (-> a (Dual a))])]{
+  The order-flipping wrapper: @racket[mappend] applies
   the inner type's @racket[mappend] with its arguments flipped, and @racket[mempty]
-  lifts the inner monoid's identity.
-  
-    @racket[Dual : (-> a (Dual a))] — wraps an inner value.}
+  lifts the inner monoid's identity.}
 
 @defproc[(get-dual [d (Dual a)]) a]{Unwraps a @racket[Dual] to its inner value.}
 
@@ -925,25 +979,33 @@ first, or last operand. The @racket[mappend] operation itself and the
 @racket[Max] carry only @racket[Semigroup] (no @racket[Monoid], since that would need
 a bounded identity Rackton's numeric types don't provide).
 
-@defidform[#:kind "type & constructor" Min]{
-  Selection newtype whose @racket[Semigroup] instance keeps the smaller operand.
-  
-    @racket[Min : (-> a (Min a))] — wrap a value for min-selection.}
+@deftogether[(
+@defform[#:kind "type & constructor" #:link-target? #f #:id Min #:literals (newtype)
+         (newtype (Min a)
+           (Min a))]
+@defthing[#:kind "type & constructor" Min (-> a (Min a))])]{
+  Selection newtype whose @racket[Semigroup] instance keeps the smaller operand.}
 
-@defidform[#:kind "type & constructor" Max]{
-  Selection newtype whose @racket[Semigroup] instance keeps the larger operand.
-  
-    @racket[Max : (-> a (Max a))] — wrap a value for max-selection.}
+@deftogether[(
+@defform[#:kind "type & constructor" #:link-target? #f #:id Max #:literals (newtype)
+         (newtype (Max a)
+           (Max a))]
+@defthing[#:kind "type & constructor" Max (-> a (Max a))])]{
+  Selection newtype whose @racket[Semigroup] instance keeps the larger operand.}
 
-@defidform[#:kind "type & constructor" First]{
-  Selection newtype whose @racket[Semigroup] instance keeps the first operand.
-  
-    @racket[First : (-> a (First a))] — wrap a value for first-selection.}
+@deftogether[(
+@defform[#:kind "type & constructor" #:link-target? #f #:id First #:literals (newtype)
+         (newtype (First a)
+           (First a))]
+@defthing[#:kind "type & constructor" First (-> a (First a))])]{
+  Selection newtype whose @racket[Semigroup] instance keeps the first operand.}
 
-@defidform[#:kind "type & constructor" Last]{
-  Selection newtype whose @racket[Semigroup] instance keeps the last operand.
-  
-    @racket[Last : (-> a (Last a))] — wrap a value for last-selection.}
+@deftogether[(
+@defform[#:kind "type & constructor" #:link-target? #f #:id Last #:literals (newtype)
+         (newtype (Last a)
+           (Last a))]
+@defthing[#:kind "type & constructor" Last (-> a (Last a))])]{
+  Selection newtype whose @racket[Semigroup] instance keeps the last operand.}
 
 @defproc[(get-min [m (Min a)]) a]{Unwrap the value inside a @racket[Min].}
 @defproc[(get-max [m (Max a)]) a]{Unwrap the value inside a @racket[Max].}

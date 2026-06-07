@@ -109,13 +109,13 @@ and @racket[MonadError] instances for @racket[ExceptT], along with
 instances when @racket[ExceptT] is the outer transformer. @racket[ExceptT]
 over @tt{Identity} plays the role of a bare @racket[Except].
 
-@defidform[#:kind "type & constructor" ExceptT]{
+@deftogether[(
+@defform[#:kind "type & constructor" #:link-target? #f #:id ExceptT #:literals (newtype Result)
+         (newtype (ExceptT e m a)
+           (ExceptT (m (Result e a))))]
+@defthing[#:kind "type & constructor" ExceptT (-> (m (Result e a)) (ExceptT e m a))])]{
   The exception transformer, wrapping an inner-monad computation that yields a
-  @racket[Result].
-  
-    @racket[ExceptT : (-> (m (Result e a)) (ExceptT e m a))] — wrap an
-    @racket[m]-computation producing a @racket[Result] into an
-    @racket[ExceptT] action.}
+  @racket[Result].}
 
 @defproc[(run-except-t [e (ExceptT e m a)]) (m (Result e a))]{
   Unwrap an @racket[ExceptT] action to its underlying inner-monad computation
@@ -145,11 +145,13 @@ The (non-transformer) @racket[Env] (Reader) monad together with its
 plus @tt{MonadState}/@tt{MonadWriter}/@tt{MonadError} pass-through instances for
 @racket[EnvT].
 
-@defidform[#:kind "type & constructor" Env]{The reader monad: a computation that reads a
-shared environment @racket[r] to produce an @racket[a].
-  
-    @racket[Env : (-> (-> r a) (Env r a))] — wraps an environment-consuming
-    function.}
+@deftogether[(
+@defform[#:kind "type & constructor" #:link-target? #f #:id Env #:literals (newtype ->)
+         (newtype (Env r a)
+           (Env (-> r a)))]
+@defthing[#:kind "type & constructor" Env (-> (-> r a) (Env r a))])]{
+The reader monad: a computation that reads a
+shared environment @racket[r] to produce an @racket[a].}
 
 @defproc[(run-env [e (Env r a)]) (-> r a)]{Unwraps an @racket[Env] back into its
 underlying environment-consuming function.}
@@ -160,11 +162,13 @@ result.}
 @defproc[(local [f (-> r r)] [e (Env r a)]) (Env r a)]{Runs @racket[e] in an
 environment locally transformed by @racket[f].}
 
-@defidform[#:kind "type & constructor" EnvT]{The reader monad transformer: env-passing over an
-inner monad @racket[m].
-  
-    @racket[EnvT : (-> (-> r (m a)) (EnvT r m a))] — wraps a function from the
-    environment to an inner-monad action.}
+@deftogether[(
+@defform[#:kind "type & constructor" #:link-target? #f #:id EnvT #:literals (newtype ->)
+         (newtype (EnvT r m a)
+           (EnvT (-> r (m a))))]
+@defthing[#:kind "type & constructor" EnvT (-> (-> r (m a)) (EnvT r m a))])]{
+The reader monad transformer: env-passing over an
+inner monad @racket[m].}
 
 @defproc[(run-env-t [e (EnvT r m a)]) (-> r (m a))]{Unwraps an @racket[EnvT] back
 into its underlying environment-consuming function.}
@@ -190,11 +194,13 @@ Pure Rackton: the module regenerates its own runtime and provides the
 both, plus the @racket[StateT]-outer pass-through instances for
 @tt{MonadEnv}/@tt{MonadWriter}/@tt{MonadError}.
 
-@defidform[#:kind "type & constructor" State]{The state monad threading a value of type
-  @racket[s] through a computation that yields an @racket[a].
-  
-    @racket[State : (-> (-> s (Pair s a)) (State s a))] — wraps a
-    state-transition function.}
+@deftogether[(
+@defform[#:kind "type & constructor" #:link-target? #f #:id State #:literals (newtype Pair ->)
+         (newtype (State s a)
+           (State (-> s (Pair s a))))]
+@defthing[#:kind "type & constructor" State (-> (-> s (Pair s a)) (State s a))])]{
+  The state monad threading a value of type
+  @racket[s] through a computation that yields an @racket[a].}
 
 @defproc[(run-state [st (State s a)]) (-> s (Pair s a))]{Unwraps a
   @racket[State] action into its underlying state-transition function.}
@@ -214,11 +220,13 @@ both, plus the @racket[StateT]-outer pass-through instances for
 @defproc[(modify-state [f (-> s s)]) (State s Unit)]{Applies @racket[f]
   to the current state.}
 
-@defidform[#:kind "type & constructor" StateT]{The state monad transformer: state of
-  type @racket[s] layered over an inner monad @racket[m].
-  
-    @racket[StateT : (-> (-> s (m (Pair s a))) (StateT s m a))] — wraps a
-    state-transition function whose result lives in @racket[m].}
+@deftogether[(
+@defform[#:kind "type & constructor" #:link-target? #f #:id StateT #:literals (newtype Pair ->)
+         (newtype (StateT s m a)
+           (StateT (-> s (m (Pair s a)))))]
+@defthing[#:kind "type & constructor" StateT (-> (-> s (m (Pair s a))) (StateT s m a))])]{
+  The state monad transformer: state of
+  type @racket[s] layered over an inner monad @racket[m].}
 
 @defproc[(run-state-t [st (StateT s m a)]) (-> s (m (Pair s a)))]{Unwraps
   a @racket[StateT] action into its underlying state-transition function.}
@@ -255,13 +263,14 @@ outer transformer; the non-transformer @tt{Writer} role is served by
 @racket[WriterT] over @tt{Identity}, while the @tt{MonadWriter} class
 itself lives in the prelude.
 
-@defidform[#:kind "type & constructor" WriterT]{The writer-transformer type
+@deftogether[(
+@defform[#:kind "type & constructor" #:link-target? #f #:id WriterT #:literals (newtype Pair)
+         (newtype (WriterT w m a)
+           (WriterT (m (Pair w a))))]
+@defthing[#:kind "type & constructor" WriterT (-> (m (Pair w a)) (WriterT w m a))])]{
+  The writer-transformer type
   @racket[(WriterT w m a)], accumulating a log of type @racket[w] over the
-  inner monad @racket[m] around a result of type @racket[a].
-  
-    @racket[WriterT : (-> (m (Pair w a)) (WriterT w m a))] — wraps an
-    inner-monad computation that yields a @racket[(Pair w a)] of the
-    accumulated log and the result.}
+  inner monad @racket[m] around a result of type @racket[a].}
 
 @defproc[(run-writer-t [w (WriterT w m a)]) (m (Pair w a))]{Unwraps a
   @racket[WriterT], exposing the inner computation that produces the

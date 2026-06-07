@@ -74,8 +74,12 @@ escapes.
 
 Numeric.Natural: a @racket[newtype] over the prelude's @racket[Integer] constrained to non-negative values, carrying the @racket[Eq], @racket[Ord], @racket[Show], and @racket[Num] instances Haskell's @tt{Natural} has. Construction is checked and the partial @racket[Num] operations (subtraction below zero, negating a positive) @racket[panic] rather than wrap around.
 
-@defidform[#:kind "type & constructor" Natural]{The natural-number type, a checked wrapper over @racket[Integer] that never holds a negative value.
-  @racket[Natural : (-> Integer Natural)] — wraps an @racket[Integer]; construction is unchecked at this level, so prefer @racket[num-to-natural].}
+@deftogether[(
+@defform[#:kind "type & constructor" #:link-target? #f #:id Natural #:literals (newtype Integer)
+         (newtype Natural
+           (Natural Integer))]
+@defthing[#:kind "type & constructor" Natural (-> Integer Natural)])]{
+  The natural-number type, a checked wrapper over @racket[Integer] that never holds a negative value.  Direct construction is unchecked at this level, so prefer @racket[num-to-natural].}
 
 @defproc[(num-to-natural [n Integer]) (Maybe Natural)]{Builds a @racket[Natural] from an @racket[Integer], returning @racket[None] when @racket[n] is negative.}
 
