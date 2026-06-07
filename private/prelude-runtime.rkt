@@ -2008,7 +2008,7 @@
     (match ys
       [(Nil)          ""]
       [(Cons h (Nil)) (show h)]
-      [(Cons h t)     (string-append (show h) (string-append ", " (elems t)))]))
+      [(Cons h t)     (string-append (show h) (string-append " " (elems t)))]))
   (string-append "[" (string-append (elems xs) "]")))
 (register-instance-method! $dispatch:show '$ctor:Nil  list-show)
 (register-instance-method! $dispatch:show '$ctor:Cons list-show)
@@ -2016,8 +2016,8 @@
 (define (pair-show p)
   (match p
     [(Pair x y)
-     (string-append "(" (string-append (show x)
-                      (string-append ", " (string-append (show y) ")"))))]))
+     (string-append "[" (string-append (show x)
+                      (string-append " . " (string-append (show y) "]"))))]))
 (register-instance-method! $dispatch:show '$ctor:Pair pair-show)
 
 (define (either-show r)

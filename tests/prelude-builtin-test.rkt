@@ -19,6 +19,8 @@
 ;; Show
 (define show-int (show 42))
 (define show-bool (show #t))
+(define show-list (show (Cons 1 (Cons 2 (Cons 3 Nil)))))
+(define show-pair (show (Pair 1 2)))
 
 ;; Prelude Maybe
 (: from-maybe ((Eq a) => (-> a (-> (Maybe a) a))))
@@ -58,7 +60,9 @@
    (it "Show dispatch"
        (all-checks
         (list (check-equal? show-int  "42")
-              (check-equal? show-bool "True"))))
+              (check-equal? show-bool "True")
+              (check-equal? show-list "[1 2 3]")
+              (check-equal? show-pair "[1 . 2]"))))
    (it "prelude Maybe is auto-available"
        (all-checks
         (list (check-equal? (from-maybe 0 None) 0)

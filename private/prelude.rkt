@@ -1265,15 +1265,15 @@
                             [(Cons h (Nil)) (show h)]
                             [(Cons h t)     (string-append
                                              (show h)
-                                             (string-append ", " (elems t)))]))])
+                                             (string-append " " (elems t)))]))])
           (string-append "[" (string-append (elems xs) "]")))))
 
     (instance ((Show a) (Show b) => (Show (Pair a b)))
       (define (show p)
         (match p
           [(Pair x y)
-           (string-append "(" (string-append (show x)
-                            (string-append ", " (string-append (show y) ")"))))])))
+           (string-append "[" (string-append (show x)
+                            (string-append " . " (string-append (show y) "]"))))])))
 
     (instance ((Show a) (Show b) => (Show (Either a b)))
       (define (show r)
