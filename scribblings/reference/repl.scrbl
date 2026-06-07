@@ -21,6 +21,30 @@ The REPL accepts any Rackton expression or top-level form
 and prints the resulting binding's type after each input.  It also
 recognises a handful of meta-commands, each starting with a colon.
 
+@section{Embedding in the host Racket REPL}
+
+Requiring @racketmodname[rackton/repl] from a running @exec{racket} REPL
+switches that REPL into Rackton mode — subsequent forms are evaluated as
+Rackton and printed as @racketresultfont{value :: Type}, much like
+@racketmodname[typed/racket]:
+
+@verbatim|{
+> (require rackton/repl)
+> (define (sqr x) (* x x))
+> (sqr 5)
+25 :: Integer
+> (:quit)
+> (+ 1 2)
+3
+}|
+
+It works by replacing @racket[current-read-interaction] — the procedure a
+live REPL uses to read each interaction — so it is inert in scripts, in
+@racket[eval], and during module loading (none of those read
+interactions).  @racket[(:quit)] / @racket[(:q)] restores the plain
+Racket reader; the underlying functions @racket[rackton-repl-enter!] and
+@racket[rackton-repl-exit!] are also exported.
+
 @section{Error formatting and terminal width}
 
 Type-error messages wrap long types to fit the window.  At a REPL the
