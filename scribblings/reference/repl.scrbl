@@ -21,6 +21,26 @@ The REPL accepts any Rackton expression or top-level form
 and prints the resulting binding's type after each input.  It also
 recognises a handful of meta-commands, each starting with a colon.
 
+@section{Error formatting and terminal width}
+
+Type-error messages wrap long types to fit the window.  At a REPL the
+wrap width tracks the terminal: it is taken from the @envvar{COLUMNS}
+environment variable, or from @exec{stty size} when a real terminal is
+attached, falling back to a fixed 79-column default.
+
+This applies to both the Rackton REPL (@exec{racket -l rackton/repl},
+which re-checks each prompt so a mid-session resize is honored) and the
+host Racket REPL — typing @racket[(rackton _form ...)] at a
+@exec{racket} prompt adapts too.  Adaptation happens only for
+interactive (@racket['top-level]) evaluation; batch compilation, a
+@hash-lang[] @racketmodfont{rackton} module, DrRacket, and test runs keep
+the fixed default, so error text stays reproducible outside the REPL.
+
+When Racket runs without a real terminal — for example a
+Geiser/@racket[racket-mode] REPL, which talks to Racket over a pipe —
+@exec{stty} cannot probe a width.  Set @envvar{COLUMNS} in that case (it
+is read wherever the error is formatted) to get wrapped output.
+
 @section{Commands}
 
 @deftogether[(@defidform[#:kind "REPL command" :type]

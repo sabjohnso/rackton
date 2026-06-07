@@ -15,6 +15,14 @@
          "../private/types.rkt"
          "../main.rkt")
 
+;; The end-to-end cases below assert on WRAPPED type output, so the wrap
+;; width must be fixed.  They provoke errors via top-level `eval`, where
+;; the `rackton` expander auto-detects the terminal width — and under
+;; `raco test` in a terminal the test process has a real tty.  Pinning
+;; COLUMNS (which detection prefers) makes the budget a deterministic 66
+;; regardless of how the suite is launched.
+(putenv "COLUMNS" "79")
+
 (define-syntax-rule (rackton-error form ...)
   (with-handlers ([exn:fail? exn-message])
     (eval #'(rackton form ...)

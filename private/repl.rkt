@@ -30,7 +30,8 @@
          "codegen.rkt"
          "prelude.rkt"
          "env.rkt"
-         "types.rkt")
+         "types.rkt"
+         "term.rkt")
 
 ;; ----- session state ----------------------------------------------
 
@@ -347,6 +348,9 @@
   (let loop ()
     (define state (unbox current-state))
     (define port (current-input-port))
+    ;; Track the terminal width so wrapped type errors fit this session's
+    ;; window (re-checked each prompt, so a mid-session resize is honored).
+    (refresh-type-columns!)
     (display "λ> ") (flush-output)
     (define form
       (rackton-read-form port

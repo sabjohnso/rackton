@@ -29,7 +29,8 @@
          racket/set
          "types.rkt"
          "env.rkt"
-         "unify.rkt")
+         "unify.rkt"
+         "diagnostic.rkt")
 
 ;; ----- one-way pattern matching ------------------------------------
 
@@ -178,12 +179,14 @@
         (error 'find-matching-instance
                "no maximal match (internal invariant violated)")]
        [(> (length maximal) 1)
+        (define msg-doc
+          (labeled-block
+           (format "overlapping instances for ~a:" (format-pred target))
+           (for/list ([m (in-list maximal)])
+             (format-pred (instance-info-head m)))))
         (raise
          (exn:fail
-          (format "overlapping instances for ~a: ~s"
-                  (format-pred target)
-                  (for/list ([m (in-list maximal)])
-                    (pred->pretty-datum (instance-info-head m))))
+          (render-doc msg-doc (current-type-columns))
           (current-continuation-marks)))]
        [else (car maximal)])]))
 
@@ -278,21 +281,31 @@
           ;; defined (so the user can add the clause).
           (define cls (pred-class p))
           (define available (env-instances env cls))
-          (define avail-msg
+          ;; Build the message as a structured doc and render it once to
+          ;; the current width, so the instance list reflows to the
+          ;; terminal instead of overflowing as a single `~s` line.
+          (define avail-doc
             (cond
               [(null? available)
-               (format " (no instances declared for ~s)" cls)]
+               (doc-text (format " (no instances declared for ~a)" cls))]
               [else
-               (format "\n  available ~s instances: ~s"
-                       cls
-                       (for/list ([inst (in-list available)])
-                         (pred->pretty-datum (instance-info-head inst))))]))
+               (doc-nest
+                2
+                (doc-cat doc-line
+                         (labeled-block
+                          (format "available ~a instances:" cls)
+                          (for/list ([inst (in-list available)])
+                            (format-pred (instance-info-head inst))))))]))
           (define derive-hint
             (deriving-suggestion env cls (pred-args p)))
+          (define msg-doc
+            (doc-cat (doc-text "no instance for ")
+                     (doc-text (format-pred p))
+                     avail-doc
+                     (doc-text derive-hint)))
           (raise
            (exn:fail
-            (format "no instance for ~a~a~a"
-                    (format-pred p) avail-msg derive-hint)
+            (render-doc msg-doc (current-type-columns))
             (current-continuation-marks)))])])))
 
 ;; Suggest `#:deriving Class` when (a) Class is one of

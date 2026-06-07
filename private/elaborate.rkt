@@ -23,7 +23,11 @@
                      "monomorph-log.rkt"
                      "prelude.rkt"
                      "scheme-codec.rkt"
-                     "env.rkt")
+                     "env.rkt"
+                     ;; terminal-width detection, read at the phase the
+                     ;; macro's inference runs (phase 1) so a type error
+                     ;; raised here is rendered to the REPL's width.
+                     "term.rkt")
          ;; Runtime require so that the macro templates
          ;; below can reference set-rackton-monomorphized-log-
          ;; snapshot! (and rackton-monomorphized-sites) — Racket's
@@ -137,7 +141,19 @@
     ;; `#:derive-superclasses` instance replaced by the plain instances it
     ;; synthesized.  Codegen and export resolution run over THIS list so
     ;; the synthesized superclass instances are lowered and escape.
-    (define-values (env parsed*) (infer-program+forms parsed prelude-env))
+    ;;
+    ;; Render any type error to the terminal's width — but ONLY when
+    ;; expanding interactively (`'top-level`: a REPL or a top-level
+    ;; `eval`).  A `'module` context (batch `raco make`, a `#lang rackton`
+    ;; file) keeps the fixed default, so compiled error text stays
+    ;; reproducible.  Detection returns #f when there is no terminal and
+    ;; no `COLUMNS`, leaving the default.
+    (define-values (env parsed*)
+      (let ([cols (and (eq? (syntax-local-context) 'top-level)
+                       (detect-display-columns))])
+        (parameterize ([current-type-columns
+                        (if cols (columns->type-budget cols) (current-type-columns))])
+          (infer-program+forms parsed prelude-env))))
     ;; Compile each parsed form into Racket syntax.  The emission
     ;; order must respect runtime dependencies — `instance`
     ;; mutates a dispatch table created by `protocol`, so all

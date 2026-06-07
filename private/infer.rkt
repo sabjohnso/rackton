@@ -45,6 +45,7 @@
          racket/list
          racket/string
          "types.rkt"
+         "diagnostic.rkt"
          "env.rkt"
          "unify.rkt"
          "surface.rkt"
@@ -2512,9 +2513,9 @@
   (cond
     [(not (null? remaining-preds))
      (raise-syntax-error 'infer
-       (format "unsolved constraints in ~s: ~s"
-               name
-               (map pretty-pred remaining-preds))
+       (render-doc (labeled-block (format "unsolved constraints in ~a:" name)
+                                  (map pretty-pred remaining-preds))
+                   (current-type-columns))
        stx)]
     [else (restore-preds! '())])
   (resolve-method-uses! final-subst env)
@@ -2765,9 +2766,9 @@
         (cond
           [(not (null? remaining-preds))
            (raise-syntax-error 'infer
-             (format "unsolved constraints in ~s: ~s"
-                     name
-                     (map pretty-pred remaining-preds))
+             (render-doc (labeled-block (format "unsolved constraints in ~a:" name)
+                                        (map pretty-pred remaining-preds))
+                         (current-type-columns))
              stx)]
           [else (restore-preds! '())])
         (resolve-method-uses! final-subst env)
@@ -4447,9 +4448,11 @@
                           (snapshot-preds)))
         (unless (null? leftovers)
           (raise-syntax-error 'infer
-            (format "instance ~s method ~s leaves unsolved constraints: ~s"
-                    (pretty-pred head-pred-raw) method-name
-                    (map pretty-pred leftovers))
+            (render-doc (labeled-block
+                         (format "instance ~a method ~a leaves unsolved constraints:"
+                                 (pretty-pred head-pred-raw) method-name)
+                         (map pretty-pred leftovers))
+                        (current-type-columns))
             stx))
         (resolve-method-uses! final-subst env)
         (current-dict-skolems saved-skolems))

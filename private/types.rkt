@@ -54,6 +54,7 @@
          pred->datum
 
          ;; diagnostic pretty-printing (display only — not serialization)
+         current-type-columns
          type->pretty-datum
          pred->pretty-datum
          format-pretty-datum
@@ -77,7 +78,7 @@
 
 (require racket/set
          racket/match
-         racket/pretty)
+         "diagnostic.rkt")
 
 ;; ----- Type AST ------------------------------------------------------
 
@@ -318,26 +319,45 @@
   (match p
     [(pred c args) `(,c ,@(map type->pretty-datum args))]))
 
-;; Render a datum to a (possibly multi-line) string, wrapping wide forms
-;; across lines.  `racket/pretty` does the layout; we only strip the
-;; trailing newline it appends.
+;; The width budget for rendered types/predicates — the columns available
+;; *after* the diagnostic's label (`"  expected: "` is 12 chars), so 66
+;; here keeps a wrapped line inside a standard 79-column terminal.
 ;;
-;; The width is the budget *after* the diagnostic's label column
-;; (`"  expected: "` is 12 chars); 66 + 12 keeps a wrapped line inside a
-;; standard 79-column terminal.  Treating `->` / `=>` / `All` like
-;; `lambda` keeps the head together with its first operand on a wrapped
-;; type, instead of orphaning the arrow on its own line.
-(define pretty-type-columns 66)
-(define pretty-type-style-table
-  (pretty-print-extend-style-table #f '(-> => All) '(lambda lambda lambda)))
+;; A parameter, not a constant: at a live REPL `private/term.rkt`
+;; refreshes it from the terminal width.  The default 66 keeps batch
+;; compiles, DrRacket, and the test suite deterministic — only an
+;; interactive REPL ever changes it.
+(define current-type-columns (make-parameter 66))
+
+;; Convert a pretty-datum (symbols and proper lists, as produced by
+;; `type->pretty-datum`) into a layout `doc`.  A compound `(head arg …)`
+;; groups so it sits on one line when it fits and otherwise breaks with
+;; the arguments indented under the head — the same engine every other
+;; diagnostic uses.  Atoms print in `write` form.
+(define (datum->doc x)
+  (cond
+    [(pair? x) (datum-list->doc x)]
+    [(null? x) (doc-text "()")]
+    [else (doc-text (format "~s" x))]))
+
+(define (datum-list->doc xs)
+  (define parts (map datum->doc xs))
+  (cond
+    [(null? (cdr parts))
+     (doc-cat (doc-text "(") (car parts) (doc-text ")"))]
+    [else
+     (doc-group
+      (doc-cat (doc-text "(")
+               (car parts)
+               (doc-nest 2
+                         (apply doc-cat
+                                (map (lambda (p) (doc-cat doc-line p)) (cdr parts))))
+               (doc-text ")")))]))
+
+;; Render a pretty-datum to a (possibly multi-line) string at the current
+;; width via the shared document engine.
 (define (format-pretty-datum d)
-  (define s
-    (parameterize ([pretty-print-current-style-table pretty-type-style-table])
-      (pretty-format d pretty-type-columns #:mode 'write)))
-  (if (and (positive? (string-length s))
-           (char=? (string-ref s (sub1 (string-length s))) #\newline))
-      (substring s 0 (sub1 (string-length s)))
-      s))
+  (render-doc (datum->doc d) (current-type-columns)))
 
 ;; The i-th display name: a, b, …, z, a1, b1, ….
 (define (display-tvar-name i)
