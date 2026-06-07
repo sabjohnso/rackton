@@ -203,7 +203,11 @@
                  [current-needs-dict-defs
                    (rackton-repl-state-needs-dict-defs state)]
                  [current-instance-default-bodies
-                   (rackton-repl-state-instance-default-bodies state)])
+                   (rackton-repl-state-instance-default-bodies state)]
+                 ;; A REPL session iterates by re-evaluating forms, so a
+                 ;; re-declared instance replaces the prior one instead of
+                 ;; raising the module-level coherence error.
+                 [current-allow-instance-redefinition? #t])
     (define parsed (parse-toplevel-list (list stx)))
     ;; Run the full 4-phase pipeline over the parsed list so that
     ;; multi-form REPL input (a single `(define …) (define …)` block,

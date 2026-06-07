@@ -53,6 +53,20 @@
   (check-regexp-match #rx"(?i:type|error|mismatch)" (list-ref outs 0))
   (check-regexp-match #rx"1" (list-ref outs 2)))
 
+(test-case "REPL: re-declaring an instance replaces it instead of erroring"
+  ;; At a REPL you iterate by re-evaluating forms; a second instance with
+  ;; the same head must replace the first (not raise the module-level
+  ;; coherence error), and the new method must win on the next call.
+  (define-values (_ outs)
+    (drive-session
+     '((protocol (Greet a) (: greet (-> a String)))
+       (instance (Greet Integer) (define (greet _) "hello"))
+       (instance (Greet Integer) (define (greet _) "hi"))
+       (greet 5))))
+  (check-false (regexp-match? #rx"(?i:duplicate|error)" (list-ref outs 2))
+               (list-ref outs 2))
+  (check-regexp-match #rx"hi" (list-ref outs 3)))
+
 (test-case "REPL: :quit signals exit"
   (define-values (st _outs) (drive-session '((:quit))))
   (check-true (rackton-repl-quit? st)))

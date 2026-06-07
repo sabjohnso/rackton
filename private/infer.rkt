@@ -38,6 +38,7 @@
          current-instance-default-bodies
          current-instance-exported-impls
          current-prelude-build?
+         current-allow-instance-redefinition?
          resolve-method-uses!)
 
 (require racket/match
@@ -3672,6 +3673,12 @@
 ;; handle-instance-form sets it based on `current-prelude-build?`.
 (define current-prelude-build? (make-parameter #f))
 
+;; When #t, re-declaring an instance whose head is α-equivalent to an
+;; existing one REPLACES it instead of raising the "duplicate instance"
+;; coherence error.  The REPL sets this so a session can iterate on an
+;; instance; module compilation leaves it #f, keeping coherence.
+(define current-allow-instance-redefinition? (make-parameter #f))
+
 (define (prelude-instance? inst)
   ;; The flag is stored as a `prelude-source` mark on the instance's
   ;; methods hash via a thread-local box — handle-instance-form
@@ -4155,7 +4162,11 @@
       ;; around but its method scheme is from the previous
       ;; declaration — silently shadow it (drop the duplicate
       ;; error) and let env-extend-instance append the new one.
-      (when (instance-matches-class-shape? existing cinfo)
+      ;; In REPL redefinition mode an α-equivalent re-declaration is
+      ;; allowed (it replaces the old one at registration below); only a
+      ;; module-level duplicate is an error.
+      (when (and (instance-matches-class-shape? existing cinfo)
+                 (not (current-allow-instance-redefinition?)))
         (raise-syntax-error 'infer
           (format "duplicate instance: ~s already declared"
                   (pretty-pred head-pred-raw))
@@ -4464,4 +4475,16 @@
   ;; to a non-existent named impl.
   (when (current-prelude-build?)
     (hash-set! prelude-instances-table info #t))
-  (values (env-extend-instance env class-name info) declared))
+  ;; In REPL redefinition mode, drop any α-equivalent existing instance
+  ;; for this class so the new one replaces it rather than sitting
+  ;; alongside (which would read as an overlap at resolution).
+  (define base-env
+    (if (current-allow-instance-redefinition?)
+        (env-set-instances
+         env class-name
+         (filter (lambda (i)
+                   (not (instance-heads-equivalent? (instance-info-head i)
+                                                    head-pred-raw)))
+                 (env-instances env class-name)))
+        env))
+  (values (env-extend-instance base-env class-name info) declared))

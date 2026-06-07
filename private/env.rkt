@@ -29,6 +29,7 @@
          env-class-owning-family
          env-extend-instance
          env-instances
+         env-set-instances
          env-ref-method-class
          env-extend-alias
          env-ref-alias
@@ -212,6 +213,14 @@
 
 (define (env-instances e class-name)
   (hash-ref (env-instance-table e) class-name '()))
+
+;; Replace the whole instance list for `class-name`.  Used for REPL
+;; instance redefinition (drop an α-equivalent old instance, then add the
+;; new one); the equivalence test lives in the caller.
+(define (env-set-instances e class-name insts)
+  (struct-copy env e
+               [instance-table
+                (hash-set (env-instance-table e) class-name insts)]))
 
 (define (env-ref-method-class e method [default #f])
   (hash-ref (env-method-owners e) method default))
