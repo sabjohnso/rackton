@@ -85,21 +85,31 @@
      (e:lam dict-arg-names expr ctx-stx)]))
 
 ;; Build a (possibly curried) lambda over `param-stxs` whose body is the
-;; already-compiled `body-stx`.  For arity ≤ 1 we just emit
-;; `(lambda (p ...) body)`.  For higher arity we emit a `case-lambda`
-;; with N clauses: the full-arity clause runs the body directly, and
-;; each shorter prefix returns a recursively-curried lambda over the
-;; remaining parameters.  All clauses lexically capture the same body
-;; syntax — runtime cost is one closure allocation per partial step.
+;; already-compiled `body-stx`.  For an N-parameter lambda (N ≥ 1) we emit
+;; a `case-lambda` whose first N clauses cover every prefix arity 1..N:
+;; the full-arity clause runs the body directly, and each shorter prefix
+;; returns a recursively-curried lambda over the remaining parameters —
+;; that is partial application.  A final rest-args clause makes
+;; OVER-application curried as well: arguments beyond N are `apply`-ed to
+;; the fully-applied body, so `(f a b c)` equals `(((f a) b) c)` even when
+;; the surplus must flow into a function the body *returns*.  The type
+;; checker already treats arrows as fully curried, so this keeps codegen
+;; honest with it.  Ill-typed over-application never reaches the rest
+;; clause: unification rejects applying a non-function at compile time, so
+;; whenever the clause fires the body provably evaluates to a procedure.
+;; Clause ordering matters — `case-lambda` prefers the exact-arity clause,
+;; so the rest clause only fires for strictly more than N arguments (where
+;; `more` is non-empty).  All clauses lexically capture the same body
+;; syntax — runtime cost is one closure allocation per partial step and one
+;; `apply` per over-application; exact calls pay neither.
 (define (build-curried-lambda param-stxs body-stx ctx-stx)
   (cond
-    [(<= (length param-stxs) 1)
-     (with-syntax ([(p ...) param-stxs]
-                   [bdy body-stx])
-       (syntax/loc ctx-stx (lambda (p ...) bdy)))]
+    [(zero? (length param-stxs))
+     (with-syntax ([bdy body-stx])
+       (syntax/loc ctx-stx (lambda () bdy)))]
     [else
      (define n (length param-stxs))
-     (define clauses
+     (define fixed-clauses
        (for/list ([k (in-range 1 (add1 n))])
          (define prefix (take-prefix param-stxs k))
          (define rest   (drop-prefix param-stxs k))
@@ -111,7 +121,17 @@
              [else
               (with-syntax ([inner (build-curried-lambda rest body-stx ctx-stx)])
                 #'[(p ...) inner])]))))
-     (with-syntax ([(clause ...) clauses])
+     ;; `bdy` may be a `(begin (define …) … result)` that splices its
+     ;; internal definitions into a definition context (e.g. a `(racket
+     ;; …)` escape).  The fixed clauses provide that context directly;
+     ;; the over-clause must restore it with `(let () bdy)` before the
+     ;; result can be `apply`-ed, or the body's defines land in an
+     ;; expression context and fail to compile.
+     (define over-clause
+       (with-syntax ([(p ...) param-stxs]
+                     [bdy body-stx])
+         #'[(p ... . more) (apply (let () bdy) more)]))
+     (with-syntax ([(clause ...) (append fixed-clauses (list over-clause))])
        (syntax/loc ctx-stx (case-lambda clause ...)))]))
 
 (define (take-prefix xs n)

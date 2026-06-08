@@ -144,6 +144,17 @@ result:
 (add 3 4)
 }
 
+Currying is honored even when a function produces its result as a
+returned lambda: a surplus argument flows into that lambda, so
+@racket[(fma 3 4 5)] agrees with @racket[((fma 3 4) 5)].
+
+@rackton-example[#:eval ev #:mode 'value]{
+(: fma (-> Integer (-> Integer (-> Integer Integer))))
+(define (fma a b) (lambda (c) (+ (* a b) c)))
+
+(fma 3 4 5)
+}
+
 @racket[->] is variadic in source position but always parses
 right-associatively.
 

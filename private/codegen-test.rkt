@@ -23,8 +23,12 @@
   (test-case "a variable lowers to its identifier"
     (check-equal? (lower (e:var 'x h)) 'x))
 
-  (test-case "a single-argument lambda lowers to a plain lambda"
-    (check-equal? (lower (e:lam '(x) (e:var 'x h) h)) '(lambda (x) x)))
+  (test-case "a single-argument lambda lowers to a surplus-absorbing case-lambda"
+    ;; Over-application stays curried even for one parameter, so the
+    ;; lowering is a case-lambda: an exact clause plus a rest clause
+    ;; that applies the body's result to any extra arguments.
+    (check-equal? (lower (e:lam '(x) (e:var 'x h) h))
+                  '(case-lambda ((x) x) ((x . more) (apply (let () x) more)))))
 
   (test-case "a multi-argument lambda lowers to a curried case-lambda"
     (define d (lower (e:lam '(x y) (e:var 'x h) h)))
