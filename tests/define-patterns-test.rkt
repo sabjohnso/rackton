@@ -80,6 +80,111 @@
 (test-case "multi-clause two-arg: one None on left"
   (check-equal? bs3 None))
 
+;; ----- Piece 3: multi-clause defines inside instances ---------
+
+(rackton
+  (data (NL a) (Kons a (NL a)) (Sole a) #:deriving Eq Show)
+
+  (protocol (Head (w :: (-> * *)))
+    (: hd (-> (w a) a)))
+
+  ;; One-argument method, two clauses.
+  (instance (Head NL)
+    (define (hd (Sole x))   x)
+    (define (hd (Kons x _)) x))
+
+  ;; Two-argument method, two clauses (match* lowering inside an instance).
+  (instance (Functor NL)
+    (define (fmap f (Sole x))    (Sole (f x)))
+    (define (fmap f (Kons x xs)) (Kons (f x) (fmap f xs))))
+
+  (: ihd1 Integer)
+  (define ihd1 (hd (Sole 5)))
+  (: ihd2 Integer)
+  (define ihd2 (hd (Kons 9 (Sole 5))))
+  (: ifm (NL Integer))
+  (define ifm (fmap (+ 1) (Kons 1 (Sole 2))))
+
+  (provide ihd1 ihd2 ifm Kons Sole))
+
+(test-case "multi-clause instance method: first clause reachable"
+  (check-equal? ihd1 5))
+(test-case "multi-clause instance method: second clause reachable"
+  (check-equal? ihd2 9))
+(test-case "multi-clause two-arg instance method (fmap)"
+  (check-equal? ifm (Kons 2 (Sole 3))))
+
+;; ----- Piece 4: multi-clause defines as protocol defaults -----
+
+(rackton
+  (data (NLb a) (Konsb a (NLb a)) (Soleb a) #:deriving Eq Show)
+
+  ;; The default for `pick` is written equationally; the instance
+  ;; provides nothing, so the multi-clause default must dispatch.
+  (protocol (Pick (w :: (-> * *)))
+    (: pick (-> (w a) a))
+    (define (pick (Soleb x))   x)
+    (define (pick (Konsb x _)) x))
+
+  (instance (Pick NLb))
+
+  (: pd1 Integer)
+  (define pd1 (pick (Soleb 7)))
+  (: pd2 Integer)
+  (define pd2 (pick (Konsb 3 (Soleb 7))))
+
+  (provide pd1 pd2))
+
+(test-case "multi-clause protocol default: first clause reachable"
+  (check-equal? pd1 7))
+(test-case "multi-clause protocol default: second clause reachable"
+  (check-equal? pd2 3))
+
+;; ----- Piece 5: end-to-end Comonad (instance + defaults + #:derive)
+
+(rackton
+  (protocol (Comonad (w :: (-> * *)))
+    (: extract   (-> (w a) a))
+    (: duplicate (-> (w a) (w (w a))))
+    (: extend    (-> (-> (w a) b) (w a) (w b)))
+    (define (duplicate wa) (extend id wa))
+    (define (extend f wa)  (fmap f (duplicate wa)))
+    #:derive
+    ((Functor
+      (define (fmap f wa) (extend (compose f extract) wa)))))
+
+  (data (Nonempty-List a)
+    (Konsn a (Nonempty-List a))
+    (Solen a)
+    #:deriving Eq Show)
+
+  (instance (Functor Nonempty-List)
+    (define (fmap f xs)
+      (match xs
+        [(Solen x)     (Solen (f x))]
+        [(Konsn x xs)  (Konsn (f x) (fmap f xs))])))
+
+  (instance (Comonad Nonempty-List)
+    (define (extract (Solen x))   x)
+    (define (extract (Konsn x _)) x)
+
+    (define (duplicate (Solen x)) (Solen (Solen x)))
+    (define (duplicate (Konsn x xs))
+      (Konsn (Konsn x xs) (duplicate xs))))
+
+  (define cm-res  (Konsn 1 (Konsn 2 (Solen 3))))
+  (define cm-res2 (duplicate cm-res))
+  ;; All suffixes, comonadic duplicate.
+  (define cm-expected
+    (Konsn (Konsn 1 (Konsn 2 (Solen 3)))
+           (Konsn (Konsn 2 (Solen 3))
+                  (Solen (Solen 3)))))
+
+  (provide cm-res2 cm-expected))
+
+(test-case "comonadic duplicate over a non-empty list (multi-clause instance)"
+  (check-equal? cm-res2 cm-expected))
+
 ;; ----- Conflict cases (compile-time errors) -------------------
 
 (require (for-syntax racket/base))

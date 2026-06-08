@@ -57,7 +57,15 @@ dispatches as a 0-arg constructor pattern (matching the
 prefer the parenthesised form.  All clauses must have the same
 arity.  Combining a function-form @racket[(define (g x) …)] with a
 value-form @racket[(define g 5)] for the same name is rejected at
-parse time.}
+parse time.
+
+Multi-clause definitions are not restricted to module scope: the
+same combining applies to method definitions inside an
+@racket[instance], to default-method definitions inside a
+@racket[protocol], and to the @racket[define] forms in a
+@racket[#:derive] block.  So an instance method may dispatch over
+constructors with one clause per case rather than a single
+@racket[match] body.}
 
 @defform[#:literals (:)
          (: name type)

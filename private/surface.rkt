@@ -2988,74 +2988,132 @@
                (if (list? result) result (list result))))))
   (combine-multi-clause-defs raw record))
 
-;; Walk the parsed top-form list.  Group every top:def whose stx
-;; recorded a function-form entry in `record` by name.  Singletons
-;; pass through unchanged (already piece-1 desugared by parse-top).
-;; A name with multiple clauses becomes one top:def whose body is
-;; an `e:match*` over fresh argument identifiers, with each clause
-;; carrying its parsed-as-pattern parameter list (so bare uppercase
-;; identifiers dispatch as 0-arg ctor patterns rather than naming a
-;; plain parameter).
+;; Walk the parsed top-form list, then descend into every nested
+;; method list (instances, derived instances, protocol defaults, and
+;; `#:derive` superclass blocks) and combine multi-clause function
+;; definitions there too.  A `define` is a `define` wherever it sits:
+;; equational, Haskell-style definitions work in any of these scopes,
+;; not just at the top level.
 (define (combine-multi-clause-defs parsed record)
-  (define groups (make-hasheq))     ; name → (list-of top:def in reverse src order)
-  (define non-fn (make-hasheq))     ; name → stx of conflicting non-function form
-  (for ([f (in-list parsed)])
+  (map (lambda (f) (combine-in-form f record))
+       (combine-clause-list parsed record
+                            top:def? top:def-name top:def-expr top:def-stx
+                            top:def)))
+
+;; Recurse into a single combined top-form, combining the multi-clause
+;; definitions held in any method lists it carries.  Method lists hold
+;; `top:def`s (instances) or `method-default`s (protocol defaults);
+;; `#:derive` clauses (`class-super-derive`) nest a further default
+;; list.  Non-method forms pass through untouched.
+(define (combine-in-form f record)
+  (cond
+    [(top:instance? f)
+     (struct-copy top:instance f
+       [methods (combine-method-defs (top:instance-methods f) record)])]
+    [(top:derive-instance? f)
+     (struct-copy top:derive-instance f
+       [methods (combine-method-defs (top:derive-instance-methods f) record)])]
+    [(top:class? f)
+     (struct-copy top:class f
+       [methods (combine-class-methods (top:class-methods f) record)])]
+    [else f]))
+
+;; Instance / derived-instance method lists carry method bodies as
+;; `top:def`s (`inst-type-fam` entries pass through as non-clause forms).
+(define (combine-method-defs methods record)
+  (combine-clause-list methods record
+                       top:def? top:def-name top:def-expr top:def-stx
+                       top:def))
+
+;; Protocol method lists mix signatures, fundeps, associated types,
+;; `class-super-derive` blocks, and `method-default`s.  Combine the
+;; defaults at this level, then recurse into each `#:derive` block's
+;; own default list.
+(define (combine-class-methods methods record)
+  (define combined
+    (combine-clause-list methods record
+                         method-default? method-default-name
+                         method-default-expr method-default-stx
+                         method-default))
+  (for/list ([m (in-list combined)])
     (cond
-      [(and (top:def? f) (hash-has-key? record (top:def-stx f)))
-       (hash-update! groups (top:def-name f) (lambda (xs) (cons f xs)) '())]
-      [(top:def? f)
-       (hash-set! non-fn (top:def-name f) (top:def-stx f))]
+      [(class-super-derive? m)
+       (struct-copy class-super-derive m
+         [methods (combine-class-methods (class-super-derive-methods m) record)])]
+      [else m])))
+
+;; Group consecutive same-named function-clause forms in `forms` into a
+;; single combined form.  A form participates iff `clause?` holds AND its
+;; stx was recorded as a function-form `(define (f …) …)` in `record`;
+;; value-form definitions (`(define x e)`) and non-definitions pass
+;; through.  `get-name` / `get-expr` / `get-stx` read the participating
+;; struct; `make` rebuilds it from `(name lam-expr stx)`.  Singletons are
+;; returned unchanged (already desugared by `parse-top`); a name with
+;; multiple clauses becomes one form whose body is an `e:match*` over
+;; fresh argument identifiers, each clause carrying its parsed-as-pattern
+;; parameter list (so bare uppercase identifiers dispatch as 0-arg ctor
+;; patterns rather than naming a plain parameter).
+(define (combine-clause-list forms record clause? get-name get-expr get-stx make)
+  (define (clause-form? f) (and (clause? f) (hash-has-key? record (get-stx f))))
+  (define groups (make-hasheq))     ; name → (list-of form in reverse src order)
+  (define non-fn (make-hasheq))     ; name → stx of conflicting value-form
+  (for ([f (in-list forms)])
+    (cond
+      [(clause-form? f)
+       (hash-update! groups (get-name f) (lambda (xs) (cons f xs)) '())]
+      [(clause? f)
+       (hash-set! non-fn (get-name f) (get-stx f))]
       [else (void)]))
   ;; Validate: every name must be EITHER a single value def OR a
   ;; group of function clauses with matching arity.
-  (for ([(name top-defs) (in-hash groups)])
+  (for ([(name fns) (in-hash groups)])
     (define arities
-      (for/seteq ([d (in-list top-defs)])
-        (length (e:lam-params (top:def-expr d)))))
+      (for/seteq ([d (in-list fns)])
+        (length (e:lam-params (get-expr d)))))
     (when (> (set-count arities) 1)
       (raise-syntax-error 'rackton
         (format "definition ~s has clauses with different arities: ~s"
                 name (sort (set->list arities) <))
-        (top:def-stx (car (reverse top-defs)))))
+        (get-stx (car (reverse fns)))))
     (when (hash-has-key? non-fn name)
       (raise-syntax-error 'rackton
         (format "definition ~s mixes function-form (define (~s …)) and value-form (define ~s …)"
                 name name name)
-        (top:def-stx (car (reverse top-defs))))))
-  ;; Emit: replace each first-occurrence clause-bearing top:def with
-  ;; the combined form; skip subsequent occurrences for the same
-  ;; name.  All other forms pass through.
+        (get-stx (car (reverse fns))))))
+  ;; Emit: replace each first-occurrence clause-bearing form with the
+  ;; combined form; skip subsequent occurrences for the same name.  All
+  ;; other forms pass through.
   (define emitted (mutable-seteq))
   (apply append
-         (for/list ([f (in-list parsed)])
+         (for/list ([f (in-list forms)])
            (cond
-             [(and (top:def? f) (hash-has-key? record (top:def-stx f)))
-              (define name (top:def-name f))
+             [(clause-form? f)
+              (define name (get-name f))
               (cond
                 [(set-member? emitted name) '()]
                 [else
                  (set-add! emitted name)
                  (define clauses (reverse (hash-ref groups name)))
-                 (list (combine-fn-clauses name clauses record))])]
+                 (list (combine-fn-clauses name clauses record
+                                           get-expr get-stx make))])]
              [else (list f)]))))
 
-;; If `top-defs` is a single clause, return it unchanged — parse-top
-;; already produced the desugared singleton form.  Otherwise
-;; synthesize one top:def whose body is an `e:match*` over fresh
-;; arg names, with each clause's parameter list reparsed under the
-;; multi-clause rule via `parse-clause-params`.
-(define (combine-fn-clauses name top-defs record)
+;; If `clause-forms` is a single clause, return it unchanged — parse-top
+;; already produced the desugared singleton form.  Otherwise synthesize
+;; one form whose body is an `e:match*` over fresh arg names, with each
+;; clause's parameter list reparsed under the multi-clause rule.
+(define (combine-fn-clauses name clause-forms record get-expr get-stx make)
   (cond
-    [(null? (cdr top-defs)) (car top-defs)]
+    [(null? (cdr clause-forms)) (car clause-forms)]
     [else
-     (define first (car top-defs))
-     (define stx (top:def-stx first))
-     (define arity (length (e:lam-params (top:def-expr first))))
+     (define first (car clause-forms))
+     (define stx (get-stx first))
+     (define arity (length (e:lam-params (get-expr first))))
      (define fresh-names
        (for/list ([_ (in-range arity)]) (gensym '$arg)))
      (define clauses
-       (for/list ([d (in-list top-defs)])
-         (define rec (hash-ref record (top:def-stx d)))
+       (for/list ([d (in-list clause-forms)])
+         (define rec (hash-ref record (get-stx d)))
          (define params-stx (car rec))
          (define body-stx   (cdr rec))
          (define pats
@@ -3063,11 +3121,11 @@
              (parse-pattern p-stx)))
          (clause* pats #f
                   (parse-expr body-stx)
-                  (top:def-stx d))))
+                  (get-stx d))))
      (define scrutinees
        (for/list ([n (in-list fresh-names)]) (e:var n stx)))
-     (top:def name
-              (e:lam fresh-names
-                     (e:match* scrutinees clauses #f stx)
-                     stx)
-              stx)]))
+     (make name
+           (e:lam fresh-names
+                  (e:match* scrutinees clauses #f stx)
+                  stx)
+           stx)]))
