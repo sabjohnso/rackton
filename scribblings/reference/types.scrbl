@@ -105,10 +105,11 @@ side-effecting computations.}
 @section{Sum and product types}
 
 @deftogether[(
-@defform[#:kind "type" #:id Maybe #:literals (data None Some)
+@defform[#:kind "type" #:link-target? #f #:id Maybe #:literals (data None Some)
          (data (Maybe a)
            None
            (Some a))]
+@defidform[#:kind "type" Maybe]
 @defthing[#:kind "constructor" None (Maybe a)]
 @defthing[#:kind "constructor" Some (-> a (Maybe a))])]{
 
@@ -146,10 +147,11 @@ Two-element product type; the type and its constructor share the name.  Use
 Instances: @racket[Bifunctor].}
 
 @deftogether[(
-@defform[#:kind "type" #:id Either #:literals (data Left Right)
+@defform[#:kind "type" #:link-target? #f #:id Either #:literals (data Left Right)
          (data (Either a b)
            (Left a)
            (Right b))]
+@defidform[#:kind "type" Either]
 @defthing[#:kind "constructor" Left (-> a (Either a b))]
 @defthing[#:kind "constructor" Right (-> b (Either a b))])]{
 
