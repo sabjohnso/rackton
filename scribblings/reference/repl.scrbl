@@ -26,7 +26,7 @@ recognises a handful of meta-commands, each starting with a colon.
 Requiring @racketmodname[rackton/repl] from a running @exec{racket} REPL
 switches that REPL into Rackton mode — subsequent forms are evaluated as
 Rackton and printed as @racketresultfont{value :: Type}, much like
-@racketmodname[typed/racket]:
+@racketmodfont{typed/racket}:
 
 @verbatim|{
 > (require rackton/repl)
