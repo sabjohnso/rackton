@@ -86,6 +86,7 @@
          parse-top
          parse-toplevel-list
 
+         current-hygiene?
          lowercase-id?)
 
 (require syntax/parse
@@ -1028,6 +1029,64 @@
                  (list (car elems) (build-list-ast (cdr elems) stx))
                  stx)]))
 
+;; ----- local-binding hygiene ----------------------------------------
+;;
+;; The parser emits symbols; lexical scoping is resolved later, by symbol,
+;; in inference.  That is fine until a macro is involved: a macro-introduced
+;; binder and a user binder may share a symbol yet must stay distinct
+;; (hygiene), and a macro's reference to a top-level name must not be
+;; captured by a use-site binder of the same symbol (referential
+;; transparency).  When a Rackton block defines macros, `current-hygiene?`
+;; is on and every LOCAL binder is α-renamed to a fresh symbol keyed by
+;; identifier identity (`bound-identifier=?`); references resolve against the
+;; same rename environment, falling through to the bare symbol — and thus to
+;; the top-level/prelude environment — when they match no local binder.
+;;
+;; When off (no macros in the block) this is a no-op: binders keep their
+;; written symbol and references are a plain `syntax->datum`, exactly as
+;; before, so non-macro programs are entirely unaffected.
+(define current-hygiene? (make-parameter #f))
+;; The rename environment in scope: a list of (identifier . fresh-symbol).
+(define current-rename-env (make-parameter '()))
+
+;; Resolve an identifier occurrence (binder or reference) to the symbol the
+;; AST should carry: its fresh rename if a local binder of the same identity
+;; is in scope, else its bare symbol.
+(define (resolve-id id-stx)
+  (cond
+    [(current-hygiene?)
+     (let loop ([env (current-rename-env)])
+       (cond
+         [(null? env)                              (syntax->datum id-stx)]
+         [(bound-identifier=? (caar env) id-stx)   (cdar env)]
+         [else                                     (loop (cdr env))]))]
+    [else (syntax->datum id-stx)]))
+
+;; Extend the current rename environment with a fresh symbol for each binder
+;; identifier (a no-op when hygiene is off).  Returns the extended env, to be
+;; installed via `parameterize` around the scope the binders cover.
+(define (extend-rename-env binder-id-stxs)
+  (cond
+    [(current-hygiene?)
+     (for/fold ([env (current-rename-env)]) ([id (in-list binder-id-stxs)])
+       (cons (cons id (gensym (syntax-e id))) env))]
+    [else (current-rename-env)]))
+
+;; The binder identifiers introduced by a pattern (lowercase, non-wildcard
+;; variables), recurring through constructor patterns.  Used to extend the
+;; rename environment before a binding form's body is parsed.
+(define (pattern-binder-ids pat-stx)
+  (syntax-parse pat-stx
+    #:datum-literals (quote)
+    [(quote _)         '()]
+    [x:id
+     (let ([name (syntax->datum #'x)])
+       (if (or (wildcard-symbol? name) (not (lowercase-id? name)))
+           '()
+           (list #'x)))]
+    [(ctor:id arg ...) (append-map pattern-binder-ids (syntax->list #'(arg ...)))]
+    [_                 '()]))
+
 (define (parse-expr stx)
   (syntax-parse stx
     #:datum-literals (lambda λ case-lambda case-λ let let& let% let+ letrec let* if cond else ann match racket do proc delay <- update handle return describe context list -> quote)
@@ -1082,10 +1141,16 @@
     ;; plain `let` because the head after `let` is an id here, a binding
     ;; group there, so the two never overlap.
     [(let loop:id ([x:id rhs] ...+) body)
-     (build-named-let (syntax->datum #'loop)
-                      (parse-binding-pairs #'(x ...) #'(rhs ...))
-                      (parse-expr #'body)
-                      stx)]
+     ;; Initial RHSs evaluate in the outer scope; the loop name and params
+     ;; are in scope for the body (and the recursive call).
+     (define rhss (map parse-expr (syntax->list #'(rhs ...))))
+     (define ids  (syntax->list #'(x ...)))
+     (parameterize ([current-rename-env (extend-rename-env (cons #'loop ids))])
+       (build-named-let (resolve-id #'loop)
+                        (for/list ([id (in-list ids)] [r (in-list rhss)])
+                          (cons (resolve-id id) r))
+                        (parse-expr #'body)
+                        stx))]
 
     ;; Plain `let` — parallel binding, with destructuring.  Each LHS is a
     ;; pattern: a bare identifier is an ordinary (let-polymorphic) binding;
@@ -1095,39 +1160,47 @@
     [(let ([lhs rhs] ...) body)
      (build-destructuring-let (syntax->list #'(lhs ...))
                               (syntax->list #'(rhs ...))
-                              (parse-expr #'body)
+                              #'body
                               stx)]
 
     ;; let& — sequential monad bind (deps allowed); nested flatmap, same
     ;; family as `do`.  Body is the final monadic expression.
     [(let& ([x:id rhs] ...+) body)
-     (build-sequential-let (parse-binding-pairs #'(x ...) #'(rhs ...))
-                           (parse-expr #'body)
-                           stx)]
+     ;; Sequential: each RHS sees the binders before it; the body sees all.
+     (let loop ([ids (syntax->list #'(x ...))]
+                [rhss (syntax->list #'(rhs ...))]
+                [acc '()])
+       (cond
+         [(null? ids)
+          (build-sequential-let (reverse acc) (parse-expr #'body) stx)]
+         [else
+          (define rhs-ast (parse-expr (car rhss)))
+          (parameterize ([current-rename-env (extend-rename-env (list (car ids)))])
+            (loop (cdr ids) (cdr rhss)
+                  (cons (cons (resolve-id (car ids)) rhs-ast) acc)))]))]
 
     ;; let% (named) — monadic loop: loop params are the monadic values,
     ;; combined per iteration via the gathered-product engine.
     [(let% loop:id ([x:id rhs] ...+) body)
-     (build-named-monadic-let (syntax->datum #'loop)
-                              (parse-binding-pairs #'(x ...) #'(rhs ...))
-                              (parse-expr #'body)
-                              stx)]
+     ;; Seeds evaluate in the enclosing scope; loop name and params scope the body.
+     (define ids   (syntax->list #'(x ...)))
+     (define seeds (map parse-expr (syntax->list #'(rhs ...))))
+     (parameterize ([current-rename-env (extend-rename-env (cons #'loop ids))])
+       (build-named-monadic-let
+        (resolve-id #'loop)
+        (for/list ([id (in-list ids)] [r (in-list seeds)]) (cons (resolve-id id) r))
+        (parse-expr #'body)
+        stx))]
 
     ;; let% — parallel/independent monad bind: gather via `product`,
     ;; then `flatmap` into a monadic body.
     [(let% ([x:id rhs] ...+) body)
-     (build-gathered-let 'flatmap
-                         (parse-binding-pairs #'(x ...) #'(rhs ...))
-                         (parse-expr #'body)
-                         stx)]
+     (parse-gathered-let 'flatmap #'(x ...) #'(rhs ...) #'body stx)]
 
     ;; let+ — applicative bind: gather via `product`, then `fmap`.  The
     ;; body is a PURE expression; the result is wrapped by the functor.
     [(let+ ([x:id rhs] ...+) body)
-     (build-gathered-let 'fmap
-                         (parse-binding-pairs #'(x ...) #'(rhs ...))
-                         (parse-expr #'body)
-                         stx)]
+     (parse-gathered-let 'fmap #'(x ...) #'(rhs ...) #'body stx)]
 
     ;; Malformed monadic / parallel let — the binding group did not match
     ;; `([var expr] ...+)`.  Diagnose the offending clause here instead of
@@ -1140,11 +1213,15 @@
     [(let+ . _) (raise-bad-monadic-let 'let+ stx)]
 
     [(letrec ([x:id rhs] ...) body)
-     (e:letrec (for/list ([id (in-list (syntax->list #'(x ...)))]
-                          [r  (in-list (syntax->list #'(rhs ...)))])
-                 (cons (syntax->datum id) (parse-expr r)))
-               (parse-expr #'body)
-               stx)]
+     ;; Recursive: every binder is in scope in all RHSs and the body, so
+     ;; introduce them all before parsing either.
+     (define ids (syntax->list #'(x ...)))
+     (parameterize ([current-rename-env (extend-rename-env ids)])
+       (e:letrec (for/list ([id (in-list ids)]
+                            [r  (in-list (syntax->list #'(rhs ...)))])
+                   (cons (resolve-id id) (parse-expr r)))
+                 (parse-expr #'body)
+                 stx))]
 
     ;; (list e ...) — list-literal sugar.  Desugars to a Cons/Nil
     ;; chain; (list) is Nil.  Purely a parser rewrite, so the result is
@@ -1179,7 +1256,7 @@
     [(let* ([lhs rhs] ...+) body)
      (build-destructuring-let* (syntax->list #'(lhs ...))
                                (syntax->list #'(rhs ...))
-                               (parse-expr #'body)
+                               #'body
                                stx)]
 
     [(if c t e)
@@ -1262,7 +1339,7 @@
                     (cons (syntax->datum #'name) (parse-expr #'v))]))
                stx)]
 
-    [x:id  (e:var (syntax->datum #'x) stx)]
+    [x:id  (e:var (resolve-id #'x) stx)]
 
     ;; Also accept zero-arg applications `(f)`.  These
     ;; are passed an implicit Unit so the typing of 0-arg ops
@@ -1303,15 +1380,19 @@
 (define (parse-match-clause stx)
   (syntax-parse stx
     [[pat #:when guard body]
-     (clause (parse-pattern #'pat)
-             (parse-expr #'guard)
-             (parse-expr #'body)
-             stx)]
+     (parameterize ([current-rename-env
+                     (extend-rename-env (pattern-binder-ids #'pat))])
+       (clause (parse-pattern #'pat)
+               (parse-expr #'guard)
+               (parse-expr #'body)
+               stx))]
     [[pat body]
-     (clause (parse-pattern #'pat)
-             #f
-             (parse-expr #'body)
-             stx)]))
+     (parameterize ([current-rename-env
+                     (extend-rename-env (pattern-binder-ids #'pat))])
+       (clause (parse-pattern #'pat)
+               #f
+               (parse-expr #'body)
+               stx))]))
 
 (define (parse-handle-clauses cls outer-stx)
   ;; Split clauses into op-clauses and a single return-clause.  The
@@ -1322,13 +1403,18 @@
       (syntax-parse c
         #:datum-literals (return ->)
         [[return v:id -> body]
-         (handle-return (syntax->datum #'v)
-                        (parse-expr #'body) c)]
+         (parameterize ([current-rename-env (extend-rename-env (list #'v))])
+           (handle-return (resolve-id #'v)
+                          (parse-expr #'body) c))]
         [[op:id (p:id ...) k:id -> body]
-         (handle-clause (syntax->datum #'op)
-                        (map syntax->datum (syntax->list #'(p ...)))
-                        (syntax->datum #'k)
-                        (parse-expr #'body) c)])))
+         ;; `op` names the effect operation (a reference); the argument
+         ;; binders and the continuation `k` are in scope for the body.
+         (parameterize ([current-rename-env
+                         (extend-rename-env (cons #'k (syntax->list #'(p ...))))])
+           (handle-clause (syntax->datum #'op)
+                          (map resolve-id (syntax->list #'(p ...)))
+                          (resolve-id #'k)
+                          (parse-expr #'body) c))])))
   (define-values (rets ops)
     (partition handle-return? parsed))
   (unless (= (length rets) 1)
@@ -1338,14 +1424,6 @@
 
 ;; ----- monadic / applicative let desugarings -----------------------
 ;;
-;; Parse parallel binding-clause syntax `([x rhs] ...)` into a list of
-;; `(cons name-sym rhs-ast)` pairs.  RHS are parsed independently in the
-;; enclosing scope; sequential/loop scoping is supplied by the builders.
-(define (parse-binding-pairs ids-stx rhss-stx)
-  (for/list ([id (in-list (syntax->list ids-stx))]
-             [r  (in-list (syntax->list rhss-stx))])
-    (cons (syntax->datum id) (parse-expr r))))
-
 ;; The monadic / parallel let forms (let&, let%, let+) all bind with the
 ;; shape `([var expr] ...+)`.  When that pattern fails to match — say the
 ;; user wrote `[_ <> (println …)]` with a stray token between the
@@ -1409,15 +1487,21 @@
 (define (parse-case-lambda-clause who stx)
   (syntax-parse stx
     [[(pat ...) #:when guard body]
-     (clause* (map parse-pattern (syntax->list #'(pat ...)))
-              (parse-expr #'guard)
-              (parse-expr #'body)
-              stx)]
+     (parameterize ([current-rename-env
+                     (extend-rename-env
+                      (append-map pattern-binder-ids (syntax->list #'(pat ...))))])
+       (clause* (map parse-pattern (syntax->list #'(pat ...)))
+                (parse-expr #'guard)
+                (parse-expr #'body)
+                stx))]
     [[(pat ...) body]
-     (clause* (map parse-pattern (syntax->list #'(pat ...)))
-              #f
-              (parse-expr #'body)
-              stx)]
+     (parameterize ([current-rename-env
+                     (extend-rename-env
+                      (append-map pattern-binder-ids (syntax->list #'(pat ...))))])
+       (clause* (map parse-pattern (syntax->list #'(pat ...)))
+                #f
+                (parse-expr #'body)
+                stx))]
     [_
      (raise-syntax-error
       who
@@ -1480,43 +1564,55 @@
 ;; RHSs go into one `e:let` (preserving let-polymorphism for the plain
 ;; bindings) and the non-variable patterns destructure their bound temp
 ;; around the body — no binding can see another's pattern variables.
-(define (build-destructuring-let lhs-stxs rhs-stxs body stx)
-  (define-values (binds destructures)
-    (for/fold ([binds '()] [ds '()]
-               #:result (values (reverse binds) (reverse ds)))
-              ([l (in-list lhs-stxs)] [r (in-list rhs-stxs)] [i (in-naturals)])
-      (define pat (parse-pattern l))
-      (define rhs (parse-expr r))
-      (cond
-        [(p:var? pat)
-         (values (cons (cons (p:var-name pat) rhs) binds) ds)]
-        [else
-         (define tmp (string->symbol (format "$let.~a" i)))
-         (values (cons (cons tmp rhs) binds)
-                 (cons (list tmp pat l) ds))])))
-  (define body*
-    (for/foldr ([acc body]) ([d (in-list destructures)])
-      (e:match (e:var (car d) stx)
-               (list (clause (cadr d) #f acc (caddr d)))
-               #t stx)))
-  (e:let binds body* stx))
+(define (build-destructuring-let lhs-stxs rhs-stxs body-stx stx)
+  ;; Parallel `let`: every RHS is evaluated in the surrounding scope, so
+  ;; parse the RHSs BEFORE the binders are introduced into the rename env.
+  (define rhss (map parse-expr rhs-stxs))
+  ;; Introduce the binders (hygienic α-rename when active) for the body and
+  ;; for re-parsing the LHS patterns, so a binder and its references in the
+  ;; body share the same fresh symbol.
+  (parameterize ([current-rename-env
+                  (extend-rename-env (append-map pattern-binder-ids lhs-stxs))])
+    (define body (parse-expr body-stx))
+    (define-values (binds destructures)
+      (for/fold ([binds '()] [ds '()]
+                 #:result (values (reverse binds) (reverse ds)))
+                ([l (in-list lhs-stxs)] [rhs (in-list rhss)] [i (in-naturals)])
+        (define pat (parse-pattern l))
+        (cond
+          [(p:var? pat)
+           (values (cons (cons (p:var-name pat) rhs) binds) ds)]
+          [else
+           (define tmp (string->symbol (format "$let.~a" i)))
+           (values (cons (cons tmp rhs) binds)
+                   (cons (list tmp pat l) ds))])))
+    (define body*
+      (for/foldr ([acc body]) ([d (in-list destructures)])
+        (e:match (e:var (car d) stx)
+                 (list (clause (cadr d) #f acc (caddr d)))
+                 #t stx)))
+    (e:let binds body* stx)))
 
 ;; Sequential `let*`: each binding nests inside the next, so a later RHS
 ;; sees the earlier pattern variables.  A plain identifier is a singleton
 ;; `e:let`; any other pattern is a singleton irrefutable match.
-(define (build-destructuring-let* lhs-stxs rhs-stxs body stx)
+(define (build-destructuring-let* lhs-stxs rhs-stxs body-stx stx)
   (let loop ([ls lhs-stxs] [rs rhs-stxs])
     (cond
-      [(null? ls) body]
+      [(null? ls) (parse-expr body-stx)]
       [else
-       (define pat (parse-pattern (car ls)))
+       ;; Sequential: this RHS sees the bindings before it (current env);
+       ;; this binding's own binders cover the remaining bindings and body.
        (define rhs (parse-expr (car rs)))
-       (define inner (loop (cdr ls) (cdr rs)))
-       (cond
-         [(p:var? pat)
-          (e:let (list (cons (p:var-name pat) rhs)) inner stx)]
-         [else
-          (e:match rhs (list (clause pat #f inner (car ls))) #t stx)])])))
+       (parameterize ([current-rename-env
+                       (extend-rename-env (pattern-binder-ids (car ls)))])
+         (define pat   (parse-pattern (car ls)))
+         (define inner (loop (cdr ls) (cdr rs)))
+         (cond
+           [(p:var? pat)
+            (e:let (list (cons (p:var-name pat) rhs)) inner stx)]
+           [else
+            (e:match rhs (list (clause pat #f inner (car ls))) #t stx)]))])))
 
 ;; Gather independent binding RHS into one applicative value via
 ;; right-associated `product`, with the matching nested `Pair`
@@ -1559,6 +1655,19 @@
                          stx)
                   gathered)
             stx)]))
+
+;; Parse a parallel monadic/applicative let (let%, let+): the RHSs evaluate in
+;; the enclosing scope; the binders are introduced (hygienically α-renamed when
+;; active) for the body; then the gathered-product engine assembles the call.
+(define (parse-gathered-let combiner ids-stx rhss-stx body-stx stx)
+  (define ids  (syntax->list ids-stx))
+  (define rhss (map parse-expr (syntax->list rhss-stx)))
+  (parameterize ([current-rename-env (extend-rename-env ids)])
+    (build-gathered-let combiner
+                        (for/list ([id (in-list ids)] [r (in-list rhss)])
+                          (cons (resolve-id id) r))
+                        (parse-expr body-stx)
+                        stx)))
 
 ;; let& — sequential nested flatmap.  Each later binding's RHS sits
 ;; inside the earlier bindings' lambdas, so it sees them in scope.
@@ -1606,12 +1715,16 @@
      (syntax-parse s
        #:datum-literals (<-)
        [[v:id <- expr]
-        (e:app (e:var 'flatmap stx)
-               (list (e:lam (list (syntax->datum #'v))
-                            (parse-do (cdr stmts) body-stx stx)
-                            stx)
-                     (parse-expr #'expr))
-               stx)]
+        ;; The RHS is in the enclosing scope; `v` binds the unwrapped value
+        ;; for the rest of the chain and the body.
+        (define rhs (parse-expr #'expr))
+        (parameterize ([current-rename-env (extend-rename-env (list #'v))])
+          (e:app (e:var 'flatmap stx)
+                 (list (e:lam (list (resolve-id #'v))
+                              (parse-do (cdr stmts) body-stx stx)
+                              stx)
+                       rhs)
+                 stx))]
        [expr
         ;; Bare-expression clause: sequence `expr` for its monadic
         ;; effect, discard the result, then continue.  Desugars to the
@@ -1922,7 +2035,7 @@
      (define name (syntax->datum #'x))
      (cond
        [(wildcard-symbol? name) (p:wild stx)]
-       [(lowercase-id? name)    (p:var name stx)]
+       [(lowercase-id? name)    (p:var (resolve-id #'x) stx)]
        [else                    (p:ctor name '() stx)])]
     [(ctor:id arg ...)
      #:fail-unless (not (lowercase-id? (syntax->datum #'ctor)))
@@ -1965,40 +2078,51 @@
 ;; `define` mechanism instead of a single-clause refutable pattern.
 (define (parse-fn-params+body params-stx body-stx ctx-stx)
   (define params-list (syntax->list params-stx))
-  (define-values (names-rev wrappers-rev)
-    (for/fold ([names '()] [wrappers '()])
-              ([p (in-list params-list)])
-      (cond
-        [(identifier? p)
-         ;; Bare identifier: use directly as the lambda's
-         ;; parameter name.  No pattern parsing — `Nil` here is a
-         ;; parameter literally named `Nil`, not a 0-arg ctor
-         ;; pattern.  To pattern-match against a 0-arg ctor, wrap
-         ;; in parens: `(Nil)`.
-         (values (cons (syntax->datum p) names) wrappers)]
-        [else
-         (define pat (parse-pattern p))
-         (define fresh (gensym '$arg))
-         (values (cons fresh names)
-                 (cons (cons fresh pat) wrappers))])))
-  (define names    (reverse names-rev))
-  (define wrappers (reverse wrappers-rev))
-  (define body-ast (parse-expr body-stx))
-  (define wrapped
-    (foldr (lambda (w body)
-             (e:match (e:var (car w) ctx-stx)
-                      (list (clause (cdr w) #f body body-stx))
-                      #t
-                      ctx-stx))
-           body-ast
-           wrappers))
-  ;; Stash the original params/body for the multi-clause combiner
-  ;; that may run in `parse-toplevel-list`.  Outside that scope the
-  ;; record parameter is #f and this is a no-op.
-  (let ([rec (current-fn-clauses-record)])
-    (when rec
-      (hash-set! rec ctx-stx (cons params-stx body-stx))))
-  (values names wrapped))
+  ;; Bare-identifier params bind directly; parenthesized params are patterns.
+  ;; Introduce all param binders into the rename env (hygienic α-rename when
+  ;; active) before parsing the body, so the body's references to a param and
+  ;; the param binder share one fresh symbol.
+  (parameterize ([current-rename-env
+                  (extend-rename-env
+                   (append-map (lambda (p)
+                                 (if (identifier? p)
+                                     (list p)
+                                     (pattern-binder-ids p)))
+                               params-list))])
+    (define-values (names-rev wrappers-rev)
+      (for/fold ([names '()] [wrappers '()])
+                ([p (in-list params-list)])
+        (cond
+          [(identifier? p)
+           ;; Bare identifier: use directly as the lambda's
+           ;; parameter name.  No pattern parsing — `Nil` here is a
+           ;; parameter literally named `Nil`, not a 0-arg ctor
+           ;; pattern.  To pattern-match against a 0-arg ctor, wrap
+           ;; in parens: `(Nil)`.
+           (values (cons (resolve-id p) names) wrappers)]
+          [else
+           (define pat (parse-pattern p))
+           (define fresh (gensym '$arg))
+           (values (cons fresh names)
+                   (cons (cons fresh pat) wrappers))])))
+    (define names    (reverse names-rev))
+    (define wrappers (reverse wrappers-rev))
+    (define body-ast (parse-expr body-stx))
+    (define wrapped
+      (foldr (lambda (w body)
+               (e:match (e:var (car w) ctx-stx)
+                        (list (clause (cdr w) #f body body-stx))
+                        #t
+                        ctx-stx))
+             body-ast
+             wrappers))
+    ;; Stash the original params/body for the multi-clause combiner
+    ;; that may run in `parse-toplevel-list`.  Outside that scope the
+    ;; record parameter is #f and this is a no-op.
+    (let ([rec (current-fn-clauses-record)])
+      (when rec
+        (hash-set! rec ctx-stx (cons params-stx body-stx))))
+    (values names wrapped)))
 
 ;; ----- types --------------------------------------------------------
 

@@ -19,6 +19,7 @@ For information about how the language is implemented, see
 
 @include-section["entry-points.scrbl"]
 @include-section["syntax-forms.scrbl"]
+@include-section["macros.scrbl"]
 @include-section["provide-specs.scrbl"]
 @include-section["types.scrbl"]
 @include-section["classes.scrbl"]

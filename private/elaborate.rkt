@@ -99,6 +99,157 @@
               [else (< (cadr a) (cadr b))]))))
   (for/list ([entry (in-list sorted)]) (caddr entry)))
 
+;; ----- user-defined macros: front-phase expansion --------------------
+;;
+;; A `(define-syntax …)` / `(define-syntax-rule …)` inside a Rackton block
+;; introduces a real, hygienic Racket transformer.  Before parsing, drive
+;; the Racket expander over the body: bind each macro in an internal-
+;; definition context, expand every macro USE to core Rackton forms — one
+;; transformer step at a time, so Rackton leaves and applications are not
+;; lowered into Racket core syntax (`#%app`, `quote`, …) that `parse-top`
+;; cannot read.  Finally α-rename the fresh binders a macro introduces so
+;; the symbol-keyed parser cannot conflate them with user names (hygiene);
+;; introduced *references* to real bindings (`+`, `let`, …) and all
+;; user-written identifiers are left alone.  Macro-definition forms are
+;; consumed here and never reach `parse-top`.
+(define-for-syntax (macro-def-form? f)
+  (define l (syntax->list f))
+  (and l (pair? l) (identifier? (car l))
+       (memq (syntax-e (car l))
+             '(define-syntax define-syntax-rule define-syntaxes))))
+
+(define-for-syntax (require-form? f)
+  (define l (syntax->list f))
+  (and l (pair? l) (identifier? (car l)) (eq? (syntax-e (car l)) 'require)))
+
+;; Per-elaboration sinks, set up in `rackton-elaborate`:
+;;   current-collected-macros — a box collecting (cons (listof name-sym) datum)
+;;     for every macro DEFINED in this block, so a `#lang rackton` library can
+;;     re-emit them in its sidecar for importers (cross-module macro export).
+;;   current-had-macros — a box set to #t when any macro (defined here or
+;;     imported via require) was processed, so the parser turns on hygiene.
+(define-for-syntax current-collected-macros (make-parameter #f))
+(define-for-syntax current-had-macros       (make-parameter #f))
+
+(define-for-syntax (note-had-macros!)
+  (let ([b (current-had-macros)]) (when b (set-box! b #t))))
+
+(define-for-syntax (collect-macro! names datum)
+  (let ([b (current-collected-macros)])
+    (when b (set-box! b (cons (cons names datum) (unbox b))))))
+
+(define-for-syntax (expand-user-macros forms)
+  (cond
+    ;; A block can only involve macros if it defines one or requires a module
+    ;; that might export some.  Otherwise: identity, so non-macro programs are
+    ;; byte-for-byte unaffected by this phase.
+    [(not (or (ormap macro-def-form? forms) (ormap require-form? forms))) forms]
+    [else
+     (define ctx    (syntax-local-make-definition-context))
+     (define ctx-id (list (gensym 'rackton-macros)))
+     (define registered '())          ; bound macro-name identifiers
+
+     ;; Bind a macro definition — written directly, produced by an expanding
+     ;; macro-defining macro, or reconstructed from an imported library — into
+     ;; the context, and register its name(s) so later uses expand.  When
+     ;; `collect?`, also record it for this module's own sidecar so it can be
+     ;; re-exported.
+     (define (bind-macro-def! f #:collect? [collect? #f])
+       (define f* (internal-definition-context-introduce ctx f 'add))
+       (define ds (local-expand f* ctx-id (list #'define-syntaxes) ctx))
+       (syntax-parse ds
+         #:literals (define-syntaxes)
+         [(define-syntaxes (name:id ...) rhs)
+          (define ids (syntax->list #'(name ...)))
+          (syntax-local-bind-syntaxes ids #'rhs ctx)
+          (set! registered (append ids registered))
+          (when collect?
+            (collect-macro! (map syntax->datum ids) (syntax->datum f)))]
+         [_ (void)]))
+
+     ;; Import the macros a required Rackton library exports: each library's
+     ;; `rackton-schemes` sidecar carries `rackton-macros` — a list of
+     ;; (names . definition-datum).  Reconstruct each definition in the
+     ;; importer's lexical context (so its references and the user's uses
+     ;; resolve the same way) and bind it like a local macro.
+     (define (import-macros-from! require-stx)
+       (syntax-parse require-stx
+         [(_ spec ...)
+          (for ([spec-stx (in-list (syntax->list #'(spec ...)))])
+            (define submod (require-spec->submod-spec spec-stx))
+            (when submod
+              (define entries
+                (with-handlers ([exn:fail? (lambda (_) '())])
+                  (dynamic-require submod 'rackton-macros)))
+              (for ([entry (in-list entries)])
+                (bind-macro-def!
+                 (datum->syntax spec-stx (cdr entry) spec-stx)))))]))
+
+     ;; Pass 0 — import macros from required libraries first.
+     (for ([f (in-list forms)] #:when (require-form? f))
+       (import-macros-from! f))
+
+     ;; Pass 1 — bind every directly-written macro definition, so a macro may
+     ;; be used before its textual definition, and collect it for re-export.
+     (for ([f (in-list forms)] #:when (macro-def-form? f))
+       (bind-macro-def! f #:collect? #t))
+
+     ;; No macros after all (e.g. requires that export none): identity.
+     (cond
+       [(null? registered) forms]
+       [else
+        (note-had-macros!)
+
+     ;; The transformer of `head` if it names one of our macros, else #f —
+     ;; so the walk never mistakes a Rackton core form (`let`, `if`) or an
+     ;; ordinary binding (`+`) for a macro.
+     (define (user-macro-transformer head)
+       (and (identifier? head)
+            (ormap (lambda (m) (free-identifier=? m head)) registered)
+            (syntax-local-value head (lambda () #f) ctx)))
+
+     ;; Single-step expand any registered-macro use, recursing into the
+     ;; result and into all sub-forms.  Core forms, applications, variables,
+     ;; and literals pass through structurally — never lowered into Racket
+     ;; core syntax.  Hygiene (renaming the binders a macro introduces, and
+     ;; protecting its top-level references from use-site capture) is handled
+     ;; downstream by the parser's scope-aware binding, keyed on the scopes
+     ;; the expander leaves on these identifiers.
+     (define (expand-walk stx)
+       (define l (syntax->list stx))
+       (cond
+         ;; Never expand into a macro definition's template/body — it is
+         ;; bound as a transformer, not lowered to Rackton core forms.
+         [(macro-def-form? stx) stx]
+         [(or (not l) (null? l)) stx]
+         [else
+          (define tx (user-macro-transformer (car l)))
+          (cond
+            [tx
+             (expand-walk
+              (syntax-local-apply-transformer tx (car l) 'expression ctx stx))]
+            [else
+             (datum->syntax stx (map expand-walk l) stx stx)])]))
+
+     ;; Pass 2 — expand every non-definition form in order.  The ctx scope
+     ;; is added so macro USES resolve; it is removed from the residual core
+     ;; forms so top-level definition names keep the user's module context.
+     ;; A use of a macro-defining macro expands into a fresh macro
+     ;; definition: bind it here (so later forms see it) instead of emitting
+     ;; it to parse-top.
+     (define out '())
+     (for ([f (in-list forms)] #:unless (macro-def-form? f))
+       (define expanded
+         (expand-walk (internal-definition-context-introduce ctx f 'add)))
+       (cond
+         [(macro-def-form? expanded)
+          (bind-macro-def! expanded)]
+         [else
+          (set! out
+                (cons (internal-definition-context-introduce ctx expanded 'remove)
+                      out))]))
+        (reverse out)])]))
+
 ;; Shared elaboration helper: returns
 ;;   (values compiled-syntax-list provide-stx
 ;;           bindings-data data-ctors-data tcons-data classes-data instances-data
@@ -106,8 +257,19 @@
 ;; `provide-stx` is a syntax object for a single Racket-level
 ;; `(provide ...)` form (or #f when nothing is exported).
 (define-for-syntax (rackton-elaborate forms-stx)
+  (define raw-forms (syntax->list forms-stx))
+  ;; `macros-box` gathers this block's own macro definitions (for re-export in
+  ;; the sidecar); `had-macros?-box` records whether any macro was defined OR
+  ;; imported, so the parser turns on scope-aware binding hygiene only then.
+  (define macros-box      (box '()))
+  (define had-macros?-box (box #f))
+  (define expanded-forms
+    (parameterize ([current-collected-macros macros-box]
+                   [current-had-macros       had-macros?-box])
+      (expand-user-macros raw-forms)))
   (define parsed
-    (parse-toplevel-list (syntax->list forms-stx)))
+    (parameterize ([current-hygiene? (unbox had-macros?-box)])
+      (parse-toplevel-list expanded-forms)))
   ;; Return-typed class methods are resolved at compile time, with the
   ;; resolution communicated from inference to codegen via these two
   ;; hashtables.  Inference populates `current-method-uses` then
@@ -180,9 +342,9 @@
     (define inline-log (inlined-sites-snapshot))
     ;; Pass the logs alongside compiled forms; the
     ;; rackton macro turns them into runtime forms.
-    (define-values (final-compiled prov-stx bs dcs tcs cls insts impls)
-      (elaborate-finish parsed* env compiled))
-    (values final-compiled prov-stx bs dcs tcs cls insts impls mono-log inline-log)))
+    (define-values (final-compiled prov-stx bs dcs tcs cls insts impls macs)
+      (elaborate-finish parsed* env compiled (unbox macros-box)))
+    (values final-compiled prov-stx bs dcs tcs cls insts impls macs mono-log inline-log)))
 
 ;; ----- export resolution ----------------------------------------------
 ;;
@@ -234,11 +396,13 @@
 ;; covering vars, data-ctors, tcons, classes.
 (define-for-syntax (resolve-provide-specs parsed env
                                           local-vars local-data-ctors
-                                          local-tcons local-classes)
+                                          local-tcons local-classes
+                                          local-macros)
   (define export-vars       (make-hasheq))
   (define export-data-ctors (make-hasheq))
   (define export-tcons      (make-hasheq))
   (define export-classes    (make-hasheq))
+  (define export-macros     (make-hasheq))
 
   (define (resolve-category name)
     ;; Returns a symbol describing which export bucket `name`
@@ -252,6 +416,7 @@
            (env-ref-tcon env name #f)) 'tcon]
       [(or (hash-ref local-classes name #f)
            (env-ref-class env name #f)) 'class]
+      [(hash-ref local-macros name #f) 'macro]
       [(or (hash-ref local-vars name #f)
            (env-ref-var env name #f))  'var]
       [else #f]))
@@ -265,6 +430,8 @@
        (hash-set! export-tcons local external)]
       [(class)
        (hash-set! export-classes local external)]
+      [(macro)
+       (hash-set! export-macros local external)]
       [(var)
        (hash-set! export-vars local external)]
       [else
@@ -276,7 +443,8 @@
     (for ([(n _) (in-hash local-vars)])       (hash-set! export-vars       n n))
     (for ([(n _) (in-hash local-data-ctors)]) (hash-set! export-data-ctors n n))
     (for ([(n _) (in-hash local-tcons)])      (hash-set! export-tcons      n n))
-    (for ([(n _) (in-hash local-classes)])    (hash-set! export-classes    n n)))
+    (for ([(n _) (in-hash local-classes)])    (hash-set! export-classes    n n))
+    (for ([(n _) (in-hash local-macros)])     (hash-set! export-macros     n n)))
 
   (define (add-data-out tname src-stx)
     (define ti (or (env-ref-tcon env tname #f)
@@ -356,14 +524,16 @@
     (unless (or (hash-has-key? export-vars       name)
                 (hash-has-key? export-data-ctors name)
                 (hash-has-key? export-tcons      name)
-                (hash-has-key? export-classes    name))
+                (hash-has-key? export-classes    name)
+                (hash-has-key? export-macros     name))
       (raise-syntax-error 'provide
         (format "except-out: ~s is not in the nested provide spec" name)
         src-stx))
     (hash-remove! export-vars       name)
     (hash-remove! export-data-ctors name)
     (hash-remove! export-tcons      name)
-    (hash-remove! export-classes    name))
+    (hash-remove! export-classes    name)
+    (hash-remove! export-macros     name))
 
   (define (process-spec spec)
     (syntax-parse spec
@@ -399,7 +569,7 @@
       (for ([spec (in-list (top:provide-specs f))])
         (process-spec spec))))
 
-  (values export-vars export-data-ctors export-tcons export-classes))
+  (values export-vars export-data-ctors export-tcons export-classes export-macros))
 
 ;; Build a single Racket-level `(provide …)` syntax form (or #f when
 ;; the export set is empty).  Renames become `(rename-out [l e])`;
@@ -432,13 +602,19 @@
      ;; so datum->syntax leaves them in place.
      (datum->syntax anchor-stx (cons 'provide entries) anchor-stx)]))
 
-(define-for-syntax (elaborate-finish parsed env compiled)
+(define-for-syntax (elaborate-finish parsed env compiled collected-macros)
   (define-values (local-vars local-data-ctors local-tcons local-classes)
     (collect-local-defs parsed))
-  (define-values (export-vars export-data-ctors export-tcons export-classes)
+  ;; Macro names defined in this block (consumed by the front phase, so not in
+  ;; `parsed`); needed so `provide` can name them and re-export their defs.
+  (define local-macros (make-hasheq))
+  (for ([entry (in-list collected-macros)])
+    (for ([n (in-list (car entry))]) (hash-set! local-macros n #t)))
+  (define-values (export-vars export-data-ctors export-tcons export-classes export-macros)
     (resolve-provide-specs parsed env
                            local-vars local-data-ctors
-                           local-tcons local-classes))
+                           local-tcons local-classes
+                           local-macros))
   ;; Force-export generated needs-dict return-typed impls (e.g.
   ;; $pure:StateT, $get-st:StateT).  They are codegen-only names (not
   ;; env vars), so this affects ONLY the Racket-level provide, not the
@@ -501,10 +677,21 @@
       (and (top:provide? f) (top:provide-stx f))))
   (define prov-stx
     (and provide-anchor (build-racket-provide export-vars provide-anchor)))
+  ;; Exported macros for the sidecar: each provided macro name paired with its
+  ;; definition datum (under its external name), so importers can reconstruct
+  ;; and bind it.  A definition binding several names contributes one entry per
+  ;; provided name.
+  (define export-macros-encoded
+    (apply append
+           (for/list ([entry (in-list collected-macros)])
+             (define datum (cdr entry))
+             (for/list ([n (in-list (car entry))]
+                        #:when (hash-ref export-macros n #f))
+               (cons (hash-ref export-macros n) datum)))))
   (values compiled prov-stx
           export-bindings export-data-ctors-encoded
           export-tcons-encoded export-classes-encoded export-instances
-          exported-impls))
+          exported-impls export-macros-encoded))
 
 ;; `(rackton form ...)` — embeddable form.  Splices the compiled forms
 ;; but does NOT emit a sidecar schemes submodule, so multiple
@@ -512,7 +699,7 @@
 (define-syntax (rackton stx)
   (syntax-parse stx
     [(_ form ...)
-     (define-values (compiled prov-stx _b _d _t _c _i _impls mono-log inline-log)
+     (define-values (compiled prov-stx _b _d _t _c _i _impls _macs mono-log inline-log)
        (rackton-elaborate #'(form ...)))
      (define out-forms
        (cond [prov-stx (append compiled (list prov-stx))]
@@ -531,7 +718,7 @@
 (define-syntax (rackton/main stx)
   (syntax-parse stx
     [(_ form ...)
-     (define-values (compiled prov-stx bs dcs tcs cls insts impls _mono _inline)
+     (define-values (compiled prov-stx bs dcs tcs cls insts impls macs _mono _inline)
        (rackton-elaborate #'(form ...)))
      (define at-module-level?
        (memq (syntax-local-context) '(module module-begin)))
@@ -544,7 +731,8 @@
                    [tcons        (datum->syntax stx tcs)]
                    [classes      (datum->syntax stx cls)]
                    [instances    (datum->syntax stx insts)]
-                   [impls        (datum->syntax stx impls)])
+                   [impls        (datum->syntax stx impls)]
+                   [macros       (datum->syntax stx macs)])
        (cond
          [at-module-level?
           (syntax/loc stx
@@ -556,12 +744,14 @@
                          rackton-tcons
                          rackton-classes
                          rackton-instances
-                         rackton-exported-impls)
+                         rackton-exported-impls
+                         rackton-macros)
                 (define rackton-bindings        'bindings)
                 (define rackton-data-ctors      'data-ctors)
                 (define rackton-tcons           'tcons)
                 (define rackton-classes         'classes)
                 (define rackton-instances       'instances)
-                (define rackton-exported-impls  'impls))))]
+                (define rackton-exported-impls  'impls)
+                (define rackton-macros          'macros))))]
          [else
           (syntax/loc stx (begin out ...))]))]))
