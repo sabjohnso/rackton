@@ -2,16 +2,26 @@
 @require[scribble/manual
          (for-label rackton rackton/system/directory rackton/system/environment rackton/system/exception rackton/system/exit rackton/system/file rackton/system/io rackton/system/random rackton/system/ref rackton/system/time rackton/data/result)]
 
-@title[#:tag "stdlib-system"]{@tt{rackton/system} — IO and the outside world}
+@title[#:tag "stdlib-system" #:style 'toc]{@tt{rackton/system} — IO and the outside world}
 
-@defmodule[rackton/system #:no-declare]
+@defmodule[rackton/system]
 The @racketmodname[rackton/system] umbrella re-exports every module in this
 family in one import; require it for the whole toolkit, or a specific
 module below for a narrower dependency.
 
+The @tt{system} family gathers the effectful modules that reach outside
+the program, after Haskell's @tt{System.*}.  It covers the filesystem
+(@racketmodname[rackton/system/directory], @racketmodname[rackton/system/file]),
+handle-based and standard-stream @racketmodname[rackton/system/io], the
+process @racketmodname[rackton/system/environment] and
+@racketmodname[rackton/system/exit], @racketmodname[rackton/system/exception]
+handling in @racket[IO], mutable @racketmodname[rackton/system/ref] cells,
+@racketmodname[rackton/system/random], and @racketmodname[rackton/system/time].
+
+@local-table-of-contents[]
+
 @section{rackton/system/directory}
-@defmodule[rackton/system/directory #:no-declare]
-@declare-exporting[rackton/system/directory]
+@defmodule[rackton/system/directory]
 
 Filesystem entry operations: existence checks, deletion, directory
 creation, and directory listing. The runtime primitives live in
@@ -37,8 +47,7 @@ creation, and directory listing. The runtime primitives live in
 
 
 @section{rackton/system/environment}
-@defmodule[rackton/system/environment #:no-declare]
-@declare-exporting[rackton/system/environment]
+@defmodule[rackton/system/environment]
 
 Process environment and command-line access. The runtime primitives live in
 @tt{rackton/private/prelude-runtime} and are reached via @racket[foreign].
@@ -57,8 +66,7 @@ Process environment and command-line access. The runtime primitives live in
 
 
 @section{rackton/system/exception}
-@defmodule[rackton/system/exception #:no-declare]
-@declare-exporting[rackton/system/exception]
+@defmodule[rackton/system/exception]
 
 Exceptions in @racket[IO], following Haskell's @tt{Control.Exception} /
 @tt{System.IO.Error}: @racket[try] reifies a raised error as a
@@ -72,8 +80,7 @@ Exceptions in @racket[IO], following Haskell's @tt{Control.Exception} /
 
 
 @section{rackton/system/exit}
-@defmodule[rackton/system/exit #:no-declare]
-@declare-exporting[rackton/system/exit]
+@defmodule[rackton/system/exit]
 
 System.Exit: terminate the process with a status code. @racket[ExitCode] is
 a plain Rackton data type, and the lone runtime primitive
@@ -102,8 +109,7 @@ by an @racket[ExitCode].}
 
 
 @section{rackton/system/file}
-@defmodule[rackton/system/file #:no-declare]
-@declare-exporting[rackton/system/file]
+@defmodule[rackton/system/file]
 
 Whole-file I/O, mirroring Haskell's @tt{readFile} / @tt{writeFile} / @tt{appendFile}.
 The underlying runtime primitives live in @tt{rackton/private/prelude-runtime} and are reached through @racket[foreign].
@@ -116,8 +122,7 @@ The underlying runtime primitives live in @tt{rackton/private/prelude-runtime} a
 
 
 @section{rackton/system/io}
-@defmodule[rackton/system/io #:no-declare]
-@declare-exporting[rackton/system/io]
+@defmodule[rackton/system/io]
 
 Handle-based file and stream I/O, modeled on Haskell's @tt{System.IO}. A
 @racket[Handle] is opaque (a host port); an operation that does not match a
@@ -187,8 +192,7 @@ host port.}
 
 
 @section{rackton/system/random}
-@defmodule[rackton/system/random #:no-declare]
-@declare-exporting[rackton/system/random]
+@defmodule[rackton/system/random]
 
 Random number generation in two layers: IO conveniences backed by the
 host RNG, and a pure, splittable @racket[StdGen] implementing SplitMix64
@@ -254,8 +258,7 @@ This module requires @racket[rackton/data/bits].
 
 
 @section{rackton/system/ref}
-@defmodule[rackton/system/ref #:no-declare]
-@declare-exporting[rackton/system/ref]
+@defmodule[rackton/system/ref]
 
 Mutable references in @racket[IO], analogous to Haskell's @tt{Data.IORef}.
 The @racket[Ref] type is abstract; the runtime primitives are reached via
@@ -271,8 +274,7 @@ The @racket[Ref] type is abstract; the runtime primitives are reached via
 
 
 @section{rackton/system/time}
-@defmodule[rackton/system/time #:no-declare]
-@declare-exporting[rackton/system/time]
+@defmodule[rackton/system/time]
 
 Wall-clock and CPU-time access. Each binding is a foreign primitive that
 reaches the underlying runtime clock in @tt{rackton/private/prelude-runtime}.

@@ -6,7 +6,7 @@
                     rackton/batteries)
          "../rackton-eval.rkt"]
 @(define ev (make-rackton-eval))
-@title[#:tag "stdlib"]{Standard library modules}
+@title[#:tag "stdlib" #:style 'toc]{Standard library modules}
 
 The auto-prelude is deliberately small — roughly the size of Haskell's
 @tt{Prelude}: type classes, the core ADTs, the numeric tower, core
@@ -26,6 +26,10 @@ Type-class @emph{instances} always escape a module regardless of its
 property), so importing a module makes both its bindings and its
 instances available.
 
+The families, each documenting the modules beneath it:
+
+@local-table-of-contents[#:style 'immediate-only]
+
 @include-section["stdlib-data.scrbl"]
 @include-section["stdlib-control.scrbl"]
 @include-section["stdlib-numeric.scrbl"]
@@ -35,7 +39,18 @@ instances available.
 
 @section[#:tag "stdlib-foreign"]{@tt{rackton/foreign} — raw memory (unsafe)}
 
-@defmodule[rackton/foreign/ptr #:no-declare]
+The @tt{foreign} family is Rackton's unsafe interface to raw memory and
+C, after Haskell's @tt{Foreign.*}.  It is @emph{not} part of
+@tt{batteries}; import a module explicitly and only when you must touch
+raw memory.  @racketmodname[rackton/foreign/ptr] is the pointer and
+marshalling core, and @racketmodname[rackton/foreign/c] binds a handful
+of @tt{libm} functions while documenting the recipe for binding your
+own.
+
+@local-table-of-contents[]
+
+@subsection{rackton/foreign/ptr}
+@defmodule[rackton/foreign/ptr]
 The Foreign.Ptr / Foreign.Marshal core: the opaque @racket[Ptr] type
 (and @racket[CString] = @racket[(Ptr Char)]), raw allocation
 (@racket[malloc-bytes] / @racket[free-ptr]), @racket[null-ptr] /
@@ -56,7 +71,8 @@ is no @tt{Storable} class, so reads and writes are the type-specific
 @racket[peek-int] / @racket[poke-int] / … rather than one polymorphic
 pair.
 
-@defmodule[rackton/foreign/c #:no-declare]
+@subsection{rackton/foreign/c}
+@defmodule[rackton/foreign/c]
 A curated set of @tt{libm} functions the prelude's Floating class
 doesn't cover, bound through the @racket[foreign] form: @racket[c-cbrt],
 @racket[c-hypot], @racket[c-expm1], @racket[c-log1p], @racket[c-tgamma]
@@ -68,7 +84,7 @@ sugar over.
 
 @section[#:tag "batteries"]{The @tt{batteries} umbrella}
 
-@defmodule[rackton/batteries #:no-declare]
+@defmodule[rackton/batteries]
 
 For convenience, @racketmodname[rackton/batteries] re-exports the whole
 standard library — every family above — in one import:

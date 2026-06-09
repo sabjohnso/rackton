@@ -4,11 +4,32 @@
          "../rackton-eval.rkt"]
 @(define ev (make-rackton-eval))
 
-@title[#:tag "stdlib-data"]{@tt{rackton/data} — containers and structures}
+@title[#:tag "stdlib-data" #:style 'toc]{@tt{rackton/data} — containers and structures}
+
+The @tt{data} family collects Rackton's container types and the
+algebraic structures defined over them, after Haskell's @tt{Data.*}
+hierarchy.  It spans the concrete collections
+(@racketmodname[rackton/data/list], @racketmodname[rackton/data/map],
+@racketmodname[rackton/data/set], @racketmodname[rackton/data/tuple],
+and @racketmodname[rackton/data/list/nonempty]); the small sum types for
+optional and fallible values (@racketmodname[rackton/data/maybe],
+@racketmodname[rackton/data/either], @racketmodname[rackton/data/result]);
+the classes that abstract over containers
+(@racketmodname[rackton/data/semigroup],
+@racketmodname[rackton/data/monoid],
+@racketmodname[rackton/data/functor],
+@racketmodname[rackton/data/foldable],
+@racketmodname[rackton/data/traversable],
+@racketmodname[rackton/data/ord]); scalar and combinator helpers (bits,
+booleans, characters, complex numbers, rationals, functions, and the two
+@racketmodname[rackton/data/lazy] evaluation modules); and the
+@racketmodname[rackton/data/lens] optics core.  None of these are in the
+auto-prelude — import the specific module you need.
+
+@local-table-of-contents[]
 
 @section{rackton/data/bits}
-@defmodule[rackton/data/bits #:no-declare]
-@declare-exporting[rackton/data/bits]
+@defmodule[rackton/data/bits]
 
 Bitwise operations over the prelude's @racket[Integer], in the spirit of
 Haskell's @tt{Data.Bits}. Because Rackton has a single integral type, these
@@ -54,8 +75,7 @@ non-negative inputs.
 
 
 @section{rackton/data/bool}
-@defmodule[rackton/data/bool #:no-declare]
-@declare-exporting[rackton/data/bool]
+@defmodule[rackton/data/bool]
 
 Boolean utilities (@racket[Data.Bool]). The @tt{not}, @tt{and}, and @tt{or} operators live in the prelude; this module adds a case-analysis combinator and a guard alias.
 
@@ -65,8 +85,7 @@ Boolean utilities (@racket[Data.Bool]). The @tt{not}, @tt{and}, and @tt{or} oper
 
 
 @section{rackton/data/char}
-@defmodule[rackton/data/char #:no-declare]
-@declare-exporting[rackton/data/char]
+@defmodule[rackton/data/char]
 
 Data.Char-style predicates and conversions over the prelude's @racket[Char]
 type. The prelude already ships @tt{char-upcase}, @tt{char-downcase},
@@ -118,8 +137,7 @@ prelude does not surface.
 
 
 @section{rackton/data/complex}
-@defmodule[rackton/data/complex #:no-declare]
-@declare-exporting[rackton/data/complex]
+@defmodule[rackton/data/complex]
 
 Derived operations on the prelude's @racket[Complex] type. The prelude
 ships @racket[Complex] with @racket[make-complex], @tt{real-part},
@@ -160,8 +178,7 @@ The exact counterpart @racket[ComplexExact] (the prelude's
 
 
 @section{rackton/data/either}
-@defmodule[rackton/data/either #:no-declare]
-@declare-exporting[rackton/data/either]
+@defmodule[rackton/data/either]
 
 Data.Either over the prelude's @racket[Either] type (@racket[Left] /
 @racket[Right]). The
@@ -199,8 +216,7 @@ non-class eliminators, predicates, and collectors.
   @racket[(Left left)].}
 
 @section{rackton/data/result}
-@defmodule[rackton/data/result #:no-declare]
-@declare-exporting[rackton/data/result]
+@defmodule[rackton/data/result]
 
 A result/success-flavored coproduct.  @racket[Result] is isomorphic to the
 prelude's @racket[Either] (@racket[Err] ↔ @racket[Left], @racket[Ok] ↔
@@ -259,8 +275,7 @@ Instances: @racket[Functor], @racket[Applicative], @racket[Monad]
 
 
 @section{rackton/data/foldable}
-@defmodule[rackton/data/foldable #:no-declare]
-@declare-exporting[rackton/data/foldable]
+@defmodule[rackton/data/foldable]
 
 Generic folds over any @racket[Foldable] container (the prelude's instances are @racket[List] and @racket[Maybe]). These are the derived combinators built on the prelude's @racket[foldr] member.
 
@@ -281,8 +296,7 @@ Generic folds over any @racket[Foldable] container (the prelude's instances are 
 
 
 @section{rackton/data/function}
-@defmodule[rackton/data/function #:no-declare]
-@declare-exporting[rackton/data/function]
+@defmodule[rackton/data/function]
 
 Function combinators in the style of Haskell's @tt{Data.Function}. The
 combinators @racket[id], @racket[const], @racket[flip], and
@@ -298,8 +312,7 @@ combinators @racket[id], @racket[const], @racket[flip], and
 
 
 @section{rackton/data/functor}
-@defmodule[rackton/data/functor #:no-declare]
-@declare-exporting[rackton/data/functor]
+@defmodule[rackton/data/functor]
 
 Data.Functor helpers built on the prelude's @racket[Functor] class. The
 core @racket[fmap] method and @tt{void} live in the prelude; this
@@ -317,8 +330,7 @@ module adds the @racket[<$], @racket[<&>], and @racket[$>] combinators.
 
 
 @section{rackton/data/lazy}
-@defmodule[rackton/data/lazy #:no-declare]
-@declare-exporting[rackton/data/lazy]
+@defmodule[rackton/data/lazy]
 
 First-class laziness for a strict language: @racket[Lazy] is an opaque,
 memoizing deferred computation built with the @racket[delay] form and run
@@ -383,8 +395,7 @@ repeated value.}
 
 
 @section{rackton/data/arrow-lazy}
-@defmodule[rackton/data/arrow-lazy #:no-declare]
-@declare-exporting[rackton/data/arrow-lazy]
+@defmodule[rackton/data/arrow-lazy]
 
 A lazy-function arrow whose @racket[ArrowLoop] can tie a value-recursion
 knot — the first arrow over which @racket[proc] @racket[rec] is runnable.
@@ -458,8 +469,7 @@ runnable example, the self-referential infinite stream of @racket[1]s:
 
 
 @section{rackton/data/lens}
-@defmodule[rackton/data/lens #:no-declare]
-@declare-exporting[rackton/data/lens]
+@defmodule[rackton/data/lens]
 
 Composable optics for functional access and update: @racket[Lens] (a
 getter/setter pair focusing on exactly one part), @racket[Prism]
@@ -557,8 +567,7 @@ require this module too.
 
 
 @section{rackton/data/list}
-@defmodule[rackton/data/list #:no-declare]
-@declare-exporting[rackton/data/list]
+@defmodule[rackton/data/list]
 
 List utilities moved out of the auto-prelude (the core ops stay in the prelude).
 These less-core helpers, kebab-case and curried like the prelude's list ops, give
@@ -699,8 +708,7 @@ total functions.
 
 
 @section{rackton/data/list/nonempty}
-@defmodule[rackton/data/list/nonempty #:no-declare]
-@declare-exporting[rackton/data/list/nonempty]
+@defmodule[rackton/data/list/nonempty]
 
 A list guaranteed to have at least one element, so @racket[ne-head] and
 @racket[ne-tail] are total operations.
@@ -735,8 +743,7 @@ A list guaranteed to have at least one element, so @racket[ne-head] and
 
 
 @section{rackton/data/map}
-@defmodule[rackton/data/map #:no-declare]
-@declare-exporting[rackton/data/map]
+@defmodule[rackton/data/map]
 
 Immutable key/value maps (Data.Map parity), moved out of the auto-prelude.
 The runtime is Racket immutable hashes reached via @racket[foreign]; keys
@@ -818,8 +825,7 @@ map over keys present in both, combining their values with @racket[f].}
 
 
 @section{rackton/data/maybe}
-@defmodule[rackton/data/maybe #:no-declare]
-@declare-exporting[rackton/data/maybe]
+@defmodule[rackton/data/maybe]
 
 Additive helpers over the prelude's @racket[Maybe] type, in the spirit of Haskell's @tt{Data.Maybe}: eliminators, predicates, defaulting, and conversions to and from lists.
 
@@ -848,8 +854,7 @@ Drops the @racket[None]s from a list of @racket[Maybe]s (Haskell's @tt{catMaybes
 
 
 @section{rackton/data/monoid}
-@defmodule[rackton/data/monoid #:no-declare]
-@declare-exporting[rackton/data/monoid]
+@defmodule[rackton/data/monoid]
 
 Data.Monoid: the numeric monoid newtypes over @racket[Integer] (@racket[Sum]
 additive, @racket[Product] multiplicative), the Boolean monoids (@racket[All]
@@ -925,8 +930,7 @@ endomorphisms under @tt{.}), and the order-flipping wrapper
 
 
 @section{rackton/data/ord}
-@defmodule[rackton/data/ord #:no-declare]
-@declare-exporting[rackton/data/ord]
+@defmodule[rackton/data/ord]
 
 Ordering helpers built on the prelude's @racket[Ord] class (where @racket[min], @racket[max], and the comparison operators live). Provides range clamping and key-projected min/max.
 
@@ -938,8 +942,7 @@ Ordering helpers built on the prelude's @racket[Ord] class (where @racket[min], 
 
 
 @section{rackton/data/ratio}
-@defmodule[rackton/data/ratio #:no-declare]
-@declare-exporting[rackton/data/ratio]
+@defmodule[rackton/data/ratio]
 
 Derived operations on the prelude's @racket[Rational] type, which the
 runtime keeps in lowest terms via @racket[make-rational],
@@ -970,8 +973,7 @@ between them, found via the continued-fraction quotients of the endpoints.}
 
 
 @section{rackton/data/semigroup}
-@defmodule[rackton/data/semigroup #:no-declare]
-@declare-exporting[rackton/data/semigroup]
+@defmodule[rackton/data/semigroup]
 
 Data.Semigroup selection newtypes whose @racket[mappend] keeps the smaller, larger,
 first, or last operand. The @racket[mappend] operation itself and the
@@ -1014,8 +1016,7 @@ a bounded identity Rackton's numeric types don't provide).
 
 
 @section{rackton/data/set}
-@defmodule[rackton/data/set #:no-declare]
-@declare-exporting[rackton/data/set]
+@defmodule[rackton/data/set]
 
 Immutable sets backed by Racket immutable hashes, reached through
 @racket[foreign] primitives. Elements compare by the runtime's
@@ -1077,8 +1078,7 @@ elements of @racket[s] satisfying @racket[p].}
 
 
 @section{rackton/data/traversable}
-@defmodule[rackton/data/traversable #:no-declare]
-@declare-exporting[rackton/data/traversable]
+@defmodule[rackton/data/traversable]
 
 Derived forms of @racket[Data.Traversable], built on the prelude's
 @racket[Traversable] class method @racket[traverse].
@@ -1093,8 +1093,7 @@ Derived forms of @racket[Data.Traversable], built on the prelude's
 
 
 @section{rackton/data/tuple}
-@defmodule[rackton/data/tuple #:no-declare]
-@declare-exporting[rackton/data/tuple]
+@defmodule[rackton/data/tuple]
 
 Data.Tuple utilities. @racket[fst] and @racket[snd] remain in the prelude; this module provides @racket[swap] along with @racket[curry] and @racket[uncurry], which convert between a @racket[Pair]-taking function and its two-argument form.
 

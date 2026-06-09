@@ -2,11 +2,21 @@
 @require[scribble/manual
          (for-label rackton rackton/unit/check rackton/unit/gen rackton/unit/laws rackton/unit/lazy rackton/unit/prng rackton/unit/property rackton/unit/tree)]
 
-@title[#:tag "stdlib-unit"]{@tt{rackton/unit} — the property-testing framework}
+@title[#:tag "stdlib-unit" #:style 'toc]{@tt{rackton/unit} — the property-testing framework}
+
+The @tt{unit} family is Rackton's property-based testing framework, in
+the Hedgehog style with integrated shrinking.  It provides
+@racketmodname[rackton/unit/gen] generators built on shrink
+@racketmodname[rackton/unit/tree]s, the @racketmodname[rackton/unit/property]
+runner, @racketmodname[rackton/unit/check] assertions, ready-made
+algebraic @racketmodname[rackton/unit/laws] bundles, the
+@racketmodname[rackton/unit/prng] splittable random source, and a
+@racketmodname[rackton/unit/lazy] stream helper.
+
+@local-table-of-contents[]
 
 @section{rackton/unit/check}
-@defmodule[rackton/unit/check #:no-declare]
-@declare-exporting[rackton/unit/check]
+@defmodule[rackton/unit/check]
 
 Assertion / check combinators. A check is a pure @racket[Assertion] value
 rather than a thrown exception, so a runner can aggregate results without
@@ -48,8 +58,7 @@ plain value so it resolves across module boundaries).
 
 
 @section{rackton/unit/gen}
-@defmodule[rackton/unit/gen #:no-declare]
-@declare-exporting[rackton/unit/gen]
+@defmodule[rackton/unit/gen]
 
 Generators with integrated, Hedgehog-style shrinking. A @racket[Tree] pairs a
 generated value with a lazy stream of progressively smaller shrink candidates,
@@ -120,8 +129,7 @@ shrinks for free with no separate shrink method.
 
 
 @section{rackton/unit/laws}
-@defmodule[rackton/unit/laws #:no-declare]
-@declare-exporting[rackton/unit/laws]
+@defmodule[rackton/unit/laws]
 
 Algebraic-law bundles: each takes a generator (and, for the
 higher-kinded structures, explicit equality/render/point operations)
@@ -192,8 +200,7 @@ names are documented under their own modules.
 
 
 @section{rackton/unit/lazy}
-@defmodule[rackton/unit/lazy #:no-declare]
-@declare-exporting[rackton/unit/lazy]
+@defmodule[rackton/unit/lazy]
 
 Laziness primitives for the unit framework's integrated shrinking, where a
 generated value carries its unbounded tree of shrink candidates behind a
@@ -207,8 +214,7 @@ aliases that the unit framework grew up with.
 
 
 @section{rackton/unit/prng}
-@defmodule[rackton/unit/prng #:no-declare]
-@declare-exporting[rackton/unit/prng]
+@defmodule[rackton/unit/prng]
 
 A pure, seeded, splittable pseudo-random generator for reproducible
 property testing: generation takes no IO and a failing case replays from
@@ -234,8 +240,7 @@ generation rather than statistical rigor.
 
 
 @section{rackton/unit/property}
-@defmodule[rackton/unit/property #:no-declare]
-@declare-exporting[rackton/unit/property]
+@defmodule[rackton/unit/property]
 
 Property-based testing with integrated shrinking. A @racket[Property] is an
 opaque seeded computation that runs N cases and reports an outcome; on the first
@@ -278,8 +283,7 @@ and reports the outcome.}
 
 
 @section{rackton/unit/tree}
-@defmodule[rackton/unit/tree #:no-declare]
-@declare-exporting[rackton/unit/tree]
+@defmodule[rackton/unit/tree]
 
 The BDD test tree and its @racket[IO] runner. @racket[describe], @racket[context],
 @racket[it], and @racket[it-prop] build an immutable @racket[Test] value (a functional

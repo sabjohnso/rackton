@@ -2,11 +2,19 @@
 @require[scribble/manual
          (for-label rackton rackton/text/bytes rackton/text/printf rackton/text/read rackton/text/show rackton/text/string)]
 
-@title[#:tag "stdlib-text"]{@tt{rackton/text} — strings, bytes, and formatting}
+@title[#:tag "stdlib-text" #:style 'toc]{@tt{rackton/text} — strings, bytes, and formatting}
+
+The @tt{text} family handles textual and binary data and its
+rendering.  It provides @racketmodname[rackton/text/string] operations
+beyond the prelude, byte vectors (@racketmodname[rackton/text/bytes]),
+@racketmodname[rackton/text/printf]-style formatting, the
+@racketmodname[rackton/text/show] rendering helpers, and
+@racketmodname[rackton/text/read] parsing of values from strings.
+
+@local-table-of-contents[]
 
 @section{rackton/text/bytes}
-@defmodule[rackton/text/bytes #:no-declare]
-@declare-exporting[rackton/text/bytes]
+@defmodule[rackton/text/bytes]
 
 Derived @racket[Bytes] operations in the style of @tt{Data.ByteString}. The
 prelude ships the @racket[Bytes] type with its primitive operations
@@ -29,8 +37,7 @@ expressed over the list round-trip and @racket[take]/@racket[drop] from
 
 
 @section{rackton/text/printf}
-@defmodule[rackton/text/printf #:no-declare]
-@declare-exporting[rackton/text/printf]
+@defmodule[rackton/text/printf]
 
 Type-safe string formatting in the @tt{Text.Printf} tradition, done the
 Hindley–Milner way: instead of a runtime-parsed @racket["%d %s"] format
@@ -69,8 +76,7 @@ continuation, collecting the rendered pieces into the final @racket[String].}
 
 
 @section{rackton/text/read}
-@defmodule[rackton/text/read #:no-declare]
-@declare-exporting[rackton/text/read]
+@defmodule[rackton/text/read]
 
 Parse @racket[String]s back into typed values, the Rackton analogue of Haskell's @tt{Text.Read}. Rackton has no @tt{Read} class, so these are type-specific readers that each return @racket[(Maybe a)], yielding @racket[None] when the string does not parse.
 
@@ -85,8 +91,7 @@ Parse @racket[String]s back into typed values, the Rackton analogue of Haskell's
 
 
 @section{rackton/text/show}
-@defmodule[rackton/text/show #:no-declare]
-@declare-exporting[rackton/text/show]
+@defmodule[rackton/text/show]
 
 Text.Show's @racket[ShowS] machinery: freestanding combinators for building
 string output by composing prepend-functions rather than repeatedly
@@ -118,8 +123,7 @@ combinators are defined here.
 
 
 @section{rackton/text/string}
-@defmodule[rackton/text/string #:no-declare]
-@declare-exporting[rackton/text/string]
+@defmodule[rackton/text/string]
 
 @tt{Data.String} / @tt{Data.Text}-style operations over the prelude's
 @racket[String] type, built on the prelude's string and char operations and on

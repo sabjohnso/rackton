@@ -2,11 +2,27 @@
 @require[scribble/manual
          (for-label rackton rackton/control/applicative rackton/control/concurrent rackton/control/monad rackton/control/monad/except rackton/control/monad/reader rackton/control/monad/state rackton/control/monad/writer rackton/control/stm rackton/data/result)]
 
-@title[#:tag "stdlib-control"]{@tt{rackton/control} — applicative, monad, transformers}
+@title[#:tag "stdlib-control" #:style 'toc]{@tt{rackton/control} — applicative, monad, transformers}
+
+The @tt{control} family provides the applicative- and monad-level
+combinators and the monad-transformer stack, after Haskell's
+@tt{Control.*} modules.  It holds the extra
+@racketmodname[rackton/control/applicative] and
+@racketmodname[rackton/control/monad] combinators that build on the
+prelude's classes; the standard transformers —
+@racketmodname[rackton/control/monad/reader],
+@racketmodname[rackton/control/monad/state],
+@racketmodname[rackton/control/monad/writer],
+@racketmodname[rackton/control/monad/except], and their
+@racketmodname[rackton/control/monad/trans] lifting class; and the
+concurrency and software-transactional-memory modules
+@racketmodname[rackton/control/concurrent] and
+@racketmodname[rackton/control/stm].
+
+@local-table-of-contents[]
 
 @section{rackton/control/applicative}
-@defmodule[rackton/control/applicative #:no-declare]
-@declare-exporting[rackton/control/applicative]
+@defmodule[rackton/control/applicative]
 
 Control.Applicative helpers. The core @racket[pure], @racket[fapply], and
 @racket[liftA2] operations are prelude @racket[Applicative] methods; this
@@ -18,8 +34,7 @@ Applies a curried 3-ary function @racket[g] under an @racket[Applicative]
 
 
 @section{rackton/control/concurrent}
-@defmodule[rackton/control/concurrent #:no-declare]
-@declare-exporting[rackton/control/concurrent]
+@defmodule[rackton/control/concurrent]
 
 Control.Concurrent: threads, MVars, and channels, factored out of the
 auto-prelude. These are thin wrappers over Racket's threads, semaphores, and
@@ -69,8 +84,7 @@ the contents of @racket[mv] with @racket[f] applied to its current value.}
 
 
 @section{rackton/control/monad}
-@defmodule[rackton/control/monad #:no-declare]
-@declare-exporting[rackton/control/monad]
+@defmodule[rackton/control/monad]
 
 Control.Monad combinators that work over any @racket[(Monad m)]: monadic
 mapping, sequencing, folding, replication, and filtering. These build on
@@ -99,8 +113,7 @@ class itself, plus @racket[join], @tt{when}, @tt{unless}, and
 
 
 @section{rackton/control/monad/except}
-@defmodule[rackton/control/monad/except #:no-declare]
-@declare-exporting[rackton/control/monad/except]
+@defmodule[rackton/control/monad/except]
 
 The @racket[ExceptT] monad transformer: typed exceptions layered over an
 inner monad. Provides @racket[Functor], @racket[Applicative], @racket[Monad],
@@ -135,8 +148,7 @@ over @tt{Identity} plays the role of a bare @racket[Except].
 
 
 @section{rackton/control/monad/reader}
-@defmodule[rackton/control/monad/reader #:no-declare]
-@declare-exporting[rackton/control/monad/reader]
+@defmodule[rackton/control/monad/reader]
 
 The (non-transformer) @racket[Env] (Reader) monad together with its
 @racket[EnvT] transformer variant, which threads a read-only environment
@@ -184,8 +196,7 @@ an environment locally transformed by @racket[f].}
 
 
 @section{rackton/control/monad/state}
-@defmodule[rackton/control/monad/state #:no-declare]
-@declare-exporting[rackton/control/monad/state]
+@defmodule[rackton/control/monad/state]
 
 The (non-transformer) @racket[State] monad together with the
 @racket[StateT] monad transformer that layers state over an inner monad.
@@ -254,8 +265,7 @@ both, plus the @racket[StateT]-outer pass-through instances for
 
 
 @section{rackton/control/monad/writer}
-@defmodule[rackton/control/monad/writer #:no-declare]
-@declare-exporting[rackton/control/monad/writer]
+@defmodule[rackton/control/monad/writer]
 
 The @racket[WriterT] transformer: an accumulating writer over an inner
 monad. This module owns every mtl instance where @racket[WriterT] is the
@@ -294,8 +304,7 @@ itself lives in the prelude.
 
 
 @section{rackton/control/stm}
-@defmodule[rackton/control/stm #:no-declare]
-@declare-exporting[rackton/control/stm]
+@defmodule[rackton/control/stm]
 
 Software transactional memory (@tt{Control.Concurrent.STM}). Provides
 transactional variables and an @racket[STM] monad whose transaction log,
@@ -336,7 +345,7 @@ atomically, committing its effects as a single indivisible step.}
 
 
 @section{rackton/control/monad/trans}
-@defmodule[rackton/control/monad/trans #:no-declare]
+@defmodule[rackton/control/monad/trans]
 Re-exports the four monad transformers (@racket[StateT], @racket[EnvT],
 @racket[WriterT], @racket[ExceptT]) as a single import and supplies their
 @tt{MonadTrans} (@tt{lift}) and @tt{MonadIO} (@tt{lift-io}) instances.

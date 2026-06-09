@@ -2,11 +2,20 @@
 @require[scribble/manual
          (for-label rackton rackton/numeric/conversions rackton/numeric/integer rackton/numeric/natural rackton/numeric/real rackton/numeric/show)]
 
-@title[#:tag "stdlib-numeric"]{@tt{rackton/numeric} — numeric-tower extras}
+@title[#:tag "stdlib-numeric" #:style 'toc]{@tt{rackton/numeric} — numeric-tower extras}
+
+The @tt{numeric} family supplements the prelude's numeric tower with
+conversions and per-type helpers.  It covers integer and
+natural-number operations (@racketmodname[rackton/numeric/integer],
+@racketmodname[rackton/numeric/natural]), real-number functions
+(@racketmodname[rackton/numeric/real]), cross-type coercions
+(@racketmodname[rackton/numeric/conversions]), and numeric formatting
+(@racketmodname[rackton/numeric/show]).
+
+@local-table-of-contents[]
 
 @section{rackton/numeric/conversions}
-@defmodule[rackton/numeric/conversions #:no-declare]
-@declare-exporting[rackton/numeric/conversions]
+@defmodule[rackton/numeric/conversions]
 
 Conversions across the numeric tower. Wraps the prelude's primitive coercions
 behind a uniform @racket[num-]-prefixed interface, adds a @racket[Rational] to
@@ -31,8 +40,7 @@ behind a uniform @racket[num-]-prefixed interface, adds a @racket[Rational] to
 
 
 @section{rackton/numeric/integer}
-@defmodule[rackton/numeric/integer #:no-declare]
-@declare-exporting[rackton/numeric/integer]
+@defmodule[rackton/numeric/integer]
 
 Integral helper combinators over the prelude's @racket[Integer], derived
 from the prelude's @racket[Integral] and @racket[Num] classes. Names are
@@ -69,8 +77,7 @@ escapes.
 
 
 @section{rackton/numeric/natural}
-@defmodule[rackton/numeric/natural #:no-declare]
-@declare-exporting[rackton/numeric/natural]
+@defmodule[rackton/numeric/natural]
 
 Numeric.Natural: a @racket[newtype] over the prelude's @racket[Integer] constrained to non-negative values, carrying the @racket[Eq], @racket[Ord], @racket[Show], and @racket[Num] instances Haskell's @tt{Natural} has. Construction is checked and the partial @racket[Num] operations (subtraction below zero, negating a positive) @racket[panic] rather than wrap around.
 
@@ -87,8 +94,7 @@ Numeric.Natural: a @racket[newtype] over the prelude's @racket[Integer] constrai
 
 
 @section{rackton/numeric/real}
-@defmodule[rackton/numeric/real #:no-declare]
-@declare-exporting[rackton/numeric/real]
+@defmodule[rackton/numeric/real]
 
 Derived @racket[Floating] and @racket[RealFrac] operations the prelude does not
 already ship: inverse trigonometric functions (via host @tt{asin}/@tt{acos}/@tt{atan}
@@ -126,8 +132,7 @@ and @racket[num-proper-fraction].
 
 
 @section{rackton/numeric/show}
-@defmodule[rackton/numeric/show #:no-declare]
-@declare-exporting[rackton/numeric/show]
+@defmodule[rackton/numeric/show]
 
 Radix conversion and float formatting for numbers, in the spirit of Haskell's
 @tt{Numeric} module (@tt{showHex} / @tt{showOct} / @tt{readHex} / @tt{readDec},
