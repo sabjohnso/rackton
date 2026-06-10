@@ -59,7 +59,12 @@
          ;; (alias table + expansion guard) — replaces current-aliases /
          ;; current-expanding.
          (only-in "monad/ctx.rkt"
-                  ctx-return ctx-sequence asks local run-ctx let/ctx))
+                  ctx-return ctx-sequence asks local run-ctx let/ctx)
+         ;; The Infer monad — the inference core is being moved into it,
+         ;; one cluster at a time (PLAN.org Phase 3).
+         (only-in "monad/infer.rkt"
+                  infer-return infer-bind infer-map infer-sequence run-infer
+                  let/infer let/infer+ begin/infer))
 
 ;; ----- fresh type variables -----------------------------------------
 
@@ -187,43 +192,72 @@
   (set-box! b kept)
   taken)
 
+;; ----- transitional Infer-monad bridge ------------------------------
+;; The inference core is moving into the Infer monad one cluster at a time
+;; (PLAN.org Phase 3, approach a).  So converted and not-yet-converted code
+;; can coexist without fresh-name collisions, the *state stays in the boxes*
+;; (current-fresh-state / current-pending-preds) during the transition and
+;; these monad ops delegate to them; the threaded `st` is unused until the
+;; final flip moves state into `st` and deletes the boxes.  Delegating to
+;; `fresh-tvar` also keeps variable names byte-identical.
+(define ((m:fresh-tvar [prefix 'a]) _ctx st)   ; Infer tvar
+  (values (fresh-tvar prefix) st))
+(define ((m:add-preds ps) _ctx st)             ; Infer void
+  (add-preds! ps) (values (void) st))
+(define ((m:snapshot-preds) _ctx st)           ; Infer (listof pred)
+  (values (snapshot-preds) st))
+;; Run an Infer computation during the transition (state in boxes; ctx/st
+;; unused — passed as #f).
+(define (run-infer* m) (let-values ([(a _st) (run-infer m #f #f)]) a))
+;; Lift a (values subst type)-returning thunk into Infer (subst . type).
+(define ((values->infer thunk) _ctx st)
+  (let-values ([(s t) (thunk)]) (values (cons s t) st)))
+
 ;; ----- generalize / instantiate -------------------------------------
 
 ;; Instantiate a scheme.  If the body is a qualified type, the constraints
-;; are added to the running pred-box and the bare type is returned.
-;; Also strips a top-level `tforall` from the body — the
-;; quantified vars become fresh tvars, the same way scheme-bound vars
-;; do.  This lets `(f 7)` typecheck when `f` was bound at a tforall
-;; type by some outer rank-N declaration.
-(define (instantiate sch)
-  (define raw
-    (match sch
-      [(scheme '() body) body]
-      [(scheme vs body)
-       (define s
-         (for/fold ([s empty-subst]) ([v (in-list vs)])
-           (subst-extend s v (fresh-tvar v))))
-       (apply-subst s body)]))
-  (define unforalled (instantiate-tforall raw))
-  (cond
-    [(qual? unforalled)
-     (add-preds! (qual-constraints unforalled))
-     (instantiate-tforall (qual-body unforalled))]
-    [else unforalled]))
+;; are added to the running pred bag and the bare type is returned.  Also
+;; strips a top-level `tforall` from the body — the quantified vars become
+;; fresh tvars, the same way scheme-bound vars do.  This lets `(f 7)`
+;; typecheck when `f` was bound at a tforall type by some outer rank-N
+;; declaration.  Monadic core; `instantiate` is the bridged entry point.
+(define (instantiate/m sch)
+  (let/infer ([raw (match sch
+                     [(scheme '() body) (infer-return body)]
+                     [(scheme vs body)
+                      (let/infer ([s (fresh-subst/m vs)])
+                        (infer-return (apply-subst s body)))])]
+              [unforalled (instantiate-tforall/m raw)])
+    (cond
+      [(qual? unforalled)
+       (let/infer ([_ (m:add-preds (qual-constraints unforalled))])
+         (instantiate-tforall/m (qual-body unforalled)))]
+      [else (infer-return unforalled)])))
 
-;; Strip any leading `tforall` from a type, replacing each
-;; bound var with a fresh tvar.  Non-`tforall` types pass through.
-;; Only the OUTERMOST tforall is unwrapped — nested tforalls (e.g.
-;; the argument of a rank-2 function) stay intact so they can carry
-;; their polymorphism into argument positions.
-(define (instantiate-tforall t)
+;; Strip any leading `tforall`, replacing each bound var with a fresh tvar.
+;; Only the OUTERMOST tforall is unwrapped — nested tforalls (e.g. the
+;; argument of a rank-2 function) stay intact so they can carry their
+;; polymorphism into argument positions.
+(define (instantiate-tforall/m t)
   (match t
     [(tforall vs body)
-     (define s
-       (for/fold ([s empty-subst]) ([v (in-list vs)])
-         (subst-extend s v (fresh-tvar v))))
-     (instantiate-tforall (apply-subst s body))]
-    [_ t]))
+     (let/infer ([s (fresh-subst/m vs)])
+       (instantiate-tforall/m (apply-subst s body)))]
+    [_ (infer-return t)]))
+
+;; Build a substitution sending each of `vs` to a distinct fresh tvar named
+;; after it (same prefix as the original fresh-tvar, so names are unchanged).
+(define (fresh-subst/m vs)
+  (let loop ([vs vs] [s empty-subst])
+    (cond
+      [(null? vs) (infer-return s)]
+      [else
+       (let/infer ([t (m:fresh-tvar (car vs))])
+         (loop (cdr vs) (subst-extend s (car vs) t)))])))
+
+;; Bridges: the public entry points keep their (scheme/type -> type) shape.
+(define (instantiate sch)       (run-infer* (instantiate/m sch)))
+(define (instantiate-tforall t) (run-infer* (instantiate-tforall/m t)))
 
 ;; Bidirectional check companion to `infer-expr`.
 ;; Checks that `expr` has type `expected-ty` under `env`, returning
