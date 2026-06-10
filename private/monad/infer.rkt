@@ -41,14 +41,16 @@
          infer-return infer-bind infer-map infer-sequence run-infer
          ;; lifts
          state->infer ctx->infer
-         ;; state record + fresh-variable supply
+         ;; state record + fresh-variable supply + pending-pred bag
          (struct-out infer-state) make-infer-state fresh
+         add-preds snapshot-preds set-preds
          ;; re-exported raw ops (used as let/state / let/ctx right-hand sides)
          get gets put modify
          ask asks local
          ;; binding syntax
-         let/state let/state+ begin/infer
-         let/ctx let/ctx+)
+         let/state let/state+
+         let/ctx let/ctx+
+         let/infer let/infer+ begin/infer)
 
 ;; ----- the monad ----------------------------------------------------
 
@@ -86,11 +88,11 @@
 (define ((ctx->infer cc) ctx st) (values (cc ctx) st))
 
 ;; ----- state record + fresh-variable supply -------------------------
-;; The minimal inference state.  Later phases (PLAN.org #3/#4) extend it
-;; with the pending-pred bag and the codegen-plan tables.
+;; The inference state.  Grows by phase (PLAN.org): the fresh counter and
+;; the pending-pred bag now; the codegen-plan tables in #4.
 
-(struct infer-state (fresh-counter) #:transparent)
-(define (make-infer-state) (infer-state 0))
+(struct infer-state (fresh-counter pending-preds) #:transparent)
+(define (make-infer-state) (infer-state 0 '()))
 
 ;; fresh : State symbol  — a fresh, distinct name, bumping the counter.
 ;; (The engine wraps the name in a `tvar`; kept symbol-only here so the
@@ -99,6 +101,18 @@
   (define n (infer-state-fresh-counter st))
   (values (string->symbol (string-append "t" (number->string n)))
           (struct-copy infer-state st [fresh-counter (add1 n)])))
+
+;; ----- pending-pred accumulator (State ops on infer-state) ----------
+;; Replaces the current-pending-preds box (infer.rkt).  add-preds prepends,
+;; matching the existing add-preds! semantics.
+
+(define (snapshot-preds st) (values (infer-state-pending-preds st) st))
+(define ((add-preds ps) st)
+  (values (void)
+          (struct-copy infer-state st
+                       [pending-preds (append ps (infer-state-pending-preds st))])))
+(define ((set-preds ps) st)
+  (values (void) (struct-copy infer-state st [pending-preds ps])))
 
 ;; ----- binding syntax (auto-lifting) --------------------------------
 
@@ -122,6 +136,23 @@
   (syntax-rules ()
     [(_ e) e]
     [(_ e0 e ...) (infer-bind e0 (lambda (_) (begin/infer e ...)))]))
+
+;; let/infer — bind raw Infer computations (no lift): the result of another
+;; Infer function, a recursive call, a composed computation.  The engine
+;; composes Infer values constantly, so this is the workhorse binder; the
+;; body is an implicit begin/infer.
+(define-syntax let/infer
+  (syntax-rules ()
+    [(_ () body ...) (begin/infer body ...)]
+    [(_ ([x e] rest ...) body ...)
+     (infer-bind e (lambda (x) (let/infer (rest ...) body ...)))]))
+
+;; let/infer+ — applicative over independent Infer computations.
+(define-syntax let/infer+
+  (syntax-rules ()
+    [(_ ([x e] ...) body ...)
+     (infer-map (lambda (vs) (apply (lambda (x ...) body ...) vs))
+                (infer-sequence (list e ...)))]))
 
 ;; let/state+ — applicative: independent State right-hand sides (each
 ;; lifted), pure body.

@@ -116,4 +116,22 @@
                             0 (make-infer-state))])
      (and (= 3 (length names))
           (= 3 (length (remove-duplicates names)))
-          (= 3 (infer-state-fresh-counter st))))))
+          (= 3 (infer-state-fresh-counter st)))))
+
+  ;; let/infer binds a raw Infer computation (no lift)
+  (check-true
+   (let-values ([(v _s) (run-infer
+                         (let/infer ([x (infer-return 5)] [y (state->infer get)])
+                           (infer-return (+ x y)))
+                         0 10)])
+     (= v 15)))
+
+  ;; pending-pred accumulator: add-preds prepends; snapshot-preds reads
+  (check-true
+   (let-values ([(ps _s) (run-infer
+                          (let/state ([_  (add-preds '(a))]
+                                      [__ (add-preds '(b c))]
+                                      [out snapshot-preds])
+                            (infer-return out))
+                          0 (make-infer-state))])
+     (equal? ps '(b c a)))))
