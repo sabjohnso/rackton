@@ -53,6 +53,7 @@
          "entail.rkt"
          "impl-symbols.rkt"
          "monomorph-log.rkt"
+         "codegen-plan.rkt"
          "scheme-codec.rkt")
 
 ;; ----- fresh type variables -----------------------------------------
@@ -1875,10 +1876,26 @@
 ;; (with every `#:derive-superclasses` instance replaced by the plain
 ;; instances it synthesized).  The elaborator drives codegen off THIS
 ;; list so the synthesized superclass instances are lowered too.
+;; Run inference and also produce the codegen-plan: the tables codegen
+;; consumes.  The inference-output parameters are owned here (created fresh,
+;; bound around the phases, then read out into the plan) rather than set up
+;; by the elaborator, so the infer→codegen handoff is an explicit returned
+;; value.  `current-method-uses` is inference-internal scratch (settled into
+;; the resolutions) and stays out of the plan.
 (define (infer-program+forms forms [env initial-env])
-  (with-fresh
-   (define-values (env* _ forms*) (infer-program/phases forms env (hasheq)))
-   (values env* forms*)))
+  (parameterize ([current-method-uses             (make-hasheq)]
+                 [current-method-resolutions      (make-hasheq)]
+                 [current-method-dict-resolutions (make-hasheq)]
+                 [current-needs-dict-defs         (make-hash)]
+                 [current-instance-default-bodies (make-hash)])
+    (with-fresh
+     (define-values (env* _ forms*) (infer-program/phases forms env (hasheq)))
+     (values env* forms*
+             (codegen-plan (current-method-resolutions)
+                           (current-method-dict-resolutions)
+                           (current-needs-dict-defs)
+                           (current-instance-default-bodies)
+                           (env-return-typed-methods env*))))))
 
 ;; `prior-declared` carries forward `top:dec` schemes registered in
 ;; previous REPL inputs.  A fresh `(infer-program)` call always
@@ -4193,23 +4210,8 @@
   ;; instance), skolemize those tvars and build a map from each
   ;; skolem to a local dict-arg name.  The instance body's polymorphic
   ;; class-method references will resolve against this map.
-  (define inst-needs-dict-reqs
-    (for/list ([c (in-list ctx-preds-raw)]
-               #:when (class-has-return-typed-methods? env (pred-class c)))
-      (cons (pred-class c) (pred-args c))))
   (define-values (sk-subst dict-skolems dict-arg-names)
-    (cond
-      [(null? inst-needs-dict-reqs) (values empty-subst (hash) '())]
-      [else
-       (define inner-vars
-         (for/fold ([acc '()]) ([c (in-list ctx-preds-raw)])
-           (for/fold ([acc acc]) ([a (in-list (pred-args c))])
-             (set->list (set-union (list->seteq acc) (type-vars a))))))
-       (define s
-         (for/fold ([s empty-subst]) ([v (in-list inner-vars)])
-           (subst-extend s v (tcon (gensym (format "$inst-skolem.~a." v))))))
-       (define-values (sk-map args) (build-dict-skolems inst-needs-dict-reqs s env))
-       (values s sk-map args)]))
+    (instance-qual-skolems ctx-preds-raw env))
   ;; Apply the instance-qual skolem substitution into the parts that
   ;; flow into body inference.
   ;; The skolemized versions are used only for body-checking
@@ -4279,194 +4281,17 @@
                                            (hasheq)
                                            type-family-bindings
                                            inst-origin))]))
+  (define ictx
+    (inst-check-ctx env env-with-inst cinfo class-name
+                    head-pred-raw head-pred-sk ctx-preds-sk inst-args-sk
+                    head-tcon dict-skolems dict-arg-names user-impls stx))
   (define checked-bodies
     (for/fold ([acc (hasheq)])
               ([(method-name method-sch)
                 (in-hash (class-info-methods cinfo))])
-      (define body
-        (cond
-          [(hash-ref user-impls method-name #f)]
-          [(hash-ref (class-info-defaults cinfo) method-name #f)
-           => (lambda (default-expr)
-                ;; Inherited class default.  Freshen it to THIS
-                ;; instance's site (distinct handles, anchored at the
-                ;; instance stx) before inferring, so its return-typed
-                ;; method calls resolve against this instance's carrier
-                ;; rather than the protocol's abstract class parameter.
-                ;; Hand the freshened AST to codegen so the syntax
-                ;; handles the method resolutions are keyed by agree.
-                (define fresh-body (freshen-ast default-expr stx))
-                (when (current-instance-default-bodies)
-                  (hash-set! (current-instance-default-bodies)
-                             (list class-name head-tcon method-name)
-                             fresh-body))
-                fresh-body)]
-          [else
-           (raise-syntax-error 'infer
-             (format "instance ~s missing method ~s with no default"
-                     (pred->datum head-pred-raw) method-name)
-             stx)]))
-      ;; Substitute class params → instance args (skolemized version)
-      ;; in the method's body type.  Using the skolemized inst args is
-      ;; what allows the body's polymorphic class-method references to
-      ;; resolve to local dict-arg names via current-dict-skolems.
-      (define σ
-        (for/fold ([s empty-subst])
-                  ([p (in-list (class-info-params cinfo))]
-                   [a (in-list inst-args-sk)])
-          (subst-extend s p a)))
-      ;; Freshen the method scheme's own quantified variables before
-      ;; substituting class params.  Without this, a method universal
-      ;; that happens to share a name with an instance-head variable is
-      ;; captured by σ: for `(Functor (Pair a))` the class param goes
-      ;; `f := (Pair a)`, and fmap's signature `(-> (f a) (f b))` —
-      ;; whose own `a` is a distinct quantified variable — would collapse
-      ;; to `(-> (Pair a a) (Pair a b))`, conflating the fixed first
-      ;; component with the mapped one.  Renaming the scheme's bound vars
-      ;; to fresh names keeps the head variable and the method universals
-      ;; distinct.
-      (define method-fresh-subst
-        (for/fold ([s empty-subst])
-                  ([v (in-list (scheme-vars method-sch))]
-                   #:unless (memq v (class-info-params cinfo)))
-          (subst-extend s v (fresh-tvar v))))
-      (define inst-method-qual
-        (apply-subst σ (apply-subst method-fresh-subst (scheme-body method-sch))))
-      ;; Skolemize method-local tvars that appear in this method's
-      ;; qual context (e.g. `(Applicative f) =>` on traverse).
-      ;; Without this, the body's polymorphic class-method references
-      ;; (pure, fapply, …) can't resolve — the f tvar isn't a concrete
-      ;; tcon nor an instance-qual skolem.  Make it a fresh tcon so
-      ;; the same dict-skolem mechanism used for instance-qual tvars
-      ;; resolves them to local dict-arg names.
-      (define raw-method-qual-preds
-        (filter (lambda (p) (not (equal? p head-pred-sk)))
-                (qual-constraints-of inst-method-qual)))
-      (define method-needs-dict-reqs
-        (for/list ([p (in-list raw-method-qual-preds)]
-                   #:when (class-has-return-typed-methods? env (pred-class p)))
-          (cons (pred-class p) (pred-args p))))
-      (define method-sk-tvars
-        (apply append
-               (for/list ([req (in-list method-needs-dict-reqs)])
-                 (for/list ([a (in-list (cdr req))] #:when (tvar? a))
-                   (tvar-name a)))))
-      (define method-sk-subst
-        (for/fold ([s empty-subst]) ([v (in-list (remove-duplicates method-sk-tvars))])
-          (subst-extend s v (tcon (gensym (format "$method-skolem.~a." v))))))
-      (define-values (method-dict-skolems method-arg-names)
-        (cond
-          [(null? method-needs-dict-reqs) (values (hash) '())]
-          [else
-           (build-dict-skolems method-needs-dict-reqs method-sk-subst env)]))
-      (define combined-skolems
-        (for/fold ([acc dict-skolems])
-                  ([(k v) (in-hash method-dict-skolems)])
-          (hash-set acc k v)))
-      (define combined-arg-names
-        (append dict-arg-names method-arg-names))
-      ;; Store the two arg-name groups separately so
-      ;; compile-instance can decide which dispatch path to use.
-      ;; Instance-qual dicts require compile-time inst-dispatch
-      ;; (the runtime wrapper doesn't insert them).  Method-qual
-      ;; dicts flow through the existing runtime wrapper (whose
-      ;; arity is bumped by class-info-dictreqs at compile-class
-      ;; time), so the impl can be registered in the runtime
-      ;; dispatch table with method-qual dicts as leading params.
-      (when (and (current-needs-dict-defs)
-                 (not (null? combined-arg-names)))
-        (hash-set! (current-needs-dict-defs)
-                   (list class-name head-tcon method-name)
-                   (cons dict-arg-names method-arg-names)))
-      ;; Apply method-skolem subst to the expected type and method-
-      ;; extra-preds so the tvars become rigid for body inference.
-      ;; normalize-type rewrites any associated-type
-      ;; references (e.g. `(Index (List a))`) to their concrete rhs
-      ;; for this instance before unify.
-      (define expected-type/flex
-        (normalize-type env-with-inst
-          (apply-subst method-sk-subst (qual-body-deep inst-method-qual))))
-      ;; Skolemize every type variable still free in the expected method
-      ;; type.  These are the class method's own universally-quantified
-      ;; variables (e.g. fmap's `a`/`b`) plus the instance head's
-      ;; variables (e.g. the `a` in `(Functor (Pair a))`).  Left flexible
-      ;; they would let an over-specific body unify them together — an
-      ;; `fmap` mapping the fixed field of a pair, or ignoring its
-      ;; function argument, would wrongly typecheck.  Made rigid they
-      ;; force the body to be as general as the class signature demands.
-      ;; The same substitution is applied to the body-checking
-      ;; hypotheses below so constraint resolution stays consistent with
-      ;; these skolems.
-      (define generality-sk-subst
-        (for/fold ([s empty-subst])
-                  ([v (in-set (type-vars expected-type/flex))])
-          (subst-extend s v (tcon (gensym (format "$gen-skolem.~a." v))))))
-      (define expected-type
-        (apply-subst generality-sk-subst expected-type/flex))
-      (define method-extra-preds
-        (map (lambda (p)
-               (apply-subst generality-sk-subst (apply-subst method-sk-subst p)))
-             raw-method-qual-preds))
-      (parameterize ([current-pending-preds (box '())])
-        ;; Make the instance-qual + method-qual skolem map visible
-        ;; while inferring the body AND while resolve-method-uses!
-        ;; runs afterward.
-        (define saved-skolems (current-dict-skolems))
-        (current-dict-skolems combined-skolems)
-        (define-values (s t) (infer-expr body env-with-inst))
-        (define s-u
-          (with-handlers
-           ([exn:fail:unify?
-             (lambda (_)
-               (raise-syntax-error 'infer
-                 (format "method ~s body has the wrong type\n~a"
-                         method-name
-                         (expected/got-block expected-type (apply-subst s t)))
-                 stx))])
-           (unify (apply-subst s t) expected-type)))
-        (define final-subst0 (subst-compose s-u s))
-        (apply-subst-to-preds! final-subst0)
-        ;; The instance head itself is a hypothesis during method
-        ;; checking — plus any constraints from the method's own
-        ;; qualifying context (e.g. `Applicative f` for traverse).
-        (define hyp-preds
-          (append (cons (apply-subst generality-sk-subst head-pred-sk)
-                        (map (lambda (p) (apply-subst generality-sk-subst p))
-                             ctx-preds-sk))
-                  method-extra-preds))
-        ;; Run fundep improvement before reducing, exactly as the top-def
-        ;; path does.  A default method body that builds products through
-        ;; the abstract tensor — e.g. on-second's `mk-prod`/`arr`, whose
-        ;; class param `p` is phantom in `arr`'s type — leaves residual
-        ;; `(Arrow cat a)` / `(Prod a)` constraints.  This instance isn't
-        ;; registered yet while its own bodies are checked, so improve
-        ;; against the head hypothesis (`cat -> p` forces `a := p`),
-        ;; connecting the body's fresh tensor var to the instance product
-        ;; so the residuals reduce instead of being reported unsolved.
-        ;; The improved subst also feeds `resolve-method-uses!` below, so
-        ;; the body's return-typed `mk-prod`/`arr`/`inj-*` resolve against
-        ;; the concrete tensor rather than an ambiguous tvar.
-        (define m-fd-sub (improve-by-fds env))
-        (define m-hyp-closure
-          (append-map (lambda (p) (by-super env (apply-subst m-fd-sub p)))
-                      hyp-preds))
-        (define m-hyp-fd-sub (improve-by-hyp-fds env m-hyp-closure))
-        (define final-subst
-          (subst-compose m-hyp-fd-sub (subst-compose m-fd-sub final-subst0)))
-        (define leftovers
-          (reduce-context env
-                          (map (lambda (p) (apply-subst final-subst p)) hyp-preds)
-                          (snapshot-preds)))
-        (unless (null? leftovers)
-          (raise-syntax-error 'infer
-            (render-doc (labeled-block
-                         (format "instance ~a method ~a leaves unsolved constraints:"
-                                 (pretty-pred head-pred-raw) method-name)
-                         (map pretty-pred leftovers))
-                        (current-type-columns))
-            stx))
-        (resolve-method-uses! final-subst env)
-        (current-dict-skolems saved-skolems))
+      (define body (instance-method-body ictx method-name))
+      (define mc   (method-qual-context ictx method-name method-sch))
+      (elaborate-instance-method-body! ictx method-name body mc)
       (hash-set acc method-name body)))
   (define info (instance-info head-pred-raw ctx-preds-raw checked-bodies
                               type-family-bindings inst-origin))
@@ -4488,3 +4313,273 @@
                  (env-instances env class-name)))
         env))
   (values (env-extend-instance base-env class-name info) declared))
+
+;; ----- instance method-body checking ------------------------------------
+;;
+;; handle-instance-form checks every method body of one instance against the
+;; class signature.  The per-method work — body selection, skolemization,
+;; and the infer/unify/reduce/resolve pass — is factored into the helpers
+;; below; the loop-invariant context they share rides in `inst-check-ctx`.
+
+(struct inst-check-ctx
+  (env env-with-inst cinfo class-name
+   head-pred-raw head-pred-sk ctx-preds-sk inst-args-sk
+   head-tcon dict-skolems dict-arg-names user-impls stx)
+  #:transparent)
+
+;; The per-method data the body must satisfy, computed from the class
+;; signature: the expected (skolemized, normalized) method type, the
+;; method's own qual-context preds (hypotheses), the combined dict-skolem
+;; map, and the generality skolemization that makes head/method universals
+;; rigid.
+(struct method-check (expected-type extra-preds skolems generality-subst)
+  #:transparent)
+
+;; Skolemize the instance's qualifying context.  For each ctx pred that
+;; pins a return-typed-bearing class (e.g. `(HasUnit m) =>` on a lifted
+;; instance), skolemize its tvars and map each skolem to a local dict-arg
+;; name; the body's polymorphic class-method references resolve against
+;; this map.  Returns (values sk-subst dict-skolems dict-arg-names).
+(define (instance-qual-skolems ctx-preds-raw env)
+  (define inst-needs-dict-reqs
+    (for/list ([c (in-list ctx-preds-raw)]
+               #:when (class-has-return-typed-methods? env (pred-class c)))
+      (cons (pred-class c) (pred-args c))))
+  (cond
+    [(null? inst-needs-dict-reqs) (values empty-subst (hash) '())]
+    [else
+     (define inner-vars
+       (for/fold ([acc '()]) ([c (in-list ctx-preds-raw)])
+         (for/fold ([acc acc]) ([a (in-list (pred-args c))])
+           (set->list (set-union (list->seteq acc) (type-vars a))))))
+     (define s
+       (for/fold ([s empty-subst]) ([v (in-list inner-vars)])
+         (subst-extend s v (tcon (gensym (format "$inst-skolem.~a." v))))))
+     (define-values (sk-map args) (build-dict-skolems inst-needs-dict-reqs s env))
+     (values s sk-map args)]))
+
+;; Pick the body AST for `method-name`: the user's explicit impl, else the
+;; class default freshened to THIS instance's site (distinct handles,
+;; anchored at the instance stx, recorded for codegen so its return-typed
+;; calls resolve against this instance's carrier rather than the protocol's
+;; abstract class parameter), else a compile error.
+(define (instance-method-body ctx method-name)
+  (define user-impls    (inst-check-ctx-user-impls ctx))
+  (define cinfo         (inst-check-ctx-cinfo ctx))
+  (define class-name    (inst-check-ctx-class-name ctx))
+  (define head-tcon     (inst-check-ctx-head-tcon ctx))
+  (define head-pred-raw (inst-check-ctx-head-pred-raw ctx))
+  (define stx           (inst-check-ctx-stx ctx))
+  (cond
+    [(hash-ref user-impls method-name #f)]
+    [(hash-ref (class-info-defaults cinfo) method-name #f)
+     => (lambda (default-expr)
+          ;; Inherited class default.  Freshen it to THIS
+          ;; instance's site (distinct handles, anchored at the
+          ;; instance stx) before inferring, so its return-typed
+          ;; method calls resolve against this instance's carrier
+          ;; rather than the protocol's abstract class parameter.
+          ;; Hand the freshened AST to codegen so the syntax
+          ;; handles the method resolutions are keyed by agree.
+          (define fresh-body (freshen-ast default-expr stx))
+          (when (current-instance-default-bodies)
+            (hash-set! (current-instance-default-bodies)
+                       (list class-name head-tcon method-name)
+                       fresh-body))
+          fresh-body)]
+    [else
+     (raise-syntax-error 'infer
+       (format "instance ~s missing method ~s with no default"
+               (pred->datum head-pred-raw) method-name)
+       stx)]))
+
+;; Build the type the body must satisfy: substitute class params ->
+;; instance args (skolemized), freshen the method scheme's own quantified
+;; vars to avoid capture, skolemize method-qual + generality tvars,
+;; normalize associated types, record any needs-dict arg names for codegen,
+;; and return the resulting method-check.
+(define (method-qual-context ctx method-name method-sch)
+  (define cinfo          (inst-check-ctx-cinfo ctx))
+  (define env            (inst-check-ctx-env ctx))
+  (define env-with-inst  (inst-check-ctx-env-with-inst ctx))
+  (define inst-args-sk   (inst-check-ctx-inst-args-sk ctx))
+  (define head-pred-sk   (inst-check-ctx-head-pred-sk ctx))
+  (define dict-skolems   (inst-check-ctx-dict-skolems ctx))
+  (define dict-arg-names (inst-check-ctx-dict-arg-names ctx))
+  (define class-name     (inst-check-ctx-class-name ctx))
+  (define head-tcon      (inst-check-ctx-head-tcon ctx))
+  (define σ
+    (for/fold ([s empty-subst])
+              ([p (in-list (class-info-params cinfo))]
+               [a (in-list inst-args-sk)])
+      (subst-extend s p a)))
+  ;; Freshen the method scheme's own quantified variables before
+  ;; substituting class params.  Without this, a method universal
+  ;; that happens to share a name with an instance-head variable is
+  ;; captured by σ: for `(Functor (Pair a))` the class param goes
+  ;; `f := (Pair a)`, and fmap's signature `(-> (f a) (f b))` —
+  ;; whose own `a` is a distinct quantified variable — would collapse
+  ;; to `(-> (Pair a a) (Pair a b))`, conflating the fixed first
+  ;; component with the mapped one.  Renaming the scheme's bound vars
+  ;; to fresh names keeps the head variable and the method universals
+  ;; distinct.
+  (define method-fresh-subst
+    (for/fold ([s empty-subst])
+              ([v (in-list (scheme-vars method-sch))]
+               #:unless (memq v (class-info-params cinfo)))
+      (subst-extend s v (fresh-tvar v))))
+  (define inst-method-qual
+    (apply-subst σ (apply-subst method-fresh-subst (scheme-body method-sch))))
+  ;; Skolemize method-local tvars that appear in this method's
+  ;; qual context (e.g. `(Applicative f) =>` on traverse).
+  ;; Without this, the body's polymorphic class-method references
+  ;; (pure, fapply, …) can't resolve — the f tvar isn't a concrete
+  ;; tcon nor an instance-qual skolem.  Make it a fresh tcon so
+  ;; the same dict-skolem mechanism used for instance-qual tvars
+  ;; resolves them to local dict-arg names.
+  (define raw-method-qual-preds
+    (filter (lambda (p) (not (equal? p head-pred-sk)))
+            (qual-constraints-of inst-method-qual)))
+  (define method-needs-dict-reqs
+    (for/list ([p (in-list raw-method-qual-preds)]
+               #:when (class-has-return-typed-methods? env (pred-class p)))
+      (cons (pred-class p) (pred-args p))))
+  (define method-sk-tvars
+    (apply append
+           (for/list ([req (in-list method-needs-dict-reqs)])
+             (for/list ([a (in-list (cdr req))] #:when (tvar? a))
+               (tvar-name a)))))
+  (define method-sk-subst
+    (for/fold ([s empty-subst]) ([v (in-list (remove-duplicates method-sk-tvars))])
+      (subst-extend s v (tcon (gensym (format "$method-skolem.~a." v))))))
+  (define-values (method-dict-skolems method-arg-names)
+    (cond
+      [(null? method-needs-dict-reqs) (values (hash) '())]
+      [else
+       (build-dict-skolems method-needs-dict-reqs method-sk-subst env)]))
+  (define combined-skolems
+    (for/fold ([acc dict-skolems])
+              ([(k v) (in-hash method-dict-skolems)])
+      (hash-set acc k v)))
+  (define combined-arg-names
+    (append dict-arg-names method-arg-names))
+  ;; Store the two arg-name groups separately so
+  ;; compile-instance can decide which dispatch path to use.
+  ;; Instance-qual dicts require compile-time inst-dispatch
+  ;; (the runtime wrapper doesn't insert them).  Method-qual
+  ;; dicts flow through the existing runtime wrapper (whose
+  ;; arity is bumped by class-info-dictreqs at compile-class
+  ;; time), so the impl can be registered in the runtime
+  ;; dispatch table with method-qual dicts as leading params.
+  (when (and (current-needs-dict-defs)
+             (not (null? combined-arg-names)))
+    (hash-set! (current-needs-dict-defs)
+               (list class-name head-tcon method-name)
+               (cons dict-arg-names method-arg-names)))
+  ;; Apply method-skolem subst to the expected type and method-
+  ;; extra-preds so the tvars become rigid for body inference.
+  ;; normalize-type rewrites any associated-type
+  ;; references (e.g. `(Index (List a))`) to their concrete rhs
+  ;; for this instance before unify.
+  (define expected-type/flex
+    (normalize-type env-with-inst
+      (apply-subst method-sk-subst (qual-body-deep inst-method-qual))))
+  ;; Skolemize every type variable still free in the expected method
+  ;; type.  These are the class method's own universally-quantified
+  ;; variables (e.g. fmap's `a`/`b`) plus the instance head's
+  ;; variables (e.g. the `a` in `(Functor (Pair a))`).  Left flexible
+  ;; they would let an over-specific body unify them together — an
+  ;; `fmap` mapping the fixed field of a pair, or ignoring its
+  ;; function argument, would wrongly typecheck.  Made rigid they
+  ;; force the body to be as general as the class signature demands.
+  ;; The same substitution is applied to the body-checking
+  ;; hypotheses below so constraint resolution stays consistent with
+  ;; these skolems.
+  (define generality-sk-subst
+    (for/fold ([s empty-subst])
+              ([v (in-set (type-vars expected-type/flex))])
+      (subst-extend s v (tcon (gensym (format "$gen-skolem.~a." v))))))
+  (define expected-type
+    (apply-subst generality-sk-subst expected-type/flex))
+  (define method-extra-preds
+    (map (lambda (p)
+           (apply-subst generality-sk-subst (apply-subst method-sk-subst p)))
+         raw-method-qual-preds))
+  (method-check expected-type method-extra-preds combined-skolems generality-sk-subst))
+
+;; Infer the body, unify it against the class-signature type, run fundep
+;; improvement (so a default body's residual tensor constraints reduce
+;; against the head hypothesis), ensure no constraints leak, and resolve
+;; the body's return-typed method uses.  Raises on a type/constraint error.
+(define (elaborate-instance-method-body! ctx method-name body mc)
+  (define env            (inst-check-ctx-env ctx))
+  (define env-with-inst  (inst-check-ctx-env-with-inst ctx))
+  (define head-pred-sk   (inst-check-ctx-head-pred-sk ctx))
+  (define ctx-preds-sk   (inst-check-ctx-ctx-preds-sk ctx))
+  (define head-pred-raw  (inst-check-ctx-head-pred-raw ctx))
+  (define stx            (inst-check-ctx-stx ctx))
+  (define expected-type       (method-check-expected-type mc))
+  (define method-extra-preds  (method-check-extra-preds mc))
+  (define combined-skolems    (method-check-skolems mc))
+  (define generality-sk-subst (method-check-generality-subst mc))
+  (parameterize ([current-pending-preds (box '())])
+    ;; Make the instance-qual + method-qual skolem map visible
+    ;; while inferring the body AND while resolve-method-uses!
+    ;; runs afterward.
+    (define saved-skolems (current-dict-skolems))
+    (current-dict-skolems combined-skolems)
+    (define-values (s t) (infer-expr body env-with-inst))
+    (define s-u
+      (with-handlers
+       ([exn:fail:unify?
+         (lambda (_)
+           (raise-syntax-error 'infer
+             (format "method ~s body has the wrong type\n~a"
+                     method-name
+                     (expected/got-block expected-type (apply-subst s t)))
+             stx))])
+       (unify (apply-subst s t) expected-type)))
+    (define final-subst0 (subst-compose s-u s))
+    (apply-subst-to-preds! final-subst0)
+    ;; The instance head itself is a hypothesis during method
+    ;; checking — plus any constraints from the method's own
+    ;; qualifying context (e.g. `Applicative f` for traverse).
+    (define hyp-preds
+      (append (cons (apply-subst generality-sk-subst head-pred-sk)
+                    (map (lambda (p) (apply-subst generality-sk-subst p))
+                         ctx-preds-sk))
+              method-extra-preds))
+    ;; Run fundep improvement before reducing, exactly as the top-def
+    ;; path does.  A default method body that builds products through
+    ;; the abstract tensor — e.g. on-second's `mk-prod`/`arr`, whose
+    ;; class param `p` is phantom in `arr`'s type — leaves residual
+    ;; `(Arrow cat a)` / `(Prod a)` constraints.  This instance isn't
+    ;; registered yet while its own bodies are checked, so improve
+    ;; against the head hypothesis (`cat -> p` forces `a := p`),
+    ;; connecting the body's fresh tensor var to the instance product
+    ;; so the residuals reduce instead of being reported unsolved.
+    ;; The improved subst also feeds `resolve-method-uses!` below, so
+    ;; the body's return-typed `mk-prod`/`arr`/`inj-*` resolve against
+    ;; the concrete tensor rather than an ambiguous tvar.
+    (define m-fd-sub (improve-by-fds env))
+    (define m-hyp-closure
+      (append-map (lambda (p) (by-super env (apply-subst m-fd-sub p)))
+                  hyp-preds))
+    (define m-hyp-fd-sub (improve-by-hyp-fds env m-hyp-closure))
+    (define final-subst
+      (subst-compose m-hyp-fd-sub (subst-compose m-fd-sub final-subst0)))
+    (define leftovers
+      (reduce-context env
+                      (map (lambda (p) (apply-subst final-subst p)) hyp-preds)
+                      (snapshot-preds)))
+    (unless (null? leftovers)
+      (raise-syntax-error 'infer
+        (render-doc (labeled-block
+                     (format "instance ~a method ~a leaves unsolved constraints:"
+                             (pretty-pred head-pred-raw) method-name)
+                     (map pretty-pred leftovers))
+                    (current-type-columns))
+        stx))
+    (resolve-method-uses! final-subst env)
+    (current-dict-skolems saved-skolems)))
+

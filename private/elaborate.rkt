@@ -270,24 +270,12 @@
   (define parsed
     (parameterize ([current-hygiene? (unbox had-macros?-box)])
       (parse-toplevel-list expanded-forms)))
-  ;; Return-typed class methods are resolved at compile time, with the
-  ;; resolution communicated from inference to codegen via these two
-  ;; hashtables.  Inference populates `current-method-uses` then
-  ;; settles it into `current-method-resolutions` after each top-def's
-  ;; constraints reduce; codegen consults the resolutions when
-  ;; emitting `e:var` references.
-  (parameterize ([current-method-uses             (make-hasheq)]
-                 [current-method-resolutions      (make-hasheq)]
-                 [current-method-dict-resolutions (make-hasheq)]
-                 ;; equal?-keyed so we can use composite list keys
-                 ;; for instance method lookups.  Symbol-
-                 ;; keyed top-def names compare equal? fine too.
-                 [current-needs-dict-defs         (make-hash)]
-                 ;; Per-instance freshened default-method bodies,
-                 ;; equal?-keyed by (class head-tcon method); inference
-                 ;; populates, codegen consumes (see infer.rkt).
-                 [current-instance-default-bodies (make-hash)]
-                 ;; Monomorphization log starts empty per elaborate,
+  ;; The inference→codegen resolution tables (method-resolutions,
+  ;; method-dict-resolutions, needs-dict-defs, instance-default-bodies) are
+  ;; now owned by `infer-program+forms`, which returns them in a
+  ;; `codegen-plan` that `compile-top` consumes.  Only the cross-phase logs
+  ;; and codegen accumulators are installed here.
+  (parameterize (;; Monomorphization log starts empty per elaborate,
                  ;; accumulates each resolved site.
                  [current-monomorphized-sites     (make-monomorph-log)]
                  ;; inlinable-bodies is populated by
@@ -310,7 +298,7 @@
     ;; file) keeps the fixed default, so compiled error text stays
     ;; reproducible.  Detection returns #f when there is no terminal and
     ;; no `COLUMNS`, leaving the default.
-    (define-values (env parsed*)
+    (define-values (env parsed* plan)
       (let ([cols (and (eq? (syntax-local-context) 'top-level)
                        (detect-display-columns))])
         (parameterize ([current-type-columns
@@ -326,14 +314,12 @@
     ;; doesn't change.
     (define parsed-ordered (phase-sort-forms parsed*))
     (define compiled
-      ;; Return-typed method names (pure/mempty/…) drive codegen's choice
-      ;; of a runtime-table lookup vs a direct impl reference at call
-      ;; sites — see current-return-typed-methods.
-      (parameterize ([current-return-typed-methods
-                      (env-return-typed-methods env)])
-        (filter values
-                (for/list ([f (in-list parsed-ordered)])
-                  (compile-top f env)))))
+      ;; The plan carries the inference→codegen tables (including the
+      ;; return-typed method names that drive codegen's runtime-table vs
+      ;; direct-impl choice); compile-top installs them.
+      (filter values
+              (for/list ([f (in-list parsed-ordered)])
+                (compile-top f env plan))))
     ;; Emit a runtime form that publishes this elaborate's
     ;; monomorphization log via the codegen-exposed setter.  The
     ;; rackton-monomorphized-sites accessor returns this list so

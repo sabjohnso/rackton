@@ -28,6 +28,7 @@
          "surface.rkt"
          "infer.rkt"
          "codegen.rkt"
+         "codegen-plan.rkt"
          "prelude.rkt"
          "env.rkt"
          "types.rkt"
@@ -221,10 +222,21 @@
       (infer-program/phases parsed
                             (rackton-repl-state-env state)
                             (rackton-repl-state-declared state)))
+    ;; Hand codegen the same persisted resolution tables inference just
+    ;; wrote.  return-typed-methods is left #f: a REPL session is
+    ;; incremental, so return-typed calls dispatch through the runtime
+    ;; table rather than a monomorphized per-input impl name (which a later
+    ;; input might not have bound).
+    (define plan
+      (codegen-plan (rackton-repl-state-method-resolutions state)
+                    (rackton-repl-state-method-dict-resolutions state)
+                    (rackton-repl-state-needs-dict-defs state)
+                    (rackton-repl-state-instance-default-bodies state)
+                    #f))
     (define compiled
       (filter values
               (for/list ([p (in-list parsed*)])
-                (compile-top p env*))))
+                (compile-top p env* plan))))
     (values env* compiled)))
 
 ;; Mirror of infer.rkt's `handle-top-form` invocation; the helper

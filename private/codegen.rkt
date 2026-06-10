@@ -70,6 +70,7 @@
          "entail.rkt"
          "impl-symbols.rkt"
          "monomorph-log.rkt"
+         "codegen-plan.rkt"
          "infer.rkt")
 
 ;; Prepend `dict-arg-names` to an expression's outermost lambda
@@ -517,8 +518,18 @@
       [(tapp (tcon n) _) n]
       [_ #f])))
 
-(define (compile-top form env)
-  (parameterize ([current-codegen-env env])
+;; Lower one top-form.  The `plan` carries the inference results codegen
+;; needs (see codegen-plan.rkt); they are re-established as the
+;; codegen-internal parameters here, at the single codegen entry point, so
+;; the deep lowering code reads them as before.  Defaults to the empty plan
+;; for isolated callers that drive codegen without an inference pass.
+(define (compile-top form env [plan empty-codegen-plan])
+  (parameterize ([current-codegen-env env]
+                 [current-method-resolutions      (codegen-plan-method-resolutions plan)]
+                 [current-method-dict-resolutions (codegen-plan-method-dict-resolutions plan)]
+                 [current-needs-dict-defs         (codegen-plan-needs-dict-defs plan)]
+                 [current-instance-default-bodies (codegen-plan-instance-default-bodies plan)]
+                 [current-return-typed-methods    (codegen-plan-return-typed-methods plan)])
     (compile-top* form env)))
 
 (define (compile-top* form env)
