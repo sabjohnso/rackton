@@ -54,18 +54,17 @@
          "impl-symbols.rkt"
          "monomorph-log.rkt"
          "codegen-plan.rkt"
-         "scheme-codec.rkt")
+         "scheme-codec.rkt"
+         ;; The Environment monad threads the type-resolution context
+         ;; (alias table + expansion guard) — replaces current-aliases /
+         ;; current-expanding.
+         (only-in "monad/ctx.rkt"
+                  ctx-return ctx-sequence asks local run-ctx let/ctx))
 
 ;; ----- fresh type variables -----------------------------------------
 
 (define current-fresh-state    (make-parameter #f))
 (define current-pending-preds  (make-parameter #f))
-;; Map of alias-name → (cons params target-ty-ast), consulted by
-;; `resolve-type` to expand alias references at the type level.
-(define current-aliases        (make-parameter (hasheq)))
-;; Set of alias names currently being expanded — used to detect
-;; recursive aliases.
-(define current-expanding      (make-parameter (seteq)))
 ;; Return-typed-method use sites accumulated during inference of one
 ;; top-level definition.  A hashtable from the e:var's syntax object →
 ;; (list class-name method-name body-type).  After constraint
@@ -824,35 +823,53 @@
 ;; preserved only by `resolve-scheme`.  References to type aliases are
 ;; expanded inline by substituting the alias's parameters with the
 ;; supplied arguments and recursing on the alias target.
-(define (resolve-type ty-ast)
-  (match ty-ast
-    [(ty:var n _)        (tvar n)]
-    [(ty:con n stx)
-     (cond
-       [(hash-ref (current-aliases) n #f)
-        => (lambda (info) (expand-alias n info '() stx))]
-       [else (tcon n)])]
-    [(ty:app (and h (ty:con n _)) args stx)
-     (cond
-       [(hash-ref (current-aliases) n #f)
-        => (lambda (info) (expand-alias n info args stx))]
-       [else (make-tapp (tcon n)
-                        (for/list ([a (in-list args)]) (resolve-type a)))])]
-    [(ty:app h args _)
-     (make-tapp (resolve-type h)
-                (for/list ([a (in-list args)]) (resolve-type a)))]
-    [(ty:forall vs body _)
-     ;; Preserve nested `(All ...)` quantifiers as
-     ;; `tforall` so the type can carry embedded polymorphism
-     ;; into argument positions for rank-N.  Top-level schemes
-     ;; come through `resolve-scheme` instead.
-     (tforall vs (resolve-type body))]
-    [(ty:qual cs body _)
-     (mqual (for/list ([c (in-list cs)]) (resolve-constraint c))
-            (resolve-type body))]))
+;; The read-only context the type-resolution cluster threads through the
+;; Environment monad: the alias table and the set of aliases currently being
+;; expanded (the recursion guard).  Replaces the current-aliases /
+;; current-expanding parameters with explicit, monad-threaded context —
+;; `asks` reads the alias table, `local` extends the guard for a sub-resolve.
+(struct resolve-ctx (aliases expanding) #:transparent)
 
-(define (expand-alias name info args stx)
-  (when (set-member? (current-expanding) name)
+;; resolve-type/m : ty-ast -> Ctx type
+(define (resolve-type/m ty-ast)
+  (match ty-ast
+    [(ty:var n _) (ctx-return (tvar n))]
+    [(ty:con n stx)
+     (let/ctx ([aliases (asks resolve-ctx-aliases)])
+       (cond
+         [(hash-ref aliases n #f) => (lambda (info) (expand-alias/m n info '() stx))]
+         [else (ctx-return (tcon n))]))]
+    [(ty:app (and h (ty:con n _)) args stx)
+     (let/ctx ([aliases (asks resolve-ctx-aliases)])
+       (cond
+         [(hash-ref aliases n #f) => (lambda (info) (expand-alias/m n info args stx))]
+         [else
+          (let/ctx ([rargs (ctx-sequence (map resolve-type/m args))])
+            (ctx-return (make-tapp (tcon n) rargs)))]))]
+    [(ty:app h args _)
+     (let/ctx ([rh    (resolve-type/m h)]
+               [rargs (ctx-sequence (map resolve-type/m args))])
+       (ctx-return (make-tapp rh rargs)))]
+    [(ty:forall vs body _)
+     ;; Preserve nested `(All ...)` quantifiers as `tforall` so the type can
+     ;; carry embedded polymorphism into argument positions for rank-N.
+     ;; Top-level schemes come through `resolve-scheme` instead.
+     (let/ctx ([rb (resolve-type/m body)])
+       (ctx-return (tforall vs rb)))]
+    [(ty:qual cs body _)
+     (let/ctx ([rcs (ctx-sequence (map resolve-constraint/m cs))]
+               [rb  (resolve-type/m body)])
+       (ctx-return (mqual rcs rb)))]))
+
+;; expand-alias/m : name info args stx -> Ctx type
+(define (expand-alias/m name info args stx)
+  (let/ctx ([expanding (asks resolve-ctx-expanding)])
+    (expand-alias-checked name info args stx expanding)))
+
+;; Plain checks (raise on recursion / arity mismatch), then recurse with the
+;; expansion guard extended via `local`.  Returns a Ctx computation.
+(define (expand-alias-checked name info args stx expanding)
+  (when (set-member? expanding name)
     (raise-syntax-error 'infer
       (format "recursive type alias: ~s" name) stx))
   (define params (car info))
@@ -864,8 +881,9 @@
       stx))
   (define sub (for/hasheq ([p (in-list params)] [a (in-list args)])
                 (values p a)))
-  (parameterize ([current-expanding (set-add (current-expanding) name)])
-    (resolve-type (substitute-tyvars sub target))))
+  (local (lambda (c) (struct-copy resolve-ctx c
+                                  [expanding (set-add expanding name)]))
+         (resolve-type/m (substitute-tyvars sub target))))
 
 ;; Walk a surface type AST and substitute ty:var occurrences whose name
 ;; appears in `sub` with the corresponding replacement AST.
@@ -894,22 +912,38 @@
                  (for/list ([a (in-list args)]) (substitute-tyvars sub a))
                  stx)]))
 
-(define (resolve-constraint c)
+;; resolve-constraint/m : constraint -> Ctx pred
+(define (resolve-constraint/m c)
   (match c
     [(constraint class args _)
-     (pred class (for/list ([a (in-list args)]) (resolve-type a)))]))
+     (let/ctx ([rargs (ctx-sequence (map resolve-type/m args))])
+       (ctx-return (pred class rargs)))]))
 
 ;; Resolve a parsed type AST as a scheme (for declarations).  A bare
 ;; `(All ...)` wraps the explicit quantifier; otherwise we generalize
 ;; over every type variable that appears.
-(define (resolve-scheme ty-ast)
+;;   resolve-scheme/m : ty-ast -> Ctx scheme
+(define (resolve-scheme/m ty-ast)
   (match ty-ast
     [(ty:forall vs body _)
-     (scheme vs (resolve-type body))]
+     (let/ctx ([rb (resolve-type/m body)])
+       (ctx-return (scheme vs rb)))]
     [_
-     (define t (resolve-type ty-ast))
-     (define vs (sort (set->list (type-vars t)) symbol<?))
-     (scheme vs t)]))
+     (let/ctx ([t (resolve-type/m ty-ast)])
+       (ctx-return
+        (let ([vs (sort (set->list (type-vars t)) symbol<?)])
+          (scheme vs t))))]))
+
+;; ----- runner wrappers: the Environment-monad boundary --------------
+;; Build the resolution context from `env` and run.  As the form-handlers
+;; that call these are themselves converted to the monad, these run-points
+;; become ordinary `let/ctx` binds and the wrappers dissolve.
+(define (resolve-type ty-ast env)
+  (run-ctx (resolve-type/m ty-ast) (resolve-ctx (env-aliases env) (seteq))))
+(define (resolve-constraint c env)
+  (run-ctx (resolve-constraint/m c) (resolve-ctx (env-aliases env) (seteq))))
+(define (resolve-scheme ty-ast env)
+  (run-ctx (resolve-scheme/m ty-ast) (resolve-ctx (env-aliases env) (seteq))))
 
 ;; ----- literals -----------------------------------------------------
 
@@ -1196,7 +1230,7 @@
 
 (define (infer-ann expr ty-ast stx env)
      (define-values (s-e t-e) (infer-expr expr env))
-     (define declared (qual-body-type (resolve-type ty-ast)))
+     (define declared (qual-body-type (resolve-type ty-ast env)))
      (define s-u
        (with-handlers
         ([exn:fail:unify?
@@ -1209,7 +1243,7 @@
      (values (subst-compose s-u s-e) (apply-subst s-u declared)))
 
 (define (infer-escape ty-ast vars stx env)
-     (define expected (qual-body-type (resolve-type ty-ast)))
+     (define expected (qual-body-type (resolve-type ty-ast env)))
      (for ([v (in-list vars)])
        (unless (env-ref-var env v)
          (raise-syntax-error 'infer
@@ -1940,26 +1974,25 @@
 ;; so the obligation reads "for all the instance's variables, the
 ;; superclass holds" — exactly the coherence requirement.
 (define (check-superclass-obligations env forms)
-  (parameterize ([current-aliases (env-aliases env)])
-    (for ([f (in-list forms)] #:when (top:instance? f))
-      (define head  (resolve-constraint (top:instance-head f)))
-      (define cinfo (env-ref-class env (pred-class head) #f))
-      (when cinfo
-        (define ctx
-          (for/list ([c (in-list (top:instance-context f))])
-            (resolve-constraint c)))
-        (define σ
-          (for/fold ([s empty-subst])
-                    ([p (in-list (class-info-params cinfo))]
-                     [a (in-list (pred-args head))])
-            (subst-extend s p a)))
-        (for ([sp (in-list (class-info-supers cinfo))])
-          (define target (apply-subst σ sp))
-          (unless (entail? env ctx target)
-            (raise-syntax-error 'infer
-              (format "instance ~a requires ~a, which has no instance"
-                      (pred->datum head) (pred->datum target))
-              (top:instance-stx f))))))))
+  (for ([f (in-list forms)] #:when (top:instance? f))
+    (define head  (resolve-constraint (top:instance-head f) env))
+    (define cinfo (env-ref-class env (pred-class head) #f))
+    (when cinfo
+      (define ctx
+        (for/list ([c (in-list (top:instance-context f))])
+          (resolve-constraint c env)))
+      (define σ
+        (for/fold ([s empty-subst])
+                  ([p (in-list (class-info-params cinfo))]
+                   [a (in-list (pred-args head))])
+          (subst-extend s p a)))
+      (for ([sp (in-list (class-info-supers cinfo))])
+        (define target (apply-subst σ sp))
+        (unless (entail? env ctx target)
+          (raise-syntax-error 'infer
+            (format "instance ~a requires ~a, which has no instance"
+                    (pred->datum head) (pred->datum target))
+            (top:instance-stx f)))))))
 
 ;; ----- cross-class derivation expansion ----------------------------
 ;;
@@ -1975,18 +2008,15 @@
   (cond
     [(not (for/or ([f (in-list forms)]) (top:derive-instance? f))) forms]
     [else
-     (parameterize ([current-aliases (env-aliases env)])
-       ;; (class-name . spine-tcon) of every instance ALREADY written as a
-       ;; plain form, so synthesis can skip a superclass the user supplied.
-       (define existing (make-hash))
-       (for ([f (in-list forms)] #:when (top:instance? f))
-         (define h (resolve-constraint (top:instance-head f)))
-         (hash-set! existing (cons (pred-class h) (head-spine-tcon h)) #t))
-       (append*
-        (for/list ([f (in-list forms)])
-          (if (top:derive-instance? f)
-              (synthesize-derived-instances f env existing)
-              (list f)))))]))
+     (define existing (make-hash))
+     (for ([f (in-list forms)] #:when (top:instance? f))
+       (define h (resolve-constraint (top:instance-head f) env))
+       (hash-set! existing (cons (pred-class h) (head-spine-tcon h)) #t))
+     (append*
+      (for/list ([f (in-list forms)])
+        (if (top:derive-instance? f)
+            (synthesize-derived-instances f env existing)
+            (list f))))]))
 
 ;; The spine type-constructor of a pred's first argument, e.g. `Box` for
 ;; `(Functor Box)` and `StateT` for `(Monad (StateT s m))`; #f if none.
@@ -2027,7 +2057,7 @@
 
 (define (synthesize-derived-instances di env existing)
   (define surface-head (top:derive-instance-head di))      ; surface constraint
-  (define head-pred    (resolve-constraint surface-head))  ; core pred
+  (define head-pred    (resolve-constraint surface-head env))  ; core pred
   (define C            (pred-class head-pred))
   (define spine        (head-spine-tcon head-pred))
   (define ctx          (top:derive-instance-context di))
@@ -2116,8 +2146,7 @@
   ;; into env; must run before any local type resolution.
   (define env-A1
     (for/fold ([e env]) ([f (in-list forms)] #:when (top:require? f))
-      (parameterize ([current-aliases (env-aliases e)])
-        (define-values (e* _) (handle-top-form f e (hasheq)))
+      (let-values ([(e* _) (handle-top-form f e (hasheq))])
         e*)))
   ;; A2-A4: pre-register tcon shells, aliases (lazy), struct-fields.
   ;; None of these resolve types, so order among them is irrelevant —
@@ -2134,28 +2163,26 @@
   ;; A5: effects (resolve op types against the tcon-complete env).
   (define env-A5
     (for/fold ([e env-A4]) ([f (in-list forms)] #:when (top:effect? f))
-      (parameterize ([current-aliases (env-aliases e)])
-        (define-values (e* _) (handle-top-form f e (hasheq)))
+      (let-values ([(e* _) (handle-top-form f e (hasheq))])
         e*)))
   ;; A6: classes (handle-class-form resolves method schemes and
   ;; registers each method as a polymorphic var).
   (define env-A6
     (for/fold ([e env-A5]) ([f (in-list forms)] #:when (top:class? f))
-      (parameterize ([current-aliases (env-aliases e)])
-        (define-values (e* _) (handle-top-form f e (hasheq)))
+      (let-values ([(e* _) (handle-top-form f e (hasheq))])
         e*)))
   ;; A7: data ctors (now classes are in env, so ctor types with
   ;; class constraints in extra-context resolve correctly).
   (define env-A7
-    (parameterize ([current-aliases (env-aliases env-A6)])
-      (resolve-data-ctors env-A6 forms)))
+    (resolve-data-ctors env-A6 forms))
   ;; A8: resolve every top:dec into the shared declared table; mirror
   ;; the entry into env so the rest of the pipeline can env-ref-var
   ;; before the def's body has been inferred.
   (define declared
-    (parameterize ([current-aliases (env-aliases env-A7)])
-      (for/fold ([d prior-declared]) ([f (in-list forms)] #:when (top:dec? f))
-        (hash-set d (top:dec-name f) (resolve-scheme (top:dec-type f))))))
+    (for/fold ([d prior-declared]) ([f (in-list forms)] #:when (top:dec? f))
+      ;; env-A6 carries the imported (A1) and local (A3) aliases that the
+      ;; declared types may reference; the bare `env` does not.
+      (hash-set d (top:dec-name f) (resolve-scheme (top:dec-type f) env-A6))))
   (define env-A8
     (for/fold ([e env-A7]) ([(name sch) (in-hash declared)])
       (env-extend-var e name sch)))
@@ -2163,16 +2190,15 @@
   ;; bare dec, but NOT in `declared` (there is no Rackton def body; the
   ;; binding comes from the Racket require codegen emits).
   (define env-A9
-    (parameterize ([current-aliases (env-aliases env-A8)])
-      (for/fold ([e env-A8]) ([f (in-list forms)])
-        (cond
-          [(top:foreign? f)
-           (env-extend-var e (top:foreign-name f)
-                           (resolve-scheme (top:foreign-type f)))]
-          [(top:foreign-c? f)
-           (env-extend-var e (top:foreign-c-name f)
-                           (resolve-scheme (top:foreign-c-type f)))]
-          [else e]))))
+    (for/fold ([e env-A8]) ([f (in-list forms)])
+      (cond
+        [(top:foreign? f)
+         (env-extend-var e (top:foreign-name f)
+                         (resolve-scheme (top:foreign-type f) env-A7))]
+        [(top:foreign-c? f)
+         (env-extend-var e (top:foreign-c-name f)
+                         (resolve-scheme (top:foreign-c-type f) env-A8))]
+        [else e])))
   (values env-A9 declared))
 
 ;; Pre-register every top:data's tcon header in env: name + arity +
@@ -2207,11 +2233,11 @@
     (for/fold ([e env]) ([c (in-list ctors)])
       (define field-tys
         (for/list ([t (in-list (data-ctor-field-types c))])
-          (resolve-type t)))
+          (resolve-type t env)))
       (define ctor-result-type
         (cond
           [(data-ctor-result-type c)
-           (resolve-type (data-ctor-result-type c))]
+           (resolve-type (data-ctor-result-type c) env)]
           [else default-result-type]))
       (define ctor-fn-type
         (foldr make-arrow ctor-result-type field-tys))
@@ -2222,7 +2248,7 @@
           [(null? extra-context) ctor-fn-type]
           [else
            (mqual (for/list ([cs (in-list extra-context)])
-                    (resolve-constraint cs))
+                    (resolve-constraint cs env))
                   ctor-fn-type)]))
       (define quantifier-vars
         (cond
@@ -2266,10 +2292,9 @@
 ;; type-checks its method bodies.  Bodies see the full set of
 ;; pre-registered def names from Phase B.
 (define (run-phase-C env declared forms)
-  (parameterize ([current-aliases (env-aliases env)])
-    (for/fold ([e env]) ([f (in-list forms)] #:when (top:instance? f))
-      (define-values (e* _) (handle-top-form f e declared))
-      e*)))
+  (for/fold ([e env]) ([f (in-list forms)] #:when (top:instance? f))
+    (define-values (e* _) (handle-top-form f e declared))
+    e*))
 
 ;; Phase D — infer top:def bodies in dependency order using SCC
 ;; analysis.  Each SCC's bindings are added to env with their
@@ -2434,26 +2459,24 @@
 ;;     generalized scheme and run the same dict-skolem path the
 ;;     single-form branch uses.
 (define (infer-def-scc env declared def-tvars defs-by-name scc-names)
-  (parameterize ([current-aliases (env-aliases env)])
-    ;; Split the SCC's names by whether they have a declared scheme.
-    (define-values (decl-names undecl-names)
-      (partition (lambda (n) (hash-has-key? declared n)) scc-names))
-    ;; Process declared members first: they're fully type-checked
-    ;; and generalized immediately, just like the old declared path.
-    ;; Their schemes are already in env from Phase A.
-    (define env-after-decl
-      (for/fold ([env env]) ([name (in-list decl-names)])
-        (define f (hash-ref defs-by-name name))
-        (infer-declared-def env declared (top:def-expr f) name (top:def-stx f))))
-    ;; Process undeclared members of the SCC.  When |undecl-names| > 1
-    ;; (genuine mutual recursion) we keep each binding's placeholder
-    ;; tvar visible while every body is inferred, unify each body's
-    ;; type into the tvar, then generalize all bindings together at
-    ;; the end of the SCC.  When |undecl-names| = 1 (a singleton SCC
-    ;; with no self-recursion either), single-binding inference
-    ;; matches the original handle-top-form behavior exactly.
-    (infer-undeclared-scc env-after-decl declared def-tvars defs-by-name
-                          undecl-names)))
+  (define-values (decl-names undecl-names)
+    (partition (lambda (n) (hash-has-key? declared n)) scc-names))
+  ;; Process declared members first: they're fully type-checked
+  ;; and generalized immediately, just like the old declared path.
+  ;; Their schemes are already in env from Phase A.
+  (define env-after-decl
+    (for/fold ([env env]) ([name (in-list decl-names)])
+      (define f (hash-ref defs-by-name name))
+      (infer-declared-def env declared (top:def-expr f) name (top:def-stx f))))
+  ;; Process undeclared members of the SCC.  When |undecl-names| > 1
+  ;; (genuine mutual recursion) we keep each binding's placeholder
+  ;; tvar visible while every body is inferred, unify each body's
+  ;; type into the tvar, then generalize all bindings together at
+  ;; the end of the SCC.  When |undecl-names| = 1 (a singleton SCC
+  ;; with no self-recursion either), single-binding inference
+  ;; matches the original handle-top-form behavior exactly.
+  (infer-undeclared-scc env-after-decl declared def-tvars defs-by-name
+                        undecl-names))
 
 ;; Mirror of the declared-signature branch of the old
 ;; `handle-top-form` top:def case.  The scheme was already entered
@@ -2654,28 +2677,27 @@
        (handle-top-form f e d))]
     [else (handle-top-form form env declared)]))
 
-;; handle-top-form dispatches on the top-level form; each non-trivial
-;; arm is its own `handle-<form>` helper (class/instance/require already
-;; were).  The `parameterize` stays here, wrapping the dispatch, so the
-;; helpers run with `current-aliases` in scope (they call resolve-type).
+;; handle-top-form dispatches on the top-level form; each non-trivial arm is
+;; its own `handle-<form>` helper.  Type resolution takes `env` explicitly
+;; (resolve-type &c. run the Environment monad over the alias table), so no
+;; ambient `current-aliases` setup is needed here anymore.
 (define (handle-top-form form env declared)
-  (parameterize ([current-aliases (env-aliases env)])
-    (match form
-      [(top:alias name params target-ast stx)
-       (handle-alias-form name params target-ast env declared)]
-      [(top:dec name ty-ast _)            (handle-dec-form name ty-ast env declared)]
-      [(top:def name expr stx)            (handle-def-form name expr stx env declared)]
-      [(top:class supers head methods stx)
-       (handle-class-form supers head methods stx env declared)]
-      [(top:instance ctx head methods stx)
-       (handle-instance-form ctx head methods stx env declared)]
-      [(top:require specs stx)            (handle-require-form specs stx env declared)]
-      [(top:provide specs stx)            (handle-provide-form env declared)]
-      [(top:struct-fields struct-name field-names _)
-       (handle-struct-fields-form struct-name field-names env declared)]
-      [(top:effect ename ops stx)         (handle-effect-form ename ops stx env declared)]
-      [(top:data tname tparams ctors stx abstract? runtime-tag)
-       (handle-data-form tname tparams ctors stx abstract? runtime-tag env declared)])))
+  (match form
+    [(top:alias name params target-ast stx)
+     (handle-alias-form name params target-ast env declared)]
+    [(top:dec name ty-ast _)            (handle-dec-form name ty-ast env declared)]
+    [(top:def name expr stx)            (handle-def-form name expr stx env declared)]
+    [(top:class supers head methods stx)
+     (handle-class-form supers head methods stx env declared)]
+    [(top:instance ctx head methods stx)
+     (handle-instance-form ctx head methods stx env declared)]
+    [(top:require specs stx)            (handle-require-form specs stx env declared)]
+    [(top:provide specs stx)            (handle-provide-form env declared)]
+    [(top:struct-fields struct-name field-names _)
+     (handle-struct-fields-form struct-name field-names env declared)]
+    [(top:effect ename ops stx)         (handle-effect-form ename ops stx env declared)]
+    [(top:data tname tparams ctors stx abstract? runtime-tag)
+     (handle-data-form tname tparams ctors stx abstract? runtime-tag env declared)]))
 
 ;; ----- per-top-form elaboration (the arms of handle-top-form) -------
 
@@ -2683,7 +2705,7 @@
   (values (env-extend-alias env name params target-ast) declared))
 
 (define (handle-dec-form name ty-ast env declared)
-     (define sch (resolve-scheme ty-ast))
+     (define sch (resolve-scheme ty-ast env))
      ;; Pre-register the name in env with its declared scheme so that
      ;; subsequent top-level forms can forward-reference it.  When the
      ;; matching define is processed later, the binding is replaced.
@@ -2908,8 +2930,9 @@
      ;; function — the surface `(op)` form auto-passes Unit.
      (define op-schemes
        (for/list ([o (in-list ops)])
-         (define arg-tys (map resolve-type (effect-op-arg-types o)))
-         (define res-ty  (resolve-type (effect-op-result-type o)))
+         (define arg-tys (map (lambda (t) (resolve-type t env))
+                              (effect-op-arg-types o)))
+         (define res-ty  (resolve-type (effect-op-result-type o) env))
          (define normalized-arg-tys
            (cond
              [(null? arg-tys) (list (tcon 'Unit))]
@@ -2939,14 +2962,14 @@
        (for/fold ([e env*]) ([c (in-list ctors)])
          (define field-tys
            (for/list ([t (in-list (data-ctor-field-types c))])
-             (resolve-type t)))
+             (resolve-type t env)))
          ;; GADT ctors can specify their own result type
          ;; via `#:returns RT`.  Default to the data type's uniform
          ;; `(T tparams)` shape.
          (define ctor-result-type
            (cond
              [(data-ctor-result-type c)
-              (resolve-type (data-ctor-result-type c))]
+              (resolve-type (data-ctor-result-type c) env)]
              [else default-result-type]))
          (define ctor-fn-type
            (foldr make-arrow ctor-result-type field-tys))
@@ -2959,7 +2982,7 @@
              [(null? extra-context) ctor-fn-type]
              [else
               (mqual (for/list ([cs (in-list extra-context)])
-                       (resolve-constraint cs))
+                       (resolve-constraint cs env))
                      ctor-fn-type)]))
          ;; For GADT ctors, the scheme's quantifiers are
          ;; the free type variables appearing in field-tys ++ result
@@ -2993,7 +3016,7 @@
   ;; The head's args may be plain ty:var nodes or kind-annotated
   ;; ty:vars (parser stashes the kind on the stx as 'rackton:kind).
   (define class-args
-    (for/list ([a (in-list (constraint-args head))]) (resolve-type a)))
+    (for/list ([a (in-list (constraint-args head))]) (resolve-type a env)))
   (define class-params
     (for/list ([a (in-list class-args)])
       (match a
@@ -3037,13 +3060,13 @@
          (hash-set acc name kind)]
         [_ (hash-set acc name (kind-star))])))
   (define super-preds
-    (for/list ([s (in-list supers)]) (resolve-constraint s)))
+    (for/list ([s (in-list supers)]) (resolve-constraint s env)))
   (define head-pred (pred class-name class-args))
   (define method-schemes
     (for/fold ([acc (hasheq)]) ([m (in-list methods)])
       (cond
         [(method-sig? m)
-         (define raw (resolve-type (method-sig-type m)))
+         (define raw (resolve-type (method-sig-type m) env))
          (define body (mqual (list head-pred) raw))
          ;; Quantify over EVERY type variable that appears in the
          ;; method type (including method-local ones like `a`/`b`
@@ -4152,7 +4175,7 @@
     [else          #f]))
 
 (define (handle-instance-form ctx head methods stx env declared)
-  (define head-pred-raw (resolve-constraint head))
+  (define head-pred-raw (resolve-constraint head env))
   (define class-name (pred-class head-pred-raw))
   (define inst-origin (origin-of stx))
   (define cinfo (env-ref-class env class-name))
@@ -4204,7 +4227,7 @@
                 (class-info-params cinfo) arg-count
                 (pretty-pred head-pred-raw))
         stx)))
-  (define ctx-preds-raw (for/list ([c (in-list ctx)]) (resolve-constraint c)))
+  (define ctx-preds-raw (for/list ([c (in-list ctx)]) (resolve-constraint c env)))
   ;; If the qual context introduces tvars that pin a
   ;; return-typed-bearing class (e.g. `(HasUnit m) =>` on a lifted
   ;; instance), skolemize those tvars and build a map from each
@@ -4261,7 +4284,7 @@
                                 #:when (inst-type-fam? m))
       (hash-set acc
                 (inst-type-fam-name m)
-                (resolve-type (inst-type-fam-type m)))))
+                (resolve-type (inst-type-fam-type m) env))))
   (for ([fam (in-list (class-info-type-families cinfo))])
     (unless (hash-has-key? type-family-bindings fam)
       (raise-syntax-error 'infer
