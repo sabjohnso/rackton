@@ -1011,23 +1011,34 @@
 ;; its own `infer-<form>` helper below, mutually recursive with this
 ;; dispatcher.  Keeping the dispatch flat and the arms named makes each
 ;; form's inference rule readable (and testable) in isolation.
-(define (infer-expr e env)
+;;
+;; PHASE 3 (in progress): the dispatcher is now the Infer-monad
+;; `infer-expr/m`, returning `Infer (subst . type)`.  Arms not yet converted
+;; are bridged with `values->infer` (they still return `(values subst type)`
+;; and keep state in the boxes); each is replaced by a direct `infer-<form>/m`
+;; call as it converts.  `infer-expr` is the bridged entry point that the
+;; unconverted arms still call.
+(define (infer-expr/m e env)
   (match e
-    [(e:literal v _)                 (values empty-subst (literal-type v))]
-    [(e:var x stx)                   (infer-var x stx env)]
-    [(e:lam params body _)           (infer-lam params body env)]
-    [(e:app head args stx)           (infer-app head args stx env)]
-    [(e:let bindings body _)         (infer-let bindings body env)]
-    [(e:letrec bindings body _)      (infer-letrec bindings body env)]
-    [(e:if c t els stx)              (infer-if c t els stx env)]
-    [(e:ann expr ty-ast stx)         (infer-ann expr ty-ast stx env)]
-    [(e:escape ty-ast vars _ stx)    (infer-escape ty-ast vars stx env)]
-    [(e:update record updates stx)   (infer-update record updates stx env)]
-    [(e:handle expr clauses ret stx) (infer-handle expr clauses ret stx env)]
+    [(e:literal v _)                 (infer-return (cons empty-subst (literal-type v)))]
+    [(e:var x stx)                   (values->infer (lambda () (infer-var x stx env)))]
+    [(e:lam params body _)           (values->infer (lambda () (infer-lam params body env)))]
+    [(e:app head args stx)           (values->infer (lambda () (infer-app head args stx env)))]
+    [(e:let bindings body _)         (values->infer (lambda () (infer-let bindings body env)))]
+    [(e:letrec bindings body _)      (values->infer (lambda () (infer-letrec bindings body env)))]
+    [(e:if c t els stx)              (infer-if/m c t els stx env)]
+    [(e:ann expr ty-ast stx)         (values->infer (lambda () (infer-ann expr ty-ast stx env)))]
+    [(e:escape ty-ast vars _ stx)    (values->infer (lambda () (infer-escape ty-ast vars stx env)))]
+    [(e:update record updates stx)   (values->infer (lambda () (infer-update record updates stx env)))]
+    [(e:handle expr clauses ret stx) (values->infer (lambda () (infer-handle expr clauses ret stx env)))]
     [(e:match scrut clauses irrefutable? stx)
-     (infer-match scrut clauses irrefutable? stx env)]
+     (values->infer (lambda () (infer-match scrut clauses irrefutable? stx env)))]
     [(e:match* scrutinees clauses _irrefutable? stx)
-     (infer-match* scrutinees clauses stx env)]))
+     (values->infer (lambda () (infer-match* scrutinees clauses stx env)))]))
+
+(define (infer-expr e env)
+  (define r (run-infer* (infer-expr/m e env)))
+  (values (car r) (cdr r)))
 
 ;; ----- per-form inference (the arms of infer-expr) ------------------
 
@@ -1232,35 +1243,35 @@
      (define-values (s-body t-body) (infer-expr body env-after))
      (values (subst-compose s-body s-final) t-body))
 
-(define (infer-if c t e stx env)
-     (define-values (s-c t-c) (infer-expr c env))
-     (define s-cb
-       (with-handlers
-        ([exn:fail:unify?
-          (lambda (_)
-            (raise-type-mismatch!
-              (expr-stx c)
-              t-bool
-              (apply-subst s-c t-c)))])
-        (unify (apply-subst s-c t-c) t-bool)))
-     (define s1 (subst-compose s-cb s-c))
-     (define-values (s-then t-then)
-       (infer-expr t (apply-subst/env s1 env)))
-     (define s2 (subst-compose s-then s1))
-     (define-values (s-else t-else)
-       (infer-expr e (apply-subst/env s2 env)))
-     (define s3 (subst-compose s-else s2))
-     (define s-branches
-       (with-handlers
-        ([exn:fail:unify?
-          (lambda (_)
-            (raise-type-mismatch!
-              (expr-stx e)
-              (apply-subst s3 t-then)
-              (apply-subst s3 t-else)))])
-        (unify (apply-subst s3 t-then) (apply-subst s3 t-else))))
-     (define s-final (subst-compose s-branches s3))
-     (values s-final (apply-subst s-final t-then)))
+;; Infer-monad arm.  Pattern for the conversion: `let/infer` binds each
+;; recursive `infer-expr/m` result (a `subst . type` pair); a `let*` does the
+;; pure work between binds (unify, subst-compose) and ends in the next monadic
+;; computation.
+(define (infer-if/m c t e stx env)
+  (let/infer ([rc (infer-expr/m c env)])
+    (let* ([s-c (car rc)] [t-c (cdr rc)]
+           [s-cb
+            (with-handlers
+             ([exn:fail:unify?
+               (lambda (_)
+                 (raise-type-mismatch! (expr-stx c) t-bool (apply-subst s-c t-c)))])
+             (unify (apply-subst s-c t-c) t-bool))]
+           [s1 (subst-compose s-cb s-c)])
+      (let/infer ([rt (infer-expr/m t (apply-subst/env s1 env))])
+        (let* ([s-then (car rt)] [t-then (cdr rt)]
+               [s2 (subst-compose s-then s1)])
+          (let/infer ([re (infer-expr/m e (apply-subst/env s2 env))])
+            (let* ([s-else (car re)] [t-else (cdr re)]
+                   [s3 (subst-compose s-else s2)]
+                   [s-branches
+                    (with-handlers
+                     ([exn:fail:unify?
+                       (lambda (_)
+                         (raise-type-mismatch! (expr-stx e)
+                           (apply-subst s3 t-then) (apply-subst s3 t-else)))])
+                     (unify (apply-subst s3 t-then) (apply-subst s3 t-else)))]
+                   [s-final (subst-compose s-branches s3)])
+              (infer-return (cons s-final (apply-subst s-final t-then))))))))))
 
 (define (infer-ann expr ty-ast stx env)
      (define-values (s-e t-e) (infer-expr expr env))
