@@ -1338,13 +1338,11 @@
                           (cond
                             [(null? clauses) (infer-return s)]
                             [else
-                             (let/infer ([rc (values->infer
-                                              (lambda ()
-                                                (infer-clause* (car clauses)
-                                                               (map (lambda (t) (apply-subst s t)) scrut-types)
-                                                               (apply-subst s result-tv)
-                                                               (apply-subst/env s env)
-                                                               (> i 0))))])
+                             (let/infer ([rc (infer-clause*/m (car clauses)
+                                                              (map (lambda (t) (apply-subst s t)) scrut-types)
+                                                              (apply-subst s result-tv)
+                                                              (apply-subst/env s env)
+                                                              (> i 0))])
                                (loop (cdr clauses) (add1 i) (subst-compose (car rc) s)))]))])
              (infer-return (cons s-final (apply-subst s-final result-tv))))))))
 
@@ -1629,68 +1627,71 @@
 ;; `earlier-clauses?` mirrors `infer-clause`'s `earlier-arms?`: #f on
 ;; the first clause, where a result mismatch can only be against the
 ;; type seeded from the declared signature.
-(define (infer-clause* cl* scrut-types result-type env [earlier-clauses? #t])
-  (unless (= (length (clause*-patterns cl*)) (length scrut-types))
-    (raise-syntax-error 'infer
-      (format "match* clause has ~a patterns but ~a scrutinees"
-              (length (clause*-patterns cl*)) (length scrut-types))
-      (clause*-stx cl*)))
-  (define-values (s-pats env*)
-    (for/fold ([s empty-subst] [env env])
-              ([pat (in-list (clause*-patterns cl*))]
-               [scrut-t (in-list scrut-types)])
-      (define-values (bindings pat-type _ex-hyps)
-        (infer-pattern pat (apply-subst/env s env)))
-      (define s-u
-        (with-handlers
-         ([exn:fail:unify?
-           (lambda (_)
-             (raise-syntax-error 'infer
-               (format "pattern type ~a does not match scrutinee type ~a"
-                       (pretty-type pat-type)
-                       (pretty-type (apply-subst s scrut-t)))
-               (clause*-stx cl*)))])
-         (unify pat-type (apply-subst s scrut-t))))
-      (define s-now (subst-compose s-u s))
-      (define env-now
-        (for/fold ([e (apply-subst/env s-now env)]) ([b (in-list bindings)])
-          (env-extend-var e (car b)
-                          (scheme '() (apply-subst s-now (cdr b))))))
-      (values s-now env-now)))
-  (define-values (s-pre-body env-pre-body)
-    (cond
-      [(clause*-guard cl*)
-       (define-values (s-g t-g) (infer-expr (clause*-guard cl*) env*))
+(define (infer-clause*/m cl* scrut-types result-type env [earlier-clauses? #t])
+  (let ()
+   (unless (= (length (clause*-patterns cl*)) (length scrut-types))
+     (raise-syntax-error 'infer
+       (format "match* clause has ~a patterns but ~a scrutinees"
+               (length (clause*-patterns cl*)) (length scrut-types))
+       (clause*-stx cl*)))
+   ;; Pattern walk: no infer-expr, so it stays a plain for/fold (infer-pattern
+   ;; is a direct, box-backed call during the transition).
+   (define-values (s-pats env*)
+     (for/fold ([s empty-subst] [env env])
+               ([pat (in-list (clause*-patterns cl*))]
+                [scrut-t (in-list scrut-types)])
+       (define-values (bindings pat-type _ex-hyps)
+         (infer-pattern pat (apply-subst/env s env)))
        (define s-u
          (with-handlers
           ([exn:fail:unify?
             (lambda (_)
               (raise-syntax-error 'infer
-                (format "match* clause guard must be Boolean, got ~a"
-                        (pretty-type (apply-subst s-g t-g)))
+                (format "pattern type ~a does not match scrutinee type ~a"
+                        (pretty-type pat-type)
+                        (pretty-type (apply-subst s scrut-t)))
                 (clause*-stx cl*)))])
-          (unify (apply-subst s-g t-g) t-bool)))
-       (define s* (subst-compose s-u (subst-compose s-g s-pats)))
-       (values s* (apply-subst/env s* env*))]
-      [else (values s-pats env*)]))
-  (define-values (s-body t-body) (infer-expr (clause*-body cl*) env-pre-body))
-  (define s-acc (subst-compose s-body s-pre-body))
-  (define s-u
-    (with-handlers
-     ([exn:fail:unify?
-       (lambda (_)
-         (match-define (list got exp)
-           (format-types (list (apply-subst s-acc t-body)
-                               (apply-subst s-acc result-type))))
-         (raise-syntax-error 'infer
-           (format (if earlier-clauses?
-                       "match* clause body has type ~a but earlier clauses have ~a"
-                       "match* clause body has type ~a but the expected result type is ~a")
-                   got exp)
-           (clause*-stx cl*)))])
-     (unify (apply-subst s-acc t-body) (apply-subst s-acc result-type))))
-  (values (subst-compose s-u s-acc)
-          (apply-subst s-u t-body)))
+          (unify pat-type (apply-subst s scrut-t))))
+       (define s-now (subst-compose s-u s))
+       (define env-now
+         (for/fold ([e (apply-subst/env s-now env)]) ([b (in-list bindings)])
+           (env-extend-var e (car b)
+                           (scheme '() (apply-subst s-now (cdr b))))))
+       (values s-now env-now)))
+   (let/infer ([guard-acc
+                (cond
+                  [(clause*-guard cl*)
+                   (let/infer ([rg (infer-expr/m (clause*-guard cl*) env*)])
+                     (let* ([s-g (car rg)] [t-g (cdr rg)]
+                            [s-u (with-handlers
+                                  ([exn:fail:unify?
+                                    (lambda (_)
+                                      (raise-syntax-error 'infer
+                                        (format "match* clause guard must be Boolean, got ~a"
+                                                (pretty-type (apply-subst s-g t-g)))
+                                        (clause*-stx cl*)))])
+                                  (unify (apply-subst s-g t-g) t-bool))]
+                            [s* (subst-compose s-u (subst-compose s-g s-pats))])
+                       (infer-return (cons s* (apply-subst/env s* env*)))))]
+                  [else (infer-return (cons s-pats env*))])])
+     (let* ([s-pre-body (car guard-acc)] [env-pre-body (cdr guard-acc)])
+       (let/infer ([rb (infer-expr/m (clause*-body cl*) env-pre-body)])
+         (let* ([s-body (car rb)] [t-body (cdr rb)]
+                [s-acc (subst-compose s-body s-pre-body)]
+                [s-u (with-handlers
+                      ([exn:fail:unify?
+                        (lambda (_)
+                          (match-define (list got exp)
+                            (format-types (list (apply-subst s-acc t-body)
+                                                (apply-subst s-acc result-type))))
+                          (raise-syntax-error 'infer
+                            (format (if earlier-clauses?
+                                        "match* clause body has type ~a but earlier clauses have ~a"
+                                        "match* clause body has type ~a but the expected result type is ~a")
+                                    got exp)
+                            (clause*-stx cl*)))])
+                      (unify (apply-subst s-acc t-body) (apply-subst s-acc result-type)))])
+           (infer-return (cons (subst-compose s-u s-acc) (apply-subst s-u t-body)))))))))
 
 ;; Type a pattern.  Returns (bindings, pattern-type).
 ;; infer-pattern returns a third value — the list of
