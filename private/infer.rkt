@@ -277,14 +277,14 @@
 ;;     top-level def to refinable lambdas inside any expression.
 ;;   - otherwise: fall back to `infer-expr` and unify the result
 ;;     with `expected-ty`.
-(define (check-expr expr env expected-ty)
+(define (check-expr/m expr env expected-ty)
   (cond
     [(tforall? expected-ty)
      (match-define (tforall vs body) expected-ty)
      (define s-skol
        (for/fold ([s empty-subst]) ([v (in-list vs)])
          (subst-extend s v (tcon (gensym (format "$skolem.~a." v))))))
-     (check-expr expr env (apply-subst s-skol body))]
+     (check-expr/m expr env (apply-subst s-skol body))]
     [(and (arrow? expected-ty) (e:lam? expr))
      (match-define (e:lam params body _) expr)
      (define-values (arg-tys cod)
@@ -292,22 +292,21 @@
      (define env*
        (for/fold ([e env]) ([p (in-list params)] [t (in-list arg-tys)])
          (env-extend-var e p (scheme '() t))))
-     (define-values (s-body t-body) (check-expr body env* cod))
-     (values s-body
-             (foldr make-arrow t-body
-                    (for/list ([t (in-list arg-tys)])
-                      (apply-subst s-body t))))]
+     (let/infer ([rb (check-expr/m body env* cod)])
+       (let* ([s-body (car rb)] [t-body (cdr rb)])
+         (infer-return
+          (cons s-body
+                (foldr make-arrow t-body
+                       (for/list ([t (in-list arg-tys)]) (apply-subst s-body t)))))))]
     [else
-     (define-values (s t) (infer-expr expr env))
-     (define s-u
-       (with-handlers
-        ([exn:fail:unify?
-          (lambda (_)
-            (raise-type-mismatch! (expr-stx expr)
-                                  expected-ty
-                                  (apply-subst s t)))])
-        (unify (apply-subst s t) expected-ty)))
-     (values (subst-compose s-u s) (apply-subst s-u t))]))
+     (let/infer ([r (infer-expr/m expr env)])
+       (let* ([s (car r)] [t (cdr r)]
+              [s-u (with-handlers
+                    ([exn:fail:unify?
+                      (lambda (_)
+                        (raise-type-mismatch! (expr-stx expr) expected-ty (apply-subst s t)))])
+                    (unify (apply-subst s t) expected-ty))])
+         (infer-return (cons (subst-compose s-u s) (apply-subst s-u t)))))]))
 
 ;; Like `unfold-arrow` but raises a friendly typecheck error rather
 ;; than an internal exception when the expected arrow has fewer
@@ -1152,7 +1151,7 @@
              [(and (arrow? head-ty-pre) (tforall? (arrow-dom head-ty-pre)))
               (define dom (arrow-dom head-ty-pre))
               (define cod (arrow-cod head-ty-pre))
-              (let/infer ([rc (values->infer (lambda () (check-expr this-arg env dom)))])
+              (let/infer ([rc (check-expr/m this-arg env dom)])
                 (let* ([s-arg (car rc)] [s-now (subst-compose s-arg s)])
                   (loop (cdr args) s-now (apply-subst s-now cod) (apply-subst/env s-arg env))))]
              [else
