@@ -1869,30 +1869,25 @@
 ;; type `scrut-type` only if the ctor's declared result type can
 ;; unify with the scrutinee type.  For non-GADT ctors (default
 ;; uniform result), reachability is always true.
-(define (ctor-reachable-at? ctor-name scrut-type env)
+(define (ctor-reachable-at?/m ctor-name scrut-type env)
   (define info (env-ref-data env ctor-name))
   (cond
-    [(not info) #t]
+    [(not info) (infer-return #t)]
     [else
-     (define sch (data-info-scheme info))
-     (define-values (_ty bare-result)
-       (cond
-         [(scheme? sch)
-          (match sch
-            [(scheme vs body)
-             (define s
-               (for/fold ([s empty-subst]) ([v (in-list vs)])
-                 (subst-extend s v (fresh-tvar v))))
-             (define raw (apply-subst s body))
-             (define stripped (qual-body-deep raw))
-             ;; Walk arrows to find the result type.
-             (let loop ([t stripped])
-               (cond
-                 [(arrow? t) (loop (arrow-cod t))]
-                 [else (values raw t)]))])]))
-     (with-handlers ([exn:fail:unify? (lambda (_) #f)])
-       (unify bare-result scrut-type)
-       #t)]))
+     (match (data-info-scheme info)
+       [(scheme vs body)
+        (let/infer ([s (fresh-subst/m vs)])
+          (let* ([raw (apply-subst s body)]
+                 [stripped (qual-body-deep raw)]
+                 ;; Walk arrows to the result type.
+                 [bare-result (let loop ([t stripped])
+                                (cond [(arrow? t) (loop (arrow-cod t))] [else t]))])
+            (infer-return
+             (with-handlers ([exn:fail:unify? (lambda (_) #f)])
+               (unify bare-result scrut-type)
+               #t))))])]))
+(define (ctor-reachable-at? ctor-name scrut-type env)
+  (run-infer* (ctor-reachable-at?/m ctor-name scrut-type env)))
 
 ;; Does `t` have AT LEAST `n` leading arrow constructors?
 ;; Used by the top:def declared-signature branch to decide when we
