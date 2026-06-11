@@ -1030,7 +1030,7 @@
     [(e:ann expr ty-ast stx)         (infer-ann/m expr ty-ast stx env)]
     [(e:escape ty-ast vars _ stx)    (infer-escape/m ty-ast vars stx env)]
     [(e:update record updates stx)   (infer-update/m record updates stx env)]
-    [(e:handle expr clauses ret stx) (values->infer (lambda () (infer-handle expr clauses ret stx env)))]
+    [(e:handle expr clauses ret stx) (infer-handle/m expr clauses ret stx env)]
     [(e:match scrut clauses irrefutable? stx)
      (values->infer (lambda () (infer-match scrut clauses irrefutable? stx env)))]
     [(e:match* scrutinees clauses _irrefutable? stx)
@@ -1433,90 +1433,85 @@
 ;; handle.  Each operation clause's body must match that type.
 ;; In an op clause, `k` is the resumption — typed as `(-> op-result
 ;; handle-type)`.
-(define (infer-handle expr clauses ret stx env)
-  ;; Infer the body's type first; it must equal the type taken by
-  ;; the return clause's bound variable, since the body's normal
-  ;; return value flows into the return clause.
-  (define-values (s-expr t-expr) (infer-expr expr env))
-  (define result-tv (fresh-tvar))
-  ;; Type the return clause: bind `v` to t-expr (its type), infer
-  ;; the body, unify with result-tv.
-  (define env-ret
-    (env-extend-var (apply-subst/env s-expr env)
-                    (handle-return-var ret)
-                    (scheme '() (apply-subst s-expr t-expr))))
-  (define-values (s-ret t-ret)
-    (infer-expr (handle-return-body ret) env-ret))
-  (define s-after-ret (subst-compose s-ret s-expr))
-  (define s-u-ret
-    (with-handlers
-     ([exn:fail:unify?
-       (lambda (_)
-         (raise-syntax-error 'infer
-           (format "handle return clause has type ~a; expected handle's result type"
-                   (pretty-type (apply-subst s-after-ret t-ret)))
-           (handle-return-stx ret)))])
-     (unify (apply-subst s-after-ret t-ret) (apply-subst s-after-ret result-tv))))
-  (define s-acc (subst-compose s-u-ret s-after-ret))
-  ;; Each operation clause: look up the op's type, bind params to
-  ;; arg types and k to (-> op-result handle-result), infer body,
-  ;; unify body type with result-tv.
-  (define s-final
-    (for/fold ([s s-acc]) ([cl (in-list clauses)])
-      (define op-name (handle-clause-op cl))
-      (define eff (env-effect-of-op env op-name))
-      (unless eff
-        (raise-syntax-error 'infer
-          (format "handle clause references unknown effect operation: ~s" op-name)
-          (handle-clause-stx cl)))
-      (define op-sch (env-ref-var env op-name))
-      (define op-type (instantiate op-sch))
-      ;; Split op-type's arrows into arg types and result type.
-      (define-values (raw-arg-types op-result)
-        (split-arrows op-type))
-      ;; A user-declared 0-arg op was internally promoted
-      ;; to `(-> Unit T)` so it could be called as a function.
-      ;; When the clause's parameter list is empty, peel that Unit
-      ;; off here so the user doesn't have to write a dummy param.
-      (define arg-types
-        (cond
-          [(and (null? (handle-clause-params cl))
-                (= (length raw-arg-types) 1)
-                (equal? (car raw-arg-types) (tcon 'Unit)))
-           '()]
-          [else raw-arg-types]))
-      (unless (= (length arg-types) (length (handle-clause-params cl)))
-        (raise-syntax-error 'infer
-          (format "handle clause for ~s expects ~a parameters, got ~a"
-                  op-name (length arg-types) (length (handle-clause-params cl)))
-          (handle-clause-stx cl)))
-      (define k-type
-        (make-arrow op-result (apply-subst s result-tv)))
-      (define env-cl
-        (env-extend-var
-         (for/fold ([e (apply-subst/env s env)])
-                   ([p (in-list (handle-clause-params cl))]
-                    [ty (in-list arg-types)])
-           (env-extend-var e p (scheme '() ty)))
-         (handle-clause-k-name cl)
-         (scheme '() k-type)))
-      (define-values (s-body t-body)
-        (infer-expr (handle-clause-body cl) env-cl))
-      (define s-now (subst-compose s-body s))
-      (define s-u
-        (with-handlers
-         ([exn:fail:unify?
-           (lambda (_)
-             (raise-syntax-error 'infer
-               (format "handle clause for ~s has body type ~a; expected ~a"
-                       op-name
-                       (pretty-type (apply-subst s-now t-body))
-                       (pretty-type (apply-subst s-now result-tv)))
-               (handle-clause-stx cl)))])
-         (unify (apply-subst s-now t-body)
-                (apply-subst s-now result-tv))))
-      (subst-compose s-u s-now)))
-  (values s-final (apply-subst s-final result-tv)))
+(define (infer-handle/m expr clauses ret stx env)
+  ;; Infer the body's type first; it must equal the type taken by the return
+  ;; clause's bound variable, since the body's normal return value flows into
+  ;; the return clause.
+  (let/infer ([re (infer-expr/m expr env)])
+    (let* ([s-expr (car re)] [t-expr (cdr re)])
+      (let/infer ([result-tv (m:fresh-tvar)])
+        (let ([env-ret (env-extend-var (apply-subst/env s-expr env)
+                                       (handle-return-var ret)
+                                       (scheme '() (apply-subst s-expr t-expr)))])
+          (let/infer ([rr (infer-expr/m (handle-return-body ret) env-ret)])
+            (let* ([s-ret (car rr)] [t-ret (cdr rr)]
+                   [s-after-ret (subst-compose s-ret s-expr)]
+                   [s-u-ret
+                    (with-handlers
+                     ([exn:fail:unify?
+                       (lambda (_)
+                         (raise-syntax-error 'infer
+                           (format "handle return clause has type ~a; expected handle's result type"
+                                   (pretty-type (apply-subst s-after-ret t-ret)))
+                           (handle-return-stx ret)))])
+                     (unify (apply-subst s-after-ret t-ret) (apply-subst s-after-ret result-tv)))]
+                   [s-acc (subst-compose s-u-ret s-after-ret)])
+              ;; Each op clause: look up the op's type, bind params + k, infer
+              ;; the body, unify its type with result-tv.
+              (let/infer ([s-final
+                           (let loop ([clauses clauses] [s s-acc])
+                             (cond
+                               [(null? clauses) (infer-return s)]
+                               [else
+                                (define cl (car clauses))
+                                (define op-name (handle-clause-op cl))
+                                (define eff (env-effect-of-op env op-name))
+                                (unless eff
+                                  (raise-syntax-error 'infer
+                                    (format "handle clause references unknown effect operation: ~s" op-name)
+                                    (handle-clause-stx cl)))
+                                (define op-sch (env-ref-var env op-name))
+                                (define op-type (instantiate op-sch))
+                                (define-values (raw-arg-types op-result) (split-arrows op-type))
+                                ;; A 0-arg op was internally promoted to (-> Unit T);
+                                ;; peel the Unit when the clause has no params.
+                                (define arg-types
+                                  (cond
+                                    [(and (null? (handle-clause-params cl))
+                                          (= (length raw-arg-types) 1)
+                                          (equal? (car raw-arg-types) (tcon 'Unit)))
+                                     '()]
+                                    [else raw-arg-types]))
+                                (unless (= (length arg-types) (length (handle-clause-params cl)))
+                                  (raise-syntax-error 'infer
+                                    (format "handle clause for ~s expects ~a parameters, got ~a"
+                                            op-name (length arg-types) (length (handle-clause-params cl)))
+                                    (handle-clause-stx cl)))
+                                (define k-type (make-arrow op-result (apply-subst s result-tv)))
+                                (define env-cl
+                                  (env-extend-var
+                                   (for/fold ([e (apply-subst/env s env)])
+                                             ([p (in-list (handle-clause-params cl))]
+                                              [ty (in-list arg-types)])
+                                     (env-extend-var e p (scheme '() ty)))
+                                   (handle-clause-k-name cl)
+                                   (scheme '() k-type)))
+                                (let/infer ([rb (infer-expr/m (handle-clause-body cl) env-cl)])
+                                  (let* ([s-body (car rb)] [t-body (cdr rb)]
+                                         [s-now (subst-compose s-body s)]
+                                         [s-u (with-handlers
+                                               ([exn:fail:unify?
+                                                 (lambda (_)
+                                                   (raise-syntax-error 'infer
+                                                     (format "handle clause for ~s has body type ~a; expected ~a"
+                                                             op-name
+                                                             (pretty-type (apply-subst s-now t-body))
+                                                             (pretty-type (apply-subst s-now result-tv)))
+                                                     (handle-clause-stx cl)))])
+                                               (unify (apply-subst s-now t-body)
+                                                      (apply-subst s-now result-tv)))])
+                                    (loop (cdr clauses) (subst-compose s-u s-now))))]))])
+                (infer-return (cons s-final (apply-subst s-final result-tv)))))))))))
 
 ;; Split an arrow chain into (list-of-arg-types, final-codomain).
 (define (split-arrows t)
