@@ -1024,8 +1024,8 @@
     [(e:var x stx)                   (values->infer (lambda () (infer-var x stx env)))]
     [(e:lam params body _)           (infer-lam/m params body env)]
     [(e:app head args stx)           (values->infer (lambda () (infer-app head args stx env)))]
-    [(e:let bindings body _)         (values->infer (lambda () (infer-let bindings body env)))]
-    [(e:letrec bindings body _)      (values->infer (lambda () (infer-letrec bindings body env)))]
+    [(e:let bindings body _)         (infer-let/m bindings body env)]
+    [(e:letrec bindings body _)      (infer-letrec/m bindings body env)]
     [(e:if c t els stx)              (infer-if/m c t els stx env)]
     [(e:ann expr ty-ast stx)         (infer-ann/m expr ty-ast stx env)]
     [(e:escape ty-ast vars _ stx)    (infer-escape/m ty-ast vars stx env)]
@@ -1190,56 +1190,58 @@
                      (apply-subst/env s-arg env))])])))
      (values s-final result-type))
 
-(define (infer-let bindings body env)
-     ;; Parallel let: each rhs is typed in the env at let-entry (with
-     ;; substitutions threaded), generalized, then made available.
-     (define-values (s-acc env-after)
-       (for/fold ([s empty-subst] [env-after env])
-                 ([b (in-list bindings)])
-         (define-values (s′ t)
-           (infer-expr (cdr b) (apply-subst/env s env)))
-         (define s-combined (subst-compose s′ s))
-         (apply-subst-to-preds! s-combined)
-         (define env-for-gen (apply-subst/env s-combined env))
-         (define sch (generalize env-for-gen (apply-subst s-combined t)))
-         (values s-combined
-                 (env-extend-var (apply-subst/env s-combined env-after)
-                                 (car b) sch))))
-     (define-values (s-body t-body)
-       (infer-expr body env-after))
-     (values (subst-compose s-body s-acc) t-body))
+;; Parallel let: each rhs is typed in the env at let-entry (with
+;; substitutions threaded), generalized, then made available.  The
+;; binding-threading for/fold becomes a monadic named-let.
+(define (infer-let/m bindings body env)
+  (let/infer ([acc (let loop ([bs bindings] [s empty-subst] [env-after env])
+                     (cond
+                       [(null? bs) (infer-return (cons s env-after))]
+                       [else
+                        (define b (car bs))
+                        (let/infer ([r (infer-expr/m (cdr b) (apply-subst/env s env))])
+                          (let* ([s′ (car r)] [t (cdr r)]
+                                 [s-combined (subst-compose s′ s)]
+                                 [_ (apply-subst-to-preds! s-combined)]
+                                 [env-for-gen (apply-subst/env s-combined env)]
+                                 [sch (generalize env-for-gen (apply-subst s-combined t))]
+                                 [env-after* (env-extend-var
+                                              (apply-subst/env s-combined env-after) (car b) sch)])
+                            (loop (cdr bs) s-combined env-after*)))]))])
+    (let* ([s-acc (car acc)] [env-after (cdr acc)])
+      (let/infer ([rb (infer-expr/m body env-after)])
+        (infer-return (cons (subst-compose (car rb) s-acc) (cdr rb)))))))
 
-(define (infer-letrec bindings body env)
-     ;; Mutual recursion: pre-bind each name with a fresh monomorphic
-     ;; tvar so each rhs can reference every other binding (and itself).
-     ;; After inferring all rhs's, unify each tvar with the inferred
-     ;; type and generalize against the OUTER env's free-var set.
-     (define pre-bindings
-       (for/list ([b (in-list bindings)]) (cons (car b) (fresh-tvar))))
-     (define env-with-pre
-       (for/fold ([e env]) ([pb (in-list pre-bindings)])
-         (env-extend-var e (car pb) (scheme '() (cdr pb)))))
-     (define-values (s-final ts)
-       (for/fold ([s empty-subst] [ts '()])
-                 ([b  (in-list bindings)]
-                  [pb (in-list pre-bindings)])
-         (define-values (s′ t)
-           (infer-expr (cdr b) (apply-subst/env s env-with-pre)))
-         (define s-combined (subst-compose s′ s))
-         (define s-u
-           (unify (apply-subst s-combined (cdr pb))
-                  (apply-subst s-combined t)))
-         (define s-after (subst-compose s-u s-combined))
-         (values s-after (cons (apply-subst s-after (cdr pb)) ts))))
-     (apply-subst-to-preds! s-final)
-     (define env-after
-       (for/fold ([e (apply-subst/env s-final env)])
-                 ([b  (in-list bindings)]
-                  [t  (in-list (reverse ts))])
-         (env-extend-var e (car b)
-                         (generalize (apply-subst/env s-final env) t))))
-     (define-values (s-body t-body) (infer-expr body env-after))
-     (values (subst-compose s-body s-final) t-body))
+;; Mutual recursion: pre-bind each name with a fresh monomorphic tvar so each
+;; rhs can reference every other binding (and itself).  After inferring all
+;; rhs's, unify each tvar with the inferred type and generalize against the
+;; OUTER env's free-var set.
+(define (infer-letrec/m bindings body env)
+  (let/infer ([pre-tvars (infer-sequence (for/list ([b (in-list bindings)]) (m:fresh-tvar)))])
+    (let* ([pre-bindings (map (lambda (b t) (cons (car b) t)) bindings pre-tvars)]
+           [env-with-pre (for/fold ([e env]) ([pb (in-list pre-bindings)])
+                           (env-extend-var e (car pb) (scheme '() (cdr pb))))])
+      (let/infer ([acc (let loop ([bs bindings] [pbs pre-bindings] [s empty-subst] [ts '()])
+                         (cond
+                           [(null? bs) (infer-return (cons s ts))]
+                           [else
+                            (let/infer ([r (infer-expr/m (cdr (car bs))
+                                                         (apply-subst/env s env-with-pre))])
+                              (let* ([s′ (car r)] [t (cdr r)]
+                                     [s-combined (subst-compose s′ s)]
+                                     [s-u (unify (apply-subst s-combined (cdr (car pbs)))
+                                                 (apply-subst s-combined t))]
+                                     [s-after (subst-compose s-u s-combined)])
+                                (loop (cdr bs) (cdr pbs) s-after
+                                      (cons (apply-subst s-after (cdr (car pbs))) ts))))]))])
+        (let* ([s-final (car acc)] [ts (cdr acc)]
+               [_ (apply-subst-to-preds! s-final)]
+               [env-after (for/fold ([e (apply-subst/env s-final env)])
+                                    ([b (in-list bindings)] [t (in-list (reverse ts))])
+                            (env-extend-var e (car b)
+                                            (generalize (apply-subst/env s-final env) t)))])
+          (let/infer ([rb (infer-expr/m body env-after)])
+            (infer-return (cons (subst-compose (car rb) s-final) (cdr rb)))))))))
 
 ;; Infer-monad arm.  Pattern for the conversion: `let/infer` binds each
 ;; recursive `infer-expr/m` result (a `subst . type` pair); a `let*` does the
