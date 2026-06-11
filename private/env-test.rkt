@@ -87,6 +87,7 @@
     (instance-info (pred 'Eq (list t-int)) '()
                    (hasheq '== (e:var '= #f))
                    (hasheq)
+                   #f
                    #f))
   (define eq-env2 (env-extend-instance eq-env 'Eq eq-int-inst))
   (check-equal? (env-instances eq-env2 'Eq) (list eq-int-inst))

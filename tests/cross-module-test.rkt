@@ -153,7 +153,8 @@
                             '()
                             (hasheq)
                             (hasheq)
-                            "test-origin"))
+                            "test-origin"
+                            #f))
   (define encoded (encode-instance-info 'Eq ii))
   (define decoded (decode-instance-info encoded))
   (check-equal? decoded (cons 'Eq ii)))
@@ -164,7 +165,8 @@
                             (list (pred 'Eq (list (tvar 'a))))
                             (hasheq)
                             (hasheq)
-                            "test-origin"))
+                            "test-origin"
+                            #f))
   (check-equal? (decode-instance-info (encode-instance-info 'Eq ii))
                 (cons 'Eq ii)))
 
@@ -174,6 +176,7 @@
                             (list)
                             (hasheq)
                             (hasheq 'Elem (tvar 'a))
-                            "test-origin"))
+                            "test-origin"
+                            #f))
   (check-equal? (decode-instance-info (encode-instance-info 'Container ii))
                 (cons 'Container ii)))

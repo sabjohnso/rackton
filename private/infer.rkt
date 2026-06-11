@@ -3738,16 +3738,9 @@
 (define current-allow-instance-redefinition? (make-parameter #f))
 
 (define (prelude-instance? inst)
-  ;; The flag is stored as a `prelude-source` mark on the instance's
-  ;; methods hash via a thread-local box — handle-instance-form
-  ;; consults `current-prelude-build?` and tags the methods hash if
-  ;; #t.  We retrieve via a weak equal-hash from instances to a flag.
-  (hash-ref prelude-instances-table inst #f))
-
-;; Equal-keyed weak hash from instance-info → #t for prelude
-;; instances.  Populated by handle-instance-form when
-;; `current-prelude-build?` is true.
-(define prelude-instances-table (make-weak-hash))
+  ;; Intrinsic to the struct, set at construction by handle-instance-form when
+  ;; current-prelude-build? was #t (no module-level side table).
+  (instance-info-prelude? inst))
 
 ;; overlap-impl-symbol and head-fingerprint — the instance impl-name
 ;; contract shared with codegen — live in "impl-symbols.rkt".
@@ -4321,7 +4314,8 @@
                             (instance-info head-pred-raw ctx-preds-raw
                                            (hasheq)
                                            type-family-bindings
-                                           inst-origin))]))
+                                           inst-origin
+                                           (and (current-prelude-build?) #t)))]))
   (define ictx
     (inst-check-ctx env env-with-inst cinfo class-name
                     head-pred-raw head-pred-sk ctx-preds-sk inst-args-sk
@@ -4334,13 +4328,12 @@
       (define-values (mc st1) (method-qual-context ictx method-name method-sch st-b))
       (define st2 (elaborate-instance-method-body! ictx method-name body mc st1))
       (values (hash-set acc method-name body) st2)))
+  ;; Mark instances built during prelude-env construction (prelude? = #t) so
+  ;; the monomorphization resolver knows not to redirect calls to a
+  ;; non-existent named impl — intrinsic to the struct, no side table.
   (define info (instance-info head-pred-raw ctx-preds-raw checked-bodies
-                              type-family-bindings inst-origin))
-  ;; Mark instances added during prelude-env construction
-  ;; so the monomorphization resolver knows not to redirect calls
-  ;; to a non-existent named impl.
-  (when (current-prelude-build?)
-    (hash-set! prelude-instances-table info #t))
+                              type-family-bindings inst-origin
+                              (and (current-prelude-build?) #t)))
   ;; In REPL redefinition mode, drop any α-equivalent existing instance
   ;; for this class so the new one replaces it rather than sitting
   ;; alongside (which would read as an overlap at resolution).

@@ -139,7 +139,11 @@
 ;;             two import paths (a diamond) while still rejecting two
 ;;             DIFFERENT instances that share a head.  #f when unknown
 ;;             (prelude instances, hand-built test fixtures).
-(struct instance-info (head context methods type-family-bindings origin) #:transparent)
+;; `prelude?` is #t for instances registered while building the prelude env —
+;; runtime-only impls the monomorphization resolver must not redirect to a
+;; named (compile-instance-emitted) define.  Replaces the old module-level
+;; prelude-instances-table; set intrinsically at construction.
+(struct instance-info (head context methods type-family-bindings origin prelude?) #:transparent)
 
 (define empty-env (env (hasheq) (hasheq) (hasheq) (hasheq) (hasheq) (hasheq) (hasheq) (hasheq) (hasheq)))
 

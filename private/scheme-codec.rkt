@@ -240,7 +240,8 @@
                           (hasheq)
                           (for/hasheq ([entry (in-list bindings-list)])
                             (values (car entry) (sexp->type (cadr entry))))
-                          origin))]
+                          origin
+                          #f))]
     ;; Back-compat: sidecars compiled before the origin field carried
     ;; only four / three elements.  Decode them with origin = #f.
     [(list class-name head-sexp ctx-list bindings-list)
@@ -250,6 +251,7 @@
                           (hasheq)
                           (for/hasheq ([entry (in-list bindings-list)])
                             (values (car entry) (sexp->type (cadr entry))))
+                          #f
                           #f))]
     [(list class-name head-sexp ctx-list)
      (cons class-name
@@ -257,4 +259,5 @@
                           (map sexp->pred ctx-list)
                           (hasheq)
                           (hasheq)
+                          #f
                           #f))]))
