@@ -1298,13 +1298,11 @@
                        (cond
                          [(null? clauses) (infer-return s)]
                          [else
-                          (let/infer ([rc (values->infer
-                                           (lambda ()
-                                             (infer-clause (car clauses)
-                                                           (apply-subst s t-scrut)
-                                                           (apply-subst s result-tv)
-                                                           (apply-subst/env s env)
-                                                           (> i 0))))])
+                          (let/infer ([rc (infer-clause/m (car clauses)
+                                                          (apply-subst s t-scrut)
+                                                          (apply-subst s result-tv)
+                                                          (apply-subst/env s env)
+                                                          (> i 0))])
                             (loop (cdr clauses) (add1 i) (subst-compose (car rc) s)))]))])
           (let ()
             ;; Irrefutable destructure (a pattern let/where) skips exhaustiveness.
@@ -1536,8 +1534,12 @@
 ;; the running result type; #f on the first arm, where any mismatch can
 ;; only be against the result type seeded from the declared signature
 ;; (a fresh result tvar would unify rather than fail).
-(define (infer-clause cl scrut-type result-type env [earlier-arms? #t])
-  (define-values (bindings pat-type ex-hyps)
+;; infer-pattern, the preds-box discharge, and the unify/gadt-unify work stay
+;; direct (box/table-backed during the transition); the guard and body
+;; recursions go through infer-expr/m.
+(define (infer-clause/m cl scrut-type result-type env [earlier-arms? #t])
+  (let ()
+   (define-values (bindings pat-type ex-hyps)
     (infer-pattern (clause-pattern cl) env))
   ;; Try standard unify first; on a hard mismatch (a
   ;; refinable function-scheme skolem on one side and a concrete
@@ -1564,64 +1566,58 @@
               ([b (in-list bindings)])
       (env-extend-var e (car b)
                       (scheme '() (apply-subst s-pat (cdr b))))))
-  ;; A pattern guard, when present, is typechecked under the pattern
-  ;; bindings and must produce a Boolean.  Thread its substitution
-  ;; into the running chain so any tvars it pins (e.g. via uses of
-  ;; class methods) are visible to the body and the surrounding
-  ;; constraint-reduction pass.
-  (define-values (s-pre-body env-pre-body)
-    (cond
-      [(clause-guard cl)
-       (define-values (s-g t-g) (infer-expr (clause-guard cl) env*))
-       (define s-u
-         (with-handlers
-          ([exn:fail:unify?
-            (lambda (_)
-              (raise-syntax-error 'infer
-                (format "pattern guard must be Boolean, got ~a"
-                        (pretty-type (apply-subst s-g t-g)))
-                (clause-stx cl)))])
-          (unify (apply-subst s-g t-g) t-bool)))
-       (define s* (subst-compose s-u (subst-compose s-g s-pat)))
-       (values s* (apply-subst/env s* env*))]
-      [else (values s-pat env*)]))
-  (define-values (s-body t-body) (infer-expr (clause-body cl) env-pre-body))
-  (define s-acc (subst-compose s-body s-pre-body))
-  ;; Discharge any pending preds that the existential
-  ;; hypotheses prove.  The pattern is the proof; ex-hyps are
-  ;; treated as already-given.  Drop matching preds from the
-  ;; pending box so they don't bubble up to the outer reduce-context.
-  (cond
-    [(not (null? ex-hyps))
-     (apply-subst-to-preds! s-acc)
-     (define current (snapshot-preds))
-     (define ex-hyps* (map (lambda (p) (apply-subst s-acc p)) ex-hyps))
-     (define remaining
-       (reduce-context env ex-hyps* current))
-     (restore-preds! remaining)])
-  ;; Apply the arm's local skolem refinement to the
-  ;; expected result type before checking body type — without this,
-  ;; a polymorphic GADT eval whose body returns (say) Integer in the
-  ;; Lit arm would fail to match the still-skolemized `a`.
-  (define refined-result-type
-    (apply-skolem-subst arm-skolem-subst (apply-subst s-acc result-type)))
-  (define s-u
-    (with-handlers
-     ([exn:fail:unify?
-       (lambda (_)
-         (match-define (list got exp)
-           (format-types (list (apply-subst s-acc t-body) refined-result-type)))
-         (raise-syntax-error 'infer
-           (format (if earlier-arms?
-                       "match clause body has type ~a but earlier arms have ~a"
-                       "match clause body has type ~a but the expected result type is ~a")
-                   got exp)
-           (clause-stx cl)))])
-     (unify (apply-skolem-subst arm-skolem-subst
-                                (apply-subst s-acc t-body))
-            refined-result-type)))
-  (values (subst-compose s-u s-acc)
-          (apply-subst s-u t-body)))
+  ;; A pattern guard, when present, is typechecked under the pattern bindings
+  ;; and must produce a Boolean; thread its substitution into the running
+  ;; chain so any tvars it pins are visible to the body and reduction.
+  (let/infer ([guard-acc
+               (cond
+                 [(clause-guard cl)
+                  (let/infer ([rg (infer-expr/m (clause-guard cl) env*)])
+                    (let* ([s-g (car rg)] [t-g (cdr rg)]
+                           [s-u (with-handlers
+                                 ([exn:fail:unify?
+                                   (lambda (_)
+                                     (raise-syntax-error 'infer
+                                       (format "pattern guard must be Boolean, got ~a"
+                                               (pretty-type (apply-subst s-g t-g)))
+                                       (clause-stx cl)))])
+                                 (unify (apply-subst s-g t-g) t-bool))]
+                           [s* (subst-compose s-u (subst-compose s-g s-pat))])
+                      (infer-return (cons s* (apply-subst/env s* env*)))))]
+                 [else (infer-return (cons s-pat env*))])])
+    (let* ([s-pre-body (car guard-acc)] [env-pre-body (cdr guard-acc)])
+      (let/infer ([rb (infer-expr/m (clause-body cl) env-pre-body)])
+        (let ()
+          (define s-body (car rb))
+          (define t-body (cdr rb))
+          (define s-acc (subst-compose s-body s-pre-body))
+          ;; Discharge pending preds the existential hypotheses prove (the
+          ;; pattern is the proof) so they don't bubble to the outer reduce.
+          (cond
+            [(not (null? ex-hyps))
+             (apply-subst-to-preds! s-acc)
+             (define current (snapshot-preds))
+             (define ex-hyps* (map (lambda (p) (apply-subst s-acc p)) ex-hyps))
+             (define remaining (reduce-context env ex-hyps* current))
+             (restore-preds! remaining)])
+          ;; Apply the arm's local skolem refinement before checking body type.
+          (define refined-result-type
+            (apply-skolem-subst arm-skolem-subst (apply-subst s-acc result-type)))
+          (define s-u
+            (with-handlers
+             ([exn:fail:unify?
+               (lambda (_)
+                 (match-define (list got exp)
+                   (format-types (list (apply-subst s-acc t-body) refined-result-type)))
+                 (raise-syntax-error 'infer
+                   (format (if earlier-arms?
+                               "match clause body has type ~a but earlier arms have ~a"
+                               "match clause body has type ~a but the expected result type is ~a")
+                           got exp)
+                   (clause-stx cl)))])
+             (unify (apply-skolem-subst arm-skolem-subst (apply-subst s-acc t-body))
+                    refined-result-type)))
+          (infer-return (cons (subst-compose s-u s-acc) (apply-subst s-u t-body)))))))))
 
 ;; Multi-pattern variant of `infer-clause` for `e:match*`.  Walks
 ;; the clause's parameter-pattern list, unifying each with its
