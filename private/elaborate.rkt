@@ -275,18 +275,10 @@
   ;; now owned by `infer-program+forms`, which returns them in a
   ;; `codegen-plan` that `compile-top` consumes.  Only the cross-phase logs
   ;; and codegen accumulators are installed here.
-  (parameterize (;; Monomorphization log starts empty per elaborate,
-                 ;; accumulates each resolved site.
-                 [current-monomorphized-sites     (make-monomorph-log)]
-                 ;; inlinable-bodies is populated by
-                 ;; compile-instance; the inlined-sites log mirrors
-                 ;; the monomorphization log but for actually
-                 ;; substituted call sites.
-                 [current-inlinable-bodies        (make-inlinable-registry)]
-                 [current-inlined-sites           (make-monomorph-log)]
-                 ;; Generated needs-dict return-typed impl names that
-                 ;; must be exported so cross-module call sites bind.
-                 [current-instance-exported-impls (box '())])
+  ;; The monomorphization log is inference-side (written by resolve-method-uses)
+  ;; and read out below; the inlinable-bodies / inlined-sites / exported-impls
+  ;; that codegen writes now live in the threaded cg-st instead of parameters.
+  (parameterize ([current-monomorphized-sites (make-monomorph-log)])
     ;; infer-program also returns the post-expansion form list — every
     ;; `#:derive-superclasses` instance replaced by the plain instances it
     ;; synthesized.  Codegen and export resolution run over THIS list so
@@ -313,23 +305,23 @@
     ;; ordering of defs and side-effecting top-level expressions
     ;; doesn't change.
     (define parsed-ordered (phase-sort-forms parsed*))
-    (define compiled
-      ;; The plan carries the inference→codegen tables (including the
-      ;; return-typed method names that drive codegen's runtime-table vs
-      ;; direct-impl choice); compile-top installs them.
-      (filter values
-              (for/list ([f (in-list parsed-ordered)])
-                (compile-top f env plan))))
-    ;; Emit a runtime form that publishes this elaborate's
-    ;; monomorphization log via the codegen-exposed setter.  The
-    ;; rackton-monomorphized-sites accessor returns this list so
-    ;; tests can verify the optimization fired.
+    ;; The plan carries the inference→codegen tables; compile-top reads them.
+    ;; The codegen working/log state (cg-st) threads across the form list.
+    (define-values (compiled final-cgst)
+      (for/fold ([acc '()] [cgst (make-cg-st)] #:result (values (reverse acc) cgst))
+                ([f (in-list parsed-ordered)])
+        (let-values ([(s cgst*) (compile-top f env plan cgst)])
+          (values (if s (cons s acc) acc) cgst*))))
+    ;; Publish this elaborate's monomorphization log (inference-side) and the
+    ;; inlined-sites log (codegen-side, read out of the final cg-st) so tests
+    ;; can verify the optimizations fired.
     (define mono-log (monomorphized-sites-snapshot))
-    (define inline-log (inlined-sites-snapshot))
-    ;; Pass the logs alongside compiled forms; the
-    ;; rackton macro turns them into runtime forms.
+    (define inline-log (cg-st-inlined-sites final-cgst))
+    ;; Pass the logs + the generated exported-impl names (from the final cg-st)
+    ;; alongside the compiled forms.
     (define-values (final-compiled prov-stx bs dcs tcs cls insts impls macs)
-      (elaborate-finish parsed* env compiled (unbox macros-box)))
+      (elaborate-finish parsed* env compiled (unbox macros-box)
+                        (cg-st-exported-impls final-cgst)))
     (values final-compiled prov-stx bs dcs tcs cls insts impls macs mono-log inline-log)))
 
 ;; ----- export resolution ----------------------------------------------
@@ -588,7 +580,8 @@
      ;; so datum->syntax leaves them in place.
      (datum->syntax anchor-stx (cons 'provide entries) anchor-stx)]))
 
-(define-for-syntax (elaborate-finish parsed env compiled collected-macros)
+(define-for-syntax (elaborate-finish parsed env compiled collected-macros
+                                     exported-impls-from-cg)
   (define-values (local-vars local-data-ctors local-tcons local-classes)
     (collect-local-defs parsed))
   ;; Macro names defined in this block (consumed by the front phase, so not in
@@ -607,9 +600,7 @@
   ;; type sidecar — and lets an importing module's cross-module call
   ;; site bind the direct reference.  Like instances, these escape
   ;; regardless of the user's provide form.
-  (define exported-impls
-    (let ([b (current-instance-exported-impls)])
-      (if b (remove-duplicates (unbox b)) '())))
+  (define exported-impls (remove-duplicates exported-impls-from-cg))
   (for ([sym (in-list exported-impls)])
     (hash-set! export-vars sym sym))
   ;; Sidecar bindings — filtered by export-vars, with renames

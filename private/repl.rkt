@@ -213,10 +213,13 @@
                     (st-table final-st 'needs-dict-defs)
                     (st-table final-st 'instance-default-bodies)
                     #f))
-    (define compiled
-      (filter values
-              (for/list ([p (in-list parsed*)])
-                (compile-top p env* plan))))
+    ;; Thread a fresh codegen state across this input's forms; the REPL evals
+    ;; the compiled forms directly, so its inline/export logs aren't needed.
+    (define-values (compiled _cgst)
+      (for/fold ([acc '()] [cgst (make-cg-st)] #:result (values (reverse acc) cgst))
+                ([p (in-list parsed*)])
+        (let-values ([(s cgst*) (compile-top p env* plan cgst)])
+          (values (if s (cons s acc) acc) cgst*))))
     (values env* compiled final-st)))
 
 (define (eval-in state stx)

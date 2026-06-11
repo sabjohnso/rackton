@@ -13,7 +13,9 @@
            "env.rkt")   ; initial-env for compile-top
 
   (define h #'codegen-test)
-  (define (lower e) (syntax->datum (compile-expr e empty-cg-ctx)))
+  (define (lower e)
+    (let-values ([(s _) (compile-expr e empty-cg-ctx (make-cg-st))])
+      (syntax->datum s)))
 
   (test-case "literals lower to themselves"
     (check-equal? (lower (e:literal 5 h))     5)
@@ -58,16 +60,17 @@
 
   ;; ----- compile-top -------------------------------------------------
 
+  ;; compile-top returns (values syntax cg-st); take the syntax.
+  (define (lower-top form) (let-values ([(s _) (compile-top form initial-env)])
+                             (syntax->datum s)))
+
   (test-case "a definition lowers to (define name body)"
-    (check-equal? (syntax->datum
-                   (compile-top (top:def 'foo (e:literal 42 h) h) initial-env))
+    (check-equal? (lower-top (top:def 'foo (e:literal 42 h) h))
                   '(define foo 42)))
 
   (test-case "a data type lowers to per-constructor define-data-ctor"
-    (define d (syntax->datum
-               (compile-top
-                (top:data 'Color '()
-                          (list (data-ctor 'Red '() h '() '() #f))
-                          h #f #f)
-                initial-env)))
+    (define d (lower-top
+               (top:data 'Color '()
+                         (list (data-ctor 'Red '() h '() '() #f))
+                         h #f #f)))
     (check-equal? d '(begin (define-data-ctor Red 0)))))
