@@ -91,8 +91,12 @@
 ;; The inference state.  Grows by phase (PLAN.org): the fresh counter and
 ;; the pending-pred bag now; the codegen-plan tables in #4.
 
-(struct infer-state (fresh-counter pending-preds) #:transparent)
-(define (make-infer-state) (infer-state 0 '()))
+;; `tables` is an opaque immutable hash (symbol -> immutable table) that the
+;; engine uses for its codegen-plan channels (method uses/resolutions, needs-
+;; dict-defs, instance-default-bodies).  The monad itself never inspects it;
+;; keeping it generic here avoids coupling the monad to engine table names.
+(struct infer-state (fresh-counter pending-preds tables) #:transparent)
+(define (make-infer-state) (infer-state 0 '() (hash)))
 
 ;; fresh : State symbol  — a fresh, distinct name, bumping the counter.
 ;; (The engine wraps the name in a `tvar`; kept symbol-only here so the

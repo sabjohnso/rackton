@@ -26,7 +26,8 @@
          require-spec->submod-spec
          def-scc-order
          generalize
-         current-method-uses
+         ;; threaded inference state — the REPL persists one across inputs
+         make-infer-state st-table
          current-method-resolutions
          current-return-typed-methods
          current-method-dict-resolutions
@@ -35,8 +36,7 @@
          current-instance-default-bodies
          current-instance-exported-impls
          current-prelude-build?
-         current-allow-instance-redefinition?
-         resolve-method-uses!)
+         current-allow-instance-redefinition?)
 
 (require racket/match
          racket/set
@@ -64,7 +64,8 @@
                   let/infer let/infer+ begin/infer
                   ;; the threaded inference state (replaces the boxes)
                   infer-state infer-state? make-infer-state
-                  infer-state-fresh-counter infer-state-pending-preds))
+                  infer-state-fresh-counter infer-state-pending-preds
+                  infer-state-tables))
 
 ;; ----- fresh type variables -----------------------------------------
 ;; The fresh-name counter and the pending-pred bag live in the threaded
@@ -77,8 +78,8 @@
 ;; (list class-name method-name body-type).  After constraint
 ;; reduction completes, each entry's body-type is run through the
 ;; final substitution to determine the concrete instance and the
-;; entry is graduated into `current-method-resolutions`.
-(define current-method-uses        (make-parameter #f))
+;; entry is graduated into `current-method-resolutions`.  (The accumulator
+;; itself is now the 'method-uses channel in the threaded infer-state.)
 ;; Resolved return-typed-method calls.  A hashtable from stx → impl
 ;; name symbol (e.g. '$pure:Maybe).  Consumed by codegen.  NOTE this map
 ;; also receives positional monomorphizations (e.g. '$==:Integer), so a
@@ -196,6 +197,42 @@
 (define ((m:set-preds ps) _ctx st) (values (void) (st:set-preds st ps)))
 (define ((m:apply-subst-to-preds s) _ctx st) (values (void) (st:apply-subst-to-preds st s)))
 (define ((m:take-relevant-preds q) _ctx st) (st:take-relevant-preds st q))
+
+;; ----- codegen-plan tables (in st's opaque `tables` field) ----------
+;; Each channel is an immutable hash, lazily defaulting to empty.  The
+;; stx-keyed tables (method uses/resolutions) use eq?; the symbol/list-keyed
+;; ones (needs-dict-defs, instance-default-bodies) use equal?.
+(define (table-empty key)
+  (case key
+    [(needs-dict-defs instance-default-bodies) (hash)]
+    [else (hasheq)]))
+(define (st-table st key) (hash-ref (infer-state-tables st) key (table-empty key)))
+(define (st-table-set st key tbl)
+  (struct-copy infer-state st [tables (hash-set (infer-state-tables st) key tbl)]))
+(define (st-table-put st key k v)
+  (st-table-set st key (hash-set (st-table st key) k v)))
+;; Freeze a mutable eq-hash into an immutable one (for storing a locally-built
+;; resolution table back into st).
+(define (freeze-eq h) (for/hasheq ([(k v) (in-hash h)]) (values k v)))
+
+;; record-* now write the 'method-uses channel as state transitions; the
+;; expression core binds these m: ops, the driver uses the st: form directly.
+(define (st:record-method-use st stx method-name class-param-tvars method-dict-entries)
+  (st-table-put st 'method-uses stx
+                (list 'return method-name class-param-tvars method-dict-entries)))
+(define (st:record-inst-dispatch-use st stx method-name class-param-tvars)
+  (st-table-put st 'method-uses stx (list 'inst-dispatch method-name class-param-tvars)))
+(define (st:record-dict-use st stx method-name reqs sub)
+  (define dict-entries
+    (for/list ([req (in-list reqs)])
+      (cons (car req) (for/list ([a (in-list (cdr req))]) (apply-subst sub a)))))
+  (st-table-put st 'method-uses stx (list 'dict method-name dict-entries)))
+(define ((m:record-method-use stx method-name class-param-tvars method-dict-entries) _ctx st)
+  (values (void) (st:record-method-use st stx method-name class-param-tvars method-dict-entries)))
+(define ((m:record-inst-dispatch-use stx method-name class-param-tvars) _ctx st)
+  (values (void) (st:record-inst-dispatch-use st stx method-name class-param-tvars)))
+(define ((m:record-dict-use stx method-name reqs sub) _ctx st)
+  (values (void) (st:record-dict-use st stx method-name reqs sub)))
 
 ;; ----- generalize / instantiate -------------------------------------
 
@@ -1059,29 +1096,34 @@
                 [else
                  (define dispatchpos (hash-ref (class-info-dispatchpos cinfo) x #f))
                  (define reqs (hash-ref (class-info-dictreqs cinfo) x '()))
-                 (cond
-                   [(eq? dispatchpos 'return)
-                    ;; A return-typed method may ALSO carry a method-level dict
-                    ;; requirement (e.g. MonadTrans.lift's `(Monad m) =>`).
-                    ;; Fold those dict-entries into the single 'return entry so
-                    ;; the separate record-dict-use! below doesn't clobber the
-                    ;; dispatch resolution on the same stx.
-                    (define method-dict-entries
-                      (for/list ([req (in-list reqs)])
-                        (cons (car req)
-                              (for/list ([a (in-list (cdr req))]) (apply-subst sub a)))))
-                    (record-method-use! x stx env class-param-tvars method-dict-entries)]
-                   [(integer? dispatchpos)
-                    ;; Positional class-method call.  The resolver routes
-                    ;; to a per-instance impl after the dispatch arg's type
-                    ;; settles.  Recording fires for ALL positional method
-                    ;; calls so any concrete-type call site can be
-                    ;; monomorphized (direct impl call instead of dispatch).
-                    (record-inst-dispatch-use! x stx class-param-tvars)
-                    (unless (null? reqs) (record-dict-use! x stx reqs sub))]
-                   [else
-                    (unless (null? reqs) (record-dict-use! x stx reqs sub))])
-                 (infer-return (cons empty-subst t))])))]
+                 (let/infer
+                  ([_ (cond
+                        [(eq? dispatchpos 'return)
+                         ;; A return-typed method may ALSO carry a method-level
+                         ;; dict requirement (e.g. MonadTrans.lift's `(Monad m)
+                         ;; =>`).  Fold those dict-entries into the single
+                         ;; 'return entry so the separate dict record below
+                         ;; doesn't clobber the dispatch resolution on the same
+                         ;; stx.
+                         (define method-dict-entries
+                           (for/list ([req (in-list reqs)])
+                             (cons (car req)
+                                   (for/list ([a (in-list (cdr req))]) (apply-subst sub a)))))
+                         (m:record-method-use stx x class-param-tvars method-dict-entries)]
+                        [(integer? dispatchpos)
+                         ;; Positional class-method call.  The resolver routes
+                         ;; to a per-instance impl after the dispatch arg's type
+                         ;; settles.  Recording fires for ALL positional method
+                         ;; calls so any concrete-type call site can be
+                         ;; monomorphized (direct impl call instead of dispatch).
+                         (begin/infer
+                           (m:record-inst-dispatch-use stx x class-param-tvars)
+                           (if (null? reqs) (infer-return (void))
+                               (m:record-dict-use stx x reqs sub)))]
+                        [else
+                         (if (null? reqs) (infer-return (void))
+                             (m:record-dict-use stx x reqs sub))])])
+                  (infer-return (cons empty-subst t)))])))]
           [else
            ;; A free function may itself be needs-dict: if its scheme's
            ;; qual context includes a constraint over a class with
@@ -1096,8 +1138,8 @@
              [else
               (let/infer ([r (instantiate/subst/m sch)])
                 (let* ([t (car r)] [sub (cdr r)])
-                  (record-dict-use! x stx free-reqs sub)
-                  (infer-return (cons empty-subst t))))])])]
+                  (let/infer ([_ (m:record-dict-use stx x free-reqs sub)])
+                    (infer-return (cons empty-subst t)))))])])]
        [else
         (raise-syntax-error 'infer
                             (format "unbound identifier: ~s~a"
@@ -1928,7 +1970,7 @@
 ;;     target; mutually recursive bindings share a monomorphic shape
 ;;     within their SCC.
 (define (infer-program forms [env initial-env])
-  (define-values (env* _ _forms) (infer-program/phases forms env (hasheq)))
+  (define-values (env* _ _forms _st) (infer-program/phases forms env (hasheq)))
   env*)
 
 ;; Like `infer-program`, but also returns the post-expansion form list
@@ -1942,26 +1984,24 @@
 ;; value.  `current-method-uses` is inference-internal scratch (settled into
 ;; the resolutions) and stays out of the plan.
 (define (infer-program+forms forms [env initial-env])
-  (parameterize ([current-method-uses             (make-hasheq)]
-                 [current-method-resolutions      (make-hasheq)]
-                 [current-method-dict-resolutions (make-hasheq)]
-                 [current-needs-dict-defs         (make-hash)]
-                 [current-instance-default-bodies (make-hash)])
-    (define-values (env* _ forms*) (infer-program/phases forms env (hasheq)))
-    (values env* forms*
-            (codegen-plan (current-method-resolutions)
-                          (current-method-dict-resolutions)
-                          (current-needs-dict-defs)
-                          (current-instance-default-bodies)
-                          (env-return-typed-methods env*)))))
+  (define-values (env* _ forms* final-st) (infer-program/phases forms env (hasheq)))
+  (values env* forms*
+          (codegen-plan (st-table final-st 'method-resolutions)
+                        (st-table final-st 'method-dict-resolutions)
+                        (st-table final-st 'needs-dict-defs)
+                        (st-table final-st 'instance-default-bodies)
+                        (env-return-typed-methods env*))))
 
 ;; `prior-declared` carries forward `top:dec` schemes registered in
 ;; previous REPL inputs.  A fresh `(infer-program)` call always
 ;; supplies an empty map; the REPL's `elaborate-form` passes its
 ;; persisted declared so a `(: foo …)` declared in one input still
 ;; applies to a `(define foo …)` in a later one.
-(define (infer-program/phases forms env prior-declared)
-  (define st0 (make-infer-state))
+;; The optional `st0` carries inference state in (fresh counter, pending preds,
+;; and the codegen-plan tables).  Batch callers start fresh; the REPL passes
+;; the st it persists so its resolution tables accumulate across inputs.  The
+;; final st is returned so the caller can read the plan tables out of it.
+(define (infer-program/phases forms env prior-declared [st0 (make-infer-state)])
   ;; ---- Phase A: type infrastructure ----
   (define-values (env-after-A declared)
     (run-phase-A env forms prior-declared))
@@ -1983,11 +2023,12 @@
   ;; the subclass instance that needs it.
   (check-superclass-obligations env-after-C forms*)
   ;; ---- Phase D: SCC-based body inference for top:defs ----
-  (define-values (env-after-D _st3) (run-phase-D env-after-C declared def-tvars forms* st2))
+  (define-values (env-after-D st3) (run-phase-D env-after-C declared def-tvars forms* st2))
   (values env-after-D
           (for/fold ([d prior-declared]) ([f (in-list forms*)] #:when (top:def? f))
             (hash-remove d (top:def-name f)))
-          forms*))
+          forms*
+          st3))
 
 ;; Verify that every instance declared in `forms` satisfies the
 ;; superclass constraints of its class.  For an instance `C T₁…Tₙ` with
@@ -2522,8 +2563,6 @@
        (define-values (t p s) (skolemize/tracked decl-scheme))
        (define-values (sk-map args) (build-dict-skolems needs-dict-reqs s env))
        (values t p sk-map args)]))
-  (when (and (current-needs-dict-defs) (not (null? dict-arg-names)))
-    (hash-set! (current-needs-dict-defs) name dict-arg-names))
   (define saved-skolems (current-dict-skolems))
   (current-dict-skolems dict-skolems)
   (define-values (s t st1)
@@ -2588,9 +2627,11 @@
                   (current-type-columns))
       stx))
   (define st5 (st:set-preds st4 '()))
-  (resolve-method-uses! final-subst env)
+  (define st6 (resolve-method-uses st5 final-subst env))
+  (define st7 (if (null? dict-arg-names) st6
+                  (st-table-put st6 'needs-dict-defs name dict-arg-names)))
   (current-dict-skolems saved-skolems)
-  (values env st5))
+  (values env st7))
 
 ;; Infer one SCC of undeclared defs.  Singleton SCC (no self-edge):
 ;; behaves exactly like the previous single-def undeclared path,
@@ -2663,8 +2704,8 @@
      ;; `proc` over an arrow whose product `p` is fixed by `cat -> p`) is
      ;; resolved against an unimproved tvar and reported as ambiguous.
      (define-values (generalized fd-sub st1) (generalize* env-for-gen final-ty st))
-     (resolve-method-uses! (subst-compose fd-sub s*) env)
-     (values (env-extend-var env name generalized) st1)]
+     (define st2 (resolve-method-uses st1 (subst-compose fd-sub s*) env))
+     (values (env-extend-var env name generalized) st2)]
     [else
      (define dict-tvar-names
        (for/fold ([acc (seteq)]) ([p (in-list dict-bearing-preds)])
@@ -2683,15 +2724,15 @@
          (cons (pred-class p) (pred-args p))))
      (define-values (sk-map arg-names)
        (build-dict-skolems needs-dict-reqs skolem-subst env))
-     (when (and (current-needs-dict-defs) (not (null? arg-names)))
-       (hash-set! (current-needs-dict-defs) name arg-names))
-     (record-recursive-dict-uses! expr name needs-dict-reqs s*)
-     (define-values (generalized st1) (generalize env-for-gen final-ty st))
+     (define st-rr (record-recursive-dict-uses st expr name needs-dict-reqs s*))
+     (define-values (generalized st1) (generalize env-for-gen final-ty st-rr))
      (define saved-skolems (current-dict-skolems))
      (current-dict-skolems sk-map)
-     (resolve-method-uses! (subst-compose skolem-subst s*) env)
+     (define st2 (resolve-method-uses st1 (subst-compose skolem-subst s*) env))
      (current-dict-skolems saved-skolems)
-     (values (env-extend-var env name generalized) st1)]))
+     (define st3 (if (null? arg-names) st2
+                     (st-table-put st2 'needs-dict-defs name arg-names)))
+     (values (env-extend-var env name generalized) st3)]))
 
 ;; Single-form step exposed so the REPL kernel can call into handle-top-form
 ;; directly.  The REPL persists the inference state (fresh counter + pending
@@ -2772,8 +2813,6 @@
         ;; skolemized monomorphic type, enabling polymorphic recursion:
         ;; the body may call itself at different instantiations.
         (define env-rec (env-extend-var env name decl-scheme))
-        (when (and (current-needs-dict-defs) (not (null? dict-arg-names)))
-          (hash-set! (current-needs-dict-defs) name dict-arg-names))
         ;; The dict-skolem map must be visible to BOTH the body
         ;; inference AND the post-reduction `resolve-method-uses!`
         ;; pass that follows below; mutate the parameter directly
@@ -2848,11 +2887,13 @@
                         (current-type-columns))
             stx))
         (define st3 (st:set-preds st2 '()))
-        (resolve-method-uses! final-subst env)
+        (define st4 (resolve-method-uses st3 final-subst env))
+        (define st5 (if (null? dict-arg-names) st4
+                        (st-table-put st4 'needs-dict-defs name dict-arg-names)))
         (current-dict-skolems saved-skolems)
         (values (env-extend-var env name decl-scheme)
                 (hash-remove declared name)
-                st3)]
+                st5)]
        [else
         ;; No declaration: pre-register fresh tvar for recursive use,
         ;; infer, unify, generalize.
@@ -2900,8 +2941,8 @@
         (cond
           [(null? dict-bearing-preds)
            (define-values (generalized st4) (generalize final-env final-ty st3))
-           (resolve-method-uses! s* env)
-           (values (env-extend-var final-env name generalized) declared st4)]
+           (define st5 (resolve-method-uses st4 s* env))
+           (values (env-extend-var final-env name generalized) declared st5)]
           [else
            ;; Build skolem subst: each tvar arg of a dict-bearing pred
            ;; that will be quantified gets a fresh skolem tcon.  These
@@ -2925,23 +2966,23 @@
                (cons (pred-class p) (pred-args p))))
            (define-values (sk-map arg-names)
              (build-dict-skolems needs-dict-reqs skolem-subst env))
-           (when (and (current-needs-dict-defs) (not (null? arg-names)))
-             (hash-set! (current-needs-dict-defs) name arg-names))
            ;; Recursive calls inside the body had no dict-use recorded
            ;; (env-rec held `(scheme '() α)`), so retroactively record
            ;; them with the same reqs — they share the lambda's
            ;; locally-bound dict args via the skolem map.
-           (record-recursive-dict-uses! expr name needs-dict-reqs s*)
+           (define st-rr (record-recursive-dict-uses st3 expr name needs-dict-reqs s*))
            ;; Generalize (consumes preds from the pool).
-           (define-values (generalized st4) (generalize final-env final-ty st3))
+           (define-values (generalized st4) (generalize final-env final-ty st-rr))
            ;; Resolve methods with the skolem map in scope so
            ;; pure/mempty land on the local dict-arg names rather than
            ;; per-tcon impls.
            (define saved-skolems (current-dict-skolems))
            (current-dict-skolems sk-map)
-           (resolve-method-uses! (subst-compose skolem-subst s*) env)
+           (define st5 (resolve-method-uses st4 (subst-compose skolem-subst s*) env))
            (current-dict-skolems saved-skolems)
-           (values (env-extend-var final-env name generalized) declared st4)])]))
+           (define st6 (if (null? arg-names) st5
+                           (st-table-put st5 'needs-dict-defs name arg-names)))
+           (values (env-extend-var final-env name generalized) declared st6)])]))
 
 (define (handle-provide-form env declared)
      ;; `provide` is a packaging concern, not a typing concern: it
@@ -3447,14 +3488,8 @@
 ;; dict requirement (e.g. MonadTrans.lift's `(Monad m) =>`) — so the
 ;; single entry resolves both the dispatch impl and the dict args
 ;; without the two recordings clobbering each other on `stx`.
-(define (record-method-use! method-name stx env class-param-tvars
-                            [method-dict-entries '()])
-  (define table (current-method-uses))
-  (when table
-    (hash-set! table stx (list 'return
-                               method-name
-                               class-param-tvars
-                               method-dict-entries))))
+;; (Entry-recording now lives in st:record-* / m:record-* near the foundation;
+;; these comments document the entry shapes those produce.)
 
 ;; A positional class-method call on a class that has at
 ;; least one needs-dict instance.  Entry shape:
@@ -3464,11 +3499,6 @@
 ;; that instance has dict-bearing constraints in its qual — writes
 ;; the per-instance impl name into current-method-resolutions and the
 ;; dict impls into current-method-dict-resolutions.
-(define (record-inst-dispatch-use! method-name stx class-param-tvars)
-  (define table (current-method-uses))
-  (when table
-    (hash-set! table stx (list 'inst-dispatch method-name class-param-tvars))))
-
 ;; Does this class have at least one instance whose qual context
 ;; mentions a return-typed-bearing class?  Used to decide whether to
 ;; record positional class-method call sites for inst-dispatch.
@@ -3493,16 +3523,6 @@
 ;; entry shape is `(list 'dict method-name dict-entries)` where each
 ;; dict-entry is `(cons class-name tvars)` — the class to look up and
 ;; the fresh tvars whose final resolution names the impl.
-(define (record-dict-use! method-name stx reqs sub)
-  (define table (current-method-uses))
-  (when table
-    (define dict-entries
-      (for/list ([req (in-list reqs)])
-        (define cls (car req))
-        (define arg-types (cdr req))
-        (cons cls (for/list ([a (in-list arg-types)])
-                    (apply-subst sub a)))))
-    (hash-set! table stx (list 'dict method-name dict-entries))))
 
 ;; Walk an AST expression looking for `e:var` references to `name`
 ;; and `record-dict-use!` each one with the supplied `reqs` / `sub`.
@@ -3512,65 +3532,59 @@
 ;; to the lambda — so the body's calls to itself must pass those
 ;; dict-args.  Tracks shadowing of `name` introduced by inner
 ;; binders so we don't capture references that resolve elsewhere.
-(define (record-recursive-dict-uses! expr name reqs sub)
-  (let walk ([e expr] [shadowed? #f])
+(define (record-recursive-dict-uses st expr name reqs sub)
+  (let walk ([e expr] [shadowed? #f] [st st])
     (cond
-      [shadowed? (void)]
+      [shadowed? st]
       [else
        (match e
-         [(e:literal _ _) (void)]
+         [(e:literal _ _) st]
          [(e:var n stx)
-          (when (eq? n name)
-            (record-dict-use! name stx reqs sub))]
+          (if (eq? n name) (st:record-dict-use st stx name reqs sub) st)]
          [(e:lam params body _)
-          (walk body (or shadowed? (and (memq name params) #t)))]
+          (walk body (or shadowed? (and (memq name params) #t)) st)]
          [(e:app head args _)
-          (walk head shadowed?)
-          (for ([a (in-list args)]) (walk a shadowed?))]
+          (for/fold ([st (walk head shadowed? st)]) ([a (in-list args)])
+            (walk a shadowed? st))]
          [(e:let bindings body _)
-          (for ([b (in-list bindings)]) (walk (cdr b) shadowed?))
+          (define st1 (for/fold ([st st]) ([b (in-list bindings)]) (walk (cdr b) shadowed? st)))
           (define new-shadowed?
-            (or shadowed?
-                (for/or ([b (in-list bindings)]) (eq? (car b) name))))
-          (walk body new-shadowed?)]
+            (or shadowed? (for/or ([b (in-list bindings)]) (eq? (car b) name))))
+          (walk body new-shadowed? st1)]
          [(e:letrec bindings body _)
           (define new-shadowed?
-            (or shadowed?
-                (for/or ([b (in-list bindings)]) (eq? (car b) name))))
-          (for ([b (in-list bindings)]) (walk (cdr b) new-shadowed?))
-          (walk body new-shadowed?)]
+            (or shadowed? (for/or ([b (in-list bindings)]) (eq? (car b) name))))
+          (define st1 (for/fold ([st st]) ([b (in-list bindings)]) (walk (cdr b) new-shadowed? st)))
+          (walk body new-shadowed? st1)]
          [(e:if c th el _)
-          (walk c shadowed?) (walk th shadowed?) (walk el shadowed?)]
-         [(e:ann body _ _) (walk body shadowed?)]
+          (walk el shadowed? (walk th shadowed? (walk c shadowed? st)))]
+         [(e:ann body _ _) (walk body shadowed? st)]
          [(e:match scrut clauses _ _)
-          (walk scrut shadowed?)
-          (for ([cl (in-list clauses)])
-            (define sh? (or shadowed?
-                            (pattern-binds-name? (clause-pattern cl) name)))
-            (when (clause-guard cl) (walk (clause-guard cl) sh?))
-            (walk (clause-body cl) sh?))]
+          (for/fold ([st (walk scrut shadowed? st)]) ([cl (in-list clauses)])
+            (define sh? (or shadowed? (pattern-binds-name? (clause-pattern cl) name)))
+            (define st1 (if (clause-guard cl) (walk (clause-guard cl) sh? st) st))
+            (walk (clause-body cl) sh? st1))]
          [(e:match* scrutinees clauses _ _)
-          (for ([sc (in-list scrutinees)]) (walk sc shadowed?))
-          (for ([cl (in-list clauses)])
+          (define st-s (for/fold ([st st]) ([sc (in-list scrutinees)]) (walk sc shadowed? st)))
+          (for/fold ([st st-s]) ([cl (in-list clauses)])
             (define sh?
               (or shadowed?
-                  (for/or ([p (in-list (clause*-patterns cl))])
-                    (pattern-binds-name? p name))))
-            (when (clause*-guard cl) (walk (clause*-guard cl) sh?))
-            (walk (clause*-body cl) sh?))]
+                  (for/or ([p (in-list (clause*-patterns cl))]) (pattern-binds-name? p name))))
+            (define st1 (if (clause*-guard cl) (walk (clause*-guard cl) sh? st) st))
+            (walk (clause*-body cl) sh? st1))]
          [(e:update record updates _)
-          (walk record shadowed?)
-          (for ([u (in-list updates)]) (walk (cdr u) shadowed?))]
+          (for/fold ([st (walk record shadowed? st)]) ([u (in-list updates)])
+            (walk (cdr u) shadowed? st))]
          [(e:handle expr clauses ret _)
-          (walk expr shadowed?)
-          (when ret (walk ret shadowed?))
-          (for ([cl (in-list clauses)])
+          (define st-e (walk expr shadowed? st))
+          (define st-r (if ret (walk ret shadowed? st-e) st-e))
+          (for/fold ([st st-r]) ([cl (in-list clauses)])
             (define sh? (or shadowed?
                             (and (memq name (handle-clause-params cl)) #t)
                             (eq? (handle-clause-k-name cl) name)))
-            (walk (handle-clause-body cl) sh?))]
-         [(e:escape _ _ _ _) (void)]
-         [_ (void)])])))
+            (walk (handle-clause-body cl) sh? st))]
+         [(e:escape _ _ _ _) st]
+         [_ st])])))
 
 (define (pattern-binds-name? p name)
   (match p
@@ -3609,12 +3623,15 @@
   (for/list ([pair (in-list active-pairs)])
     (resolve-impl-with-quals (car pair) (cdr pair) final-subst stx env)))
 
-(define (resolve-method-uses! final-subst env)
-  (define uses (current-method-uses))
-  (define resolutions (current-method-resolutions))
-  (define dict-resolutions (current-method-dict-resolutions))
-  (when (and uses resolutions)
-    (for ([(stx entry) (in-hash uses)])
+;; State transition: read the 'method-uses channel from st, resolve each entry
+;; into local mutable resolution tables (seeded from st's current ones), then
+;; store immutable snapshots back into st and clear 'method-uses.  The local
+;; mutation is an isolated implementation detail — the function is pure st->st.
+(define (resolve-method-uses st final-subst env)
+  (define uses (st-table st 'method-uses))
+  (define resolutions (hash-copy (st-table st 'method-resolutions)))
+  (define dict-resolutions (hash-copy (st-table st 'method-dict-resolutions)))
+  (for ([(stx entry) (in-hash uses)])
       (match entry
         [(list 'return method-name class-param-tvars method-dict-entries)
          (define impl (resolve-return-impl method-name class-param-tvars
@@ -3725,7 +3742,9 @@
                 (return-impl-symbol method-name keep-tcon-names))
               (hash-set! resolutions stx impl)
               (record-monomorphized-site! method-name impl)]))]))
-    (hash-clear! uses)))
+  (st-table-set (st-table-set (st-table-set st 'method-resolutions (freeze-eq resolutions))
+                              'method-dict-resolutions (freeze-eq dict-resolutions))
+                'method-uses (hasheq)))
 
 ;; Does this instance have a real, named compile-emitted
 ;; impl for the given method?  Two signals say "no":
@@ -4350,8 +4369,8 @@
     (for/fold ([acc (hasheq)] [st st])
               ([(method-name method-sch)
                 (in-hash (class-info-methods cinfo))])
-      (define body (instance-method-body ictx method-name))
-      (define-values (mc st1) (method-qual-context ictx method-name method-sch st))
+      (define-values (body st-b) (instance-method-body ictx method-name st))
+      (define-values (mc st1) (method-qual-context ictx method-name method-sch st-b))
       (define st2 (elaborate-instance-method-body! ictx method-name body mc st1))
       (values (hash-set acc method-name body) st2)))
   (define info (instance-info head-pred-raw ctx-preds-raw checked-bodies
@@ -4424,7 +4443,7 @@
 ;; anchored at the instance stx, recorded for codegen so its return-typed
 ;; calls resolve against this instance's carrier rather than the protocol's
 ;; abstract class parameter), else a compile error.
-(define (instance-method-body ctx method-name)
+(define (instance-method-body ctx method-name st)
   (define user-impls    (inst-check-ctx-user-impls ctx))
   (define cinfo         (inst-check-ctx-cinfo ctx))
   (define class-name    (inst-check-ctx-class-name ctx))
@@ -4432,7 +4451,7 @@
   (define head-pred-raw (inst-check-ctx-head-pred-raw ctx))
   (define stx           (inst-check-ctx-stx ctx))
   (cond
-    [(hash-ref user-impls method-name #f)]
+    [(hash-ref user-impls method-name #f) => (lambda (b) (values b st))]
     [(hash-ref (class-info-defaults cinfo) method-name #f)
      => (lambda (default-expr)
           ;; Inherited class default.  Freshen it to THIS
@@ -4443,11 +4462,10 @@
           ;; Hand the freshened AST to codegen so the syntax
           ;; handles the method resolutions are keyed by agree.
           (define fresh-body (freshen-ast default-expr stx))
-          (when (current-instance-default-bodies)
-            (hash-set! (current-instance-default-bodies)
-                       (list class-name head-tcon method-name)
-                       fresh-body))
-          fresh-body)]
+          (values fresh-body
+                  (st-table-put st 'instance-default-bodies
+                                (list class-name head-tcon method-name)
+                                fresh-body)))]
     [else
      (raise-syntax-error 'infer
        (format "instance ~s missing method ~s with no default"
@@ -4533,11 +4551,6 @@
   ;; arity is bumped by class-info-dictreqs at compile-class
   ;; time), so the impl can be registered in the runtime
   ;; dispatch table with method-qual dicts as leading params.
-  (when (and (current-needs-dict-defs)
-             (not (null? combined-arg-names)))
-    (hash-set! (current-needs-dict-defs)
-               (list class-name head-tcon method-name)
-               (cons dict-arg-names method-arg-names)))
   ;; Apply method-skolem subst to the expected type and method-
   ;; extra-preds so the tvars become rigid for body inference.
   ;; normalize-type rewrites any associated-type
@@ -4567,8 +4580,13 @@
     (map (lambda (p)
            (apply-subst generality-sk-subst (apply-subst method-sk-subst p)))
          raw-method-qual-preds))
+  (define st-nd
+    (if (null? combined-arg-names) st′
+        (st-table-put st′ 'needs-dict-defs
+                      (list class-name head-tcon method-name)
+                      (cons dict-arg-names method-arg-names))))
   (values (method-check expected-type method-extra-preds combined-skolems generality-sk-subst)
-          st′))
+          st-nd))
 
 ;; Infer the body, unify it against the class-signature type, run fundep
 ;; improvement (so a default body's residual tensor constraints reduce
@@ -4647,8 +4665,8 @@
                      (map pretty-pred leftovers))
                     (current-type-columns))
         stx))
-    (resolve-method-uses! final-subst env)
+    (define st5 (resolve-method-uses st4 final-subst env))
     (current-dict-skolems saved-skolems)
-    ;; Restore the outer pending-pred bag; the counter in st4 carries on.
-    (st:set-preds st4 outer-preds)))
+    ;; Restore the outer pending-pred bag; the counter in st5 carries on.
+    (st:set-preds st5 outer-preds)))
 

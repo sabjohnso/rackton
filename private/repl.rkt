@@ -44,9 +44,7 @@
 ;; that executes compiled code.
 (struct rackton-repl-state
   (env declared
-       method-uses method-resolutions method-dict-resolutions
-       needs-dict-defs
-       instance-default-bodies
+       infer-st
        nsp
        expr-counter
        quit?)
@@ -59,11 +57,7 @@
     (namespace-require 'rackton))
   (rackton-repl-state prelude-env
                       (hasheq)
-                      (make-hasheq)
-                      (make-hasheq)
-                      (make-hasheq)
-                      (make-hash)
-                      (make-hash)
+                      (make-infer-state)
                       ns
                       0
                       #f))
@@ -115,7 +109,7 @@
      (lambda (e) (format "error: ~a\n" (exn-message e)))])
    (define name (gensym '$repl-type-))
    (define synthetic (datum->syntax #f `(define ,name ,expr-datum)))
-   (define-values (env* _compiled) (elaborate-form state synthetic))
+   (define-values (env* _compiled _final-st) (elaborate-form state synthetic))
    (define sch (env-ref-var env* name))
    (format "~s :: ~a\n" expr-datum (scheme->datum sch))))
 
@@ -140,9 +134,9 @@
    ([exn:fail?
      (lambda (e) (values state (format "error: ~a\n" (exn-message e))))])
    (define stx (datum->syntax #f input))
-   (define-values (env* compiled) (elaborate-form state stx))
+   (define-values (env* compiled final-st) (elaborate-form state stx))
    (define state*
-     (struct-copy rackton-repl-state state [env env*]))
+     (struct-copy rackton-repl-state state [env env*] [infer-st final-st]))
    (for ([c (in-list compiled)])
      (eval-in state* c))
    (values state*
@@ -168,10 +162,11 @@
    (define n (rackton-repl-state-expr-counter state))
    (define name (string->symbol (format "$repl-~a" n)))
    (define synthetic (datum->syntax #f `(define ,name ,input)))
-   (define-values (env* compiled) (elaborate-form state synthetic))
+   (define-values (env* compiled final-st) (elaborate-form state synthetic))
    (define state*
      (struct-copy rackton-repl-state state
                   [env env*]
+                  [infer-st final-st]
                   [expr-counter (add1 n)]))
    (for ([c (in-list compiled)])
      (eval-in state* c))
@@ -188,50 +183,41 @@
 ;; persisted parameters.  Returns updated env and the list of
 ;; compiled Racket-syntax forms (a single parsed entry may expand
 ;; to multiple, e.g. #:deriving).
+;; Returns (values env* compiled final-st).  The inference state — fresh
+;; counter, pending preds, and the resolution tables — is threaded as an
+;; immutable infer-state the caller persists into the next repl-state, so the
+;; tables accumulate across inputs the way the old mutable hashes did.
 (define (elaborate-form state stx)
-  (parameterize ([current-method-uses
-                   (rackton-repl-state-method-uses state)]
-                 [current-method-resolutions
-                   (rackton-repl-state-method-resolutions state)]
-                 [current-method-dict-resolutions
-                   (rackton-repl-state-method-dict-resolutions state)]
-                 [current-needs-dict-defs
-                   (rackton-repl-state-needs-dict-defs state)]
-                 [current-instance-default-bodies
-                   (rackton-repl-state-instance-default-bodies state)]
-                 ;; A REPL session iterates by re-evaluating forms, so a
-                 ;; re-declared instance replaces the prior one instead of
-                 ;; raising the module-level coherence error.
-                 [current-allow-instance-redefinition? #t])
+  ;; A REPL session iterates by re-evaluating forms, so a re-declared instance
+  ;; replaces the prior one instead of raising the module coherence error.
+  (parameterize ([current-allow-instance-redefinition? #t])
     (define parsed (parse-toplevel-list (list stx)))
-    ;; Run the full 4-phase pipeline over the parsed list so that
-    ;; multi-form REPL input (a single `(define …) (define …)` block,
-    ;; for instance) is order-invariant just like a module body.
-    ;; Single-form input degenerates into a 1-element mini-module —
-    ;; same end result as the old `handle-top-form-step` loop.
+    ;; Run the full 4-phase pipeline over the parsed list so that multi-form
+    ;; REPL input is order-invariant just like a module body.  Pass the
+    ;; persisted st so resolution tables accumulate; get the final st back.
     ;; infer-program/phases also returns the post-expansion form list
-    ;; (`#:derive-superclasses` instances replaced by the plain instances
-    ;; they synthesize); compile THAT so derived instances are lowered.
-    (define-values (env* _declared* parsed*)
+    ;; (`#:derive-superclasses` instances replaced by the plain instances they
+    ;; synthesize); compile THAT so derived instances are lowered.
+    (define-values (env* _declared* parsed* final-st)
       (infer-program/phases parsed
                             (rackton-repl-state-env state)
-                            (rackton-repl-state-declared state)))
-    ;; Hand codegen the same persisted resolution tables inference just
-    ;; wrote.  return-typed-methods is left #f: a REPL session is
-    ;; incremental, so return-typed calls dispatch through the runtime
-    ;; table rather than a monomorphized per-input impl name (which a later
-    ;; input might not have bound).
+                            (rackton-repl-state-declared state)
+                            (rackton-repl-state-infer-st state)))
+    ;; Hand codegen the resolution tables inference just wrote into final-st.
+    ;; return-typed-methods is left #f: a REPL session is incremental, so
+    ;; return-typed calls dispatch through the runtime table rather than a
+    ;; monomorphized per-input impl name (which a later input might not bind).
     (define plan
-      (codegen-plan (rackton-repl-state-method-resolutions state)
-                    (rackton-repl-state-method-dict-resolutions state)
-                    (rackton-repl-state-needs-dict-defs state)
-                    (rackton-repl-state-instance-default-bodies state)
+      (codegen-plan (st-table final-st 'method-resolutions)
+                    (st-table final-st 'method-dict-resolutions)
+                    (st-table final-st 'needs-dict-defs)
+                    (st-table final-st 'instance-default-bodies)
                     #f))
     (define compiled
       (filter values
               (for/list ([p (in-list parsed*)])
                 (compile-top p env* plan))))
-    (values env* compiled)))
+    (values env* compiled final-st)))
 
 (define (eval-in state stx)
   (parameterize ([current-namespace (rackton-repl-state-nsp state)])
