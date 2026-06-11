@@ -28,13 +28,7 @@
          generalize
          ;; threaded inference state — the REPL persists one across inputs
          make-infer-state st-table
-         current-method-resolutions
-         current-return-typed-methods
-         current-method-dict-resolutions
          current-dict-skolems
-         current-needs-dict-defs
-         current-instance-default-bodies
-         current-instance-exported-impls
          current-prelude-build?
          current-allow-instance-redefinition?)
 
@@ -80,44 +74,17 @@
 ;; final substitution to determine the concrete instance and the
 ;; entry is graduated into `current-method-resolutions`.  (The accumulator
 ;; itself is now the 'method-uses channel in the threaded infer-state.)
-;; Resolved return-typed-method calls.  A hashtable from stx → impl
-;; name symbol (e.g. '$pure:Maybe).  Consumed by codegen.  NOTE this map
-;; also receives positional monomorphizations (e.g. '$==:Integer), so a
-;; non-#f entry alone does NOT imply the call is return-typed — codegen
-;; cross-checks the method name against `current-return-typed-methods`.
-(define current-method-resolutions (make-parameter #f))
-;; The set of method names that dispatch return-typed (computed from the
-;; env at elaborate time, read by codegen).  A plain (no-dict)
-;; return-typed call site routes through the per-method runtime dispatch
-;; table so an instance defined in another module is reachable.
-(define current-return-typed-methods (make-parameter #f))
-;; Resolved dict-method calls.  A hashtable from stx → (Listof
-;; impl-name-symbol) — the codegen prepends these to the e:app args
-;; when compiling the call site.
-(define current-method-dict-resolutions (make-parameter #f))
-;; Per-needs-dict-def skolem map and dict-arg name table.
-;;   current-dict-skolems    : hasheq from skolem-tcon-name → local
-;;                              dict-arg-name; set during body
-;;                              inference of a needs-dict-body def.
-;;   current-needs-dict-defs : hasheq from top-def name → list of
-;;                              dict-arg-names; consumed by codegen
-;;                              when prepending lambda params.
-(define current-dict-skolems    (make-parameter (hasheq)))
-(define current-needs-dict-defs (make-parameter #f))
-
-;;   current-instance-default-bodies : equal?-keyed hash from
-;;     (list class-name head-tcon method-name) → the per-instance
-;;     FRESHENED default-method body.  When an instance inherits a
-;;     class default, inference freshens the default to the instance
-;;     site and infers it there, so its return-typed method calls (e.g.
-;;     a `mk-prod`/`pure` over the carrier) resolve against THIS
-;;     instance's type.  Codegen reuses this exact AST instead of
-;;     relocating class-info-defaults afresh, so the syntax handles the
-;;     resolutions are keyed by line up.  (relocate-ast gives every node
-;;     one shared handle; that collapses multiple uses when inferred —
-;;     hence freshen-ast here.  See surface.rkt.)  #f outside an
-;;     elaborate.
-(define current-instance-default-bodies (make-parameter #f))
+;; The resolution tables — method-resolutions, method-dict-resolutions,
+;; return-typed-methods, needs-dict-defs, instance-default-bodies — are now the
+;; threaded infer-state's codegen-plan channels: inference accumulates them in
+;; `st`, infer-program+forms reads them into the codegen-plan, and codegen
+;; consumes them through its cg-ctx.  No parameters here.
+;;
+;; current-dict-skolems stays a config parameter: a hasheq from
+;; skolem-tcon-name → local dict-arg-name, set around body inference of a
+;; needs-dict-body def so the body's polymorphic class-method references
+;; resolve to the locally-bound dict args.
+(define current-dict-skolems (make-parameter (hasheq)))
 
 ;; The compile-time monomorphization & inlining logs
 ;; (current-monomorphized-sites, current-inlinable-bodies,
@@ -125,15 +92,9 @@
 ;; in "monomorph-log.rkt"; inference records monomorphized sites through
 ;; that module's `record-monomorphized-site!`.
 
-;; Box holding the impl-name symbols of needs-dict return-typed
-;; instance methods generated in THIS module (e.g. '$pure:StateT,
-;; '$get-st:StateT).  These resolve cross-module via a DIRECT
-;; reference (not the runtime dispatch table — their call sites carry
-;; dict args), so the module that defines the instance must export the
-;; generated define.  compile-instance pushes names here; the
-;; elaborator folds them into the module's provide set so importing
-;; modules' call sites can reference them.  #f outside an elaborate.
-(define current-instance-exported-impls (make-parameter #f))
+;; (The impl-name symbols of needs-dict return-typed instance methods that
+;; must be force-exported are collected in codegen's cg-st now, and handed to
+;; elaborate-finish, rather than through a parameter here.)
 
 ;; When checking a function body against a declared
 ;; signature, the body's expected return type is known up front.

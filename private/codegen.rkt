@@ -107,7 +107,6 @@
          "match.rkt"
          "entail.rkt"
          "impl-symbols.rkt"
-         "monomorph-log.rkt"
          "codegen-plan.rkt"
          "infer.rkt")
 
