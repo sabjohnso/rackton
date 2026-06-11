@@ -1772,29 +1772,32 @@
 ;; list of existential hypotheses (constraints in terms of fresh
 ;; ex-skolems) that should be available to the surrounding match
 ;; arm as already-proven.
-(define (instantiate-ctor-scheme sch ex-tvars)
+(define (instantiate-ctor-scheme/m sch ex-tvars)
   (cond
     [(null? ex-tvars)
-     (values (instantiate sch) '())]
+     (let/infer ([t (instantiate/m sch)]) (infer-return (cons t '())))]
     [else
      (match sch
        [(scheme vs body)
         (define ex-set (list->seteq ex-tvars))
-        (define s
-          (for/fold ([s empty-subst]) ([v (in-list vs)])
+        ;; ex-tvars → gensym SKOLEMS (pure); others → fresh tvars (monadic).
+        (let/infer ([s (let loop ([vs vs] [s empty-subst])
+                         (cond
+                           [(null? vs) (infer-return s)]
+                           [(set-member? ex-set (car vs))
+                            (loop (cdr vs)
+                                  (subst-extend s (car vs)
+                                                (tcon (gensym (format "$ex-skolem.~a." (car vs))))))]
+                           [else
+                            (let/infer ([t (m:fresh-tvar (car vs))])
+                              (loop (cdr vs) (subst-extend s (car vs) t)))]))])
+          (let ([raw (apply-subst s body)])
             (cond
-              [(set-member? ex-set v)
-               (subst-extend s v (tcon (gensym
-                                        (format "$ex-skolem.~a." v))))]
-              [else
-               (subst-extend s v (fresh-tvar v))])))
-        (define raw (apply-subst s body))
-        (cond
-          [(qual? raw)
-           (values (qual-body raw)
-                   (qual-constraints raw))]
-          [else
-           (values raw '())])])]))
+              [(qual? raw) (infer-return (cons (qual-body raw) (qual-constraints raw)))]
+              [else (infer-return (cons raw '()))])))])]))
+(define (instantiate-ctor-scheme sch ex-tvars)
+  (define r (run-infer* (instantiate-ctor-scheme/m sch ex-tvars)))
+  (values (car r) (cdr r)))
 
 ;; Compile-time exhaustiveness check for `match`.  Tabular cases:
 ;;   - any wildcard or variable pattern is a universal catchall.
