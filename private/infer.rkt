@@ -1022,13 +1022,13 @@
   (match e
     [(e:literal v _)                 (infer-return (cons empty-subst (literal-type v)))]
     [(e:var x stx)                   (values->infer (lambda () (infer-var x stx env)))]
-    [(e:lam params body _)           (values->infer (lambda () (infer-lam params body env)))]
+    [(e:lam params body _)           (infer-lam/m params body env)]
     [(e:app head args stx)           (values->infer (lambda () (infer-app head args stx env)))]
     [(e:let bindings body _)         (values->infer (lambda () (infer-let bindings body env)))]
     [(e:letrec bindings body _)      (values->infer (lambda () (infer-letrec bindings body env)))]
     [(e:if c t els stx)              (infer-if/m c t els stx env)]
-    [(e:ann expr ty-ast stx)         (values->infer (lambda () (infer-ann expr ty-ast stx env)))]
-    [(e:escape ty-ast vars _ stx)    (values->infer (lambda () (infer-escape ty-ast vars stx env)))]
+    [(e:ann expr ty-ast stx)         (infer-ann/m expr ty-ast stx env)]
+    [(e:escape ty-ast vars _ stx)    (infer-escape/m ty-ast vars stx env)]
     [(e:update record updates stx)   (values->infer (lambda () (infer-update record updates stx env)))]
     [(e:handle expr clauses ret stx) (values->infer (lambda () (infer-handle expr clauses ret stx env)))]
     [(e:match scrut clauses irrefutable? stx)
@@ -1119,17 +1119,15 @@
                                     x (suggest-similar x env))
                             stx)]))
 
-(define (infer-lam params body env)
-     (define param-tvars
-       (for/list ([_ (in-list params)]) (fresh-tvar)))
-     (define env*
-       (for/fold ([e env]) ([p (in-list params)] [t (in-list param-tvars)])
-         (env-extend-var e p (scheme '() t))))
-     (define-values (s body-type) (infer-expr body env*))
-     (values s
-             (foldr make-arrow body-type
-                    (for/list ([t (in-list param-tvars)])
-                      (apply-subst s t)))))
+(define (infer-lam/m params body env)
+  (let/infer ([param-tvars (infer-sequence (for/list ([p (in-list params)]) (m:fresh-tvar)))])
+    (let ([env* (for/fold ([e env]) ([p (in-list params)] [t (in-list param-tvars)])
+                  (env-extend-var e p (scheme '() t)))])
+      (let/infer ([rb (infer-expr/m body env*)])
+        (let* ([s (car rb)] [body-type (cdr rb)])
+          (infer-return
+           (cons s (foldr make-arrow body-type
+                          (for/list ([t (in-list param-tvars)]) (apply-subst s t))))))))))
 
 (define (infer-app head args stx env)
      (define-values (s-head t-head) (infer-expr head env))
@@ -1273,28 +1271,25 @@
                    [s-final (subst-compose s-branches s3)])
               (infer-return (cons s-final (apply-subst s-final t-then))))))))))
 
-(define (infer-ann expr ty-ast stx env)
-     (define-values (s-e t-e) (infer-expr expr env))
-     (define declared (qual-body-type (resolve-type ty-ast env)))
-     (define s-u
-       (with-handlers
-        ([exn:fail:unify?
-          (lambda (_)
-            (raise-type-mismatch!
-              (expr-stx expr)
-              declared
-              (apply-subst s-e t-e)))])
-        (unify (apply-subst s-e t-e) declared)))
-     (values (subst-compose s-u s-e) (apply-subst s-u declared)))
+(define (infer-ann/m expr ty-ast stx env)
+  (let/infer ([re (infer-expr/m expr env)])
+    (let* ([s-e (car re)] [t-e (cdr re)]
+           [declared (qual-body-type (resolve-type ty-ast env))]
+           [s-u (with-handlers
+                 ([exn:fail:unify?
+                   (lambda (_)
+                     (raise-type-mismatch! (expr-stx expr) declared (apply-subst s-e t-e)))])
+                 (unify (apply-subst s-e t-e) declared))])
+      (infer-return (cons (subst-compose s-u s-e) (apply-subst s-u declared))))))
 
-(define (infer-escape ty-ast vars stx env)
-     (define expected (qual-body-type (resolve-type ty-ast env)))
-     (for ([v (in-list vars)])
-       (unless (env-ref-var env v)
-         (raise-syntax-error 'infer
-           (format "(racket …) escape references unbound name: ~s" v)
-           stx)))
-     (values empty-subst expected))
+(define (infer-escape/m ty-ast vars stx env)
+  (define expected (qual-body-type (resolve-type ty-ast env)))
+  (for ([v (in-list vars)])
+    (unless (env-ref-var env v)
+      (raise-syntax-error 'infer
+        (format "(racket …) escape references unbound name: ~s" v)
+        stx)))
+  (infer-return (cons empty-subst expected)))
 
 (define (infer-match scrut clauses irrefutable? stx env)
      (define-values (s-scrut t-scrut) (infer-expr scrut env))
