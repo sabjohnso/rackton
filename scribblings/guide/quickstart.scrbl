@@ -61,14 +61,16 @@ Launch the REPL with:
 @verbatim|{
 λ> (+ 1 2)
 3 :: Integer
-λ> (:type (lambda (x) (Cons x Nil)))
+λ> ,type (lambda (x) (Cons x Nil))
 (lambda (x) (Cons x Nil)) :: (All (a) (-> a (List a)))
-λ> (:quit)
+λ> ,quit
 }|
 
-REPL commands are parenthesised forms — @racket[(:type _expr)],
-@racket[(:info _name)], @racket[(:quit)], @racket[(:help)] — so the
-reader treats them the same as ordinary input.
+REPL commands are typed with a leading comma — @litchar{,type},
+@litchar{,info}, @litchar{,clear}, @litchar{,quit}, @litchar{,help}.  A
+comma reads as an @racket[unquote], which is never
+valid Rackton, so a command can never be mistaken for ordinary input; a
+bare @litchar{,} is an accepted no-op.
 
 Tab completion, multi-line input, and history are all supported.  See
 @secref["repl" #:doc '(lib "rackton/scribblings/reference/rackton-reference.scrbl")]

@@ -31,9 +31,37 @@
   (check-regexp-match #rx"7" (cadr outs))
   (check-regexp-match #rx"Integer" (cadr outs)))
 
-(test-case "REPL: :type prints the inferred type without evaluating"
-  (define-values (_ outs) (drive-session '((:type (lambda (x) x)))))
+(test-case "REPL: ,type prints the inferred type without evaluating"
+  (define-values (_ outs) (drive-session '((unquote type (lambda (x) x)))))
   (check-regexp-match #rx"->" (car outs)))
+
+(test-case "REPL: bare , is an accepted no-op"
+  ;; A lone comma reads as `(unquote)`; it leaves the session untouched,
+  ;; emits no output, and does not signal exit.
+  (define state (rackton-repl-init))
+  (define-values (state* out) (rackton-repl-step state '(unquote)))
+  (check-equal? out "")
+  (check-false (rackton-repl-quit? state*)))
+
+(test-case "REPL: ,geiser-no-values is a no-op"
+  ;; Geiser/racket-mode probes the REPL with `,geiser-no-values`; swallow
+  ;; it silently rather than reporting an unknown command.
+  (define state (rackton-repl-init))
+  (define-values (state* out)
+    (rackton-repl-step state '(unquote geiser-no-values)))
+  (check-equal? out "")
+  (check-false (rackton-repl-quit? state*)))
+
+(test-case "REPL: ,clear wipes prior definitions"
+  ;; `,clear` resets the session to a fresh prelude env, so a name bound
+  ;; before the clear is unbound afterward.
+  (define-values (_ outs)
+    (drive-session
+     '((define keep 99)
+       (unquote clear)
+       keep)))
+  (check-regexp-match #rx"clear" (list-ref outs 1))
+  (check-regexp-match #rx"(?i:unbound|error)" (list-ref outs 2)))
 
 (test-case "REPL: env persists a data and uses ctor later"
   (define-values (_ outs)
@@ -67,6 +95,6 @@
                (list-ref outs 2))
   (check-regexp-match #rx"hi" (list-ref outs 3)))
 
-(test-case "REPL: :quit signals exit"
-  (define-values (st _outs) (drive-session '((:quit))))
+(test-case "REPL: ,quit signals exit"
+  (define-values (st _outs) (drive-session '((unquote quit))))
   (check-true (rackton-repl-quit? st)))

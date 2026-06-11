@@ -24,6 +24,17 @@
   (check-pred eof-object?
               (rackton-interaction-read 'src (open-input-string ""))))
 
+(test-case "the interaction reader turns a comma command into a command datum"
+  (check-equal?
+   (syntax->datum (rackton-interaction-read 'src (open-input-string ",quit\n")))
+   '(rackton-process '(unquote quit))))
+
+(test-case "a comma command keeps its argument, which `read` alone would split"
+  (check-equal?
+   (syntax->datum
+    (rackton-interaction-read 'src (open-input-string ",type (lambda (x) x)\n")))
+   '(rackton-process '(unquote type (lambda (x) x)))))
+
 ;; ----- rackton-process evaluates as Rackton, threading state --------
 
 (test-case "definitions, then expressions referring to them, print value :: Type"
@@ -58,11 +69,24 @@
   (check-eq? (current-read-interaction) before)
   (rackton-repl-enter!))
 
-(test-case ":quit from within Rackton mode drops back to the Racket reader"
+(test-case ",quit from within Rackton mode drops back to the Racket reader"
   (rackton-repl-exit!)
   (define before (current-read-interaction))
   (rackton-repl-enter!)
   (rackton-repl-reset!)
-  (void (with-output-to-string (lambda () (rackton-process '(:quit)))))
+  (void (with-output-to-string (lambda () (rackton-process '(unquote quit)))))
   (check-eq? (current-read-interaction) before)
   (rackton-repl-enter!))
+
+(test-case "re-entering after ,quit resumes the same session"
+  ;; `,quit` only restores the Racket reader; the kernel state lives on,
+  ;; so a definition made before the quit is still bound after re-entry.
+  (rackton-repl-exit!)
+  (rackton-repl-enter!)
+  (rackton-repl-reset!)
+  (void (with-output-to-string (lambda () (rackton-process '(define survivor 7)))))
+  (void (with-output-to-string (lambda () (rackton-process '(unquote quit)))))
+  (rackton-repl-enter!)
+  (check-regexp-match
+   #rx"7 ::"
+   (with-output-to-string (lambda () (rackton-process 'survivor)))))

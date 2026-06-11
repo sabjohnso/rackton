@@ -27,16 +27,17 @@ that the inference pipeline expects to find through parameters:
 @item{@racket[expr-counter] — a counter used to generate fresh names
       for naked-expression entries (so each gets a stable name to
       reference if needed).}
-@item{@racket[quit?] — flag set by @racket[:quit] / @racket[:q].}]
+@item{@racket[quit?] — flag set by @litchar{,quit} / @litchar{,q}.}]
 
 @section{The three-way dispatch}
 
 Each call to @racket[rackton-repl-step] dispatches by input shape:
 
 @itemlist[#:style 'ordered
-@item{If the input starts with a known REPL command (@racket[:type],
-      @racket[:info], @racket[:quit], @racket[:help] or their
-      shortforms), invoke @racket[handle-command].}
+@item{If the input is a comma command — it reads as @racket[(unquote
+      _word ...)], e.g. @litchar{,type}, @litchar{,info}, @litchar{,clear},
+      @litchar{,quit}, @litchar{,help} or their shortforms — invoke
+      @racket[handle-command].}
 @item{Else if the input is a top-level form (@racket[define],
       @racket[data], @racket[newtype],
       @racket[struct], @racket[protocol],

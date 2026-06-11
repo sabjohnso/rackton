@@ -51,9 +51,11 @@
 ;; `surface-forms` and `provide-specs` come from "doc-names.rkt" (shared
 ;; with doc-linking-test); the lists below are doc-coverage-specific.
 
-;; REPL commands accepted by the interactive REPL.
+;; REPL commands accepted by the interactive REPL.  Each is typed with a
+;; leading comma (`,type`, `,quit`, …); the symbols here are the command
+;; words the reference documents.
 (define repl-commands
-  '(:type :t :info :i :quit :q :help :h))
+  '(type t info i quit q clear c help h))
 
 ;; Internal identifiers — provided but not part of the public language.
 (define internal-names

@@ -6,8 +6,8 @@
 ;;   - `racket -l rackton/repl` boots the standalone loop (`module+ main`).
 ;;   - `(require rackton/repl)` at a running `racket` REPL switches that
 ;;     REPL into Rackton mode: subsequent forms are evaluated as Rackton
-;;     and printed as `value :: Type`, like `typed/racket`.  `:quit`
-;;     returns to the plain Racket reader.
+;;     and printed as `value :: Type`, like `typed/racket`.  `,quit`
+;;     returns to the plain Racket reader; `(rackton-repl-enter!)` resumes.
 ;;
 ;; The switch replaces `current-read-interaction` — the procedure a live
 ;; REPL uses to read each interaction — with one that rewrites the form
@@ -45,7 +45,7 @@
 
 ;; Evaluate one already-read Rackton datum: step the kernel, persist the
 ;; new state, and print its `value :: Type` / definition / error string.
-;; Returns (void) so the host REPL prints nothing of its own.  A `:quit`
+;; Returns (void) so the host REPL prints nothing of its own.  A `,quit`
 ;; drops back to the plain Racket reader.
 (define (rackton-process datum)
   (ensure-state!)
@@ -58,7 +58,7 @@
   (display output)
   (when (rackton-repl-quit? state*)
     (rackton-repl-exit!)
-    (display "; returned to the Racket reader\n"))
+    (display "; returned to the Racket reader — (rackton-repl-enter!) to resume\n"))
   (void))
 
 ;; ----- the interaction reader ----------------------------------------
@@ -67,15 +67,39 @@
 ;; normal evaluator runs it through the kernel.  `rackton-process` is
 ;; spliced as this module's binding (hygienically), so it resolves
 ;; regardless of the REPL namespace's imports.
+;;
+;; A leading comma marks a Rackton REPL command (`,quit`, `,type EXPR`, …):
+;; read the whole line and parse it with `rackton-parse-command-line`,
+;; since a command like `,type EXPR` is two datums that plain `read` would
+;; split.  Everything else is read one form at a time as before.
 (define (rackton-interaction-read src in)
-  (define form (read in))
-  (if (eof-object? form)
-      form
-      #`(rackton-process (quote #,(datum->syntax #f form)))))
+  ;; A prior `read` leaves the trailing newline in the port, so skip
+  ;; leading whitespace before deciding — otherwise `read-line` on a
+  ;; command would return the empty remainder of the previous line.
+  (skip-whitespace in)
+  (cond
+    [(eof-object? (peek-char in)) eof]
+    [(char=? (peek-char in) #\,)
+     (define cmd (rackton-parse-command-line (read-line in)))
+     #`(rackton-process (quote #,(datum->syntax #f cmd)))]
+    [else
+     (define form (read in))
+     (if (eof-object? form)
+         form
+         #`(rackton-process (quote #,(datum->syntax #f form))))]))
+
+;; Consume leading whitespace on `in` so the next form / command is seen
+;; at the position it actually starts.
+(define (skip-whitespace in)
+  (let loop ()
+    (define c (peek-char in))
+    (when (and (char? c) (char-whitespace? c))
+      (read-char in)
+      (loop))))
 
 ;; ----- entering / leaving Rackton mode -------------------------------
 
-;; The reader in effect before we switched, so `:quit` / exit can restore
+;; The reader in effect before we switched, so `,quit` / exit can restore
 ;; it.  #f when we are not currently installed.
 (define saved-reader (box #f))
 
@@ -95,7 +119,7 @@
 ;; calls to read each form); it writes nothing and touches no other
 ;; global, so it is inert in scripts, `eval`, and the test suite — none of
 ;; which read interactions.  The mode change is visible from the first
-;; `value :: Type` result; `:quit` returns to the plain Racket reader.
+;; `value :: Type` result; `,quit` returns to the plain Racket reader.
 (rackton-repl-enter!)
 
 (module+ main

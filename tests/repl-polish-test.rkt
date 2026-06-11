@@ -32,6 +32,23 @@
   (define p (open-input-string ""))
   (check-true (eof-object? (rackton-read-form p (lambda (_) "")))))
 
+;; ----- comma-prefixed commands ----------------------------------
+
+(test-case "a comma command line reads as an (unquote ...) datum"
+  (define p (open-input-string ",quit\n"))
+  (check-equal? (rackton-read-form p (lambda (_) ""))
+                '(unquote quit)))
+
+(test-case "a bare comma reads as the (unquote) no-op"
+  (define p (open-input-string ",\n"))
+  (check-equal? (rackton-read-form p (lambda (_) ""))
+                '(unquote)))
+
+(test-case "a comma command carries its argument expression"
+  (define p (open-input-string ",type (lambda (x) x)\n"))
+  (check-equal? (rackton-read-form p (lambda (_) ""))
+                '(unquote type (lambda (x) x))))
+
 ;; ----- 60.2 tab completion against session env -----------------
 
 (test-case "completions return identifiers matching prefix"

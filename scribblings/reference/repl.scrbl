@@ -33,7 +33,8 @@ Rackton and printed as @racketresultfont{value :: Type}, much like
 > (define (sqr x) (* x x))
 > (sqr 5)
 25 :: Integer
-> (:quit)
+> ,quit
+; returned to the Racket reader — (rackton-repl-enter!) to resume
 > (+ 1 2)
 3
 }|
@@ -41,9 +42,13 @@ Rackton and printed as @racketresultfont{value :: Type}, much like
 It works by replacing @racket[current-read-interaction] — the procedure a
 live REPL uses to read each interaction — so it is inert in scripts, in
 @racket[eval], and during module loading (none of those read
-interactions).  @racket[(:quit)] / @racket[(:q)] restores the plain
-Racket reader; the underlying functions @racket[rackton-repl-enter!] and
-@racket[rackton-repl-exit!] are also exported.
+interactions).  @litchar{,quit} (or @litchar{,q}) restores the plain
+Racket reader.  The session state lives on, so calling
+@racket[(rackton-repl-enter!)] afterwards @emph{resumes} the same session
+— every earlier definition is still bound.  Use
+@racket[(rackton-repl-reset!)] for a clean slate instead.  The underlying
+functions @racket[rackton-repl-enter!] and @racket[rackton-repl-exit!]
+are also exported.
 
 @section{Error formatting and terminal width}
 
@@ -67,35 +72,45 @@ is read wherever the error is formatted) to get wrapped output.
 
 @section{Commands}
 
-@deftogether[(@defidform[#:kind "REPL command" :type]
-              @defidform[#:kind "REPL command" :t])]{
+REPL commands are typed with a leading comma — @litchar{,type},
+@litchar{,quit}, and so on.  A comma reads as an @racket[unquote], which
+is never a valid Rackton form, so a command can never be mistaken for
+ordinary input.  A bare @litchar{,} on its own is an accepted no-op.
 
-@racket[(:type @#,racket[_expr])] (or @racket[(:t @#,racket[_expr])])
+@deftogether[(@defidform[#:kind "REPL command" type]
+              @defidform[#:kind "REPL command" t])]{
+
+@litchar{,type} @racket[_expr] (or @litchar{,t} @racket[_expr])
 shows the inferred type of @racket[_expr] without evaluating it.
-REPL commands are written as parenthesised forms so they can flow
-through the same reader as ordinary input.
 
 @verbatim|{
-λ> (:type (lambda (x) (Cons x Nil)))
+λ> ,type (lambda (x) (Cons x Nil))
 (lambda (x) (Cons x Nil)) :: (All (a) (-> a (List a)))
 }|}
 
-@deftogether[(@defidform[#:kind "REPL command" :info]
-              @defidform[#:kind "REPL command" :i])]{
+@deftogether[(@defidform[#:kind "REPL command" info]
+              @defidform[#:kind "REPL command" i])]{
 
-@racket[(:info @#,racket[_name])] (or @racket[(:i @#,racket[_name])])
+@litchar{,info} @racket[_name] (or @litchar{,i} @racket[_name])
 prints what @racket[_name] is bound to in the current environment: a
 value scheme, a data constructor, a type constructor, or a class.}
 
-@deftogether[(@defidform[#:kind "REPL command" :quit]
-              @defidform[#:kind "REPL command" :q])]{
+@deftogether[(@defidform[#:kind "REPL command" clear]
+              @defidform[#:kind "REPL command" c])]{
 
-@racket[(:quit)] (or @racket[(:q)]) exits the REPL.}
+@litchar{,clear} (or @litchar{,c}) resets the session to a fresh prelude
+environment, discarding every definition, data type, class, and instance
+made since the session began.}
 
-@deftogether[(@defidform[#:kind "REPL command" :help]
-              @defidform[#:kind "REPL command" :h])]{
+@deftogether[(@defidform[#:kind "REPL command" quit]
+              @defidform[#:kind "REPL command" q])]{
 
-@racket[(:help)] (or @racket[(:h)]) prints the command list.}
+@litchar{,quit} (or @litchar{,q}) exits the REPL.}
+
+@deftogether[(@defidform[#:kind "REPL command" help]
+              @defidform[#:kind "REPL command" h])]{
+
+@litchar{,help} (or @litchar{,h}) prints the command list.}
 
 @section{Programmatic interface}
 
@@ -132,6 +147,15 @@ Predicate recognising REPL-state values.}
 Reads a single Rackton form from @racket[port], handling multi-line
 input.  Returns @racket[eof] on end of input.}
 
+@defproc[(rackton-parse-command-line [str string?]) any/c]{
+
+Parses one line of input into a command datum, or @racket[#f] when the
+line is not a command.  A leading comma marks a command: the rest of the
+line is read as the command word and its arguments.  For example
+@litchar{,type (lambda (x) x)} parses to
+@racket[(list 'unquote 'type '(lambda (x) x))], and a bare @litchar{,}
+parses to @racket[(list 'unquote)], the no-op.}
+
 @defproc[(rackton-repl-completions [state rackton-repl-state?]
                                    [prefix string?])
          (listof string?)]{
@@ -142,7 +166,7 @@ names begin with @racket[prefix].  Used for tab completion.}
 @defproc[(rackton-repl-quit? [state rackton-repl-state?]) boolean?]{
 
 Returns @racket[#t] if @racket[state] is a quit-requested state (i.e.
-@racket[:quit] or @racket[:q] was processed).}
+@litchar{,quit} or @litchar{,q} was processed).}
 
 @section{Inspection}
 
