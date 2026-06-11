@@ -327,15 +327,16 @@
 ;; scheme body may carry nested quals when a method declared its own
 ;; qualifying context on top of the class head — both layers of
 ;; constraints are pulled out into the pending-preds box.
-(define (instantiate/subst sch)
+(define (instantiate/subst/m sch)
   (match sch
     [(scheme vs body)
-     (define s
-       (for/fold ([s empty-subst]) ([v (in-list vs)])
-         (subst-extend s v (fresh-tvar v))))
-     (define raw (apply-subst s body))
-     (add-preds! (qual-constraints-of raw))
-     (values (qual-body-deep raw) s)]))
+     (let/infer ([s (fresh-subst/m vs)])
+       (let* ([raw (apply-subst s body)])
+         (let/infer ([_ (m:add-preds (qual-constraints-of raw))])
+           (infer-return (cons (qual-body-deep raw) s)))))]))
+(define (instantiate/subst sch)
+  (define r (run-infer* (instantiate/subst/m sch)))
+  (values (car r) (cdr r)))
 
 (define (qual-body-deep t)
   (cond [(qual? t) (qual-body-deep (qual-body t))]
@@ -1699,13 +1700,15 @@
 ;; For non-existential patterns this is '(); the caller threads them
 ;; into the clause body's constraint-reduction so the body's class-
 ;; method calls on ex-skolems can be discharged.
-(define (infer-pattern pat env)
+;; Leaf (no infer-expr): fresh tvars via m:fresh-tvar, the arg walk becomes a
+;; monadic named-let.  instantiate-ctor-scheme stays direct (box-backed for
+;; now).  `infer-pattern` is the bridged 3-value entry the clause helpers call.
+(define (infer-pattern/m pat env)
   (match pat
-    [(p:wild _)   (values '() (fresh-tvar) '())]
-    [(p:lit v _)  (values '() (literal-type v) '())]
+    [(p:wild _)  (let/infer ([α (m:fresh-tvar)]) (infer-return (list '() α '())))]
+    [(p:lit v _) (infer-return (list '() (literal-type v) '()))]
     [(p:var x _)
-     (define α (fresh-tvar))
-     (values (list (cons x α)) α '())]
+     (let/infer ([α (m:fresh-tvar)]) (infer-return (list (list (cons x α)) α '())))]
     [(p:ctor name args stx)
      (define info (env-ref-data env name))
      (cond
@@ -1715,10 +1718,6 @@
                   name (suggest-similar name env))
           stx)]
        [(not (= (length args) (data-info-arity info)))
-        ;; When the ctor is from a `struct`, the
-        ;; struct's ordered field-name list is in env; append it
-        ;; to the message so the user sees which fields the
-        ;; pattern is missing.
         (define fields (env-ref-struct-fields env name))
         (define field-hint
           (cond
@@ -1731,33 +1730,36 @@
                   name (data-info-arity info) (length args) field-hint)
           stx)]
        [else
-        ;; For an existential ctor, instantiate the
-        ;; universally-quantified data tparams with fresh tvars
-        ;; (so they can unify with the scrutinee) but instantiate
-        ;; the existentially-quantified `ex-tvars` with fresh
-        ;; SKOLEMS (rigid tcons) so the pattern body can't sneak
-        ;; the existential type out.  The ctor's qual context
-        ;; (with skolems substituted) becomes hypotheses available
-        ;; to the surrounding match arm — proven by the pattern.
+        ;; Universal data tparams → fresh tvars (unify with scrutinee);
+        ;; existential ex-tvars → fresh SKOLEMS; the ctor's qual context
+        ;; becomes hypotheses the pattern proves.
         (define-values (ctor-type ex-hyps)
           (instantiate-ctor-scheme (data-info-scheme info)
                                    (data-info-ex-tvars info)))
         (define-values (arg-tys result-ty)
           (unfold-arrow ctor-type (length args)))
-        (define-values (all-bindings s-acc all-ex-hyps)
-          (for/fold ([acc '()] [s empty-subst] [hyps ex-hyps])
-                    ([arg-pat (in-list args)]
-                     [exp-ty (in-list arg-tys)])
-            (define-values (bs t inner-hyps) (infer-pattern arg-pat env))
-            (define s-u (unify (apply-subst s t)
-                               (apply-subst s exp-ty)))
-            (values (append acc bs)
-                    (subst-compose s-u s)
-                    (append hyps inner-hyps))))
-        (values (for/list ([b (in-list all-bindings)])
-                  (cons (car b) (apply-subst s-acc (cdr b))))
-                (apply-subst s-acc result-ty)
-                all-ex-hyps)])]))
+        (let/infer ([acc (let loop ([args args] [arg-tys arg-tys]
+                                    [bindings '()] [s empty-subst] [hyps ex-hyps])
+                           (cond
+                             [(null? args) (infer-return (list bindings s hyps))]
+                             [else
+                              (let/infer ([rp (infer-pattern/m (car args) env)])
+                                (let* ([bs (car rp)] [t (cadr rp)] [inner-hyps (caddr rp)]
+                                       [s-u (unify (apply-subst s t) (apply-subst s (car arg-tys)))])
+                                  (loop (cdr args) (cdr arg-tys)
+                                        (append bindings bs)
+                                        (subst-compose s-u s)
+                                        (append hyps inner-hyps))))]))])
+          (let* ([all-bindings (car acc)] [s-acc (cadr acc)] [all-ex-hyps (caddr acc)])
+            (infer-return
+             (list (for/list ([b (in-list all-bindings)])
+                     (cons (car b) (apply-subst s-acc (cdr b))))
+                   (apply-subst s-acc result-ty)
+                   all-ex-hyps))))])]))
+
+(define (infer-pattern pat env)
+  (define r (run-infer* (infer-pattern/m pat env)))
+  (values (car r) (cadr r) (caddr r)))
 
 ;; Instantiate a data ctor's scheme for use in a pattern.
 ;; Universally-quantified data-tparams become fresh tvars (will
