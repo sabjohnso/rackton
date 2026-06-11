@@ -1021,7 +1021,7 @@
 (define (infer-expr/m e env)
   (match e
     [(e:literal v _)                 (infer-return (cons empty-subst (literal-type v)))]
-    [(e:var x stx)                   (values->infer (lambda () (infer-var x stx env)))]
+    [(e:var x stx)                   (infer-var/m x stx env)]
     [(e:lam params body _)           (infer-lam/m params body env)]
     [(e:app head args stx)           (infer-app/m head args stx env)]
     [(e:let bindings body _)         (infer-let/m bindings body env)]
@@ -1042,7 +1042,11 @@
 
 ;; ----- per-form inference (the arms of infer-expr) ------------------
 
-(define (infer-var x stx env)
+;; No recursive infer-expr and no direct fresh/preds: a straight conversion
+;; that wraps each (values empty-subst type) result in infer-return.  The
+;; side-effecting calls (instantiate/subst, record-*) stay direct — during
+;; the transition they act on the boxes/tables, monadified at the flip.
+(define (infer-var/m x stx env)
      (define sch
        (or (env-ref-var env x)
            (let ([info (env-ref-data env x)])
@@ -1070,7 +1074,7 @@
            (cond
              [(memv #f class-param-tvars)
               ;; Shadowed method name — treat as an ordinary variable.
-              (values empty-subst t)]
+              (infer-return (cons empty-subst t))]
              [else
               (define dispatchpos (hash-ref (class-info-dispatchpos cinfo) x #f))
               (define reqs (hash-ref (class-info-dictreqs cinfo) x '()))
@@ -1098,7 +1102,7 @@
                  (unless (null? reqs) (record-dict-use! x stx reqs sub))]
                 [else
                  (unless (null? reqs) (record-dict-use! x stx reqs sub))])
-              (values empty-subst t)])]
+              (infer-return (cons empty-subst t))])]
           [else
            ;; A free function may itself be needs-dict: if its scheme's
            ;; qual context includes a constraint over a class with
@@ -1108,11 +1112,11 @@
            (define free-reqs (var-dict-requirements env sch))
            (cond
              [(null? free-reqs)
-              (values empty-subst (instantiate sch))]
+              (infer-return (cons empty-subst (instantiate sch)))]
              [else
               (define-values (t sub) (instantiate/subst sch))
               (record-dict-use! x stx free-reqs sub)
-              (values empty-subst t)])])]
+              (infer-return (cons empty-subst t))])])]
        [else
         (raise-syntax-error 'infer
                             (format "unbound identifier: ~s~a"
