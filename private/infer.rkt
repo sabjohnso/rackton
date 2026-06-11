@@ -43,7 +43,6 @@
          "surface.rkt"
          "entail.rkt"
          "impl-symbols.rkt"
-         "monomorph-log.rkt"
          "codegen-plan.rkt"
          "scheme-codec.rkt"
          ;; The Environment monad threads the type-resolution context
@@ -86,11 +85,9 @@
 ;; resolve to the locally-bound dict args.
 (define current-dict-skolems (make-parameter (hasheq)))
 
-;; The compile-time monomorphization & inlining logs
-;; (current-monomorphized-sites, current-inlinable-bodies,
-;; current-inlined-sites) and their record/lookup/snapshot interface live
-;; in "monomorph-log.rkt"; inference records monomorphized sites through
-;; that module's `record-monomorphized-site!`.
+;; The monomorphization log is the 'monomorphized-sites channel in the threaded
+;; infer-state (a newest-first list); resolve-method-uses accumulates it and
+;; infer-program+forms reads it out for the elaborator.
 
 ;; (The impl-name symbols of needs-dict return-typed instance methods that
 ;; must be force-exported are collected in codegen's cg-st now, and handed to
@@ -166,6 +163,7 @@
 (define (table-empty key)
   (case key
     [(needs-dict-defs instance-default-bodies) (hash)]
+    [(monomorphized-sites) '()]   ; a newest-first list, not a hash
     [else (hasheq)]))
 (define (st-table st key) (hash-ref (infer-state-tables st) key (table-empty key)))
 (define (st-table-set st key tbl)
@@ -1944,6 +1942,9 @@
 ;; by the elaborator, so the infer→codegen handoff is an explicit returned
 ;; value.  `current-method-uses` is inference-internal scratch (settled into
 ;; the resolutions) and stays out of the plan.
+;; Returns (values env forms* codegen-plan monomorphized-sites).  The
+;; monomorphization log (a newest-first list) is read out of the final st,
+;; alongside the plan; the elaborator publishes it to the runtime.
 (define (infer-program+forms forms [env initial-env])
   (define-values (env* _ forms* final-st) (infer-program/phases forms env (hasheq)))
   (values env* forms*
@@ -1951,7 +1952,8 @@
                         (st-table final-st 'method-dict-resolutions)
                         (st-table final-st 'needs-dict-defs)
                         (st-table final-st 'instance-default-bodies)
-                        (env-return-typed-methods env*))))
+                        (env-return-typed-methods env*))
+          (st-table final-st 'monomorphized-sites)))
 
 ;; `prior-declared` carries forward `top:dec` schemes registered in
 ;; previous REPL inputs.  A fresh `(infer-program)` call always
@@ -3592,6 +3594,9 @@
   (define uses (st-table st 'method-uses))
   (define resolutions (hash-copy (st-table st 'method-resolutions)))
   (define dict-resolutions (hash-copy (st-table st 'method-dict-resolutions)))
+  ;; The monomorphization log: a newest-first list accumulated in a local box
+  ;; (isolated, frozen back into st below — same shape as the resolution copies).
+  (define mono-box (box (st-table st 'monomorphized-sites)))
   (for ([(stx entry) (in-hash uses)])
       (match entry
         [(list 'return method-name class-param-tvars method-dict-entries)
@@ -3702,10 +3707,12 @@
               (define impl
                 (return-impl-symbol method-name keep-tcon-names))
               (hash-set! resolutions stx impl)
-              (record-monomorphized-site! method-name impl)]))]))
-  (st-table-set (st-table-set (st-table-set st 'method-resolutions (freeze-eq resolutions))
-                              'method-dict-resolutions (freeze-eq dict-resolutions))
-                'method-uses (hasheq)))
+              (set-box! mono-box (cons (cons method-name impl) (unbox mono-box)))]))]))
+  (st-table-set
+   (st-table-set (st-table-set (st-table-set st 'method-resolutions (freeze-eq resolutions))
+                               'method-dict-resolutions (freeze-eq dict-resolutions))
+                 'method-uses (hasheq))
+   'monomorphized-sites (unbox mono-box)))
 
 ;; Does this instance have a real, named compile-emitted
 ;; impl for the given method?  Two signals say "no":

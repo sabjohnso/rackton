@@ -109,11 +109,11 @@ between the inferer and the codegen:
       @racket['dict] entries on recursive @racket[e:var] references
       to the def's own name, and runs @racket[resolve-method-uses!]
       with the skolem map in scope.}
-@item{@racket[current-monomorphized-sites], @racket[current-inlinable-bodies],
-      and @racket[current-inlined-sites] — the monomorphization/inlining
-      logs (declared in @filepath{private/monomorph-log.rkt} and
-      re-exported through @filepath{infer.rkt}), accessible to user code
-      via @racket[rackton-monomorphized-sites] and
+@item{The monomorphization log — accumulated by @racket[resolve-method-uses]
+      as a channel in the threaded @racket[infer-state] and read out by
+      @racket[infer-program+forms]; the inlining logs thread through codegen's
+      @racket[cg-st].  Both are accessible to user code via
+      @racket[rackton-monomorphized-sites] and
       @racket[rackton-inlined-sites].}]
 
 The codegen consults these tables when lowering each AST node; the

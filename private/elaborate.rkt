@@ -20,7 +20,6 @@
                      "surface.rkt"
                      "infer.rkt"
                      "codegen.rkt"
-                     "monomorph-log.rkt"
                      "prelude.rkt"
                      "scheme-codec.rkt"
                      "env.rkt"
@@ -275,10 +274,10 @@
   ;; now owned by `infer-program+forms`, which returns them in a
   ;; `codegen-plan` that `compile-top` consumes.  Only the cross-phase logs
   ;; and codegen accumulators are installed here.
-  ;; The monomorphization log is inference-side (written by resolve-method-uses)
-  ;; and read out below; the inlinable-bodies / inlined-sites / exported-impls
-  ;; that codegen writes now live in the threaded cg-st instead of parameters.
-  (parameterize ([current-monomorphized-sites (make-monomorph-log)])
+  ;; The monomorphization log threads through the inference state and is
+  ;; returned by infer-program+forms; the inlinable-bodies / inlined-sites /
+  ;; exported-impls that codegen writes thread through cg-st.  No parameters.
+  (let ()
     ;; infer-program also returns the post-expansion form list — every
     ;; `#:derive-superclasses` instance replaced by the plain instances it
     ;; synthesized.  Codegen and export resolution run over THIS list so
@@ -290,7 +289,7 @@
     ;; file) keeps the fixed default, so compiled error text stays
     ;; reproducible.  Detection returns #f when there is no terminal and
     ;; no `COLUMNS`, leaving the default.
-    (define-values (env parsed* plan)
+    (define-values (env parsed* plan mono-log)
       (let ([cols (and (eq? (syntax-local-context) 'top-level)
                        (detect-display-columns))])
         (parameterize ([current-type-columns
@@ -312,10 +311,9 @@
                 ([f (in-list parsed-ordered)])
         (let-values ([(s cgst*) (compile-top f env plan cgst)])
           (values (if s (cons s acc) acc) cgst*))))
-    ;; Publish this elaborate's monomorphization log (inference-side) and the
-    ;; inlined-sites log (codegen-side, read out of the final cg-st) so tests
-    ;; can verify the optimizations fired.
-    (define mono-log (monomorphized-sites-snapshot))
+    ;; The monomorphization log (mono-log, from infer-program+forms above) and
+    ;; the inlined-sites log (codegen-side, read out of the final cg-st) so
+    ;; tests can verify the optimizations fired.
     (define inline-log (cg-st-inlined-sites final-cgst))
     ;; Pass the logs + the generated exported-impl names (from the final cg-st)
     ;; alongside the compiled forms.
