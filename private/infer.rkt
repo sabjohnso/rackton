@@ -1029,7 +1029,7 @@
     [(e:if c t els stx)              (infer-if/m c t els stx env)]
     [(e:ann expr ty-ast stx)         (infer-ann/m expr ty-ast stx env)]
     [(e:escape ty-ast vars _ stx)    (infer-escape/m ty-ast vars stx env)]
-    [(e:update record updates stx)   (values->infer (lambda () (infer-update record updates stx env)))]
+    [(e:update record updates stx)   (infer-update/m record updates stx env)]
     [(e:handle expr clauses ret stx) (values->infer (lambda () (infer-handle expr clauses ret stx env)))]
     [(e:match scrut clauses irrefutable? stx)
      (values->infer (lambda () (infer-match scrut clauses irrefutable? stx env)))]
@@ -1345,51 +1345,57 @@
 ;; must be a known struct type (or applied struct type); each named
 ;; field must exist; each value-expression must match the field's
 ;; declared type after substituting the record's tparam args.
-(define (infer-update record updates stx env)
-  (define-values (s-rec t-rec) (infer-expr record env))
-  (define t-rec*    (apply-subst s-rec t-rec))
-  (define type-head (update-type-head t-rec*))
-  (define type-args (update-type-args t-rec*))
-  (unless type-head
-    (raise-syntax-error 'infer
-      (format "update target must have a concrete record type, got ~a"
-              (pretty-type t-rec*))
-      stx))
-  (define field-names (env-ref-struct-fields env type-head))
-  (unless field-names
-    (raise-syntax-error 'infer
-      (format "update target type ~s is not a record" type-head)
-      stx))
-  ;; The data ctor's scheme tells us each field's type expressed in
-  ;; terms of the struct's tparams.  Instantiate by replacing those
-  ;; tparams with the actual type args we observed on `record`.
-  (define di (env-ref-data env type-head))
-  (define-values (field-types _result-type)
-    (instantiate-struct-fields di type-args))
-  (define s-acc
-    (for/fold ([s s-rec])
-              ([upd (in-list updates)])
-      (define field-name (car upd))
-      (define value-expr (cdr upd))
-      (define idx
-        (or (index-of field-names field-name)
-            (raise-syntax-error 'infer
-              (format "record type ~s has no field named ~s; available: ~s"
-                      type-head field-name field-names)
-              stx)))
-      (define expected (list-ref field-types idx))
-      (define-values (s-v t-v) (infer-expr value-expr (apply-subst/env s env)))
-      (define s-now (subst-compose s-v s))
-      (define s-u
-        (with-handlers
-         ([exn:fail:unify?
-           (lambda (_)
-             (raise-type-mismatch! (expr-stx value-expr)
-                                   (apply-subst s-now expected)
-                                   (apply-subst s-now t-v)))])
-         (unify (apply-subst s-now t-v) (apply-subst s-now expected))))
-      (subst-compose s-u s-now)))
-  (values s-acc (apply-subst s-acc t-rec*)))
+(define (infer-update/m record updates stx env)
+  (let/infer ([rr (infer-expr/m record env)])
+    (let ()  ; plain setup, then the monadic update-walk
+      (define s-rec (car rr))
+      (define t-rec (cdr rr))
+      (define t-rec*    (apply-subst s-rec t-rec))
+      (define type-head (update-type-head t-rec*))
+      (define type-args (update-type-args t-rec*))
+      (unless type-head
+        (raise-syntax-error 'infer
+          (format "update target must have a concrete record type, got ~a"
+                  (pretty-type t-rec*))
+          stx))
+      (define field-names (env-ref-struct-fields env type-head))
+      (unless field-names
+        (raise-syntax-error 'infer
+          (format "update target type ~s is not a record" type-head)
+          stx))
+      ;; The data ctor's scheme tells us each field's type in terms of the
+      ;; struct's tparams; instantiate with the args observed on `record`.
+      (define di (env-ref-data env type-head))
+      (define-values (field-types _result-type)
+        (instantiate-struct-fields di type-args))
+      (let/infer ([s-acc
+                   (let loop ([updates updates] [s s-rec])
+                     (cond
+                       [(null? updates) (infer-return s)]
+                       [else
+                        (define upd (car updates))
+                        (define field-name (car upd))
+                        (define value-expr (cdr upd))
+                        (define idx
+                          (or (index-of field-names field-name)
+                              (raise-syntax-error 'infer
+                                (format "record type ~s has no field named ~s; available: ~s"
+                                        type-head field-name field-names)
+                                stx)))
+                        (define expected (list-ref field-types idx))
+                        (let/infer ([rv (infer-expr/m value-expr (apply-subst/env s env))])
+                          (let* ([s-v (car rv)] [t-v (cdr rv)]
+                                 [s-now (subst-compose s-v s)]
+                                 [s-u (with-handlers
+                                       ([exn:fail:unify?
+                                         (lambda (_)
+                                           (raise-type-mismatch! (expr-stx value-expr)
+                                             (apply-subst s-now expected)
+                                             (apply-subst s-now t-v)))])
+                                       (unify (apply-subst s-now t-v)
+                                              (apply-subst s-now expected)))])
+                            (loop (cdr updates) (subst-compose s-u s-now))))]))])
+        (infer-return (cons s-acc (apply-subst s-acc t-rec*)))))))
 
 ;; Extract the head tcon name from a record type like
 ;; `(tcon Point)` or `(tapp (tcon Box) [args])`.
