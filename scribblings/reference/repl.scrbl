@@ -92,8 +92,23 @@ shows the inferred type of @racket[_expr] without evaluating it.
               @defidform[#:kind "REPL command" i])]{
 
 @litchar{,info} @racket[_name] (or @litchar{,i} @racket[_name])
-prints what @racket[_name] is bound to in the current environment: a
-value scheme, a data constructor, a type constructor, or a class.}
+prints what @racket[_name] is bound to in the current environment.  A
+value or data constructor prints its scheme on one line.  A class lists
+its parameters, superclasses, methods (each with its scheme), and known
+instances; a type constructor lists its arity, its constructors, and the
+classes it has instances of.  A type declared @racket[#:abstract] is
+marked @litchar{sealed}.
+
+@verbatim|{
+λ> ,info Monad
+Monad (class)
+  parameters:   m
+  superclasses: (Applicative m)
+  methods:
+    flatmap :: (All (m a b) ((Monad m) => (-> (-> a (m b)) (-> (m a) (m b)))))
+    join :: (All (m a) ((Monad m) => (-> (m (m a)) (m a))))
+  instances: (Monad (Either a)) (Monad IO) (Monad Identity) (Monad List) (Monad Maybe)
+}|}
 
 @deftogether[(@defidform[#:kind "REPL command" clear]
               @defidform[#:kind "REPL command" c])]{

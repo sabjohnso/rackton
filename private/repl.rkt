@@ -178,10 +178,84 @@
      => (lambda (di) (format "~s :: ~a (data ctor)\n"
                              name (scheme->datum (data-info-scheme di))))]
     [(env-ref-tcon env name)
-     => (lambda (_) (format "~s (type ctor)\n" name))]
+     => (lambda (ti) (format-tcon-info env name ti))]
     [(env-ref-class env name)
-     => (lambda (_) (format "~s (class)\n" name))]
+     => (lambda (ci) (format-class-info env name ci))]
     [else (format "~s is unbound\n" name)]))
+
+;; Render a class for ,info: parameters, superclasses, methods (each with
+;; its scheme), and the heads of its known instances.  Methods and
+;; instances live in hashes, so both are sorted for deterministic output.
+(define (format-class-info env name ci)
+  (define supers (class-info-supers ci))
+  (define methods
+    (sort (hash->list (class-info-methods ci)) symbol<? #:key car))
+  (define insts
+    (sort (for/list ([ii (in-list (env-instances env name))])
+            (format "~s" (pred->datum (instance-info-head ii))))
+          string<?))
+  (string-append
+   (format "~s (class)\n" name)
+   (format "  parameters:   ~a\n"
+           (string-join (map symbol->string (class-info-params ci)) " "))
+   (if (null? supers)
+       ""
+       (format "  superclasses: ~a\n"
+               (string-join (for/list ([p (in-list supers)])
+                              (format "~s" (pred->datum p)))
+                            " ")))
+   (if (null? methods)
+       ""
+       (apply string-append
+              "  methods:\n"
+              (for/list ([m (in-list methods)])
+                (format "    ~s :: ~a\n" (car m) (scheme->datum (cdr m))))))
+   (if (null? insts)
+       ""
+       (format "  instances: ~a\n" (string-join insts " ")))))
+
+;; Render a type constructor for ,info: arity (and a `sealed` marker for
+;; #:abstract types), the constructors visible in the env with their
+;; schemes, and the instance heads that mention this type — the classes
+;; the type "implements".  An imported abstract type's constructors don't
+;; resolve in the env, so they drop out naturally; a locally defined one's
+;; stay visible, matching what the session can actually use.
+(define (format-tcon-info env name ti)
+  (define ctor-lines
+    (for/list ([c (in-list (tcon-info-ctors ti))]
+               #:when (env-ref-data env c))
+      (format "    ~s :: ~a\n"
+              c (scheme->datum (data-info-scheme (env-ref-data env c))))))
+  (define impls
+    (sort (remove-duplicates
+           (for*/list ([(_cls insts) (in-hash (env-instance-table env))]
+                       [ii (in-list insts)]
+                       #:when (pred-mentions-tcon? (instance-info-head ii) name))
+             (format "~s" (pred->datum (instance-info-head ii)))))
+          string<?))
+  (string-append
+   (format "~s (type ctor, arity ~a~a)\n"
+           name (tcon-info-arity ti)
+           (if (tcon-info-abstract? ti) ", sealed" ""))
+   (if (null? ctor-lines)
+       ""
+       (apply string-append "  constructors:\n" ctor-lines))
+   (if (null? impls)
+       ""
+       (format "  implements: ~a\n" (string-join impls " ")))))
+
+(define (pred-mentions-tcon? p name)
+  (ormap (lambda (t) (type-mentions-tcon? t name)) (pred-args p)))
+
+(define (type-mentions-tcon? t name)
+  (match t
+    [(tcon n)       (eq? n name)]
+    [(tapp h args)  (or (type-mentions-tcon? h name)
+                        (ormap (lambda (a) (type-mentions-tcon? a name)) args))]
+    [(tforall _ b)  (type-mentions-tcon? b name)]
+    [(qual cs b)    (or (ormap (lambda (c) (pred-mentions-tcon? c name)) cs)
+                        (type-mentions-tcon? b name))]
+    [_              #f]))
 
 ;; ----- macro-definition input -------------------------------------
 
