@@ -1032,9 +1032,9 @@
     [(e:update record updates stx)   (infer-update/m record updates stx env)]
     [(e:handle expr clauses ret stx) (infer-handle/m expr clauses ret stx env)]
     [(e:match scrut clauses irrefutable? stx)
-     (values->infer (lambda () (infer-match scrut clauses irrefutable? stx env)))]
+     (infer-match/m scrut clauses irrefutable? stx env)]
     [(e:match* scrutinees clauses _irrefutable? stx)
-     (values->infer (lambda () (infer-match* scrutinees clauses stx env)))]))
+     (infer-match*/m scrutinees clauses stx env)]))
 
 (define (infer-expr e env)
   (define r (run-infer* (infer-expr/m e env)))
@@ -1282,33 +1282,38 @@
         stx)))
   (infer-return (cons empty-subst expected)))
 
-(define (infer-match scrut clauses irrefutable? stx env)
-     (define-values (s-scrut t-scrut) (infer-expr scrut env))
-     ;; If we've been handed an expected result type
-     ;; from the surrounding context (typically a checked
-     ;; lambda body), seed result-tv with it so per-arm GADT
-     ;; skolem refinement can resolve each body against the
-     ;; concrete expected type rather than a free tvar.
-     (define expected (current-expected-type))
-     (current-expected-type #f)
-     (define result-tv (or expected (fresh-tvar)))
-     (define-values (s-final _)
-       (for/fold ([s s-scrut] [_ignored result-tv])
-                 ([cl (in-list clauses)] [i (in-naturals)])
-         (define-values (s-cl _t)
-           (infer-clause cl
-                         (apply-subst s t-scrut)
-                         (apply-subst s result-tv)
-                         (apply-subst/env s env)
-                         (> i 0)))
-         (values (subst-compose s-cl s) _t)))
-     ;; An irrefutable destructure (a pattern let/where binding) skips the
-     ;; exhaustiveness check — the user has asserted the pattern fits.
-     (unless irrefutable?
-       (check-exhaustive! (apply-subst s-final t-scrut) clauses stx env))
-     (values s-final (apply-subst s-final result-tv)))
+;; current-expected-type is read/reset directly (still a parameter during the
+;; transition); infer-clause is not yet converted, so it is bridged.
+(define (infer-match/m scrut clauses irrefutable? stx env)
+  (let/infer ([rs (infer-expr/m scrut env)])
+    (let ()
+      (define s-scrut (car rs))
+      (define t-scrut (cdr rs))
+      ;; Seed result-tv with the surrounding expected type (if any) so per-arm
+      ;; GADT skolem refinement resolves each body against the concrete type.
+      (define expected (current-expected-type))
+      (current-expected-type #f)
+      (let/infer ([result-tv (if expected (infer-return expected) (m:fresh-tvar))])
+        (let/infer ([s-final
+                     (let loop ([clauses clauses] [i 0] [s s-scrut])
+                       (cond
+                         [(null? clauses) (infer-return s)]
+                         [else
+                          (let/infer ([rc (values->infer
+                                           (lambda ()
+                                             (infer-clause (car clauses)
+                                                           (apply-subst s t-scrut)
+                                                           (apply-subst s result-tv)
+                                                           (apply-subst/env s env)
+                                                           (> i 0))))])
+                            (loop (cdr clauses) (add1 i) (subst-compose (car rc) s)))]))])
+          (let ()
+            ;; Irrefutable destructure (a pattern let/where) skips exhaustiveness.
+            (unless irrefutable?
+              (check-exhaustive! (apply-subst s-final t-scrut) clauses stx env))
+            (infer-return (cons s-final (apply-subst s-final result-tv)))))))))
 
-(define (infer-match* scrutinees clauses stx env)
+(define (infer-match*/m scrutinees clauses stx env)
      ;; Multi-scrutinee match (emitted by the multi-clause `define`
      ;; combiner in private/surface.rkt).  Infer each scrutinee's
      ;; type, then for each clause walk its pattern list against the
@@ -1318,25 +1323,33 @@
      ;; scrutinee types is not (yet) checked — the multi-clause
      ;; combiner trusts the user to cover the cases they care about,
      ;; matching Haskell's behaviour.
-     (define-values (s-scruts scrut-types-rev)
-       (for/fold ([s empty-subst] [acc '()]) ([sc (in-list scrutinees)])
-         (define-values (s-i t-i) (infer-expr sc (apply-subst/env s env)))
-         (values (subst-compose s-i s) (cons t-i acc))))
-     (define scrut-types (reverse scrut-types-rev))
-     (define expected (current-expected-type))
-     (current-expected-type #f)
-     (define result-tv (or expected (fresh-tvar)))
-     (define-values (s-final _)
-       (for/fold ([s s-scruts] [_ignored result-tv])
-                 ([cl (in-list clauses)] [i (in-naturals)])
-         (define-values (s-cl _t)
-           (infer-clause* cl
-                          (map (lambda (t) (apply-subst s t)) scrut-types)
-                          (apply-subst s result-tv)
-                          (apply-subst/env s env)
-                          (> i 0)))
-         (values (subst-compose s-cl s) _t)))
-     (values s-final (apply-subst s-final result-tv)))
+     (let/infer ([scrut-acc
+                  (let loop ([scs scrutinees] [s empty-subst] [acc '()])
+                    (cond
+                      [(null? scs) (infer-return (cons s acc))]
+                      [else
+                       (let/infer ([ri (infer-expr/m (car scs) (apply-subst/env s env))])
+                         (loop (cdr scs) (subst-compose (car ri) s) (cons (cdr ri) acc)))]))])
+       (let ()
+         (define s-scruts (car scrut-acc))
+         (define scrut-types (reverse (cdr scrut-acc)))
+         (define expected (current-expected-type))
+         (current-expected-type #f)
+         (let/infer ([result-tv (if expected (infer-return expected) (m:fresh-tvar))])
+           (let/infer ([s-final
+                        (let loop ([clauses clauses] [i 0] [s s-scruts])
+                          (cond
+                            [(null? clauses) (infer-return s)]
+                            [else
+                             (let/infer ([rc (values->infer
+                                              (lambda ()
+                                                (infer-clause* (car clauses)
+                                                               (map (lambda (t) (apply-subst s t)) scrut-types)
+                                                               (apply-subst s result-tv)
+                                                               (apply-subst/env s env)
+                                                               (> i 0))))])
+                               (loop (cdr clauses) (add1 i) (subst-compose (car rc) s)))]))])
+             (infer-return (cons s-final (apply-subst s-final result-tv))))))))
 
 ;; Type a single match clause.  Pattern bindings extend the env for the
 ;; clause body.  The body type is unified with the running result type
