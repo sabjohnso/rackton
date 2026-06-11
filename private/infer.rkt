@@ -26,9 +26,6 @@
          require-spec->submod-spec
          def-scc-order
          generalize
-         instantiate
-         current-fresh-state
-         current-pending-preds
          current-method-uses
          current-method-resolutions
          current-return-typed-methods
@@ -64,12 +61,17 @@
          ;; one cluster at a time (PLAN.org Phase 3).
          (only-in "monad/infer.rkt"
                   infer-return infer-bind infer-map infer-sequence run-infer
-                  let/infer let/infer+ begin/infer))
+                  let/infer let/infer+ begin/infer
+                  ;; the threaded inference state (replaces the boxes)
+                  infer-state infer-state? make-infer-state
+                  infer-state-fresh-counter infer-state-pending-preds))
 
 ;; ----- fresh type variables -----------------------------------------
+;; The fresh-name counter and the pending-pred bag live in the threaded
+;; `infer-state` (private/monad/infer.rkt), not in boxes.  st:* are the pure
+;; steppers used by the (non-monadic) driver; the m:* ops below are their
+;; Infer-monad forms used by the expression core.
 
-(define current-fresh-state    (make-parameter #f))
-(define current-pending-preds  (make-parameter #f))
 ;; Return-typed-method use sites accumulated during inference of one
 ;; top-level definition.  A hashtable from the e:var's syntax object →
 ;; (list class-name method-name body-type).  After constraint
@@ -145,73 +147,55 @@
 ;; expressions don't reuse the outer scope's expected type.
 (define current-expected-type   (make-parameter #f))
 
-(define (fresh-tvar [prefix 'a])
-  (define box (current-fresh-state))
-  (unless box
-    (error 'fresh-tvar "called outside of inference"))
-  (define n (unbox box))
-  (set-box! box (add1 n))
-  (tvar (string->symbol (format "~a~a" prefix n))))
+;; ----- fresh-name supply + pending-pred accumulator (pure on `st`) ---
+;; st:* step the immutable infer-state; they are the (non-monadic) driver's
+;; interface to the threaded state.
+(define (st:fresh st [prefix 'a])
+  (define n (infer-state-fresh-counter st))
+  (values (tvar (string->symbol (format "~a~a" prefix n)))
+          (struct-copy infer-state st [fresh-counter (add1 n)])))
 
-(define-syntax-rule (with-fresh body ...)
-  (parameterize ([current-fresh-state   (box 0)]
-                 [current-pending-preds (box '())])
-    body ...))
+(define (st:add-preds st ps)
+  (struct-copy infer-state st
+               [pending-preds (append ps (infer-state-pending-preds st))]))
 
-;; ----- constraint accumulator ---------------------------------------
+(define (st:apply-subst-to-preds st s)
+  (struct-copy infer-state st
+               [pending-preds (for/list ([p (in-list (infer-state-pending-preds st))])
+                                (apply-subst s p))]))
 
-(define (add-preds! ps)
-  (define b (current-pending-preds))
-  (set-box! b (append ps (unbox b))))
+(define (st:preds st) (infer-state-pending-preds st))
 
-(define (apply-subst-to-preds! s)
-  (define b (current-pending-preds))
-  (set-box! b (for/list ([p (in-list (unbox b))]) (apply-subst s p))))
-
-(define (snapshot-preds) (unbox (current-pending-preds)))
-
-(define (restore-preds! ps)
-  (set-box! (current-pending-preds) ps))
+(define (st:set-preds st ps)
+  (struct-copy infer-state st [pending-preds ps]))
 
 ;; Pull every pred whose free type vars share any var with `quantified-set`,
 ;; AND every fully-concrete pred (no free tvars at all).  Fully-concrete
 ;; preds are unaffected by any further outer-scope substitutions, so the
 ;; current generalization is our last chance to discharge them; deferring
-;; would just leak them forever.  GADT equality-constraint surfacing
-;; relies on this so that a concrete `(~ Integer String)` raised by an
-;; ill-typed call site like `(pair-eq 7 "hi")` actually surfaces as an
-;; error.
-(define (take-relevant-preds! quantified-set)
-  (define b (current-pending-preds))
+;; would just leak them forever.  GADT equality-constraint surfacing relies
+;; on this so a concrete `(~ Integer String)` from `(pair-eq 7 "hi")` surfaces
+;; as an error.  Returns (values taken st').
+(define (st:take-relevant-preds st quantified-set)
   (define-values (taken kept)
     (partition (lambda (p)
                  (define vs (type-vars p))
                  (or (set-empty? vs)
                      (not (set-empty? (set-intersect vs quantified-set)))))
-               (unbox b)))
-  (set-box! b kept)
-  taken)
+               (infer-state-pending-preds st)))
+  (values taken (struct-copy infer-state st [pending-preds kept])))
 
-;; ----- transitional Infer-monad bridge ------------------------------
-;; The inference core is moving into the Infer monad one cluster at a time
-;; (PLAN.org Phase 3, approach a).  So converted and not-yet-converted code
-;; can coexist without fresh-name collisions, the *state stays in the boxes*
-;; (current-fresh-state / current-pending-preds) during the transition and
-;; these monad ops delegate to them; the threaded `st` is unused until the
-;; final flip moves state into `st` and deletes the boxes.  Delegating to
-;; `fresh-tvar` also keeps variable names byte-identical.
-(define ((m:fresh-tvar [prefix 'a]) _ctx st)   ; Infer tvar
-  (values (fresh-tvar prefix) st))
-(define ((m:add-preds ps) _ctx st)             ; Infer void
-  (add-preds! ps) (values (void) st))
-(define ((m:snapshot-preds) _ctx st)           ; Infer (listof pred)
-  (values (snapshot-preds) st))
-;; Run an Infer computation during the transition (state in boxes; ctx/st
-;; unused — passed as #f).
-(define (run-infer* m) (let-values ([(a _st) (run-infer m #f #f)]) a))
-;; Lift a (values subst type)-returning thunk into Infer (subst . type).
-(define ((values->infer thunk) _ctx st)
-  (let-values ([(s t) (thunk)]) (values (cons s t) st)))
+;; ----- Infer-monad state ops (the expression core's interface) ------
+;; Each is the monadic form of the matching st:* stepper, reading/writing the
+;; threaded `st`.  ctx is unused: the engine's Reader-style config still rides
+;; the current-* parameters, which the driver wraps around its *synchronous*
+;; run-infer calls, so they remain in scope during execution.
+(define ((m:fresh-tvar [prefix 'a]) _ctx st) (st:fresh st prefix))
+(define ((m:add-preds ps) _ctx st) (values (void) (st:add-preds st ps)))
+(define ((m:snapshot-preds) _ctx st) (values (st:preds st) st))
+(define ((m:set-preds ps) _ctx st) (values (void) (st:set-preds st ps)))
+(define ((m:apply-subst-to-preds s) _ctx st) (values (void) (st:apply-subst-to-preds st s)))
+(define ((m:take-relevant-preds q) _ctx st) (st:take-relevant-preds st q))
 
 ;; ----- generalize / instantiate -------------------------------------
 
@@ -246,7 +230,7 @@
     [_ (infer-return t)]))
 
 ;; Build a substitution sending each of `vs` to a distinct fresh tvar named
-;; after it (same prefix as the original fresh-tvar, so names are unchanged).
+;; after it (the prefix is the variable, matching st:fresh's naming).
 (define (fresh-subst/m vs)
   (let loop ([vs vs] [s empty-subst])
     (cond
@@ -254,10 +238,6 @@
       [else
        (let/infer ([t (m:fresh-tvar (car vs))])
          (loop (cdr vs) (subst-extend s (car vs) t)))])))
-
-;; Bridges: the public entry points keep their (scheme/type -> type) shape.
-(define (instantiate sch)       (run-infer* (instantiate/m sch)))
-(define (instantiate-tforall t) (run-infer* (instantiate-tforall/m t)))
 
 ;; Bidirectional check companion to `infer-expr`.
 ;; Checks that `expr` has type `expected-ty` under `env`, returning
@@ -334,9 +314,6 @@
        (let* ([raw (apply-subst s body)])
          (let/infer ([_ (m:add-preds (qual-constraints-of raw))])
            (infer-return (cons (qual-body-deep raw) s)))))]))
-(define (instantiate/subst sch)
-  (define r (run-infer* (instantiate/subst/m sch)))
-  (values (car r) (cdr r)))
 
 (define (qual-body-deep t)
   (cond [(qual? t) (qual-body-deep (qual-body t))]
@@ -540,9 +517,9 @@
 ;; substitution it produced (callers compose it into their running
 ;; subst); the pending-preds box is updated in place.
 
-(define (improve-by-fds env)
-  (let loop ([s empty-subst])
-    (define preds (snapshot-preds))
+(define (improve-by-fds env st)
+  (let loop ([s empty-subst] [st st])
+    (define preds (st:preds st))
     (define s′ s)
     (for ([p (in-list preds)])
       (define cinfo (env-ref-class env (pred-class p)))
@@ -573,10 +550,9 @@
                   (define u (unify pr ir))
                   (set! s′ (subst-compose u s′)))))))))
     (cond
-      [(equal? s′ s) s]                  ; fixpoint
+      [(equal? s′ s) (values s st)]      ; fixpoint
       [else
-       (apply-subst-to-preds! s′)
-       (loop s′)])))
+       (loop s′ (st:apply-subst-to-preds st s′))])))
 
 ;; FD improvement against a set of HYPOTHESES (rather than concrete
 ;; instances).  For a polymorphic definition whose context carries a
@@ -588,9 +564,9 @@
 ;; arrow discharge its `(Arrow cat a)` / `(Prod a)` residuals against the
 ;; declared `(ArrowLoop cat p)` (so `a := p`).  Without it the body's
 ;; fresh product var never connects to the signature's `p`.
-(define (improve-by-hyp-fds env hypotheses)
-  (let loop ([s empty-subst])
-    (define preds (snapshot-preds))
+(define (improve-by-hyp-fds env hypotheses st)
+  (let loop ([s empty-subst] [st st])
+    (define preds (st:preds st))
     (define s′ s)
     (for ([p (in-list preds)])
       (define cinfo (env-ref-class env (pred-class p)))
@@ -622,10 +598,9 @@
                                    σ)))
                 (set! s′ (subst-compose σ s′))))))))
     (cond
-      [(equal? s′ s) s]
+      [(equal? s′ s) (values s st)]
       [else
-       (apply-subst-to-preds! s′)
-       (loop s′)])))
+       (loop s′ (st:apply-subst-to-preds st s′))])))
 
 (define (match-many srcs dsts)
   ;; Borrowed from entail.rkt: one-way match returning a substitution.
@@ -672,9 +647,13 @@
 ;; to nice sequential names (a, b, c, …) for readability.  Runs FD
 ;; improvement first, so an instance whose determining args match the
 ;; pred's can pin the determined args before generalisation.
-(define (generalize env ty [hypotheses '()])
-  (define-values (sch _fd-sub) (generalize* env ty hypotheses))
-  sch)
+(define (generalize env ty st [hypotheses '()])
+  (define-values (sch _fd-sub st′) (generalize* env ty st hypotheses))
+  (values sch st′))
+
+;; Infer-monad form, for the expression core (infer-let/m, infer-letrec/m).
+(define (generalize/m env ty [hypotheses '()])
+  (lambda (_ctx st) (generalize env ty st hypotheses)))
 
 ;; Like `generalize`, but also returns the functional-dependency
 ;; improvement substitution it computed.  Callers that go on to resolve
@@ -684,13 +663,13 @@
 ;; against the improved type rather than an ambiguous tvar.  Returning the
 ;; subst — instead of re-running `improve-by-fds`, which mutates the shared
 ;; pred box again — keeps generalization behavior identical.
-(define (generalize* env ty [hypotheses '()])
-  (define fd-sub (improve-by-fds env))
+(define (generalize* env ty st [hypotheses '()])
+  (define-values (fd-sub st1) (improve-by-fds env st))
   (define ty* (apply-subst fd-sub ty))
   (define env-fv (env-vars-free-vars env))
   (define ty-fv  (type-vars ty*))
   (define q-set  (set-subtract ty-fv env-fv))
-  (define preds  (take-relevant-preds! q-set))
+  (define-values (preds st2) (st:take-relevant-preds st1 q-set))
   (define reduced (reduce-context env hypotheses preds))
   (define final-q
     (for/fold ([acc q-set]) ([p (in-list reduced)])
@@ -704,7 +683,7 @@
       (subst-extend s old (tvar new))))
   (values (scheme nice (mqual (for/list ([p (in-list reduced)]) (apply-subst σ p))
                               (apply-subst σ ty*)))
-          fd-sub))
+          fd-sub st2))
 
 ;; For user-facing diagnostic output: rename a type's free tvars to
 ;; nice sequential names (a, b, c, …), flatten curried arrows back to
@@ -1005,19 +984,18 @@
 ;; ----- core inference ----------------------------------------------
 
 (define (infer-expr/fresh e [env initial-env])
-  (with-fresh (infer-expr e env)))
+  (define-values (s t _st) (infer-expr e env (make-infer-state)))
+  (values s t))
 
 ;; infer-expr dispatches on the expression form; each non-trivial arm is
 ;; its own `infer-<form>` helper below, mutually recursive with this
 ;; dispatcher.  Keeping the dispatch flat and the arms named makes each
 ;; form's inference rule readable (and testable) in isolation.
 ;;
-;; PHASE 3 (in progress): the dispatcher is now the Infer-monad
-;; `infer-expr/m`, returning `Infer (subst . type)`.  Arms not yet converted
-;; are bridged with `values->infer` (they still return `(values subst type)`
-;; and keep state in the boxes); each is replaced by a direct `infer-<form>/m`
-;; call as it converts.  `infer-expr` is the bridged entry point that the
-;; unconverted arms still call.
+;; The dispatcher is the Infer-monad `infer-expr/m`, returning
+;; `Infer (subst . type)`; every arm is its own `infer-<form>/m`.  The fresh
+;; counter and pending-pred bag live in the threaded `st` (no boxes).
+;; `infer-expr` is the driver-facing bridge that runs it on a given st.
 (define (infer-expr/m e env)
   (match e
     [(e:literal v _)                 (infer-return (cons empty-subst (literal-type v)))]
@@ -1036,9 +1014,12 @@
     [(e:match* scrutinees clauses _irrefutable? stx)
      (infer-match*/m scrutinees clauses stx env)]))
 
-(define (infer-expr e env)
-  (define r (run-infer* (infer-expr/m e env)))
-  (values (car r) (cdr r)))
+;; Driver↔monad bridge: runs the monadic dispatcher on the threaded state and
+;; returns (values subst type st').  The current-* config parameters that the
+;; driver wraps around its calls stay in scope because run-infer is synchronous.
+(define (infer-expr e env st)
+  (define-values (r st′) (run-infer (infer-expr/m e env) #f st))
+  (values (car r) (cdr r) st′))
 
 ;; ----- per-form inference (the arms of infer-expr) ------------------
 
@@ -1057,52 +1038,50 @@
         (define cinfo (and owner-class (env-ref-class env owner-class)))
         (cond
           [cinfo
-           (define-values (t sub) (instantiate/subst sch))
-           ;; `x` is genuinely this class's method only if its scheme
-           ;; quantifies over the class parameters — instantiating it
-           ;; must bind each of them in `sub`.  A LOCAL binding that
-           ;; merely shares a method's name (e.g. an effect operation
-           ;; named `peek`, colliding with the prelude Storable class's
-           ;; `peek`) has its own scheme, so some class param is absent
-           ;; from `sub`.  Such an `x` is an ordinary variable that
-           ;; shadows the method, not the method itself — it must not
-           ;; drive dispatch (and looking the param up without a default
-           ;; used to crash with `hash-ref: no value found for key`).
-           (define class-param-tvars
-             (for/list ([p (in-list (class-info-params cinfo))])
-               (hash-ref sub p #f)))
-           (cond
-             [(memv #f class-param-tvars)
-              ;; Shadowed method name — treat as an ordinary variable.
-              (infer-return (cons empty-subst t))]
-             [else
-              (define dispatchpos (hash-ref (class-info-dispatchpos cinfo) x #f))
-              (define reqs (hash-ref (class-info-dictreqs cinfo) x '()))
+           (let/infer ([r (instantiate/subst/m sch)])
+            (let* ([t (car r)] [sub (cdr r)]
+                   ;; `x` is genuinely this class's method only if its scheme
+                   ;; quantifies over the class parameters — instantiating it
+                   ;; must bind each of them in `sub`.  A LOCAL binding that
+                   ;; merely shares a method's name (e.g. an effect operation
+                   ;; named `peek`, colliding with the prelude Storable class's
+                   ;; `peek`) has its own scheme, so some class param is absent
+                   ;; from `sub`.  Such an `x` is an ordinary variable that
+                   ;; shadows the method, not the method itself — it must not
+                   ;; drive dispatch.
+                   [class-param-tvars
+                    (for/list ([p (in-list (class-info-params cinfo))])
+                      (hash-ref sub p #f))])
               (cond
-                [(eq? dispatchpos 'return)
-                 ;; A return-typed method may ALSO carry a method-level dict
-                 ;; requirement (e.g. MonadTrans.lift's `(Monad m) =>`).
-                 ;; Fold those dict-entries into the single 'return entry so
-                 ;; the separate record-dict-use! below doesn't clobber the
-                 ;; dispatch resolution on the same stx.
-                 (define method-dict-entries
-                   (for/list ([req (in-list reqs)])
-                     (cons (car req)
-                           (for/list ([a (in-list (cdr req))]) (apply-subst sub a)))))
-                 (record-method-use! x stx env class-param-tvars method-dict-entries)]
-                [(integer? dispatchpos)
-                 ;; Positional class-method call.  The resolver routes
-                 ;; to a per-instance impl after the dispatch arg's
-                 ;; type settles.  Overlapping instances are handled
-                 ;; the same way.  Recording fires for ALL positional
-                 ;; method calls so any concrete-type call site can be
-                 ;; monomorphized (direct impl call instead of runtime
-                 ;; dispatch).
-                 (record-inst-dispatch-use! x stx class-param-tvars)
-                 (unless (null? reqs) (record-dict-use! x stx reqs sub))]
+                [(memv #f class-param-tvars)
+                 ;; Shadowed method name — treat as an ordinary variable.
+                 (infer-return (cons empty-subst t))]
                 [else
-                 (unless (null? reqs) (record-dict-use! x stx reqs sub))])
-              (infer-return (cons empty-subst t))])]
+                 (define dispatchpos (hash-ref (class-info-dispatchpos cinfo) x #f))
+                 (define reqs (hash-ref (class-info-dictreqs cinfo) x '()))
+                 (cond
+                   [(eq? dispatchpos 'return)
+                    ;; A return-typed method may ALSO carry a method-level dict
+                    ;; requirement (e.g. MonadTrans.lift's `(Monad m) =>`).
+                    ;; Fold those dict-entries into the single 'return entry so
+                    ;; the separate record-dict-use! below doesn't clobber the
+                    ;; dispatch resolution on the same stx.
+                    (define method-dict-entries
+                      (for/list ([req (in-list reqs)])
+                        (cons (car req)
+                              (for/list ([a (in-list (cdr req))]) (apply-subst sub a)))))
+                    (record-method-use! x stx env class-param-tvars method-dict-entries)]
+                   [(integer? dispatchpos)
+                    ;; Positional class-method call.  The resolver routes
+                    ;; to a per-instance impl after the dispatch arg's type
+                    ;; settles.  Recording fires for ALL positional method
+                    ;; calls so any concrete-type call site can be
+                    ;; monomorphized (direct impl call instead of dispatch).
+                    (record-inst-dispatch-use! x stx class-param-tvars)
+                    (unless (null? reqs) (record-dict-use! x stx reqs sub))]
+                   [else
+                    (unless (null? reqs) (record-dict-use! x stx reqs sub))])
+                 (infer-return (cons empty-subst t))])))]
           [else
            ;; A free function may itself be needs-dict: if its scheme's
            ;; qual context includes a constraint over a class with
@@ -1112,11 +1091,13 @@
            (define free-reqs (var-dict-requirements env sch))
            (cond
              [(null? free-reqs)
-              (infer-return (cons empty-subst (instantiate sch)))]
+              (let/infer ([t (instantiate/m sch)])
+                (infer-return (cons empty-subst t)))]
              [else
-              (define-values (t sub) (instantiate/subst sch))
-              (record-dict-use! x stx free-reqs sub)
-              (infer-return (cons empty-subst t))])])]
+              (let/infer ([r (instantiate/subst/m sch)])
+                (let* ([t (car r)] [sub (cdr r)])
+                  (record-dict-use! x stx free-reqs sub)
+                  (infer-return (cons empty-subst t))))])])]
        [else
         (raise-syntax-error 'infer
                             (format "unbound identifier: ~s~a"
@@ -1137,8 +1118,7 @@
 ;; current head-type's domain with the arg's type; on failure, blame the
 ;; SPECIFIC arg.  If the head's arrow domain is a `tforall`, switch to
 ;; bidirectional check-mode (rank-N) — the arg is checked against the
-;; polymorphic type, not inferred and unified.  `check-expr` is not yet
-;; converted, so it is bridged via values->infer.
+;; polymorphic type, not inferred and unified, via `check-expr/m`.
 (define (infer-app/m head args stx env)
   (let/infer ([rh (infer-expr/m head env)])
     (let* ([s-head (car rh)] [t-head (cdr rh)])
@@ -1190,13 +1170,13 @@
                         (define b (car bs))
                         (let/infer ([r (infer-expr/m (cdr b) (apply-subst/env s env))])
                           (let* ([s′ (car r)] [t (cdr r)]
-                                 [s-combined (subst-compose s′ s)]
-                                 [_ (apply-subst-to-preds! s-combined)]
-                                 [env-for-gen (apply-subst/env s-combined env)]
-                                 [sch (generalize env-for-gen (apply-subst s-combined t))]
-                                 [env-after* (env-extend-var
-                                              (apply-subst/env s-combined env-after) (car b) sch)])
-                            (loop (cdr bs) s-combined env-after*)))]))])
+                                 [s-combined (subst-compose s′ s)])
+                            (let/infer ([_ (m:apply-subst-to-preds s-combined)]
+                                        [sch (generalize/m (apply-subst/env s-combined env)
+                                                           (apply-subst s-combined t))])
+                              (let* ([env-after* (env-extend-var
+                                                  (apply-subst/env s-combined env-after) (car b) sch)])
+                                (loop (cdr bs) s-combined env-after*)))))]))])
     (let* ([s-acc (car acc)] [env-after (cdr acc)])
       (let/infer ([rb (infer-expr/m body env-after)])
         (infer-return (cons (subst-compose (car rb) s-acc) (cdr rb)))))))
@@ -1223,14 +1203,19 @@
                                      [s-after (subst-compose s-u s-combined)])
                                 (loop (cdr bs) (cdr pbs) s-after
                                       (cons (apply-subst s-after (cdr (car pbs))) ts))))]))])
-        (let* ([s-final (car acc)] [ts (cdr acc)]
-               [_ (apply-subst-to-preds! s-final)]
-               [env-after (for/fold ([e (apply-subst/env s-final env)])
-                                    ([b (in-list bindings)] [t (in-list (reverse ts))])
-                            (env-extend-var e (car b)
-                                            (generalize (apply-subst/env s-final env) t)))])
-          (let/infer ([rb (infer-expr/m body env-after)])
-            (infer-return (cons (subst-compose (car rb) s-final) (cdr rb)))))))))
+        (let* ([s-final (car acc)] [ts (cdr acc)])
+          (let/infer ([_ (m:apply-subst-to-preds s-final)]
+                      [env-after (let loop ([bs bindings] [tts (reverse ts)]
+                                            [e (apply-subst/env s-final env)])
+                                   (cond
+                                     [(null? bs) (infer-return e)]
+                                     [else
+                                      (let/infer ([sch (generalize/m (apply-subst/env s-final env)
+                                                                     (car tts))])
+                                        (loop (cdr bs) (cdr tts)
+                                              (env-extend-var e (car (car bs)) sch)))]))])
+            (let/infer ([rb (infer-expr/m body env-after)])
+              (infer-return (cons (subst-compose (car rb) s-final) (cdr rb))))))))))
 
 ;; Infer-monad arm.  Pattern for the conversion: `let/infer` binds each
 ;; recursive `infer-expr/m` result (a `subst . type` pair); a `let*` does the
@@ -1305,10 +1290,10 @@
                                                           (apply-subst/env s env)
                                                           (> i 0))])
                             (loop (cdr clauses) (add1 i) (subst-compose (car rc) s)))]))])
-          (let ()
-            ;; Irrefutable destructure (a pattern let/where) skips exhaustiveness.
-            (unless irrefutable?
-              (check-exhaustive! (apply-subst s-final t-scrut) clauses stx env))
+          ;; Irrefutable destructure (a pattern let/where) skips exhaustiveness.
+          (let/infer ([_ (if irrefutable?
+                             (infer-return (void))
+                             (check-exhaustive!/m (apply-subst s-final t-scrut) clauses stx env))])
             (infer-return (cons s-final (apply-subst s-final result-tv)))))))))
 
 (define (infer-match*/m scrutinees clauses stx env)
@@ -1480,7 +1465,8 @@
                                     (format "handle clause references unknown effect operation: ~s" op-name)
                                     (handle-clause-stx cl)))
                                 (define op-sch (env-ref-var env op-name))
-                                (define op-type (instantiate op-sch))
+                                (let/infer ([op-type (instantiate/m op-sch)])
+                                (let ()
                                 (define-values (raw-arg-types op-result) (split-arrows op-type))
                                 ;; A 0-arg op was internally promoted to (-> Unit T);
                                 ;; peel the Unit when the clause has no params.
@@ -1519,7 +1505,7 @@
                                                      (handle-clause-stx cl)))])
                                                (unify (apply-subst s-now t-body)
                                                       (apply-subst s-now result-tv)))])
-                                    (loop (cdr clauses) (subst-compose s-u s-now))))]))])
+                                    (loop (cdr clauses) (subst-compose s-u s-now))))))]))])
                 (infer-return (cons s-final (apply-subst s-final result-tv)))))))))))
 
 ;; Split an arrow chain into (list-of-arg-types, final-codomain).
@@ -1537,9 +1523,10 @@
 ;; direct (box/table-backed during the transition); the guard and body
 ;; recursions go through infer-expr/m.
 (define (infer-clause/m cl scrut-type result-type env [earlier-arms? #t])
-  (let ()
+  (let/infer ([rp (infer-pattern/m (clause-pattern cl) env)])
+   (let ()
    (define-values (bindings pat-type ex-hyps)
-    (infer-pattern (clause-pattern cl) env))
+    (values (car rp) (cadr rp) (caddr rp)))
   ;; Try standard unify first; on a hard mismatch (a
   ;; refinable function-scheme skolem on one side and a concrete
   ;; type on the other), fall back to gadt-unify which returns
@@ -1592,13 +1579,15 @@
           (define s-acc (subst-compose s-body s-pre-body))
           ;; Discharge pending preds the existential hypotheses prove (the
           ;; pattern is the proof) so they don't bubble to the outer reduce.
-          (cond
-            [(not (null? ex-hyps))
-             (apply-subst-to-preds! s-acc)
-             (define current (snapshot-preds))
-             (define ex-hyps* (map (lambda (p) (apply-subst s-acc p)) ex-hyps))
-             (define remaining (reduce-context env ex-hyps* current))
-             (restore-preds! remaining)])
+          (let/infer ([_ (if (null? ex-hyps)
+                             (infer-return (void))
+                             (let/infer ([_ (m:apply-subst-to-preds s-acc)]
+                                         [current (m:snapshot-preds)])
+                               (m:set-preds
+                                (reduce-context env
+                                                (map (lambda (p) (apply-subst s-acc p)) ex-hyps)
+                                                current))))])
+           (let ()
           ;; Apply the arm's local skolem refinement before checking body type.
           (define refined-result-type
             (apply-skolem-subst arm-skolem-subst (apply-subst s-acc result-type)))
@@ -1616,7 +1605,7 @@
                    (clause-stx cl)))])
              (unify (apply-skolem-subst arm-skolem-subst (apply-subst s-acc t-body))
                     refined-result-type)))
-          (infer-return (cons (subst-compose s-u s-acc) (apply-subst s-u t-body)))))))))
+          (infer-return (cons (subst-compose s-u s-acc) (apply-subst s-u t-body))))))))))))
 
 ;; Multi-pattern variant of `infer-clause` for `e:match*`.  Walks
 ;; the clause's parameter-pattern list, unifying each with its
@@ -1635,30 +1624,30 @@
        (format "match* clause has ~a patterns but ~a scrutinees"
                (length (clause*-patterns cl*)) (length scrut-types))
        (clause*-stx cl*)))
-   ;; Pattern walk: no infer-expr, so it stays a plain for/fold (infer-pattern
-   ;; is a direct, box-backed call during the transition).
-   (define-values (s-pats env*)
-     (for/fold ([s empty-subst] [env env])
-               ([pat (in-list (clause*-patterns cl*))]
-                [scrut-t (in-list scrut-types)])
-       (define-values (bindings pat-type _ex-hyps)
-         (infer-pattern pat (apply-subst/env s env)))
-       (define s-u
-         (with-handlers
-          ([exn:fail:unify?
-            (lambda (_)
-              (raise-syntax-error 'infer
-                (format "pattern type ~a does not match scrutinee type ~a"
-                        (pretty-type pat-type)
-                        (pretty-type (apply-subst s scrut-t)))
-                (clause*-stx cl*)))])
-          (unify pat-type (apply-subst s scrut-t))))
-       (define s-now (subst-compose s-u s))
-       (define env-now
-         (for/fold ([e (apply-subst/env s-now env)]) ([b (in-list bindings)])
-           (env-extend-var e (car b)
-                           (scheme '() (apply-subst s-now (cdr b))))))
-       (values s-now env-now)))
+   ;; Pattern walk: thread st through infer-pattern/m via a monadic loop.
+   (let/infer ([sp (let loop ([pats (clause*-patterns cl*)]
+                              [scrut-ts scrut-types]
+                              [s empty-subst] [penv env])
+                     (cond
+                       [(null? pats) (infer-return (cons s penv))]
+                       [else
+                        (let/infer ([rp (infer-pattern/m (car pats) (apply-subst/env s penv))])
+                          (let* ([bindings (car rp)] [pat-type (cadr rp)]
+                                 [s-u (with-handlers
+                                       ([exn:fail:unify?
+                                         (lambda (_)
+                                           (raise-syntax-error 'infer
+                                             (format "pattern type ~a does not match scrutinee type ~a"
+                                                     (pretty-type pat-type)
+                                                     (pretty-type (apply-subst s (car scrut-ts))))
+                                             (clause*-stx cl*)))])
+                                       (unify pat-type (apply-subst s (car scrut-ts))))]
+                                 [s-now (subst-compose s-u s)]
+                                 [env-now (for/fold ([e (apply-subst/env s-now penv)]) ([b (in-list bindings)])
+                                            (env-extend-var e (car b)
+                                                            (scheme '() (apply-subst s-now (cdr b)))))])
+                            (loop (cdr pats) (cdr scrut-ts) s-now env-now)))]))])
+     (let* ([s-pats (car sp)] [env* (cdr sp)])
    (let/infer ([guard-acc
                 (cond
                   [(clause*-guard cl*)
@@ -1692,7 +1681,7 @@
                                     got exp)
                             (clause*-stx cl*)))])
                       (unify (apply-subst s-acc t-body) (apply-subst s-acc result-type)))])
-           (infer-return (cons (subst-compose s-u s-acc) (apply-subst s-u t-body)))))))))
+           (infer-return (cons (subst-compose s-u s-acc) (apply-subst s-u t-body)))))))))))
 
 ;; Type a pattern.  Returns (bindings, pattern-type).
 ;; infer-pattern returns a third value — the list of
@@ -1733,9 +1722,9 @@
         ;; Universal data tparams → fresh tvars (unify with scrutinee);
         ;; existential ex-tvars → fresh SKOLEMS; the ctor's qual context
         ;; becomes hypotheses the pattern proves.
-        (define-values (ctor-type ex-hyps)
-          (instantiate-ctor-scheme (data-info-scheme info)
-                                   (data-info-ex-tvars info)))
+        (let/infer ([rc (instantiate-ctor-scheme/m (data-info-scheme info)
+                                                   (data-info-ex-tvars info))])
+        (let* ([ctor-type (car rc)] [ex-hyps (cdr rc)])
         (define-values (arg-tys result-ty)
           (unfold-arrow ctor-type (length args)))
         (let/infer ([acc (let loop ([args args] [arg-tys arg-tys]
@@ -1755,11 +1744,7 @@
              (list (for/list ([b (in-list all-bindings)])
                      (cons (car b) (apply-subst s-acc (cdr b))))
                    (apply-subst s-acc result-ty)
-                   all-ex-hyps))))])]))
-
-(define (infer-pattern pat env)
-  (define r (run-infer* (infer-pattern/m pat env)))
-  (values (car r) (cadr r) (caddr r)))
+                   all-ex-hyps))))))])]))
 
 ;; Instantiate a data ctor's scheme for use in a pattern.
 ;; Universally-quantified data-tparams become fresh tvars (will
@@ -1795,10 +1780,6 @@
             (cond
               [(qual? raw) (infer-return (cons (qual-body raw) (qual-constraints raw)))]
               [else (infer-return (cons raw '()))])))])]))
-(define (instantiate-ctor-scheme sch ex-tvars)
-  (define r (run-infer* (instantiate-ctor-scheme/m sch ex-tvars)))
-  (values (car r) (cdr r)))
-
 ;; Compile-time exhaustiveness check for `match`.  Tabular cases:
 ;;   - any wildcard or variable pattern is a universal catchall.
 ;;   - on a known ADT, every declared constructor must appear (unless
@@ -1806,7 +1787,9 @@
 ;;   - on Boolean, both #t and #f literals must appear.
 ;;   - on other primitive scrutinee types (Integer, String, …) and on
 ;;     scrutinees whose type is still polymorphic, a catchall is required.
-(define (check-exhaustive! scrut-type clauses stx env)
+;; Returns Infer void: the reachability probes draw fresh tvars, so it threads
+;; `st` through ctor-reachable-at?/m.  Every non-probing branch is infer-return.
+(define (check-exhaustive!/m scrut-type clauses stx env)
   (define head
     (let loop ([t scrut-type])
       (match t
@@ -1822,7 +1805,7 @@
              (p:var?  (clause-pattern c)))))
   (define has-catchall? (for/or ([c (in-list clauses)]) (catchall? c)))
   (cond
-    [has-catchall? (void)]
+    [has-catchall? (infer-return (void))]
     [(eq? head 'Boolean)
      (define hits
        (for/fold ([acc '()]) ([c (in-list clauses)] #:unless (clause-guard c))
@@ -1832,7 +1815,8 @@
      (unless (and (member #t hits) (member #f hits))
        (raise-syntax-error 'infer
          "non-exhaustive match on Boolean — both #t and #f must be covered"
-         stx))]
+         stx))
+     (infer-return (void))]
     [head
      (define ti (env-ref-tcon env head))
      (cond
@@ -1841,25 +1825,28 @@
           "non-exhaustive match: needs a wildcard or variable pattern"
           stx)]
        [else
-        ;; For GADT scrutinees, only ctors whose declared
-        ;; result type can unify with the actual scrutinee type are
-        ;; *reachable* at this site.  Drop the unreachable ones from
-        ;; the must-cover set.
-        (define needed
-          (for/list ([c (in-list (tcon-info-ctors ti))]
-                     #:when (ctor-reachable-at? c scrut-type env))
-            c))
-        (define hit
-          (for/fold ([acc '()]) ([c (in-list clauses)] #:unless (clause-guard c))
-            (match (clause-pattern c)
-              [(p:ctor name _ _) (cons name acc)]
-              [_ acc])))
-        (define missing (filter (lambda (c) (not (member c hit))) needed))
-        (unless (null? missing)
-          (raise-syntax-error 'infer
-            (format "non-exhaustive match: missing constructor(s) ~s"
-                    missing)
-            stx))])]
+        ;; For GADT scrutinees, only ctors whose declared result type can
+        ;; unify with the actual scrutinee type are *reachable* here; drop
+        ;; the unreachable ones from the must-cover set (probes thread st).
+        (let/infer ([needed (let loop ([cs (tcon-info-ctors ti)] [acc '()])
+                              (cond
+                                [(null? cs) (infer-return (reverse acc))]
+                                [else
+                                 (let/infer ([reach? (ctor-reachable-at?/m (car cs) scrut-type env)])
+                                   (loop (cdr cs) (if reach? (cons (car cs) acc) acc)))]))])
+          (let ()
+            (define hit
+              (for/fold ([acc '()]) ([c (in-list clauses)] #:unless (clause-guard c))
+                (match (clause-pattern c)
+                  [(p:ctor name _ _) (cons name acc)]
+                  [_ acc])))
+            (define missing (filter (lambda (c) (not (member c hit))) needed))
+            (unless (null? missing)
+              (raise-syntax-error 'infer
+                (format "non-exhaustive match: missing constructor(s) ~s"
+                        missing)
+                stx))
+            (infer-return (void))))])]
     [else
      (raise-syntax-error 'infer
        "non-exhaustive match: needs a wildcard or variable pattern"
@@ -1886,8 +1873,6 @@
              (with-handlers ([exn:fail:unify? (lambda (_) #f)])
                (unify bare-result scrut-type)
                #t))))])]))
-(define (ctor-reachable-at? ctor-name scrut-type env)
-  (run-infer* (ctor-reachable-at?/m ctor-name scrut-type env)))
 
 ;; Does `t` have AT LEAST `n` leading arrow constructors?
 ;; Used by the top:def declared-signature branch to decide when we
@@ -1943,9 +1928,8 @@
 ;;     target; mutually recursive bindings share a monomorphic shape
 ;;     within their SCC.
 (define (infer-program forms [env initial-env])
-  (with-fresh
-   (define-values (env* _ _forms) (infer-program/phases forms env (hasheq)))
-   env*))
+  (define-values (env* _ _forms) (infer-program/phases forms env (hasheq)))
+  env*)
 
 ;; Like `infer-program`, but also returns the post-expansion form list
 ;; (with every `#:derive-superclasses` instance replaced by the plain
@@ -1963,14 +1947,13 @@
                  [current-method-dict-resolutions (make-hasheq)]
                  [current-needs-dict-defs         (make-hash)]
                  [current-instance-default-bodies (make-hash)])
-    (with-fresh
-     (define-values (env* _ forms*) (infer-program/phases forms env (hasheq)))
-     (values env* forms*
-             (codegen-plan (current-method-resolutions)
-                           (current-method-dict-resolutions)
-                           (current-needs-dict-defs)
-                           (current-instance-default-bodies)
-                           (env-return-typed-methods env*))))))
+    (define-values (env* _ forms*) (infer-program/phases forms env (hasheq)))
+    (values env* forms*
+            (codegen-plan (current-method-resolutions)
+                          (current-method-dict-resolutions)
+                          (current-needs-dict-defs)
+                          (current-instance-default-bodies)
+                          (env-return-typed-methods env*)))))
 
 ;; `prior-declared` carries forward `top:dec` schemes registered in
 ;; previous REPL inputs.  A fresh `(infer-program)` call always
@@ -1978,6 +1961,7 @@
 ;; persisted declared so a `(: foo …)` declared in one input still
 ;; applies to a `(define foo …)` in a later one.
 (define (infer-program/phases forms env prior-declared)
+  (define st0 (make-infer-state))
   ;; ---- Phase A: type infrastructure ----
   (define-values (env-after-A declared)
     (run-phase-A env forms prior-declared))
@@ -1987,10 +1971,10 @@
   ;; synthesizes.  Every later phase — and codegen — runs over `forms*`.
   (define forms* (expand-derive-instances forms env-after-A))
   ;; ---- Phase B: pre-register def names ----
-  (define-values (env-after-B def-tvars)
-    (run-phase-B env-after-A declared forms*))
+  (define-values (env-after-B def-tvars st1)
+    (run-phase-B env-after-A declared forms* st0))
   ;; ---- Phase C: instance registration (+ method body inference) ----
-  (define env-after-C (run-phase-C env-after-B declared forms*))
+  (define-values (env-after-C st2) (run-phase-C env-after-B declared forms* st1))
   ;; ---- Superclass obligations ----
   ;; Now that every instance — local, later-declared, and imported — is
   ;; in env, require each declared instance to satisfy its class's
@@ -1999,7 +1983,7 @@
   ;; the subclass instance that needs it.
   (check-superclass-obligations env-after-C forms*)
   ;; ---- Phase D: SCC-based body inference for top:defs ----
-  (define env-after-D (run-phase-D env-after-C declared def-tvars forms*))
+  (define-values (env-after-D _st3) (run-phase-D env-after-C declared def-tvars forms* st2))
   (values env-after-D
           (for/fold ([d prior-declared]) ([f (in-list forms*)] #:when (top:def? f))
             (hash-remove d (top:def-name f)))
@@ -2187,7 +2171,8 @@
   ;; into env; must run before any local type resolution.
   (define env-A1
     (for/fold ([e env]) ([f (in-list forms)] #:when (top:require? f))
-      (let-values ([(e* _) (handle-top-form f e (hasheq))])
+      ;; Phase-A forms (require/effect/class) are pure: a throwaway st suffices.
+      (let-values ([(e* _ _st) (handle-top-form f e (hasheq) (make-infer-state))])
         e*)))
   ;; A2-A4: pre-register tcon shells, aliases (lazy), struct-fields.
   ;; None of these resolve types, so order among them is irrelevant —
@@ -2204,13 +2189,15 @@
   ;; A5: effects (resolve op types against the tcon-complete env).
   (define env-A5
     (for/fold ([e env-A4]) ([f (in-list forms)] #:when (top:effect? f))
-      (let-values ([(e* _) (handle-top-form f e (hasheq))])
+      ;; Phase-A forms (require/effect/class) are pure: a throwaway st suffices.
+      (let-values ([(e* _ _st) (handle-top-form f e (hasheq) (make-infer-state))])
         e*)))
   ;; A6: classes (handle-class-form resolves method schemes and
   ;; registers each method as a polymorphic var).
   (define env-A6
     (for/fold ([e env-A5]) ([f (in-list forms)] #:when (top:class? f))
-      (let-values ([(e* _) (handle-top-form f e (hasheq))])
+      ;; Phase-A forms (require/effect/class) are pure: a throwaway st suffices.
+      (let-values ([(e* _ _st) (handle-top-form f e (hasheq) (make-infer-state))])
         e*)))
   ;; A7: data ctors (now classes are in env, so ctor types with
   ;; class constraints in extra-context resolve correctly).
@@ -2315,39 +2302,40 @@
 ;; post-B env and a hasheq mapping each non-declared def name to its
 ;; placeholder tvar (used in Phase D to unify the inferred body type
 ;; with its slot).
-(define (run-phase-B env declared forms)
-  (for/fold ([env env] [tvars (hasheq)])
+(define (run-phase-B env declared forms st)
+  (for/fold ([env env] [tvars (hasheq)] [st st])
             ([f (in-list forms)] #:when (top:def? f))
     (define name (top:def-name f))
     (cond
       [(hash-has-key? declared name)
        ;; Already registered in env-A8 with its declared scheme.
-       (values env tvars)]
+       (values env tvars st)]
       [else
-       (define α (fresh-tvar))
+       (define-values (α st′) (st:fresh st))
        (values (env-extend-var env name (scheme '() α))
-               (hash-set tvars name α))])))
+               (hash-set tvars name α)
+               st′)])))
 
 ;; Phase C — register every top:instance.  Reuses the existing
 ;; handle-instance-form which both registers the instance and
 ;; type-checks its method bodies.  Bodies see the full set of
 ;; pre-registered def names from Phase B.
-(define (run-phase-C env declared forms)
-  (for/fold ([e env]) ([f (in-list forms)] #:when (top:instance? f))
-    (define-values (e* _) (handle-top-form f e declared))
-    e*))
+(define (run-phase-C env declared forms st)
+  (for/fold ([e env] [st st]) ([f (in-list forms)] #:when (top:instance? f))
+    (define-values (e* _ st′) (handle-top-form f e declared st))
+    (values e* st′)))
 
 ;; Phase D — infer top:def bodies in dependency order using SCC
 ;; analysis.  Each SCC's bindings are added to env with their
 ;; placeholders, inferred together, then generalized as a group.
-(define (run-phase-D env declared def-tvars forms)
+(define (run-phase-D env declared def-tvars forms st)
   (define defs (filter top:def? forms))
   (define defs-by-name
     (for/fold ([acc (hasheq)]) ([d (in-list defs)])
       (hash-set acc (top:def-name d) d)))
   (define sccs (def-scc-order forms))
-  (for/fold ([env env]) ([scc (in-list sccs)])
-    (infer-def-scc env declared def-tvars defs-by-name scc)))
+  (for/fold ([env env] [st st]) ([scc (in-list sccs)])
+    (infer-def-scc env declared def-tvars defs-by-name scc st)))
 
 ;; The dependency-order SCC list for the top:def forms in `forms`.
 ;; Each SCC is a list of names; the outer list is in topological
@@ -2499,16 +2487,16 @@
 ;;     generalization until the SCC closes; detect needs-dict on the
 ;;     generalized scheme and run the same dict-skolem path the
 ;;     single-form branch uses.
-(define (infer-def-scc env declared def-tvars defs-by-name scc-names)
+(define (infer-def-scc env declared def-tvars defs-by-name scc-names st)
   (define-values (decl-names undecl-names)
     (partition (lambda (n) (hash-has-key? declared n)) scc-names))
   ;; Process declared members first: they're fully type-checked
   ;; and generalized immediately, just like the old declared path.
   ;; Their schemes are already in env from Phase A.
-  (define env-after-decl
-    (for/fold ([env env]) ([name (in-list decl-names)])
+  (define-values (env-after-decl st1)
+    (for/fold ([env env] [st st]) ([name (in-list decl-names)])
       (define f (hash-ref defs-by-name name))
-      (infer-declared-def env declared (top:def-expr f) name (top:def-stx f))))
+      (infer-declared-def env declared (top:def-expr f) name (top:def-stx f) st)))
   ;; Process undeclared members of the SCC.  When |undecl-names| > 1
   ;; (genuine mutual recursion) we keep each binding's placeholder
   ;; tvar visible while every body is inferred, unify each body's
@@ -2517,12 +2505,12 @@
   ;; with no self-recursion either), single-binding inference
   ;; matches the original handle-top-form behavior exactly.
   (infer-undeclared-scc env-after-decl declared def-tvars defs-by-name
-                        undecl-names))
+                        undecl-names st1))
 
 ;; Mirror of the declared-signature branch of the old
 ;; `handle-top-form` top:def case.  The scheme was already entered
 ;; into env during Phase A and into `declared` for this lookup.
-(define (infer-declared-def env declared expr name stx)
+(define (infer-declared-def env declared expr name stx st)
   (define decl-scheme (hash-ref declared name))
   (define needs-dict-reqs (var-dict-requirements env decl-scheme))
   (define-values (decl-ty decl-preds dict-skolems dict-arg-names)
@@ -2538,7 +2526,7 @@
     (hash-set! (current-needs-dict-defs) name dict-arg-names))
   (define saved-skolems (current-dict-skolems))
   (current-dict-skolems dict-skolems)
-  (define-values (s t)
+  (define-values (s t st1)
     (cond
       [(and (e:lam? expr)
             (decl-arrow-depth-ge? decl-ty (length (e:lam-params expr))))
@@ -2549,18 +2537,19 @@
                    ([p (in-list (e:lam-params expr))]
                     [ty (in-list arg-tys)])
            (env-extend-var e p (scheme '() ty))))
-       (define-values (s-body t-body)
+       (define-values (s-body t-body st-b)
          (cond
            [(or (e:match? (e:lam-body expr))
                 (e:match*? (e:lam-body expr)))
             (parameterize ([current-expected-type cod])
-              (infer-expr (e:lam-body expr) env-lam))]
-           [else (infer-expr (e:lam-body expr) env-lam)]))
+              (infer-expr (e:lam-body expr) env-lam st))]
+           [else (infer-expr (e:lam-body expr) env-lam st)]))
        (values s-body
                (foldr make-arrow t-body
                       (for/list ([ty (in-list arg-tys)])
-                        (apply-subst s-body ty))))]
-      [else (infer-expr expr env)]))
+                        (apply-subst s-body ty)))
+               st-b)]
+      [else (infer-expr expr env st)]))
   (define s-u
     (with-handlers
      ([exn:fail:unify?
@@ -2573,36 +2562,35 @@
            stx))])
      (unify (normalize-type env (apply-subst s t)) decl-ty)))
   (define final-subst0 (subst-compose s-u s))
-  (apply-subst-to-preds! final-subst0)
+  (define st2 (st:apply-subst-to-preds st1 final-subst0))
   ;; Run functional-dependency improvement before reducing, exactly as the
   ;; undeclared path does inside `generalize`.  A leftover constraint like
   ;; `(Arrow LFun a)` — where the product `a` appears only in the
   ;; constraint, never in the declared type — is closed by the fundep
   ;; `cat -> p` against the matching instance (`a := LPair`), so it reduces
   ;; instead of being reported as unsolved.
-  (define fd-sub (improve-by-fds env))
+  (define-values (fd-sub st3) (improve-by-fds env st2))
   ;; Also improve against the declared constraints themselves: a
   ;; fundep-bearing hypothesis (e.g. `(ArrowLoop cat p)`) determines the
   ;; product/coproduct for the body, connecting the body's fresh tensor
   ;; vars to the signature's `p` / `s`.
   (define hyp-closure
     (append-map (lambda (p) (by-super env (apply-subst fd-sub p))) decl-preds))
-  (define hyp-fd-sub (improve-by-hyp-fds env hyp-closure))
+  (define-values (hyp-fd-sub st4) (improve-by-hyp-fds env hyp-closure st3))
   (define final-subst (subst-compose hyp-fd-sub (subst-compose fd-sub final-subst0)))
   (define remaining-preds
     (reduce-context env (map (lambda (p) (apply-subst final-subst p)) decl-preds)
-                    (snapshot-preds)))
-  (cond
-    [(not (null? remaining-preds))
-     (raise-syntax-error 'infer
-       (render-doc (labeled-block (format "unsolved constraints in ~a:" name)
-                                  (map pretty-pred remaining-preds))
-                   (current-type-columns))
-       stx)]
-    [else (restore-preds! '())])
+                    (st:preds st4)))
+  (when (not (null? remaining-preds))
+    (raise-syntax-error 'infer
+      (render-doc (labeled-block (format "unsolved constraints in ~a:" name)
+                                 (map pretty-pred remaining-preds))
+                  (current-type-columns))
+      stx))
+  (define st5 (st:set-preds st4 '()))
   (resolve-method-uses! final-subst env)
   (current-dict-skolems saved-skolems)
-  env)
+  (values env st5))
 
 ;; Infer one SCC of undeclared defs.  Singleton SCC (no self-edge):
 ;; behaves exactly like the previous single-def undeclared path,
@@ -2611,25 +2599,26 @@
 ;; Phase B stays in env throughout body inference; generalization
 ;; happens at the end against an env scrubbed of the SCC members so
 ;; each scheme can quantify the type vars shared across the group.
-(define (infer-undeclared-scc env declared def-tvars defs-by-name names)
+(define (infer-undeclared-scc env declared def-tvars defs-by-name names st)
   (cond
-    [(null? names) env]
+    [(null? names) (values env st)]
     [else
-     (define-values (s* defs-rev)
-       (for/fold ([s empty-subst] [acc '()]) ([name (in-list names)])
+     (define-values (s* defs-rev st1)
+       (for/fold ([s empty-subst] [acc '()] [st st]) ([name (in-list names)])
          (define f (hash-ref defs-by-name name))
          (define expr (top:def-expr f))
          (define α (hash-ref def-tvars name))
          (define env-cur (apply-subst/env s env))
-         (define-values (s-body t-body) (infer-expr expr env-cur))
+         (define-values (s-body t-body st-b) (infer-expr expr env-cur st))
          (define s-now (subst-compose s-body s))
          (define s-rec (unify (apply-subst s-now α) (apply-subst s-now t-body)))
          (values (subst-compose s-rec s-now)
-                 (cons (list name f α) acc))))
+                 (cons (list name f α) acc)
+                 st-b)))
      (define defs (reverse defs-rev))
-     (apply-subst-to-preds! s*)
+     (define st2 (st:apply-subst-to-preds st1 s*))
      (define env-after-subst (apply-subst/env s* env))
-     (for/fold ([env env-after-subst]) ([entry (in-list defs)])
+     (for/fold ([env env-after-subst] [st st2]) ([entry (in-list defs)])
        (match-define (list name f α) entry)
        (define final-ty (apply-subst s* α))
        ;; Strip *every* SCC member's binding from env before
@@ -2644,7 +2633,7 @@
          (for/fold ([e env]) ([n (in-list names)])
            (env-remove-var e n)))
        (finish-undeclared-def env gen-env (top:def-expr f)
-                              name s* final-ty (top:def-stx f)))]))
+                              name s* final-ty (top:def-stx f) st))]))
 
 ;; Shared finalizer for an undeclared def: detect inferred needs-dict,
 ;; record recursive dict-uses, generalize, resolve method calls.
@@ -2652,7 +2641,7 @@
 ;; `env` is where the new binding lands; `env-for-gen` is `env`
 ;; minus any SCC siblings whose placeholder tvars would block
 ;; quantification of tvars shared across the group.
-(define (finish-undeclared-def env env-for-gen expr name s* final-ty stx)
+(define (finish-undeclared-def env env-for-gen expr name s* final-ty stx st)
   (define env-fv (env-vars-free-vars env-for-gen))
   (define ty-fv  (type-vars final-ty))
   (define quant-set (set-subtract ty-fv env-fv))
@@ -2660,7 +2649,7 @@
     (cond
       [(or (set-empty? quant-set) (not (e:lam? expr))) '()]
       [else
-       (for/list ([p (in-list (snapshot-preds))]
+       (for/list ([p (in-list (st:preds st))]
                   #:when
                   (and (class-has-return-typed-methods? env (pred-class p))
                        (not (set-empty? (set-intersect (type-vars p) quant-set)))
@@ -2673,9 +2662,9 @@
      ;; method whose target type is fundep-determined (e.g. `mk-prod` in a
      ;; `proc` over an arrow whose product `p` is fixed by `cat -> p`) is
      ;; resolved against an unimproved tvar and reported as ambiguous.
-     (define-values (generalized fd-sub) (generalize* env-for-gen final-ty))
+     (define-values (generalized fd-sub st1) (generalize* env-for-gen final-ty st))
      (resolve-method-uses! (subst-compose fd-sub s*) env)
-     (env-extend-var env name generalized)]
+     (values (env-extend-var env name generalized) st1)]
     [else
      (define dict-tvar-names
        (for/fold ([acc (seteq)]) ([p (in-list dict-bearing-preds)])
@@ -2697,48 +2686,55 @@
      (when (and (current-needs-dict-defs) (not (null? arg-names)))
        (hash-set! (current-needs-dict-defs) name arg-names))
      (record-recursive-dict-uses! expr name needs-dict-reqs s*)
-     (define generalized (generalize env-for-gen final-ty))
+     (define-values (generalized st1) (generalize env-for-gen final-ty st))
      (define saved-skolems (current-dict-skolems))
      (current-dict-skolems sk-map)
      (resolve-method-uses! (subst-compose skolem-subst s*) env)
      (current-dict-skolems saved-skolems)
-     (env-extend-var env name generalized)]))
+     (values (env-extend-var env name generalized) st1)]))
 
-;; Single-form step exposed so the REPL kernel can call into
-;; handle-top-form directly without resetting the fresh-state or
-;; pending-preds boxes the REPL persists.  Callers parameterize
-;; those boxes themselves.
-(define (infer-program-step form env declared)
+;; Single-form step exposed so the REPL kernel can call into handle-top-form
+;; directly.  The REPL persists the inference state (fresh counter + pending
+;; preds) across inputs by threading the `infer-state` it carries: each step
+;; takes the prior st and returns the next.
+(define (infer-program-step form env declared st)
   (cond
     ;; A `#:derive-superclasses` instance expands into several plain
     ;; instances; register each so the REPL behaves like batch mode.
     [(top:derive-instance? form)
-     (for/fold ([e env] [d declared] #:result (values e d))
+     (for/fold ([e env] [d declared] [st st] #:result (values e d st))
                ([f (in-list (expand-derive-instances (list form) env))])
-       (handle-top-form f e d))]
-    [else (handle-top-form form env declared)]))
+       (handle-top-form f e d st))]
+    [else (handle-top-form form env declared st)]))
 
 ;; handle-top-form dispatches on the top-level form; each non-trivial arm is
 ;; its own `handle-<form>` helper.  Type resolution takes `env` explicitly
 ;; (resolve-type &c. run the Environment monad over the alias table), so no
 ;; ambient `current-aliases` setup is needed here anymore.
-(define (handle-top-form form env declared)
+;; Returns (values env declared st).  Only the def and instance arms consume
+;; the threaded state (fresh tvars + pending preds); the rest are pure and pass
+;; st straight through.
+(define (handle-top-form form env declared st)
+  (define (pass thunk) (let-values ([(e d) (thunk)]) (values e d st)))
   (match form
     [(top:alias name params target-ast stx)
-     (handle-alias-form name params target-ast env declared)]
-    [(top:dec name ty-ast _)            (handle-dec-form name ty-ast env declared)]
-    [(top:def name expr stx)            (handle-def-form name expr stx env declared)]
+     (pass (lambda () (handle-alias-form name params target-ast env declared)))]
+    [(top:dec name ty-ast _)
+     (pass (lambda () (handle-dec-form name ty-ast env declared)))]
+    [(top:def name expr stx)            (handle-def-form name expr stx env declared st)]
     [(top:class supers head methods stx)
-     (handle-class-form supers head methods stx env declared)]
+     (pass (lambda () (handle-class-form supers head methods stx env declared)))]
     [(top:instance ctx head methods stx)
-     (handle-instance-form ctx head methods stx env declared)]
-    [(top:require specs stx)            (handle-require-form specs stx env declared)]
-    [(top:provide specs stx)            (handle-provide-form env declared)]
+     (handle-instance-form ctx head methods stx env declared st)]
+    [(top:require specs stx)
+     (pass (lambda () (handle-require-form specs stx env declared)))]
+    [(top:provide specs stx)            (pass (lambda () (handle-provide-form env declared)))]
     [(top:struct-fields struct-name field-names _)
-     (handle-struct-fields-form struct-name field-names env declared)]
-    [(top:effect ename ops stx)         (handle-effect-form ename ops stx env declared)]
+     (pass (lambda () (handle-struct-fields-form struct-name field-names env declared)))]
+    [(top:effect ename ops stx)
+     (pass (lambda () (handle-effect-form ename ops stx env declared)))]
     [(top:data tname tparams ctors stx abstract? runtime-tag)
-     (handle-data-form tname tparams ctors stx abstract? runtime-tag env declared)]))
+     (pass (lambda () (handle-data-form tname tparams ctors stx abstract? runtime-tag env declared)))]))
 
 ;; ----- per-top-form elaboration (the arms of handle-top-form) -------
 
@@ -2753,7 +2749,7 @@
      (values (env-extend-var env name sch)
              (hash-set declared name sch)))
 
-(define (handle-def-form name expr stx env declared)
+(define (handle-def-form name expr stx env declared st)
      (cond
        [(hash-has-key? declared name)
         (define decl-scheme (hash-ref declared name))
@@ -2793,7 +2789,7 @@
         ;; -> a` would type its parameter as a fresh tvar, and the
         ;; first arm's standard unify would pin `a` to that arm's
         ;; concrete result type, leaking to later arms.
-        (define-values (s t)
+        (define-values (s t st1)
           (cond
             [(and (e:lam? expr)
                   (decl-arrow-depth-ge? decl-ty (length (e:lam-params expr))))
@@ -2812,17 +2808,18 @@
              ;; expected type would propagate too deep (across
              ;; do-blocks, nested lambdas, etc.) and pin a
              ;; subexpression's result to the wrong type.
-             (define-values (s-body t-body)
+             (define-values (s-body t-body st-b)
                (cond
                  [(e:match? (e:lam-body expr))
                   (parameterize ([current-expected-type cod])
-                    (infer-expr (e:lam-body expr) env-lam))]
-                 [else (infer-expr (e:lam-body expr) env-lam)]))
+                    (infer-expr (e:lam-body expr) env-lam st))]
+                 [else (infer-expr (e:lam-body expr) env-lam st)]))
              (values s-body
                      (foldr make-arrow t-body
                             (for/list ([ty (in-list arg-tys)])
-                              (apply-subst s-body ty))))]
-            [else (infer-expr expr env-rec)]))
+                              (apply-subst s-body ty)))
+                     st-b)]
+            [else (infer-expr expr env-rec st)]))
         ;; Normalize the inferred body type so any
         ;; associated-type applications resolve against the env's
         ;; registered instances before comparing to the declared
@@ -2841,30 +2838,30 @@
         ;; Discharge any constraints raised inside the body against the
         ;; declaration's preds (hypotheses).
         (define final-subst (subst-compose s-u s))
-        (apply-subst-to-preds! final-subst)
+        (define st2 (st:apply-subst-to-preds st1 final-subst))
         (define remaining-preds
-          (reduce-context env decl-preds (snapshot-preds)))
-        (cond
-          [(not (null? remaining-preds))
-           (raise-syntax-error 'infer
-             (render-doc (labeled-block (format "unsolved constraints in ~a:" name)
-                                        (map pretty-pred remaining-preds))
-                         (current-type-columns))
-             stx)]
-          [else (restore-preds! '())])
+          (reduce-context env decl-preds (st:preds st2)))
+        (when (not (null? remaining-preds))
+          (raise-syntax-error 'infer
+            (render-doc (labeled-block (format "unsolved constraints in ~a:" name)
+                                       (map pretty-pred remaining-preds))
+                        (current-type-columns))
+            stx))
+        (define st3 (st:set-preds st2 '()))
         (resolve-method-uses! final-subst env)
         (current-dict-skolems saved-skolems)
         (values (env-extend-var env name decl-scheme)
-                (hash-remove declared name))]
+                (hash-remove declared name)
+                st3)]
        [else
         ;; No declaration: pre-register fresh tvar for recursive use,
         ;; infer, unify, generalize.
-        (define α (fresh-tvar))
+        (define-values (α st1) (st:fresh st))
         (define env-rec (env-extend-var env name (scheme '() α)))
-        (define-values (s t) (infer-expr expr env-rec))
+        (define-values (s t st2) (infer-expr expr env-rec st1))
         (define s-rec (unify (apply-subst s α) (apply-subst s t)))
         (define s* (subst-compose s-rec s))
-        (apply-subst-to-preds! s*)
+        (define st3 (st:apply-subst-to-preds st2 s*))
         (define final-ty (apply-subst s* t))
         (define final-env (apply-subst/env s* env))
         ;; Detect inferred needs-dict: pending preds over a
@@ -2891,7 +2888,7 @@
           (cond
             [(or (set-empty? quant-set) (not (e:lam? expr))) '()]
             [else
-             (for/list ([p (in-list (snapshot-preds))]
+             (for/list ([p (in-list (st:preds st3))]
                         #:when
                         (and (class-has-return-typed-methods?
                               env (pred-class p))
@@ -2902,9 +2899,9 @@
                p)]))
         (cond
           [(null? dict-bearing-preds)
-           (define generalized (generalize final-env final-ty))
+           (define-values (generalized st4) (generalize final-env final-ty st3))
            (resolve-method-uses! s* env)
-           (values (env-extend-var final-env name generalized) declared)]
+           (values (env-extend-var final-env name generalized) declared st4)]
           [else
            ;; Build skolem subst: each tvar arg of a dict-bearing pred
            ;; that will be quantified gets a fresh skolem tcon.  These
@@ -2936,7 +2933,7 @@
            ;; locally-bound dict args via the skolem map.
            (record-recursive-dict-uses! expr name needs-dict-reqs s*)
            ;; Generalize (consumes preds from the pool).
-           (define generalized (generalize final-env final-ty))
+           (define-values (generalized st4) (generalize final-env final-ty st3))
            ;; Resolve methods with the skolem map in scope so
            ;; pure/mempty land on the local dict-arg names rather than
            ;; per-tcon impls.
@@ -2944,7 +2941,7 @@
            (current-dict-skolems sk-map)
            (resolve-method-uses! (subst-compose skolem-subst s*) env)
            (current-dict-skolems saved-skolems)
-           (values (env-extend-var final-env name generalized) declared)])]))
+           (values (env-extend-var final-env name generalized) declared st4)])]))
 
 (define (handle-provide-form env declared)
      ;; `provide` is a packaging concern, not a typing concern: it
@@ -4215,7 +4212,7 @@
     [(string? src) src]
     [else          #f]))
 
-(define (handle-instance-form ctx head methods stx env declared)
+(define (handle-instance-form ctx head methods stx env declared st)
   (define head-pred-raw (resolve-constraint head env))
   (define class-name (pred-class head-pred-raw))
   (define inst-origin (origin-of stx))
@@ -4349,14 +4346,14 @@
     (inst-check-ctx env env-with-inst cinfo class-name
                     head-pred-raw head-pred-sk ctx-preds-sk inst-args-sk
                     head-tcon dict-skolems dict-arg-names user-impls stx))
-  (define checked-bodies
-    (for/fold ([acc (hasheq)])
+  (define-values (checked-bodies st-after)
+    (for/fold ([acc (hasheq)] [st st])
               ([(method-name method-sch)
                 (in-hash (class-info-methods cinfo))])
       (define body (instance-method-body ictx method-name))
-      (define mc   (method-qual-context ictx method-name method-sch))
-      (elaborate-instance-method-body! ictx method-name body mc)
-      (hash-set acc method-name body)))
+      (define-values (mc st1) (method-qual-context ictx method-name method-sch st))
+      (define st2 (elaborate-instance-method-body! ictx method-name body mc st1))
+      (values (hash-set acc method-name body) st2)))
   (define info (instance-info head-pred-raw ctx-preds-raw checked-bodies
                               type-family-bindings inst-origin))
   ;; Mark instances added during prelude-env construction
@@ -4376,7 +4373,7 @@
                                                     head-pred-raw)))
                  (env-instances env class-name)))
         env))
-  (values (env-extend-instance base-env class-name info) declared))
+  (values (env-extend-instance base-env class-name info) declared st-after))
 
 ;; ----- instance method-body checking ------------------------------------
 ;;
@@ -4462,7 +4459,7 @@
 ;; vars to avoid capture, skolemize method-qual + generality tvars,
 ;; normalize associated types, record any needs-dict arg names for codegen,
 ;; and return the resulting method-check.
-(define (method-qual-context ctx method-name method-sch)
+(define (method-qual-context ctx method-name method-sch st)
   (define cinfo          (inst-check-ctx-cinfo ctx))
   (define env            (inst-check-ctx-env ctx))
   (define env-with-inst  (inst-check-ctx-env-with-inst ctx))
@@ -4487,11 +4484,12 @@
   ;; component with the mapped one.  Renaming the scheme's bound vars
   ;; to fresh names keeps the head variable and the method universals
   ;; distinct.
-  (define method-fresh-subst
-    (for/fold ([s empty-subst])
+  (define-values (method-fresh-subst st′)
+    (for/fold ([s empty-subst] [st st])
               ([v (in-list (scheme-vars method-sch))]
                #:unless (memq v (class-info-params cinfo)))
-      (subst-extend s v (fresh-tvar v))))
+      (define-values (tv st2) (st:fresh st v))
+      (values (subst-extend s v tv) st2)))
   (define inst-method-qual
     (apply-subst σ (apply-subst method-fresh-subst (scheme-body method-sch))))
   ;; Skolemize method-local tvars that appear in this method's
@@ -4569,13 +4567,14 @@
     (map (lambda (p)
            (apply-subst generality-sk-subst (apply-subst method-sk-subst p)))
          raw-method-qual-preds))
-  (method-check expected-type method-extra-preds combined-skolems generality-sk-subst))
+  (values (method-check expected-type method-extra-preds combined-skolems generality-sk-subst)
+          st′))
 
 ;; Infer the body, unify it against the class-signature type, run fundep
 ;; improvement (so a default body's residual tensor constraints reduce
 ;; against the head hypothesis), ensure no constraints leak, and resolve
 ;; the body's return-typed method uses.  Raises on a type/constraint error.
-(define (elaborate-instance-method-body! ctx method-name body mc)
+(define (elaborate-instance-method-body! ctx method-name body mc st)
   (define env            (inst-check-ctx-env ctx))
   (define env-with-inst  (inst-check-ctx-env-with-inst ctx))
   (define head-pred-sk   (inst-check-ctx-head-pred-sk ctx))
@@ -4586,13 +4585,17 @@
   (define method-extra-preds  (method-check-extra-preds mc))
   (define combined-skolems    (method-check-skolems mc))
   (define generality-sk-subst (method-check-generality-subst mc))
-  (parameterize ([current-pending-preds (box '())])
+  ;; Isolate the body's pending preds (the fresh counter still threads
+  ;; through): save the outer bag, check the body against an empty one, then
+  ;; restore the outer bag — keeping the advanced counter.
+  (define outer-preds (st:preds st))
+  (let ()
     ;; Make the instance-qual + method-qual skolem map visible
     ;; while inferring the body AND while resolve-method-uses!
     ;; runs afterward.
     (define saved-skolems (current-dict-skolems))
     (current-dict-skolems combined-skolems)
-    (define-values (s t) (infer-expr body env-with-inst))
+    (define-values (s t st1) (infer-expr body env-with-inst (st:set-preds st '())))
     (define s-u
       (with-handlers
        ([exn:fail:unify?
@@ -4604,7 +4607,7 @@
              stx))])
        (unify (apply-subst s t) expected-type)))
     (define final-subst0 (subst-compose s-u s))
-    (apply-subst-to-preds! final-subst0)
+    (define st2 (st:apply-subst-to-preds st1 final-subst0))
     ;; The instance head itself is a hypothesis during method
     ;; checking — plus any constraints from the method's own
     ;; qualifying context (e.g. `Applicative f` for traverse).
@@ -4625,17 +4628,17 @@
     ;; The improved subst also feeds `resolve-method-uses!` below, so
     ;; the body's return-typed `mk-prod`/`arr`/`inj-*` resolve against
     ;; the concrete tensor rather than an ambiguous tvar.
-    (define m-fd-sub (improve-by-fds env))
+    (define-values (m-fd-sub st3) (improve-by-fds env st2))
     (define m-hyp-closure
       (append-map (lambda (p) (by-super env (apply-subst m-fd-sub p)))
                   hyp-preds))
-    (define m-hyp-fd-sub (improve-by-hyp-fds env m-hyp-closure))
+    (define-values (m-hyp-fd-sub st4) (improve-by-hyp-fds env m-hyp-closure st3))
     (define final-subst
       (subst-compose m-hyp-fd-sub (subst-compose m-fd-sub final-subst0)))
     (define leftovers
       (reduce-context env
                       (map (lambda (p) (apply-subst final-subst p)) hyp-preds)
-                      (snapshot-preds)))
+                      (st:preds st4)))
     (unless (null? leftovers)
       (raise-syntax-error 'infer
         (render-doc (labeled-block
@@ -4645,5 +4648,7 @@
                     (current-type-columns))
         stx))
     (resolve-method-uses! final-subst env)
-    (current-dict-skolems saved-skolems)))
+    (current-dict-skolems saved-skolems)
+    ;; Restore the outer pending-pred bag; the counter in st4 carries on.
+    (st:set-preds st4 outer-preds)))
 

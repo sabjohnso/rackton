@@ -37,13 +37,13 @@
 ;; ----- session state ----------------------------------------------
 
 ;; Wraps every piece of mutable infrastructure that the inference
-;; pipeline expects to find through parameters.  Boxes hold the
-;; per-program fresh-counter and the pending-pred bag; hashes hold
-;; the resolution tables that codegen consumes.  `nsp` is the live
-;; Racket namespace that executes compiled code.
+;; pipeline expects to find through parameters.  The fresh counter and
+;; pending-pred bag now live in the immutable `infer-state` that
+;; infer-program/phases threads internally; hashes hold the resolution
+;; tables that codegen consumes.  `nsp` is the live Racket namespace
+;; that executes compiled code.
 (struct rackton-repl-state
   (env declared
-       fresh-box preds-box
        method-uses method-resolutions method-dict-resolutions
        needs-dict-defs
        instance-default-bodies
@@ -59,8 +59,6 @@
     (namespace-require 'rackton))
   (rackton-repl-state prelude-env
                       (hasheq)
-                      (box 0)
-                      (box '())
                       (make-hasheq)
                       (make-hasheq)
                       (make-hasheq)
@@ -191,11 +189,7 @@
 ;; compiled Racket-syntax forms (a single parsed entry may expand
 ;; to multiple, e.g. #:deriving).
 (define (elaborate-form state stx)
-  (parameterize ([current-fresh-state
-                   (rackton-repl-state-fresh-box state)]
-                 [current-pending-preds
-                   (rackton-repl-state-preds-box state)]
-                 [current-method-uses
+  (parameterize ([current-method-uses
                    (rackton-repl-state-method-uses state)]
                  [current-method-resolutions
                    (rackton-repl-state-method-resolutions state)]
@@ -238,18 +232,6 @@
               (for/list ([p (in-list parsed*)])
                 (compile-top p env* plan))))
     (values env* compiled)))
-
-;; Mirror of infer.rkt's `handle-top-form` invocation; the helper
-;; isn't exported so we re-derive it by reusing infer-program over
-;; a single form's parsed list.  Returns (values env* declared*).
-(define (handle-top-form-step parsed env declared)
-  ;; infer-program's loop is private; re-implement the single-step
-  ;; variant by running infer-program over a list with one parsed
-  ;; entry and the current env as starting point.  But infer-program
-  ;; wraps in `with-fresh` which would reset our boxes — so instead
-  ;; call its private worker.  We expose one helper from infer.rkt
-  ;; (`infer-program-step`) for exactly this.
-  (infer-program-step parsed env declared))
 
 (define (eval-in state stx)
   (parameterize ([current-namespace (rackton-repl-state-nsp state)])
