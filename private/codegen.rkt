@@ -22,13 +22,19 @@
 
 (provide compile-expr
          compile-top
-         current-codegen-env)
+         empty-cg-ctx)
 
-;; compile-top sets this to the post-inference env so
-;; that compile-expr — which doesn't otherwise take env — can
-;; consult it for things like a record's field-name list during
-;; e:update lowering.
-(define current-codegen-env (make-parameter #f))
+;; The read-only codegen context, threaded explicitly through the lowering
+;; pass (replacing the dynamically-scoped current-codegen-env + the plan-table
+;; parameters).  Built once at compile-top from the env + codegen-plan.
+(struct cg-ctx (env
+                method-resolutions method-dict-resolutions
+                needs-dict-defs instance-default-bodies
+                return-typed-methods)
+  #:transparent)
+;; An empty context for isolated callers (tests) that lower a self-contained
+;; expression with no resolutions to consult.
+(define empty-cg-ctx (cg-ctx #f (hasheq) (hasheq) (hash) (hash) (seteq)))
 
 (require racket/match
          racket/list
@@ -143,7 +149,7 @@
   (cond [(or (zero? n) (null? xs)) xs]
         [else (drop-prefix (cdr xs) (sub1 n))]))
 
-(define (compile-expr e)
+(define (compile-expr e ctx)
   (match e
     ;; Symbols are the one literal kind that isn't self-quoting: a bare
     ;; symbol datum lowers to an identifier (a variable reference), so a
@@ -155,8 +161,7 @@
      ;; Return-typed class methods have been resolved by inference
      ;; into per-instance impl names; consult the table.
      (define resolved
-       (and (current-method-resolutions)
-            (hash-ref (current-method-resolutions) stx #f)))
+       (hash-ref (cg-ctx-method-resolutions ctx) stx #f))
      ;; If this var carries a dict-resolution, wrap it in a variadic
      ;; closure that prepends the dict args at call time.  The closure
      ;; defers — calling `(wrapped x y)` becomes `(name dict... x y)`.
@@ -164,8 +169,7 @@
      ;; resulting double-call costs one extra closure invocation in
      ;; exchange for unified handling of bare-var and called positions.
      (define dict-impls
-       (and (current-method-dict-resolutions)
-            (hash-ref (current-method-dict-resolutions) stx #f)))
+       (hash-ref (cg-ctx-method-dict-resolutions ctx) stx #f))
      ;; A no-dict return-typed call (pure/mempty/… on a non-needs-dict
      ;; instance) routes through the per-method runtime dispatch table by
      ;; the compile-time-resolved type tag.  This is what lets an
@@ -182,14 +186,13 @@
      (define return-prefix (string-append "$" (symbol->string name) ":"))
      (define concrete-return?
        (and resolved
-            (current-return-typed-methods)
-            (set-member? (current-return-typed-methods) name)
+            (set-member? (cg-ctx-return-typed-methods ctx) name)
             (string-prefix? (symbol->string resolved) return-prefix)))
      (cond
        [(and concrete-return? (or (not dict-impls) (null? dict-impls)))
         ;; Route through the per-method runtime dispatch table so an
         ;; instance defined in another module is reachable.
-        (compile-method-impl-ref resolved stx)]
+        (compile-method-impl-ref resolved stx ctx)]
        [(and dict-impls (not (null? dict-impls)))
         ;; Partial-apply the dict args.  For a 0-user-arg reference
         ;; like `get-state-t` this gives the value directly; for an
@@ -199,7 +202,7 @@
         ;; is routed through the table too, so it crosses module bounds.
         (with-syntax ([head (datum->syntax stx (or resolved name) stx)]
                       [(d ...) (for/list ([sym (in-list dict-impls)])
-                                 (compile-dict-impl sym stx))])
+                                 (compile-dict-impl sym stx ctx))])
           (syntax/loc stx (head d ...)))]
        [else (datum->syntax stx (or resolved name) stx)])]
 
@@ -213,7 +216,7 @@
      (define param-stxs
        (for/list ([n (in-list params)])
          (datum->syntax stx n stx)))
-     (define bdy-stx (compile-expr body))
+     (define bdy-stx (compile-expr body ctx))
      (build-curried-lambda param-stxs bdy-stx stx)]
 
     [(e:app head args stx)
@@ -226,11 +229,11 @@
      ;; matches the impl's arity, substitute the body via a `let`
      ;; and skip the function call entirely.
      (cond
-       [(try-inline-call head args stx)
+       [(try-inline-call head args stx ctx)
         => (lambda (s) s)]
        [else
-        (with-syntax ([h (compile-expr head)]
-                      [(a ...) (for/list ([x (in-list args)]) (compile-expr x))])
+        (with-syntax ([h (compile-expr head ctx)]
+                      [(a ...) (for/list ([x (in-list args)]) (compile-expr x ctx))])
           (syntax/loc stx (h a ...)))])]
 
     [(e:let bindings body stx)
@@ -238,9 +241,9 @@
       ([(binding ...)
         (for/list ([b (in-list bindings)])
           (with-syntax ([x (datum->syntax stx (car b) stx)]
-                        [r (compile-expr (cdr b))])
+                        [r (compile-expr (cdr b) ctx)])
             #'(x r)))]
-       [bdy (compile-expr body)])
+       [bdy (compile-expr body ctx)])
        (syntax/loc stx (let (binding ...) bdy)))]
 
     [(e:letrec bindings body stx)
@@ -248,19 +251,19 @@
       ([(binding ...)
         (for/list ([b (in-list bindings)])
           (with-syntax ([x (datum->syntax stx (car b) stx)]
-                        [r (compile-expr (cdr b))])
+                        [r (compile-expr (cdr b) ctx)])
             #'(x r)))]
-       [bdy (compile-expr body)])
+       [bdy (compile-expr body ctx)])
        (syntax/loc stx (letrec (binding ...) bdy)))]
 
     [(e:if c t e stx)
-     (with-syntax ([cc (compile-expr c)]
-                   [tt (compile-expr t)]
-                   [ee (compile-expr e)])
+     (with-syntax ([cc (compile-expr c ctx)]
+                   [tt (compile-expr t ctx)]
+                   [ee (compile-expr e ctx)])
        (syntax/loc stx (if cc tt ee)))]
 
     [(e:ann expr _ _)
-     (compile-expr expr)]
+     (compile-expr expr ctx)]
 
     [(e:escape _ty _vars body _stx)
      ;; Body is an opaque Racket syntax object with the user's lexical
@@ -269,14 +272,14 @@
 
     [(e:match scrut clauses _irrefutable? stx)
      (with-syntax
-      ([sc (compile-expr scrut)]
+      ([sc (compile-expr scrut ctx)]
        [(cl ...)
         (for/list ([c (in-list clauses)])
           (with-syntax ([pat (compile-pattern (clause-pattern c))]
-                        [bd  (compile-expr (clause-body c))])
+                        [bd  (compile-expr (clause-body c) ctx)])
             (cond
               [(clause-guard c)
-               (with-syntax ([gd (compile-expr (clause-guard c))])
+               (with-syntax ([gd (compile-expr (clause-guard c) ctx)])
                  #'[pat #:when gd bd])]
               [else #'[pat bd]])))])
        (syntax/loc stx (match sc cl ...)))]
@@ -287,16 +290,16 @@
      ;; matched against its position's pattern directly.  Emitted by
      ;; the multi-clause `define` combiner in private/surface.rkt.
      (with-syntax
-      ([(sc ...) (for/list ([s (in-list scrutinees)]) (compile-expr s))]
+      ([(sc ...) (for/list ([s (in-list scrutinees)]) (compile-expr s ctx))]
        [(cl ...)
         (for/list ([c (in-list clauses)])
           (with-syntax ([(pat ...)
                          (for/list ([p (in-list (clause*-patterns c))])
                            (compile-pattern p))]
-                        [bd (compile-expr (clause*-body c))])
+                        [bd (compile-expr (clause*-body c) ctx)])
             (cond
               [(clause*-guard c)
-               (with-syntax ([gd (compile-expr (clause*-guard c))])
+               (with-syntax ([gd (compile-expr (clause*-guard c) ctx)])
                  #'[(pat ...) #:when gd bd])]
               [else #'[(pat ...) bd]])))])
        (syntax/loc stx (match* (sc ...) cl ...)))]
@@ -307,7 +310,7 @@
      ;; is re-installed each time the handler runs, so a resumption
      ;; inside the handler body can perform another op under a
      ;; fresh prompt of the same tag.
-     (define env (current-codegen-env))
+     (define env (cg-ctx-env ctx))
      (define eff-name
        (and (pair? clauses)
             (env-effect-of-op env (handle-clause-op (car clauses)))))
@@ -319,9 +322,9 @@
          (string->symbol (format "$effect-tag:~a" eff-name)) stx))
      (with-syntax
       ([tag tag-id]
-       [body (compile-expr expr)]
+       [body (compile-expr expr ctx)]
        [v   (datum->syntax stx (handle-return-var ret) stx)]
-       [ret-body (compile-expr (handle-return-body ret))]
+       [ret-body (compile-expr (handle-return-body ret) ctx)]
        [(clause-form ...)
         (for/list ([cl (in-list clauses)])
           (define raw-params (handle-clause-params cl))
@@ -335,7 +338,7 @@
                         [(p ...)
                          (for/list ([param (in-list compiled-params)])
                            (datum->syntax stx param stx))]
-                        [cl-body (compile-expr (handle-clause-body cl))])
+                        [cl-body (compile-expr (handle-clause-body cl) ctx)])
             #'[(list (quote op-sym) (list p ...) k-name)
                cl-body]))])
        (syntax/loc stx
@@ -362,7 +365,7 @@
      ;; underlying `$ctor:Name` struct.  The Rackton field name is
      ;; mapped to its positional `fN` slot via the env's
      ;; struct-fields table.
-     (define env (current-codegen-env))
+     (define env (cg-ctx-env ctx))
      (unless env
        (error 'compile-expr "no codegen env for e:update"))
      (define type-head (e:update-target-type-head record env))
@@ -378,14 +381,14 @@
          (string->symbol (format "$ctor:~a" type-head))
          stx))
      (with-syntax ([s     struct-id]
-                   [r-stx (compile-expr record)]
+                   [r-stx (compile-expr record ctx)]
                    [(field-clause ...)
                     (for/list ([upd (in-list updates)])
                       (define idx (index-of field-names (car upd)))
                       (with-syntax ([f   (datum->syntax stx
                                            (string->symbol (format "f~a" idx))
                                            stx)]
-                                    [v   (compile-expr (cdr upd))])
+                                    [v   (compile-expr (cdr upd) ctx)])
                         #'[f v]))])
        (syntax/loc stx (struct-copy s r-stx field-clause ...)))]))
 
@@ -400,11 +403,11 @@
 ;; would loop at compile time.
 (define current-inlining-stack (make-parameter (seteq)))
 
-(define (try-inline-call head args stx)
+(define (try-inline-call head args stx ctx)
   (cond
     [(not (e:var? head)) #f]
     [else
-     (define resolutions (current-method-resolutions))
+     (define resolutions (cg-ctx-method-resolutions ctx))
      (cond
        [(not resolutions) #f]
        [else
@@ -426,8 +429,8 @@
              (with-syntax ([(p ...) (for/list ([n (in-list params)])
                                       (datum->syntax stx n stx))]
                            [(a ...) (for/list ([x (in-list args)])
-                                      (compile-expr x))]
-                           [body-stx (compile-expr inner)])
+                                      (compile-expr x ctx))]
+                           [body-stx (compile-expr inner ctx)])
                (syntax/loc stx
                  (let ([p a] ...) body-stx))))])])]))
 
@@ -471,36 +474,6 @@
              (if (clause*-guard c) (ast-size (clause*-guard c)) 0))))]
     [_ 5]))
 
-(define (contains-class-method-call? e)
-  (define env (current-codegen-env))
-  (cond
-    [(not env) #f]
-    [else
-     (let loop ([e e])
-       (match e
-         [(e:literal _ _) #f]
-         [(e:var name _) (and (env-ref-method-class env name) #t)]
-         [(e:lam _ b _) (loop b)]
-         [(e:app h args _)
-          (or (loop h)
-              (for/or ([a (in-list args)]) (loop a)))]
-         [(e:let bs b _)
-          (or (loop b)
-              (for/or ([p (in-list bs)]) (loop (cdr p))))]
-         [(e:if c t e _) (or (loop c) (loop t) (loop e))]
-         [(e:ann e _ _) (loop e)]
-         [(e:match s cs _ _)
-          (or (loop s)
-              (for/or ([c (in-list cs)])
-                (or (loop (clause-body c))
-                    (and (clause-guard c) (loop (clause-guard c))))))]
-         [(e:match* ss cs _ _)
-          (or (for/or ([s (in-list ss)]) (loop s))
-              (for/or ([c (in-list cs)])
-                (or (loop (clause*-body c))
-                    (and (clause*-guard c) (loop (clause*-guard c))))))]
-         [_ #f]))]))
-
 ;; Derive the struct's type-head name from the record
 ;; expression.  We have to re-infer the record's type at codegen
 ;; time because expressions don't carry their inferred type on the
@@ -524,15 +497,18 @@
 ;; the deep lowering code reads them as before.  Defaults to the empty plan
 ;; for isolated callers that drive codegen without an inference pass.
 (define (compile-top form env [plan empty-codegen-plan])
-  (parameterize ([current-codegen-env env]
-                 [current-method-resolutions      (codegen-plan-method-resolutions plan)]
-                 [current-method-dict-resolutions (codegen-plan-method-dict-resolutions plan)]
-                 [current-needs-dict-defs         (codegen-plan-needs-dict-defs plan)]
-                 [current-instance-default-bodies (codegen-plan-instance-default-bodies plan)]
-                 [current-return-typed-methods    (codegen-plan-return-typed-methods plan)])
-    (compile-top* form env)))
+  ;; Normalize #f channels (empty plan, or the REPL's #f return-typed-methods)
+  ;; to empty tables so the lowering reads them without guards — matching the
+  ;; old `(and (current-…) …)` behaviour where #f meant "empty".
+  (compile-top* form
+                (cg-ctx env
+                        (or (codegen-plan-method-resolutions plan) (hasheq))
+                        (or (codegen-plan-method-dict-resolutions plan) (hasheq))
+                        (or (codegen-plan-needs-dict-defs plan) (hash))
+                        (or (codegen-plan-instance-default-bodies plan) (hash))
+                        (or (codegen-plan-return-typed-methods plan) (seteq)))))
 
-(define (compile-top* form env)
+(define (compile-top* form ctx)
   (match form
     [(top:dec _ _ _) #f]
     [(top:alias _ _ _ _) #f]
@@ -583,15 +559,14 @@
      ;; to the RHS lambda's parameter list so the body's resolved
      ;; references to the locally-bound names actually find them.
      (define dict-args
-       (and (current-needs-dict-defs)
-            (hash-ref (current-needs-dict-defs) name #f)))
+       (hash-ref (cg-ctx-needs-dict-defs ctx) name #f))
      (define expr*
        (cond
          [(and dict-args (not (null? dict-args)))
           (prepend-lambda-params expr dict-args stx)]
          [else expr]))
      (with-syntax ([n (datum->syntax stx name stx)]
-                   [e (compile-expr expr*)])
+                   [e (compile-expr expr* ctx)])
        (syntax/loc stx (define n e)))]
     [(top:data tname tparams ctors stx _abstract? _runtime-tag)
      (with-syntax
@@ -602,9 +577,9 @@
             #'(define-data-ctor nm arr)))])
        (syntax/loc stx (begin ctor-form ...)))]
     [(top:class supers head methods stx)
-     (compile-class head methods stx env)]
-    [(top:instance ctx head methods stx)
-     (compile-instance head methods stx env)]
+     (compile-class head methods stx ctx)]
+    [(top:instance _ctx head methods stx)
+     (compile-instance head methods stx ctx)]
     [(top:require specs stx)
      (with-syntax ([(s ...) specs])
        (syntax/loc stx (require s ...)))]
@@ -646,7 +621,8 @@
 ;; later registrations would overwrite earlier ones.  Each method's
 ;; dispatch-position is read out of the class-info so that runtime
 ;; dispatch happens on the right argument.
-(define (compile-class head methods stx env)
+(define (compile-class head methods stx ctx)
+  (define env (cg-ctx-env ctx))
   (define class-name (constraint-class head))
   (define cinfo (env-ref-class env class-name))
   (define method-names
@@ -745,7 +721,7 @@
 ;; Resolve each class method to its impl body for this instance: the
 ;; user-supplied impl if present, else the class default relocated to
 ;; the instance's lexical context, else an error.
-(define (instance-method-bodies cinfo user-impls head-pred-class head-tcon stx)
+(define (instance-method-bodies cinfo user-impls head-pred-class head-tcon stx ctx)
   (let loop ([rest (hash-keys (class-info-methods cinfo))]
              [acc  '()])
     (cond
@@ -764,8 +740,7 @@
            ;; produce different handles and the resolutions would miss,
            ;; leaving the call as a bare, unbound identifier).
            [(and head-tcon
-                 (current-instance-default-bodies)
-                 (hash-ref (current-instance-default-bodies)
+                 (hash-ref (cg-ctx-instance-default-bodies ctx)
                            (list head-pred-class head-tcon m) #f))
             => values]
            [(hash-ref (class-info-defaults cinfo) m #f)
@@ -782,7 +757,8 @@
                    m head-pred-class)]))
        (loop (cdr rest) (cons (cons m body) acc))])))
 
-(define (compile-instance head methods stx env)
+(define (compile-instance head methods stx ctx)
+  (define env (cg-ctx-env ctx))
   (define head-pred-class (constraint-class head))
   (define head-arg-types
     (for/list ([a (in-list (constraint-args head))])
@@ -816,7 +792,7 @@
   (define all-method-bodies0
     (instance-method-bodies cinfo user-impls head-pred-class
                             (and (pair? head-tcon-names) (car head-tcon-names))
-                            stx))
+                            stx ctx))
   ;; Eta-expand point-free / value-form method bodies.  A method given as
   ;; `(define m some-fn)` (a bare value, not `(define (m args) …)`) emits
   ;; an EAGER reference to `some-fn`.  When `some-fn` is a top-level def
@@ -851,11 +827,11 @@
        (cond
          [(eq? (hash-ref (class-info-dispatchpos cinfo) name #f) 'return)
           (compile-instance-return-method
-           name body head-pred-class head-tcon-names pure-impl-name tags stx)]
+           name body head-pred-class head-tcon-names pure-impl-name tags stx ctx)]
          [else
           (compile-instance-positional-method
            name body cinfo head-pred-class head-tcon-names head-arg-types
-           tags witness-routed? stx env)]))))
+           tags witness-routed? stx ctx)]))))
   ;; If a value-dispatched method witness-routed its inner pure AND this
   ;; instance defines a return-typed `pure`, register a pure-via-witness
   ;; deriver for the type's ctor so nested stacks (e.g. ExceptT over
@@ -882,7 +858,7 @@
 ;; dict) instances, also register it in the per-method dispatch table so
 ;; cross-module call sites can find it.  Returns a list of forms.
 (define (compile-instance-return-method
-         name body head-pred-class head-tcon-names pure-impl-name tags stx)
+         name body head-pred-class head-tcon-names pure-impl-name tags stx ctx)
   ;; Return-typed methods don't dispatch on a runtime value;
   ;; emit one top-level `(define $method:Tcon impl)` whose
   ;; name matches what `infer.rkt` synthesizes in
@@ -891,8 +867,8 @@
   ;; can accept them (and use them in the body via the
   ;; current-dict-skolems-driven local references).
   (define dict-pair
-    (and (current-needs-dict-defs)
-         (hash-ref (current-needs-dict-defs)
+    (and (cg-ctx-needs-dict-defs ctx)
+         (hash-ref (cg-ctx-needs-dict-defs ctx)
                    (list head-pred-class
                          (car head-tcon-names)
                          name)
@@ -906,7 +882,7 @@
   (define impl-name-sym (return-impl-symbol name head-tcon-names))
   (define def-form
     (with-syntax ([impl-name (datum->syntax stx impl-name-sym stx)]
-                  [impl (compile-expr body*)])
+                  [impl (compile-expr body* ctx)])
       #'(define impl-name impl)))
   (cond
     ;; needs-dict return-typed instance (e.g. a transformer's
@@ -956,7 +932,8 @@
 ;; (named impl + table registration).  Returns a list of forms.
 (define (compile-instance-positional-method
          name body cinfo head-pred-class head-tcon-names head-arg-types
-         tags witness-routed? stx env)
+         tags witness-routed? stx ctx)
+  (define env (cg-ctx-env ctx))
   ;; Positional class-method instance impls have two kinds of
   ;; dict-args, stored as a (inst-args . method-args) pair
   ;; under current-needs-dict-defs.  Two cases:
@@ -969,8 +946,8 @@
   ;;     the impl in the runtime dispatch table with method-
   ;;     qual dicts as leading lambda params.
   (define dict-pair
-    (and (current-needs-dict-defs)
-         (hash-ref (current-needs-dict-defs)
+    (and (cg-ctx-needs-dict-defs ctx)
+         (hash-ref (cg-ctx-needs-dict-defs ctx)
                    (list head-pred-class
                          (car head-tcon-names)
                          name)
@@ -991,7 +968,7 @@
      (record-exported-impl! impl-name-sym)
      (define named-def
        (with-syntax ([impl-name (datum->syntax stx impl-name-sym stx)]
-                     [impl (compile-expr expr*)])
+                     [impl (compile-expr expr* ctx)])
          #'(define impl-name impl)))
      ;; ALSO register a runtime dispatcher so POLYMORPHIC call
      ;; sites (where the dispatch type is an abstract tvar, e.g.
@@ -1011,7 +988,7 @@
          [(and method-args (not (null? method-args)))
           (prepend-lambda-params body method-args stx)]
          [else body]))
-     (define rt-impl-stx (compile-expr rt-body))
+     (define rt-impl-stx (compile-expr rt-body ctx))
      (define uses-inst-dict?
        (syntax-mentions-any? rt-impl-stx (list->seteq inst-args)))
      (define register-forms
@@ -1071,7 +1048,7 @@
                      stx
                      (overlap-impl-symbol name head-arg-types)
                      stx)]
-                   [impl (compile-expr body)])
+                   [impl (compile-expr body ctx)])
        (list #'(define impl-name impl)))]
     [else
      ;; Method-qual dicts (if any) become leading lambda
@@ -1097,7 +1074,7 @@
        (register-inlinable-body! impl-name-sym body*))
      (define def-form
        (with-syntax ([impl-name (datum->syntax stx impl-name-sym stx)]
-                     [impl      (compile-expr body*)])
+                     [impl      (compile-expr body* ctx)])
          #'(define impl-name impl)))
      (define register-forms
        (for/list ([tag (in-list tags)])
@@ -1222,12 +1199,11 @@
 ;; impls like $==:Integer, and local needs-dict dict-arg params like
 ;; $dict-mempty-$skolem, which have no ":") is emitted as a direct
 ;; reference.  Used at both the e:var call site and the dict-arg path.
-(define (compile-method-impl-ref sym stx)
+(define (compile-method-impl-ref sym stx ctx)
   (define m (regexp-match #rx"^[$]([^:]+):(.+)$" (symbol->string sym)))
   (cond
     [(and m
-          (current-return-typed-methods)
-          (set-member? (current-return-typed-methods) (string->symbol (cadr m))))
+          (set-member? (cg-ctx-return-typed-methods ctx) (string->symbol (cadr m))))
      (with-syntax ([table (datum->syntax stx (method-dispatch-symbol
                                               (string->symbol (cadr m))) stx)]
                    [tg    (datum->syntax stx (string->symbol (caddr m)) stx)]
@@ -1243,13 +1219,13 @@
 ;; impls are prelude-provided and aren't table-registered), while each
 ;; sub-arg is compiled recursively so a concrete return-typed sub-dict
 ;; (e.g. the inner monad's $pure:IO) still routes through the table.
-(define (compile-dict-impl x stx)
+(define (compile-dict-impl x stx ctx)
   (cond
-    [(symbol? x) (compile-method-impl-ref x stx)]
+    [(symbol? x) (compile-method-impl-ref x stx ctx)]
     [(pair? x)
      (with-syntax ([h        (datum->syntax stx (car x) stx)]
                    [(a ...)  (for/list ([y (in-list (cdr x))])
-                               (compile-dict-impl y stx))])
+                               (compile-dict-impl y stx ctx))])
        (syntax/loc stx (h a ...)))]
     [else (datum->syntax stx x stx)]))
 

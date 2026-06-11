@@ -13,7 +13,7 @@
            "env.rkt")   ; initial-env for compile-top
 
   (define h #'codegen-test)
-  (define (lower e) (syntax->datum (compile-expr e)))
+  (define (lower e) (syntax->datum (compile-expr e empty-cg-ctx)))
 
   (test-case "literals lower to themselves"
     (check-equal? (lower (e:literal 5 h))     5)
