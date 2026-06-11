@@ -1023,7 +1023,7 @@
     [(e:literal v _)                 (infer-return (cons empty-subst (literal-type v)))]
     [(e:var x stx)                   (values->infer (lambda () (infer-var x stx env)))]
     [(e:lam params body _)           (infer-lam/m params body env)]
-    [(e:app head args stx)           (values->infer (lambda () (infer-app head args stx env)))]
+    [(e:app head args stx)           (infer-app/m head args stx env)]
     [(e:let bindings body _)         (infer-let/m bindings body env)]
     [(e:letrec bindings body _)      (infer-letrec/m bindings body env)]
     [(e:if c t els stx)              (infer-if/m c t els stx env)]
@@ -1129,66 +1129,51 @@
            (cons s (foldr make-arrow body-type
                           (for/list ([t (in-list param-tvars)]) (apply-subst s t))))))))))
 
-(define (infer-app head args stx env)
-     (define-values (s-head t-head) (infer-expr head env))
-     ;; Sequentially walk args.  At each step, after inferring the
-     ;; arg's type, unify the current head-type's domain with the
-     ;; arg's type.  On failure, blame the SPECIFIC arg so the error
-     ;; points at the bad token, not the whole call form.
-     ;;
-     ;; If the head's arrow domain at this position is a
-     ;; `tforall`, switch to bidirectional check-mode — the arg
-     ;; must be type-checked against the polymorphic type, not
-     ;; inferred and unified.  Inferring would just specialize to
-     ;; one fresh tvar, missing the whole point of rank-N.
-     (define-values (s-final result-type)
-       (let loop ([args args]
-                  [s s-head]
-                  [head-ty t-head]
-                  [env (apply-subst/env s-head env)])
-         (cond
-           [(null? args) (values s head-ty)]
-           [else
-            (define this-arg (car args))
-            (define head-ty-pre (apply-subst s head-ty))
-            (cond
-              [(and (arrow? head-ty-pre)
-                    (tforall? (arrow-dom head-ty-pre)))
-               (define dom (arrow-dom head-ty-pre))
-               (define cod (arrow-cod head-ty-pre))
-               (define-values (s-arg _t-arg) (check-expr this-arg env dom))
-               (define s-now (subst-compose s-arg s))
-               (loop (cdr args)
-                     s-now
-                     (apply-subst s-now cod)
-                     (apply-subst/env s-arg env))]
-              [else
-               (define-values (s-arg t-arg) (infer-expr this-arg env))
-               (define s-now (subst-compose s-arg s))
-               (define head-ty-now (apply-subst s-now head-ty))
-               (define β (fresh-tvar))
-               (define expected-arrow (make-arrow t-arg β))
-               (define s-u
-                 (with-handlers
-                  ([exn:fail:unify?
-                    (lambda (_)
-                      (cond
-                        [(arrow? head-ty-now)
-                         (raise-type-mismatch!
-                           (expr-stx this-arg)
-                           (apply-subst s-now (arrow-dom head-ty-now))
-                           (apply-subst s-now t-arg))]
-                        [else
-                         (raise-type-mismatch!
-                           (expr-stx head)
-                           expected-arrow
-                           head-ty-now)]))])
-                  (unify head-ty-now expected-arrow)))
-               (loop (cdr args)
-                     (subst-compose s-u s-now)
-                     (apply-subst s-u β)
-                     (apply-subst/env s-arg env))])])))
-     (values s-final result-type))
+;; Sequentially walk args.  After inferring each arg's type, unify the
+;; current head-type's domain with the arg's type; on failure, blame the
+;; SPECIFIC arg.  If the head's arrow domain is a `tforall`, switch to
+;; bidirectional check-mode (rank-N) — the arg is checked against the
+;; polymorphic type, not inferred and unified.  `check-expr` is not yet
+;; converted, so it is bridged via values->infer.
+(define (infer-app/m head args stx env)
+  (let/infer ([rh (infer-expr/m head env)])
+    (let* ([s-head (car rh)] [t-head (cdr rh)])
+      (let loop ([args args] [s s-head] [head-ty t-head] [env (apply-subst/env s-head env)])
+        (cond
+          [(null? args) (infer-return (cons s head-ty))]
+          [else
+           (define this-arg (car args))
+           (define head-ty-pre (apply-subst s head-ty))
+           (cond
+             [(and (arrow? head-ty-pre) (tforall? (arrow-dom head-ty-pre)))
+              (define dom (arrow-dom head-ty-pre))
+              (define cod (arrow-cod head-ty-pre))
+              (let/infer ([rc (values->infer (lambda () (check-expr this-arg env dom)))])
+                (let* ([s-arg (car rc)] [s-now (subst-compose s-arg s)])
+                  (loop (cdr args) s-now (apply-subst s-now cod) (apply-subst/env s-arg env))))]
+             [else
+              (let/infer ([ra (infer-expr/m this-arg env)])
+                (let* ([s-arg (car ra)] [t-arg (cdr ra)]
+                       [s-now (subst-compose s-arg s)]
+                       [head-ty-now (apply-subst s-now head-ty)])
+                  (let/infer ([β (m:fresh-tvar)])
+                    (let* ([expected-arrow (make-arrow t-arg β)]
+                           [s-u (with-handlers
+                                 ([exn:fail:unify?
+                                   (lambda (_)
+                                     (cond
+                                       [(arrow? head-ty-now)
+                                        (raise-type-mismatch! (expr-stx this-arg)
+                                          (apply-subst s-now (arrow-dom head-ty-now))
+                                          (apply-subst s-now t-arg))]
+                                       [else
+                                        (raise-type-mismatch! (expr-stx head)
+                                          expected-arrow head-ty-now)]))])
+                                 (unify head-ty-now expected-arrow))])
+                      (loop (cdr args)
+                            (subst-compose s-u s-now)
+                            (apply-subst s-u β)
+                            (apply-subst/env s-arg env))))))])])))))
 
 ;; Parallel let: each rhs is typed in the env at let-entry (with
 ;; substitutions threaded), generalized, then made available.  The
