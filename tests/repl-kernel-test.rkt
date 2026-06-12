@@ -122,6 +122,44 @@
   (check-regexp-match #rx"9" (car outs))
   (check-regexp-match #rx"Maybe" (car outs)))
 
+(test-case "REPL: a (: name τ) input constrains a define in a LATER input"
+  ;; Regression: the kernel discarded the declared-signature map that
+  ;; infer-program/phases returned, so a later define was inferred as
+  ;; undeclared and the signature was silently ignored (f generalized
+  ;; to (All (a) (-> a a)) instead of being checked at (-> Integer Integer)).
+  (define-values (_ outs)
+    (drive-session
+     '((: f (-> Integer Integer))
+       (define f (lambda (x) x)))))
+  (check-regexp-match #rx"Integer.*Integer" (cadr outs))
+  (check-false (regexp-match? #rx"All" (cadr outs)) (cadr outs)))
+
+(test-case "REPL: a prior (: name τ) resolves a return-typed method in the body"
+  ;; The declared type is what fixes `pure`'s target; without the carried
+  ;; signature this errored with "ambiguous use of pure".
+  (define-values (_ outs)
+    (drive-session
+     '((: m (Maybe Integer))
+       (define m (pure 3))
+       m)))
+  (check-false (regexp-match? #rx"(?i:ambiguous|error)" (cadr outs))
+               (cadr outs))
+  (check-regexp-match #rx"3" (caddr outs))
+  (check-regexp-match #rx"Maybe" (caddr outs)))
+
+(test-case "REPL: a define consumes its signature; redefinition is free"
+  ;; REPL iteration: once (define g …) lands, the signature is spent —
+  ;; re-evaluating g at a different type must not be checked against it.
+  (define-values (_ outs)
+    (drive-session
+     '((: g Integer)
+       (define g 1)
+       (define g "now a string")
+       g)))
+  (check-false (regexp-match? #rx"(?i:error|mismatch)" (caddr outs))
+               (caddr outs))
+  (check-regexp-match #rx"now a string" (list-ref outs 3)))
+
 (test-case "REPL: ,quit signals exit"
   (define-values (st _outs) (drive-session '((unquote quit))))
   (check-true (rackton-repl-quit? st)))

@@ -165,7 +165,8 @@
    ;; types the expansion; splice the result as syntax to keep its scopes.
    (define exp-stx (expand-session-macros state expr-datum))
    (define synthetic (datum->syntax #f (list 'define name exp-stx)))
-   (define-values (env* _compiled _final-st) (elaborate-form state synthetic))
+   (define-values (env* _declared* _compiled _final-st)
+     (elaborate-form state synthetic))
    (define sch (env-ref-var env* name))
    (format "~s :: ~a\n" expr-datum (scheme->datum sch))))
 
@@ -335,9 +336,10 @@
   (with-handlers
    ([exn:fail?
      (lambda (e) (values state (format "error: ~a\n" (exn-message e))))])
-   (define-values (env* compiled final-st) (elaborate-form state stx))
+   (define-values (env* declared* compiled final-st) (elaborate-form state stx))
    (define base
-     (struct-copy rackton-repl-state state [env env*] [infer-st final-st]))
+     (struct-copy rackton-repl-state state
+                  [env env*] [declared declared*] [infer-st final-st]))
    ;; Run the compiled forms (including a `require`'s runtime import)
    ;; before pulling in any exported macros, so a macro that expands into
    ;; the library's runtime bindings finds them already loaded.
@@ -401,10 +403,12 @@
    (define n (rackton-repl-state-expr-counter state))
    (define name (string->symbol (format "$repl-~a" n)))
    (define synthetic (datum->syntax #f (list 'define name stx)))
-   (define-values (env* compiled final-st) (elaborate-form state synthetic))
+   (define-values (env* declared* compiled final-st)
+     (elaborate-form state synthetic))
    (define state*
      (struct-copy rackton-repl-state state
                   [env env*]
+                  [declared declared*]
                   [infer-st final-st]
                   [expr-counter (add1 n)]))
    (for ([c (in-list compiled)])
@@ -422,10 +426,14 @@
 ;; persisted parameters.  Returns updated env and the list of
 ;; compiled Racket-syntax forms (a single parsed entry may expand
 ;; to multiple, e.g. #:deriving).
-;; Returns (values env* compiled final-st).  The inference state — fresh
-;; counter, pending preds, and the resolution tables — is threaded as an
-;; immutable infer-state the caller persists into the next repl-state, so the
-;; tables accumulate across inputs the way the old mutable hashes did.
+;; Returns (values env* declared* compiled final-st).  declared* is the
+;; carried-forward signature map — this input's `(: foo …)` decs merged
+;; in, definitions' consumed — which the caller must persist so a
+;; signature declared in one input constrains a define in a later one.
+;; The inference state — fresh counter, pending preds, and the resolution
+;; tables — is threaded as an immutable infer-state the caller persists
+;; into the next repl-state, so the tables accumulate across inputs the
+;; way the old mutable hashes did.
 (define (elaborate-form state stx)
   ;; A REPL session iterates by re-evaluating forms, so a re-declared instance
   ;; replaces the prior one instead of raising the module coherence error.
@@ -444,7 +452,7 @@
     ;; infer-program/phases also returns the post-expansion form list
     ;; (`#:derive-superclasses` instances replaced by the plain instances they
     ;; synthesize); compile THAT so derived instances are lowered.
-    (define-values (env* _declared* parsed* final-st)
+    (define-values (env* declared* parsed* final-st)
       (infer-program/phases parsed
                             (rackton-repl-state-env state)
                             (rackton-repl-state-declared state)
@@ -469,7 +477,7 @@
                 ([p (in-list parsed*)])
         (let-values ([(s cgst*) (compile-top p env* plan cgst)])
           (values (if s (cons s acc) acc) cgst*))))
-    (values env* compiled final-st)))
+    (values env* declared* compiled final-st)))
 
 (define (eval-in state stx)
   (parameterize ([current-namespace (rackton-repl-state-nsp state)])

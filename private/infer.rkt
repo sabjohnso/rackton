@@ -1987,8 +1987,13 @@
   (check-superclass-obligations env-after-C forms*)
   ;; ---- Phase D: SCC-based body inference for top:defs ----
   (define-values (env-after-D st3) (run-phase-D env-after-C declared def-tvars forms* st2))
+  ;; Second value: the declared map to carry into the next REPL input —
+  ;; this input's `(: foo …)` decs merged in (Phase A), minus every name
+  ;; whose define landed in this input.  A signature is consumed by its
+  ;; define, so a later REPL redefinition is inferred fresh rather than
+  ;; checked against a spent declaration.
   (values env-after-D
-          (for/fold ([d prior-declared]) ([f (in-list forms*)] #:when (top:def? f))
+          (for/fold ([d declared]) ([f (in-list forms*)] #:when (top:def? f))
             (hash-remove d (top:def-name f)))
           forms*
           st3))
