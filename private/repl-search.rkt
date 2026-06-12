@@ -6,11 +6,13 @@
 ;; of TYPE — Hoogle-style search restricted to argument positions.  A
 ;; candidate matches when TYPE unifies with one of the argument
 ;; positions along its (curried) arrow spine.  Argument positions that
-;; are bare type variables are excluded: `(-> a a)` accepts
-;; *everything*, so listing it for every query would bury the
-;; informative matches.  (A constrained variable like the `a` in
-;; `(Num a) => (-> a a)` counts as bare for now — checking the query
-;; against the constraint is a possible refinement.)
+;; are *unconstrained* type variables are excluded: `(-> a a)` accepts
+;; everything, so listing it for every query would bury the
+;; informative matches.  A *constrained* variable participates: the
+;; `a` in `(Num a) => (-> a (-> a a))` matches `Integer` exactly when
+;; the constraints remain satisfiable under the match — so `,accepts
+;; Integer` lists `+`, but not the method of a class with no Integer
+;; instance.
 ;;
 ;; Public API:
 ;;   accepts-search — env × type datum →
@@ -70,16 +72,25 @@
 ;; argument matches `(List Integer)` with `(Functor List)` on hand)
 ;; while dropping, say, `censor` (whose `(m a)` also unifies, but no
 ;; `(MonadWriter w List)` instance can ever apply).
+;;
+;; A variable argument position is skipped only when no constraint
+;; mentions it — a constrained one (the `a` of `(Num a) => …`) binds
+;; to the query and stands or falls with its constraints.
 (define (scheme-accepts? env sch query)
   (define body (instantiate sch))
   (define t (qual-body-type body))
   (define preds (if (qual? body) (qual-constraints body) '()))
+  (define constrained
+    (for*/seteq ([p (in-list preds)] [v (in-set (pred-vars p))]) v))
   (for/or ([arg (in-list (arrow-arguments t))]
-           #:unless (tvar? arg))
+           #:unless (unconstrained-tvar? arg constrained))
     (define σ (try-unify arg query))
     (and σ
          (for/and ([p (in-list preds)])
            (pred-possibly-satisfiable? env (apply-subst σ p))))))
+
+(define (unconstrained-tvar? t constrained)
+  (and (tvar? t) (not (set-member? constrained (tvar-name t)))))
 
 ;; Conservative satisfiability: refute a predicate only when it
 ;; mentions a concrete constructor and no instance head of its class

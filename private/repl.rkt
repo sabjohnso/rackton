@@ -580,22 +580,20 @@
 ;; a list of strings whose names start with `prefix`.  Consults
 ;; the four user-extensible namespaces — vars, data ctors,
 ;; classes, tcons — so a partial type or class name also
-;; completes.
+;; completes, plus the surface keywords (`define`, `protocol`,
+;; `match`, …), which are typed as often as any binding.
 (define (rackton-repl-completions state prefix)
   (define env (rackton-repl-state-env state))
   (define all-names
-    (append (hash-keys (env-vars env))
-            (hash-keys (env-data-ctors env))
-            (hash-keys (env-classes env))
-            (hash-keys (env-tcons env))))
-  (define candidates
-    (for/list ([n (in-list all-names)]
-               #:when (let ([s (symbol->string n)])
-                        (and (>= (string-length s) (string-length prefix))
-                             (string=? prefix
-                                       (substring s 0 (string-length prefix))))))
-      (symbol->string n)))
-  (sort (remove-duplicates candidates) string<?))
+    (append rackton-keyword-names
+            (for/list ([n (in-list (append (hash-keys (env-vars env))
+                                           (hash-keys (env-data-ctors env))
+                                           (hash-keys (env-classes env))
+                                           (hash-keys (env-tcons env))))])
+              (symbol->string n))))
+  (sort (remove-duplicates
+         (filter (lambda (s) (string-prefix? s prefix)) all-names))
+        string<?))
 
 ;; ----- interactive loop -------------------------------------------
 

@@ -32,6 +32,7 @@
          rackton-editor-read-datum
          rackton-editor-ready?
          rackton-lexer
+         rackton-keyword-names
          rackton-history-path
          rackton-history-load
          rackton-history-save!
@@ -48,7 +49,7 @@
                   ee-forward-exp)
          (only-in racket/port port->string)
          (only-in racket/file make-directory*)
-         (only-in racket/set seteq set-member?)
+         (only-in racket/set seteq set-member? set->list)
          (only-in syntax-color/racket-lexer racket-lexer)
          "repl-input.rkt")
 
@@ -150,15 +151,23 @@
 (define (make-completion-namespace)
   (completion-namespace (make-empty-namespace) (make-hash)))
 
-;; Define any names not yet present.  `names` are strings (the
-;; kernel's completion candidates); `seen` makes a repeat sync cheap.
+;; Make the namespace mirror `names` (strings — the kernel's
+;; completion candidates): define what's new, undefine what's gone.
+;; Removal matters for ,clear — names from a discarded session must
+;; stop completing.  `seen` holds the current mirror, so a
+;; steady-state sync touches nothing.
 (define (completion-namespace-sync! cns names)
   (define seen (completion-namespace-seen cns))
+  (define ns (completion-namespace-ns cns))
+  (define current (for/hash ([n (in-list names)]) (values n #t)))
+  (for ([n (in-list (hash-keys seen))]
+        #:unless (hash-ref current n #f))
+    (hash-remove! seen n)
+    (namespace-undefine-variable! (string->symbol n) ns))
   (for ([n (in-list names)]
         #:unless (hash-ref seen n #f))
     (hash-set! seen n #t)
-    (namespace-set-variable-value! (string->symbol n) #t #f
-                                   (completion-namespace-ns cns))))
+    (namespace-set-variable-value! (string->symbol n) #t #f ns)))
 
 ;; ----- syntax coloring ----------------------------------------------
 
@@ -176,6 +185,12 @@
          'if 'cond 'match 'do 'ann 'delay 'handle 'update 'via
          'racket 'quote 'and
          'All ': '=> '->))
+
+;; The same keywords as completion candidates, for the kernel's
+;; completion list — `prot` Tab-completes to `protocol` just like a
+;; bound name does.
+(define rackton-keyword-names
+  (sort (map symbol->string (set->list rackton-keywords)) string<?))
 
 ;; The standard Racket lexer with Rackton keywords re-tagged.
 ;; Everything else — strings, numbers, comments, parens — passes

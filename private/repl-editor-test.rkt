@@ -178,4 +178,16 @@
                                          (completion-namespace-ns cns)])
                            (namespace-mapped-symbols)))
                    #t)
-              "a later sync adds newly defined names"))
+              "a later sync adds newly defined names")
+
+  ;; The namespace mirrors the candidate list: a name absent from a
+  ;; later sync stops completing — this is what makes ,clear forget
+  ;; the cleared session's names.
+  (completion-namespace-sync! cns '("Wibble"))
+  (define after-removal
+    (parameterize ([current-namespace (completion-namespace-ns cns)])
+      (namespace-mapped-symbols)))
+  (check-false (memq 'frobnicate after-removal)
+               "a name dropped from the sync list no longer completes")
+  (check-true (and (memq 'Wibble after-removal) #t)
+              "names still in the sync list survive removal of others"))

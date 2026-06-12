@@ -139,6 +139,22 @@
                              (unquote accepts Integer))))
   (check-false (regexp-match #rx"idf :: " out)))
 
+(test-case ",accepts lists constrained-variable functions whose instance exists"
+  ;; + :: (Num a) => (-> a (-> a a)) and (Num Integer) exists.
+  (define out (last-output '((unquote accepts Integer))))
+  (check-regexp-match #px"(?m:^\\+ :: )" out))
+
+(test-case ",accepts drops constrained-variable functions with no instance for the query"
+  (define out (last-output '((protocol (Zap a) (: zap (-> a a)))
+                             (unquote accepts Integer))))
+  (check-false (regexp-match #rx"zap :: " out)))
+
+(test-case "an instance makes a constrained-variable function searchable"
+  (define out (last-output '((protocol (Zap a) (: zap (-> a a)))
+                             (instance (Zap Integer) (define (zap x) x))
+                             (unquote accepts Integer))))
+  (check-regexp-match #rx"zap :: " out))
+
 (test-case ",accepts with a type-variable argument in the query unifies it"
   (define out (last-output '((: g (-> (Maybe Integer) Integer))
                              (define (g m) 0)
@@ -162,6 +178,14 @@
 (test-case ",accepts on a malformed type reports an error"
   (define out (last-output '((unquote accepts 5))))
   (check-regexp-match #rx"error" out))
+
+;; ----- keyword completion --------------------------------------------
+
+(test-case "surface keywords are completion candidates"
+  (define state (rackton-repl-init))
+  (check-not-false (member "protocol" (rackton-repl-completions state "prot")))
+  (check-not-false (member "define-alias" (rackton-repl-completions state "define")))
+  (check-not-false (member "match" (rackton-repl-completions state "mat"))))
 
 ;; ----- ,keys ---------------------------------------------------------
 

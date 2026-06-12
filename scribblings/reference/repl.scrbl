@@ -43,8 +43,11 @@ reads input through Racket's expression editor
        entries that start with / contain the text before the cursor.}
 
  @item{@bold{Completion} — @litchar{Tab} completes names from the live
-       session environment: values, data constructors, types, and
-       classes, including ones defined earlier in the session.}
+       session environment — values, data constructors, types, and
+       classes, including ones defined earlier in the session — plus
+       the surface keywords (@racket[define], @racket[protocol],
+       @racket[match], …).  @litchar{,clear} forgets the cleared
+       session's names.}
 
  @item{@bold{Structural editing} — expeditor's s-expression commands
        (motion, transpose, kill, match-jump) plus @litchar{Esc-(},
@@ -176,12 +179,16 @@ recorded source and says so.
 lists the functions and data constructors in scope that accept an
 argument of @racket[_type] — search by argument position, in the
 spirit of Hoogle.  A candidate matches when @racket[_type] unifies
-with one of its argument positions; argument positions that are bare
-type variables are excluded (they accept everything), and a candidate
-whose class constraints can never be satisfied under the match is
-dropped — @racket[fmap] is listed for @litchar{,accepts (List
-Integer)} because @racket[(Functor List)] exists, while a
-@racketidfont{MonadWriter}-constrained candidate is not.
+with one of its argument positions; argument positions that are
+@emph{unconstrained} type variables are excluded (they accept
+everything), and a candidate whose class constraints can never be
+satisfied under the match is dropped.  A @emph{constrained} variable
+participates and stands or falls with its constraints:
+@litchar{,accepts Integer} lists @racket[+] because @racket[(Num
+Integer)] exists, and @litchar{,accepts (List Integer)} lists
+@racket[fmap] because @racket[(Functor List)] exists, while a
+@racketidfont{MonadWriter}-constrained candidate is not listed for
+@racket[List] queries.
 
 @verbatim|{
 λ> ,accepts (List Integer)
