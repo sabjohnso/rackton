@@ -22,6 +22,7 @@
 ;; Position conventions match srcloc: lines 1-based, columns 0-based.
 
 (provide analyze-module
+         analyze-text
          (struct-out analysis)
          (struct-out defsite)
          (struct-out diag)
@@ -40,6 +41,8 @@
 (require racket/match
          racket/list
          (only-in racket/port port->string)
+         (only-in racket/path path-only)
+         (only-in syntax/modresolve resolve-module-path)
          "surface.rkt"
          "infer.rkt"
          "prelude.rkt"
@@ -51,7 +54,9 @@
 ;; text: the file's full contents (position queries need it).
 ;; env: the typing environment after inference, or #f when it failed.
 ;; defs: hasheq name → defsite.  diagnostics: list of diag.
-(struct analysis (path text env defs diagnostics) #:transparent)
+;; requires: the resolved paths of required modules that exist —
+;; cross-module navigation looks their sidecars up.
+(struct analysis (path text env defs diagnostics requires) #:transparent)
 
 (struct defsite (name kind srcloc) #:transparent)   ; kind: value | type |
                                                     ;   constructor | class | method
@@ -59,19 +64,19 @@
 
 ;; ----- reading ---------------------------------------------------------
 
-;; The file's forms as syntax objects with real srclocs.  The reader
-;; for `#lang rackton` wraps forms in (rackton/main …); reading the
-;; raw forms after the #lang line reproduces its input exactly.
-(define (read-module-forms path)
-  (call-with-input-file path
-    (lambda (in)
-      (port-count-lines! in)
-      (void (read-line in))          ; the #lang line
-      (let loop ([acc '()])
-        (define f (read-syntax path in))
-        (if (eof-object? f)
-            (reverse acc)
-            (loop (cons f acc)))))))
+;; The text's forms as syntax objects with real srclocs against
+;; `path`.  The reader for `#lang rackton` wraps forms in
+;; (rackton/main …); reading the raw forms after the #lang line
+;; reproduces its input exactly.
+(define (read-text-forms text path)
+  (define in (open-input-string text))
+  (port-count-lines! in)
+  (void (read-line in))              ; the #lang line
+  (let loop ([acc '()])
+    (define f (read-syntax path in))
+    (if (eof-object? f)
+        (reverse acc)
+        (loop (cons f acc)))))
 
 ;; ----- error conversion ---------------------------------------------------
 
@@ -126,19 +131,63 @@
 ;; ----- the entry point ----------------------------------------------------------
 
 (define (analyze-module path)
-  (define text (call-with-input-file path port->string))
-  (define-values (defs env diags)
-    (with-handlers ([exn:fail? (lambda (e)
-                                 (values (hasheq) #f (list (exn->diag e path))))])
-      (define forms (read-module-forms path))
-      (define parsed (parse-toplevel-list forms))
+  (analyze-text (call-with-input-file path port->string) path))
+
+;; Analyze buffer contents that need not be on disk (the LSP's
+;; unsaved-edit path); `path` labels positions and anchors relative
+;; requires.
+(define (analyze-text text path)
+  (define-values (defs reqs env diags)
+    (with-handlers ([exn:fail?
+                     (lambda (e)
+                       (values (hasheq) '() #f (list (exn->diag e path))))])
+      (define forms (read-text-forms text path))
+      ;; Parse each form on its own: one broken form (the common
+      ;; mid-edit state) must not blind the analysis to every other
+      ;; form's definitions.
+      (define parses
+        (for/list ([f (in-list forms)])
+          (with-handlers ([exn:fail? (lambda (e) e)])
+            (parse-toplevel-list (list f)))))
+      (define parse-errors (filter exn? parses))
+      (define parsed (append* (filter list? parses)))
       (define defs (collect-defs parsed path))
-      (with-handlers ([exn:fail? (lambda (e)
-                                   (values defs #f (list (exn->diag e path))))])
-        (define-values (env* _declared* _parsed* _st)
-          (infer-program/phases parsed prelude-env (hasheq) (make-infer-state)))
-        (values defs env* '()))))
-  (analysis path text env defs diags))
+      (define reqs (collect-requires parsed path))
+      (cond
+        [(pair? parse-errors)
+         (values defs reqs #f
+                 (for/list ([e (in-list parse-errors)])
+                   (exn->diag e path)))]
+        [else
+         (with-handlers ([exn:fail?
+                          (lambda (e)
+                            (values defs reqs #f (list (exn->diag e path))))])
+           (define-values (env* _declared* _parsed* _st)
+             (infer-program/phases parsed prelude-env (hasheq)
+                                   (make-infer-state)))
+           (values defs reqs env* '()))])))
+  (analysis path text env defs diags reqs))
+
+;; The resolved on-disk paths of the module's requires (specs that
+;; resolve to existing files; others are dropped — inference already
+;; diagnoses unloadable requires).
+(define (collect-requires parsed path)
+  (define dir (path-only path))
+  (for*/list ([t (in-list parsed)]
+              #:when (top:require? t)
+              [spec-stx (in-list (top:require-specs t))]
+              [p (in-value (spec->path (syntax->datum spec-stx) dir))]
+              #:when (and p (file-exists? p)))
+    p))
+
+(define (spec->path spec dir)
+  (with-handlers ([exn:fail? (lambda (_) #f)])
+    (match spec
+      [(? string?) (simplify-path (build-path (or dir (current-directory)) spec))]
+      [(? symbol?) (resolve-module-path spec #f)]
+      [(list 'lib (? string? s)) (resolve-module-path spec #f)]
+      [(list 'file (? string? s)) (string->path s)]
+      [_ #f])))
 
 ;; ----- queries ---------------------------------------------------------------------
 

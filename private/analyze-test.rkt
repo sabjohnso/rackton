@@ -29,6 +29,15 @@
   (define (analyze . lines)
     (analyze-module (apply fixture "mod.rkt" lines)))
 
+  ;; ----- in-memory analysis ---------------------------------------------
+
+  ;; analyze-text works on buffer contents that need not match (or
+  ;; even have) a file on disk — the LSP's unsaved-edit path.
+  (let ([a (analyze-text "#lang rackton\n(: n Integer)\n(define n 7)\n"
+                         (build-path fixture-dir "unsaved.rkt"))])
+    (check-equal? (analysis-diagnostics a) '())
+    (check-equal? (srcloc-line (defsite-srcloc (analysis-def-of a 'n))) 3))
+
   ;; ----- a clean module ------------------------------------------------
 
   (define clean
@@ -130,7 +139,9 @@
     (check-equal? (analysis-diagnostics user) '()
                   "a require resolves through the sidecar")
     (check-equal? (scheme->datum (analysis-scheme-of user 'thing)) 'Integer
-                  "imported names answer scheme queries"))
+                  "imported names answer scheme queries")
+    (check-equal? (analysis-requires user) (list lib)
+                  "required module paths are retained, resolved"))
 
   ;; ----- the workspace index (sidecar defs table) -------------------------
 
