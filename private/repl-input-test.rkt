@@ -1,17 +1,14 @@
 #lang racket/base
 
-;; Tests for repl-editor.rkt — the expeditor-backed input layer.
-;;
-;; The editor itself needs a terminal, so the testable pieces are the
-;; two pure functions expeditor consults: `rackton-editor-read-datum`
-;; (how an accepted entry becomes a datum, including `,command` lines)
-;; and `rackton-editor-ready?` (when Return accepts the entry instead
-;; of inserting a newline).
+;; Tests for repl-input.rkt — the entry reading and acceptance rules
+;; shared by the REPL's input layers, and the history persistence.
+;; (Migrated from the retired expeditor layer's test file; the rules
+;; are unchanged.)
 
 (module+ test
   (require rackunit
            racket/file
-           "repl-editor.rkt")
+           "repl-input.rkt")
 
   (define (read-datum-of str)
     (rackton-editor-read-datum (open-input-string str)))
@@ -116,78 +113,4 @@
      (check-true (<= (length loaded) 200)
                  "saved history is capped")
      (check-equal? (car loaded) "entry-0"
-                   "capping keeps the most recent entries (front of list)")))
-
-  ;; ----- keyword highlighting -----------------------------------------
-
-  ;; The wrapper lexer re-tags Rackton keyword symbols so they color
-  ;; differently from ordinary identifiers; everything else passes
-  ;; through the standard Racket lexer untouched.
-
-  (define (lex-all str)
-    ;; (listof (cons lexeme type)), whitespace dropped.
-    (define in (open-input-string str))
-    (let loop ()
-      (define-values (lexeme type paren start end) (rackton-lexer in))
-      (cond
-        [(eof-object? lexeme) '()]
-        [(eq? type 'white-space) (loop)]
-        [else (cons (cons lexeme type) (loop))])))
-
-  (check-equal? (lex-all "(define x 1)")
-                '(("(" . parenthesis)
-                  ("define" . hash-colon-keyword)
-                  ("x" . symbol)
-                  ("1" . constant)
-                  (")" . parenthesis))
-                "a Rackton keyword head is re-tagged; the rest is untouched")
-
-  (check-equal? (cdr (assoc "match" (lex-all "(match m ((Some x) x))")))
-                'hash-colon-keyword
-                "expression keywords re-tag too")
-
-  (check-equal? (cdr (assoc "definex" (lex-all "(definex 1)")))
-                'symbol
-                "a keyword prefix alone does not re-tag")
-
-  (check-equal? (cdr (assoc "\"define\"" (lex-all "\"define\"")))
-                'string
-                "a keyword inside a string literal stays a string")
-
-  ;; ----- completion namespace ---------------------------------------
-
-  (define cns (make-completion-namespace))
-
-  (completion-namespace-sync! cns '("frobnicate" "Maybe"))
-  (check-true (and (memq 'frobnicate
-                         (parameterize ([current-namespace
-                                         (completion-namespace-ns cns)])
-                           (namespace-mapped-symbols)))
-                   #t)
-              "synced var name is visible to namespace completion")
-  (check-true (and (memq 'Maybe
-                         (parameterize ([current-namespace
-                                         (completion-namespace-ns cns)])
-                           (namespace-mapped-symbols)))
-                   #t)
-              "synced type name is visible to namespace completion")
-
-  (completion-namespace-sync! cns '("frobnicate" "Maybe" "Wibble"))
-  (check-true (and (memq 'Wibble
-                         (parameterize ([current-namespace
-                                         (completion-namespace-ns cns)])
-                           (namespace-mapped-symbols)))
-                   #t)
-              "a later sync adds newly defined names")
-
-  ;; The namespace mirrors the candidate list: a name absent from a
-  ;; later sync stops completing — this is what makes ,clear forget
-  ;; the cleared session's names.
-  (completion-namespace-sync! cns '("Wibble"))
-  (define after-removal
-    (parameterize ([current-namespace (completion-namespace-ns cns)])
-      (namespace-mapped-symbols)))
-  (check-false (memq 'frobnicate after-removal)
-               "a name dropped from the sync list no longer completes")
-  (check-true (and (memq 'Wibble after-removal) #t)
-              "names still in the sync list survive removal of others"))
+                   "capping keeps the most recent entries (front of list)"))))

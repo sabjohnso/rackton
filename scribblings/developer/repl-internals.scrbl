@@ -7,19 +7,32 @@
 @filepath{private/repl.rkt} is a state-machine kernel that reuses
 the same elaboration pipeline as the @racket[rackton] macro, slicing
 it one form at a time and carrying inference state between calls.
-Around it sit four single-purpose modules:
+Around it sit six single-purpose modules:
 
 @itemlist[
 @item{@filepath{private/repl-input.rkt} — reading: comma-command
-      parsing and the line-accumulating @racket[rackton-read-form].
-      Shared by the plain loop and the expeditor layer, with no
-      dependency on the kernel.}
-@item{@filepath{private/repl-editor.rkt} — the terminal input layer,
-      wrapping Racket's expression editor (expeditor) behind
-      open/read/close.  Owns the entry reader and ready checker, the
-      completion namespace, history persistence, the @litchar{Esc-(}
-      wrap command, and the keyword-retagging lexer.  Only expeditor's
-      documented public API is used — no private modules.}
+      parsing, the line-accumulating @racket[rackton-read-form], the
+      editor's entry reader and accept test, and history
+      persistence.  No dependency on the kernel.}
+@item{@filepath{private/repl-entry.rkt} — the structural editor's
+      buffer model: an immutable (text, point) entry, a tokenizer
+      backed by the standard Racket lexer (the analogue of paredit's
+      syntax table — char literals and parens inside strings or
+      comments are never mistaken for delimiters), context queries,
+      and pure s-expression motion.}
+@item{@filepath{private/repl-paredit.rkt} — the paredit commands,
+      ported from paredit.el: the electric layer (@litchar{(},
+      @litchar{)}, @litchar{"}, deletion, structural kill) and the
+      transforms (slurp/barf both ways, splice, raise, wrap).  Every
+      command is a pure entry → entry function that preserves
+      balance — pinned by a rackcheck property over every command
+      from every cursor position.}
+@item{@filepath{private/repl-term.rkt} — the terminal shell: a pure
+      key decoder, a pure layout engine, a pure editor state machine
+      (history, completion, accept), and a thin imperative loop
+      (stty raw mode, bracketed paste, ANSI repaint).  Its keymap is
+      one declarative table that generates both dispatch and the
+      @litchar{,keys} text.}
 @item{@filepath{private/repl-source.rkt} — @litchar{,source}: records,
       per bound name, the input form that bound it (names taken from
       the parsed top-form AST), and lazily indexes the prelude the
@@ -78,34 +91,26 @@ for any future remote-REPL frontend.
 @section{Tab completion}
 
 @racket[rackton-repl-completions] walks the env's @racket[vars],
-@racket[data-ctors], @racket[tcons], and @racket[classes] tables,
-returning every binding name that starts with the given prefix.
-
-The expeditor layer can't be handed this function directly — the
-completion hook is not part of expeditor's public API — so
-@filepath{repl-editor.rkt} maintains a dedicated namespace holding a
-dummy definition per completable name, synced from the session env
-before each read and installed via @racket[current-namespace] around
-@racket[expeditor-read].  Expeditor's default completer offers the
-current namespace's symbols, so every env name completes.  This leans
-only on default behavior: if a future expeditor completes
-differently, completion weakens but nothing breaks.  The plain line
-loop wires the same function into Racket's @racket[readline]-style
-completer.
+@racket[data-ctors], @racket[tcons], and @racket[classes] tables plus
+the surface keywords, returning every name that starts with the given
+prefix.  The structural editor calls it directly (the REPL loop hands
+it a closure over the live session state); the plain line loop wires
+the same function into Racket's @racket[readline]-style completer.
 
 @section{The two input layers}
 
 @racket[rackton-repl-run] picks an input layer at startup:
-@racket[rackton-editor-open] succeeds when stdin/stdout are a
-recognised terminal, and the expeditor loop runs; otherwise the plain
-loop reads line by line.  Both feed the same kernel.
+@racket[rackton-term-open] succeeds when stdin/stdout are a terminal,
+and the structural-editor loop runs; otherwise the plain loop reads
+line by line.  Both feed the same kernel.
 
-In the expeditor layer, an entry is accepted as a whole:
-@racket[rackton-editor-ready?] decides when @litchar{Return} accepts
-(every datum reads to eof; comma commands are recognised; a
-malformed-but-closed entry accepts so the kernel reports the error),
-and @racket[rackton-editor-read-datum] converts the accepted text to
-one datum, routing comma lines through
+In the editor, an entry is accepted as a whole:
+@racket[rackton-editor-ready?] decides when @litchar{Return} may
+accept (every datum reads to eof; comma commands are recognised; a
+malformed-but-closed entry accepts so the kernel reports the error) —
+the editor additionally requires the cursor at the entry's end — and
+@racket[rackton-editor-read-datum] converts the accepted text to one
+datum, routing comma lines through
 @racket[rackton-parse-command-line].
 
 In the plain loop, @racket[rackton-read-form] reads a single Rackton

@@ -37,7 +37,7 @@
          "types.rkt"
          "term.rkt"
          "repl-input.rkt"
-         "repl-editor.rkt"
+         "repl-term.rkt"
          "repl-source.rkt"
          "repl-search.rkt")
 
@@ -173,27 +173,13 @@
    ",quit        exit the REPL\n"
    ",help        this message\n"))
 
-;; The expeditor layer's bindings, for terminal sessions.  Esc-( is
-;; bound by repl-editor.rkt; everything else is an expeditor default
-;; worth knowing about.
+;; The structural editor's bindings, generated from the same keymap
+;; table that drives dispatch (repl-term.rkt) — the two cannot drift.
 (define (keys-text)
   (string-append
-   "Entry (terminal sessions only):\n"
-   "  Return       accept when the form is complete, else newline\n"
-   "  Esc-Return   newline without accepting\n"
-   "  Tab          complete name, or indent\n"
-   "  Esc-q        re-indent the whole entry\n"
-   "History:\n"
-   "  Esc-Up/Down  previous / next entry  (also Esc-^P / Esc-^N)\n"
-   "  Esc-p        search backward for entries starting like this one\n"
-   "  Esc-P        search backward for entries containing the text\n"
-   "S-expressions:\n"
-   "  Esc-^F/^B    forward / backward one expression\n"
-   "  Esc-^U/^D    up / down one nesting level\n"
-   "  Esc-]        jump to the matching delimiter\n"
-   "  Esc-^T       transpose expressions\n"
-   "  Esc-^K       kill the next expression (Esc-Backspace: previous)\n"
-   "  Esc-(        wrap the next expression in parentheses\n"))
+   "Terminal sessions use the structural (paredit) editor:\n"
+   "typing (, [, \", Backspace, and C-d keeps the entry balanced.\n"
+   (keymap-text)))
 
 (define (show-type state expr-datum)
   (with-handlers
@@ -602,52 +588,56 @@
 ;; user-facing shims can call (e.g. via `racket -l rackton/repl`).
 ;;
 ;; Two input layers share the kernel: when stdin/stdout are a
-;; recognized terminal, the expeditor layer (repl-editor.rkt) provides
-;; multi-line editing, history, s-expression commands, and coloring;
-;; otherwise — pipes, tests, dumb terminals — the plain line loop with
-;; `rackton-read-form` accumulation runs exactly as before.
+;; recognized terminal, the structural editor (repl-term.rkt) provides
+;; paredit editing, multi-line entries, history, completion, and
+;; coloring; otherwise — pipes, tests, dumb terminals — the plain line
+;; loop with `rackton-read-form` accumulation runs exactly as before.
 (define (rackton-repl-run)
   (display "rackton REPL — ,help for commands, ,quit to exit\n")
   (define current-state (box (rackton-repl-init)))
   (cond
-    [(rackton-editor-open (rackton-history-load (rackton-history-path)))
-     => (lambda (ed) (run-editor-loop ed current-state))]
+    [(rackton-term-open (rackton-history-load (rackton-history-path)))
+     => (lambda (th) (run-term-loop th current-state))]
     [else (run-line-loop current-state)]))
 
-;; The expeditor-driven loop.  Each iteration syncs the session env's
-;; names into the editor's completion namespace, then reads one whole
-;; entry (form or `,command`) as a datum; eof (^D on an empty entry) or
-;; `,quit` closes the editor and persists its history.  A read error in
-;; an accepted entry — the ready test deliberately accepts
-;; malformed-but-closed input — is reported here and the loop
-;; continues.
-(define (run-editor-loop ed current-state)
+;; The structural-editor loop (repl-term.rkt).  Each iteration reads
+;; one accepted entry as text, converts it to a datum (comma commands
+;; included), and steps the kernel; eof (^D on an empty entry) or
+;; `,quit` persists the history.  A read error in an accepted entry —
+;; the ready test deliberately accepts malformed-but-closed input so
+;; the kernel can report it — is shown here and the loop continues.
+(define (run-term-loop th current-state)
   (define (close!)
     (rackton-history-save! (rackton-history-path)
-                           (rackton-editor-close ed)))
+                           (rackton-term-close th)))
   (let loop ()
     (refresh-type-columns!)
-    (rackton-editor-sync-completions!
-     ed (rackton-repl-completions (unbox current-state) ""))
-    (define form
-      (with-handlers ([exn:fail:read?
-                       (lambda (e)
-                         (display (format "error: ~a\n" (exn-message e)))
-                         #f)])
-        (rackton-editor-read ed)))
+    (define text
+      (rackton-term-read
+       th
+       #:prompt "λ> "
+       #:ready? (lambda (s) (rackton-editor-ready? (open-input-string s)))
+       #:completions (lambda (prefix)
+                       (rackton-repl-completions (unbox current-state) prefix))))
     (cond
-      [(eof-object? form)
-       (newline)
-       (close!)]
-      [(not form) (loop)]                  ; read error already reported
+      [(eof-object? text) (close!)]
       [else
-       (define-values (state* output)
-         (rackton-repl-step (unbox current-state) form))
-       (display output)
-       (set-box! current-state state*)
+       (define form
+         (with-handlers ([exn:fail:read?
+                          (lambda (e)
+                            (display (format "error: ~a\n" (exn-message e)))
+                            #f)])
+           (rackton-editor-read-datum (open-input-string text))))
        (cond
-         [(rackton-repl-state-quit? state*) (close!)]
-         [else (loop)])])))
+         [(or (not form) (eof-object? form)) (loop)]
+         [else
+          (define-values (state* output)
+            (rackton-repl-step (unbox current-state) form))
+          (display output)
+          (set-box! current-state state*)
+          (cond
+            [(rackton-repl-state-quit? state*) (close!)]
+            [else (loop)])])])))
 
 ;; The plain line-by-line loop (non-terminal input).  Uses readline for
 ;; history + line editing when available, plus multi-line accumulation

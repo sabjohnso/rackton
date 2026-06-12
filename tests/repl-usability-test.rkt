@@ -191,9 +191,10 @@
 
 (test-case ",keys lists the editor's structural and history bindings"
   (define out (last-output '((unquote keys))))
-  (check-regexp-match #rx"Esc-\\^F" out)     ; forward s-expression
-  (check-regexp-match #rx"Esc-\\(" out)      ; wrap next s-expression
-  (check-regexp-match #rx"Esc-p" out))       ; history prefix search
+  (check-regexp-match #rx"C-M-f" out)        ; forward s-expression
+  (check-regexp-match #rx"M-\\(" out)        ; wrap next s-expression
+  (check-regexp-match #rx"C-right" out)      ; slurp forward
+  (check-regexp-match #rx"M-p" out))         ; history prefix search
 
 (test-case ",help mentions ,keys, ,source, and ,accepts"
   (define out (last-output '((unquote help))))

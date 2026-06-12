@@ -1,22 +1,33 @@
 #lang racket/base
 
-;; Rackton — REPL input reading.
+;; Rackton — REPL input reading and history persistence.
 ;;
 ;; The reading half of the REPL, split out from the kernel so input
-;; layers (the plain line loop here, the expeditor layer in
-;; repl-editor.rkt) can share it without depending on the state
+;; layers (the plain line loop here, the structural editor in
+;; repl-term.rkt) can share it without depending on the state
 ;; machine.  Everything here is pure with respect to session state:
-;; ports in, datums out.
+;; ports in, datums out — except the best-effort history file I/O.
 ;;
 ;; Public API:
 ;;   rackton-parse-command-line — one line → command datum, or #f
 ;;   rackton-read-form          — port → one form, accumulating lines
 ;;                                until parens balance
+;;   rackton-editor-read-datum  — port over one accepted editor entry
+;;                                → datum (comma commands included)
+;;   rackton-editor-ready?      — port → may this entry be accepted?
+;;   rackton-history-path/load/save! — cross-session history
 
 (provide rackton-parse-command-line
-         rackton-read-form)
+         rackton-read-form
+         rackton-editor-read-datum
+         rackton-editor-ready?
+         rackton-history-path
+         rackton-history-load
+         rackton-history-save!)
 
-(require (only-in racket/string string-trim))
+(require (only-in racket/string string-trim)
+         (only-in racket/port port->string)
+         (only-in racket/file make-directory*))
 
 ;; Parse one line of input into a command datum, or #f when it is not a
 ;; command.  A leading `,` (which never begins a valid Rackton form) marks
@@ -79,6 +90,85 @@
           (display (prompt-cont new-depth))
           (flush-output)
           (loop buf* new-depth)])])))
+
+;; ----- whole-entry reading (the structural editor) -------------------
+
+;; Convert one accepted entry into a datum.  A leading comma marks a
+;; REPL command (`,type EXPR`, …): the whole remaining entry goes
+;; through `rackton-parse-command-line`, because a command like
+;; `,type EXPR` is two datums that a plain `read` would split.
+;; Anything else is one `read`; a whitespace-only entry reads as eof.
+(define (rackton-editor-read-datum in)
+  (skip-whitespace in)
+  (if (eqv? (peek-char in) #\,)
+      (rackton-parse-command-line (port->string in))
+      (read in)))
+
+;; Decide whether the editor may accept the entry.  The rule matches
+;; "every datum reads completely" — keep editing on an unterminated
+;; form — except that comma commands are recognized: a bare `,`
+;; accepts (it is the kernel's no-op), and a command's arguments must
+;; each read completely.  A malformed-but-closed entry (e.g.
+;; mismatched delimiters) accepts, so the kernel reports the read
+;; error instead of trapping the user in the editor.
+(define (rackton-editor-ready? in)
+  (skip-whitespace in)
+  (cond
+    [(eof-object? (peek-char in)) #f]      ; empty entry — keep editing
+    [(eqv? (peek-char in) #\,)
+     (read-char in)                        ; the command word and args follow
+     (datums-read-to-eof? in)]
+    [else (datums-read-to-eof? in)]))
+
+;; #t when reading datum-by-datum reaches eof, #f when the input ends
+;; mid-form (`exn:fail:read:eof`).  Any other read error counts as
+;; ready — accepting lets the kernel produce the error message.
+(define (datums-read-to-eof? in)
+  (with-handlers ([exn:fail:read:eof? (lambda (_) #f)]
+                  [exn:fail:read?     (lambda (_) #t)])
+    (let loop ()
+      (if (eof-object? (read in)) #t (loop)))))
+
+(define (skip-whitespace in)
+  (let loop ()
+    (define c (peek-char in))
+    (when (and (char? c) (char-whitespace? c))
+      (read-char in)
+      (loop))))
+
+;; ----- history persistence ----------------------------------------
+
+;; History lives in the user's preferences directory as a written list
+;; of strings, most recent first — the order the editor passes it
+;; around in.  Loading is forgiving: a missing, unreadable, or
+;; malformed file is an empty history, never an error, so a damaged
+;; file can't keep the REPL from starting.
+
+(define history-cap 200)
+
+(define (rackton-history-path)
+  (build-path (find-system-path 'pref-dir) "rackton-history"))
+
+(define (rackton-history-load path)
+  (with-handlers ([exn:fail? (lambda (_) '())])
+    (define entries (call-with-input-file path read))
+    (if (and (list? entries) (andmap string? entries))
+        entries
+        '())))
+
+(define (rackton-history-save! path entries)
+  (with-handlers ([exn:fail? (lambda (_) (void))])   ; best effort
+    (define capped
+      (if (> (length entries) history-cap)
+          (for/list ([e (in-list entries)] [_ (in-range history-cap)]) e)
+          entries))
+    (make-directory* (path-only* path))
+    (call-with-output-file path #:exists 'truncate
+      (lambda (out) (write capped out) (newline out)))))
+
+(define (path-only* path)
+  (define-values (dir _name _dir?) (split-path path))
+  dir)
 
 ;; Net `(` - `)` for one line, ignoring `;` comments and
 ;; string contents.  Brackets `[]` and braces `{}` count too —

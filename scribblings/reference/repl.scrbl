@@ -21,43 +21,62 @@ The REPL accepts any Rackton expression or top-level form
 and prints the resulting binding's type after each input.  It also
 recognises a handful of meta-commands, each starting with a comma.
 
-@section{Line editing in the terminal}
+@section{The structural editor}
 
-When standard input and output are a recognised terminal, the REPL
-reads input through Racket's expression editor
-(@racketmodname[expeditor #:indirect]):
+When standard input and output are a terminal, the REPL reads input
+through its own structural (paredit-style) editor.  Its contract is
+paredit's: @emph{the entry stays balanced} — no ordinary keystroke
+can break parenthesis structure.
 
 @itemlist[
 
- @item{@bold{Whole-form editing} — a multi-line form is a single
-       editable buffer: the arrow keys move anywhere in it, including
-       lines entered earlier.  @litchar{Return} accepts the entry once
-       it reads as a complete form (or comma command) and inserts a
-       newline otherwise; @litchar{Esc-Return} inserts a newline
-       unconditionally.}
+ @item{@bold{Electric keys} — @litchar{(} and @litchar{[} insert a
+       balanced pair and put the cursor inside (inserting themselves
+       literally inside strings and comments); @litchar{)} never
+       inserts, it moves past the enclosing list's closing delimiter;
+       @litchar{"} inserts a string pair, an escaped quote inside a
+       string, or steps over the closing quote.  Backspace and
+       @litchar{C-d} refuse to delete one half of a non-empty pair
+       (an empty pair deletes whole; a delimiter is stepped over
+       instead), and @litchar{C-k} kills to the end of the line
+       without ever cutting through a delimiter.}
+
+ @item{@bold{Structural commands} — slurp and barf in both
+       directions (@litchar{C-right} / @litchar{C-left} /
+       @litchar{C-M-left} / @litchar{C-M-right}), splice
+       (@litchar{M-s}), raise (@litchar{M-r}), wrap (@litchar{M-(}),
+       and s-expression motion (@litchar{C-M-f} / @litchar{C-M-b} /
+       @litchar{C-M-u} / @litchar{C-M-d}) — the paredit command set,
+       with delimiter characters read from the entry so mixed
+       @litchar{()} and @litchar{[]} behave correctly.
+       @litchar{,keys} prints the full table.}
+
+ @item{@bold{Whole-form editing} — a multi-line entry is one
+       buffer: arrows move anywhere in it.  @litchar{Return} accepts
+       when the entry is complete and the cursor is at its end —
+       with electric delimiters the text is almost always balanced,
+       so position is what distinguishes “done” from “editing
+       inside”; anywhere else it opens an indented line.
+       @litchar{M-Return} always opens a line; @litchar{M-q}
+       reindents the entry.  Pasted text (bracketed paste) is
+       inserted verbatim, bypassing the electric keys.}
 
  @item{@bold{History} — accepted entries persist across sessions in
        @filepath{rackton-history} under @racket[(find-system-path
-       'pref-dir)].  @litchar{Esc-Up} / @litchar{Esc-Down} step through
-       history; @litchar{Esc-p} / @litchar{Esc-P} search backward for
-       entries that start with / contain the text before the cursor.}
+       'pref-dir)].  @litchar{Up} recalls history when the cursor is
+       on the entry's first line (and is line motion below it);
+       @litchar{M-p} searches backward for entries starting like the
+       text before the cursor.}
 
- @item{@bold{Completion} — @litchar{Tab} completes names from the live
-       session environment — values, data constructors, types, and
-       classes, including ones defined earlier in the session — plus
-       the surface keywords (@racket[define], @racket[protocol],
-       @racket[match], …).  @litchar{,clear} forgets the cleared
-       session's names.}
+ @item{@bold{Completion} — @litchar{Tab} completes the name before
+       the cursor from the live session environment — values, data
+       constructors, types, classes — plus the surface keywords
+       (@racket[define], @racket[protocol], @racket[match], …).}
 
- @item{@bold{Structural editing} — expeditor's s-expression commands
-       (motion, transpose, kill, match-jump) plus @litchar{Esc-(},
-       which wraps the expression after the cursor in parentheses.
-       @litchar{,keys} prints the full list.}
-
- @item{@bold{Syntax coloring} — strings, numbers, comments, and
-       parens color via the standard Racket lexer, and Rackton
-       keyword heads (@racket[define], @racket[match], @racket[data],
-       …) color separately from ordinary identifiers.}
+ @item{@bold{Syntax coloring} — tokens color via the standard Racket
+       lexer (the same lexer that drives the editor's structure), with
+       Rackton keyword heads colored apart from ordinary
+       identifiers.}
 
 ]
 
@@ -200,9 +219,9 @@ sum :: (All (t) ((Foldable t) => (-> (t Integer) Integer)))
 
 @defidform[#:kind "REPL command" keys]{
 
-@litchar{,keys} prints the terminal-session key bindings: entry
-acceptance, history navigation and search, and the s-expression
-editing commands.}
+@litchar{,keys} prints the structural editor's key bindings —
+generated from the same table that drives key dispatch, so it cannot
+drift from the actual behavior.}
 
 @deftogether[(@defidform[#:kind "REPL command" clear]
               @defidform[#:kind "REPL command" c])]{
