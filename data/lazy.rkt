@@ -82,6 +82,43 @@
     [(SNil)       ys]
     [(SCons x lz) (SCons x (delay (stream-append (force lz) ys)))]))
 
+;; Concatenate a stream onto a deferred rest, forcing the rest only
+;; when the front runs out.  This is the lazy-right-argument variant of
+;; stream-append that stream-flatmap needs: Rackton is strict, so the
+;; recursive flatmap call must arrive still delayed or it would walk
+;; the whole outer stream up front.
+(: stream-append-lazy (-> (Stream a) (-> (Lazy (Stream a)) (Stream a))))
+(define (stream-append-lazy front rest)
+  (match front
+    [(SNil)       (force rest)]
+    [(SCons x lz) (SCons x (delay (stream-append-lazy (force lz) rest)))]))
+
+;; Map `f` over the stream and concatenate the result streams, lazily.
+;; The argument order matches the Monad method (continuation first).
+;; Like stream-filter, this diverges if infinitely many consecutive
+;; elements map to the empty stream.
+(: stream-flatmap (-> (-> a (Stream b)) (-> (Stream a) (Stream b))))
+(define (stream-flatmap f s)
+  (match s
+    [(SNil)       SNil]
+    [(SCons x lz)
+     (stream-append-lazy (f x) (delay (stream-flatmap f (force lz))))]))
+
+;; ----- class instances ---------------------------------------------
+;; The Applicative is cross-product (list-monad) flavored, not zip:
+;; every function meets every argument, in order.
+
+(instance (Functor Stream)
+  (define (fmap f s) (stream-map f s)))
+
+(instance (Applicative Stream)
+  (define (pure x) (SCons x (delay SNil)))
+  (define (fapply sf sx)
+    (stream-flatmap (lambda (f) (stream-map f sx)) sf)))
+
+(instance (Monad Stream)
+  (define (flatmap f s) (stream-flatmap f s)))
+
 ;; ----- Stream producers (infinite) ---------------------------------
 
 ;; An infinite stream of a single repeated value.

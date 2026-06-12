@@ -336,7 +336,10 @@ First-class laziness for a strict language: @racket[Lazy] is an opaque,
 memoizing deferred computation built with the @racket[delay] form and run
 with @racket[force] (call-by-need, evaluated at most once and cached).
 @racket[Stream] is a lazy cons-list whose tail is deferred, so producers may
-be infinite while consumers force only the prefix they need.
+be infinite while consumers force only the prefix they need. @racket[Stream]
+has @racket[Functor], @racket[Applicative], and @racket[Monad] instances;
+the @racket[Applicative] is cross-product (list-monad) flavored, not
+zip-flavored — every function meets every argument, in order.
 
 @defidform[#:kind "type" Lazy]{An opaque, memoizing deferred computation of
 type @racket[(Lazy a)]; construct one with the @racket[delay] form and run it
@@ -380,6 +383,18 @@ only elements satisfying @racket[p], lazily.}
 
 @defproc[(stream-append [xs (Stream a)] [ys (Stream a)]) (Stream a)]{Concatenate
 two streams lazily.}
+
+@defproc[(stream-append-lazy [front (Stream a)] [rest (Lazy (Stream a))])
+         (Stream a)]{Concatenate a stream onto a deferred rest, forcing
+@racket[rest] only when @racket[front] runs out. This is the
+lazy-right-argument variant of @racket[stream-append]: Rackton is strict, so
+a recursive producer of the rest (as in @racket[stream-flatmap]) must arrive
+still delayed.}
+
+@defproc[(stream-flatmap [f (-> a (Stream b))] [s (Stream a)]) (Stream b)]{Map
+@racket[f] over the stream and concatenate the result streams, lazily; the
+argument order matches the @racket[Monad] method. Like @racket[stream-filter],
+this diverges if infinitely many consecutive elements map to the empty stream.}
 
 @defproc[(stream-repeat [x a]) (Stream a)]{An infinite stream of a single
 repeated value.}

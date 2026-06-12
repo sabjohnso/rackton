@@ -20,6 +20,15 @@
 (: l123 (List Integer))
 (define l123 (Cons 1 (Cons 2 (Cons 3 Nil))))
 
+;; n, n*10 — a two-element stream per input, for flatmap tests.
+(: twice (-> Integer (Stream Integer)))
+(define (twice n) (list->stream (Cons n (Cons (* n 10) Nil))))
+
+;; `pure` is return-typed, so using it here also checks that the
+;; (Applicative Stream) instance resolves across a module boundary.
+(: seven (Stream Integer))
+(define seven (pure 7))
+
 (: suite (List Test))
 (define suite
   (list
@@ -43,7 +52,42 @@
         (list (check-equal? (stream-head nats) (Some 0))
               (check-equal? (stream-head (stream-tail nats)) (Some 1)))))
    (it "stream-take past the end of a finite stream stops"
-       (check-equal? (stream-take 10 (list->stream l123)) l123))))
+       (check-equal? (stream-take 10 (list->stream l123)) l123))
+   (it "stream-append-lazy reaches the deferred rest after a finite front"
+       (check-equal? (stream-take 5 (stream-append-lazy (list->stream l123)
+                                                        (delay (stream-from 10))))
+                     (Cons 1 (Cons 2 (Cons 3 (Cons 10 (Cons 11 Nil)))))))
+   (it "stream-append-lazy never forces the rest while the front lasts"
+       (check-equal? (stream-take 3 (stream-append-lazy (stream-from 0)
+                                                        (delay (panic "rest forced too early"))))
+                     (Cons 0 (Cons 1 (Cons 2 Nil)))))
+   (it "stream-flatmap over a finite stream"
+       (check-equal? (stream-take 10 (stream-flatmap twice (list->stream l123)))
+                     (Cons 1 (Cons 10 (Cons 2 (Cons 20 (Cons 3 (Cons 30 Nil))))))))
+   (it "stream-flatmap stays lazy over an infinite outer stream"
+       (check-equal? (stream-take 5 (stream-flatmap twice nats))
+                     (Cons 0 (Cons 0 (Cons 1 (Cons 10 (Cons 2 Nil)))))))
+   (it "stream-flatmap skips elements mapped to the empty stream"
+       (check-equal? (stream-take 3 (stream-flatmap
+                                     (lambda (n) (if (== (mod n 2) 0)
+                                                     (pure n)
+                                                     SNil))
+                                     nats))
+                     (Cons 0 (Cons 2 (Cons 4 Nil)))))
+   (it "pure makes a one-element stream"
+       (check-equal? (stream-take 3 seven) (Cons 7 Nil)))
+   (it "generic fmap dispatches to stream-map"
+       (check-equal? (stream-take 3 (fmap (lambda (n) (* n 2)) nats))
+                     (Cons 0 (Cons 2 (Cons 4 Nil)))))
+   (it "generic fapply takes the cross product"
+       (check-equal? (stream-take 10 (fapply (list->stream
+                                              (Cons (lambda (n) (+ n 1))
+                                                    (Cons (lambda (n) (* n 10)) Nil)))
+                                             (list->stream l123)))
+                     (Cons 2 (Cons 3 (Cons 4 (Cons 10 (Cons 20 (Cons 30 Nil))))))))
+   (it "generic flatmap dispatches to stream-flatmap"
+       (check-equal? (stream-take 5 (flatmap twice nats))
+                     (Cons 0 (Cons 0 (Cons 1 (Cons 10 (Cons 2 Nil)))))))))
 
 (: _ran Unit)
 (define _ran (run-io (run-suite "lazy-stream" suite)))
