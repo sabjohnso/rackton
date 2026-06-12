@@ -222,6 +222,35 @@ append :: (All (a) (-> (List a) (-> (List a) (List a))))
 sum :: (All (t) ((Foldable t) => (-> (t Integer) Integer)))
 }|}
 
+@deftogether[(@defidform[#:kind "REPL command" search]
+              @defidform[#:kind "REPL command" returns])]{
+
+@litchar{,search} @racket[_signature] searches everything in scope —
+session, imports, prelude — by whole signature: a candidate matches
+when it has the same arity and the types unify, either with the
+arguments in order (listed first) or permuted (listed after).  A
+non-arrow query finds values of that type; a string query
+(@litchar{,search "fold"}) searches names.  @litchar{,returns}
+@racket[_type] matches the (curried) result type instead;
+bare-variable results are excluded, and class constraints must remain
+satisfiable, as with @litchar{,accepts}.
+
+@verbatim|{
+λ> ,search (-> (-> x y) (-> (List x) (List y)))
+fmap :: (All (f a b) ((Functor f) => (-> (-> a b) (-> (f a) (f b)))))
+…
+λ> ,returns (List Integer)
+filter :: (All (a) (-> (-> a Boolean) (-> (List a) (List a))))
+…
+}|
+
+The same queries run over the installed standard library from a
+shell, with each match's defining module and line:
+
+@commandline{racket -l rackton/search -- "(-> (List a) Integer)"}
+@commandline{racket -l rackton/search -- --returns "(List Integer)"}
+@commandline{racket -l rackton/search -- --name "stream"}}
+
 @defidform[#:kind "REPL command" keys]{
 
 @litchar{,keys} prints the structural editor's key bindings —

@@ -19,13 +19,18 @@
 ;;                    'bare-query | (listof (cons name scheme)), sorted
 ;;                    (raises exn:fail on an unparsable type)
 
-(provide accepts-search)
+(provide accepts-search
+         search-entries
+         env-search-entries)
 
 (require racket/match
          racket/set
+         racket/list
+         racket/string
          "types.rkt"
          "unify.rkt"
          "env.rkt"
+         "prelude.rkt"
          (only-in "surface.rkt" parse-type)
          (only-in "infer.rkt" resolve-scheme))
 
@@ -150,3 +155,113 @@
        (for/fold ([s empty-subst]) ([v (in-list vs)])
          (subst-extend s v (tvar (gensym v)))))
      (apply-subst s body)]))
+
+;; ----- Hoogle-style search ---------------------------------------------
+
+;; The (name . scheme) pairs a session env contributes as candidates —
+;; values and data constructors, minus the REPL's synthetic names.
+(define (env-search-entries env)
+  (append
+   (for/list ([(name sch) (in-hash (env-vars env))]
+              #:unless (synthetic-name? name))
+     (cons name sch))
+   (for/list ([(name di) (in-hash (env-data-ctors env))])
+     (cons name (data-info-scheme di)))))
+
+;; Search candidates by `query` under `kind`:
+;;   'signature — query is a type datum; an arrow matches a whole
+;;       signature (same arity) by unification, exactly in order
+;;       (rank 0) or with the arguments permuted (rank 1); a
+;;       non-arrow query matches values of that type.  A string query
+;;       searches names instead.
+;;   'returns — query is a type datum matching the (curried) result.
+;;   'accepts — query matches some argument position (the ,accepts rule).
+;; `env` supplies alias resolution and the constraint-satisfiability
+;; filter; #f falls back to the prelude for parsing and skips the
+;; filter (index entries' instances live outside any env).
+;; Returns matched (name . scheme) pairs, best rank first, then by
+;; name; 'bare-query when the query is an unconstrained variable.
+(define (search-entries entries query
+                        #:kind [kind 'signature]
+                        #:env [env #f])
+  (cond
+    [(string? query)
+     (sort (for/list ([e (in-list entries)]
+                      #:when (string-contains? (symbol->string (car e)) query))
+             e)
+           symbol<? #:key car)]
+    [else
+     (define parse-env (or env prelude-env))
+     (define qtype
+       (qual-body-type
+        (instantiate (resolve-scheme (parse-type (datum->syntax #f query))
+                                     parse-env))))
+     (cond
+       [(tvar? qtype) 'bare-query]
+       [else
+        (define ranked
+          (for*/list ([e (in-list entries)]
+                      [r (in-value (match-rank env kind qtype (cdr e)))]
+                      #:when r)
+            (cons r e)))
+        (map cdr (sort ranked
+                       (lambda (a b)
+                         (or (< (car a) (car b))
+                             (and (= (car a) (car b))
+                                  (symbol<? (cadr a) (cadr b)))))))])]))
+
+;; The rank of one candidate against the query type, or #f.
+(define (match-rank env kind qtype sch)
+  (define body (instantiate sch))
+  (define t (qual-body-type body))
+  (define preds (if (qual? body) (qual-constraints body) '()))
+  (define constrained
+    (for*/seteq ([p (in-list preds)] [v (in-set (pred-vars p))]) v))
+  (define (preds-ok? σ)
+    (or (not env)
+        (for/and ([p (in-list preds)])
+          (pred-possibly-satisfiable? env (apply-subst σ p)))))
+  (case kind
+    [(signature)
+     (define-values (qargs qres) (arrow-spine qtype))
+     (define-values (cargs cres) (arrow-spine t))
+     (and (= (length qargs) (length cargs))
+          (or (let ([σ (unify-pairs (cons (cons cres qres)
+                                          (map cons cargs qargs)))])
+                (and σ (preds-ok? σ) 0))
+              ;; the same arguments in another order — capped so the
+              ;; permutation count stays trivial
+              (and (pair? cargs) (<= (length cargs) 6)
+                   (for/or ([perm (in-list (permutations cargs))]
+                            #:unless (equal? perm cargs))
+                     (let ([σ (unify-pairs (cons (cons cres qres)
+                                                 (map cons perm qargs)))])
+                       (and σ (preds-ok? σ) 1))))))]
+    [(returns)
+     (define-values (_args cres) (arrow-spine t))
+     (and (not (unconstrained-tvar? cres constrained))
+          (let ([σ (try-unify cres qtype)])
+            (and σ (preds-ok? σ) 0)))]
+    [(accepts)
+     (and (for/or ([arg (in-list (arrow-arguments t))]
+                   #:unless (unconstrained-tvar? arg constrained))
+            (let ([σ (try-unify arg qtype)])
+              (and σ (preds-ok? σ))))
+          0)]))
+
+;; The full curried spine: (-> A (-> B R)) → (values (A B) R).
+(define (arrow-spine t)
+  (match t
+    [(tapp (tcon '->) (list a r))
+     (define-values (args res) (arrow-spine r))
+     (values (cons a args) res)]
+    [_ (values '() t)]))
+
+;; Unify each (left . right) pair, threading the substitution; #f when
+;; any pair fails.
+(define (unify-pairs pairs)
+  (with-handlers ([exn:fail:unify? (lambda (_) #f)])
+    (for/fold ([σ empty-subst]) ([p (in-list pairs)])
+      (subst-compose (unify (apply-subst σ (car p))
+                            (apply-subst σ (cdr p)))
+                     σ))))

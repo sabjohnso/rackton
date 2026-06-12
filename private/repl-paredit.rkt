@@ -124,6 +124,15 @@
 (define (inside-char-literal? text pos)
   (and (char-literal-span text pos 'interior) #t))
 
+;; Is the character AT `pos` a structural delimiter — a parenthesis
+;; token of its own — rather than the same character inside a string,
+;; comment, or character literal?  Peeking at raw characters is how
+;; `#\(` gets mistaken for an opener.
+(define (structural-delimiter-at? text pos)
+  (for/or ([t (in-list (tokenize text))])
+    (and (eq? (tok-type t) 'parenthesis)
+         (= (tok-start t) pos))))
+
 ;; ----- electric: delimiters ------------------------------------------
 
 ;; `(` — insert a balanced pair with the point inside, spacing it off
@@ -289,6 +298,7 @@
          (entry-goto en (add1 p)))]
     [(closer-char? (entry-char-after en))
      (if (and (opener-char? (entry-char-before en))
+              (structural-delimiter-at? text (sub1 p))
               (eqv? (entry-char-after en)
                     (closer-for-opener (entry-char-before en))))
          (entry-delete en (sub1 p) (add1 p))

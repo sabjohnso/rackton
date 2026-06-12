@@ -23,6 +23,9 @@
                      "prelude.rkt"
                      "scheme-codec.rkt"
                      "env.rkt"
+                     ;; definition-site collection for the sidecar's
+                     ;; rackton-defs table (go-to-definition, search)
+                     (only-in "analyze.rkt" collect-defs defs-sidecar-datum)
                      ;; terminal-width detection, read at the phase the
                      ;; macro's inference runs (phase 1) so a type error
                      ;; raised here is rendered to the REPL's width.
@@ -317,10 +320,11 @@
     (define inline-log (cg-st-inlined-sites final-cgst))
     ;; Pass the logs + the generated exported-impl names (from the final cg-st)
     ;; alongside the compiled forms.
-    (define-values (final-compiled prov-stx bs dcs tcs cls insts impls macs)
+    (define-values (final-compiled prov-stx bs dcs tcs cls insts impls macs defs)
       (elaborate-finish parsed* env compiled (unbox macros-box)
                         (cg-st-exported-impls final-cgst)))
-    (values final-compiled prov-stx bs dcs tcs cls insts impls macs mono-log inline-log)))
+    (values final-compiled prov-stx bs dcs tcs cls insts impls macs defs
+            mono-log inline-log)))
 
 ;; ----- export resolution ----------------------------------------------
 ;;
@@ -663,10 +667,18 @@
              (for/list ([n (in-list (car entry))]
                         #:when (hash-ref export-macros n #f))
                (cons (hash-ref export-macros n) datum)))))
+  ;; Definition sites for every exported name (under its external
+  ;; name), so importers' tools can jump to the source.
+  (define export-defs-encoded
+    (defs-sidecar-datum (collect-defs parsed #f)
+                        (append (hash->list export-vars)
+                                (hash->list export-data-ctors)
+                                (hash->list export-tcons)
+                                (hash->list export-classes))))
   (values compiled prov-stx
           export-bindings export-data-ctors-encoded
           export-tcons-encoded export-classes-encoded export-instances
-          exported-impls export-macros-encoded))
+          exported-impls export-macros-encoded export-defs-encoded))
 
 ;; `(rackton form ...)` — embeddable form.  Splices the compiled forms
 ;; but does NOT emit a sidecar schemes submodule, so multiple
@@ -674,7 +686,8 @@
 (define-syntax (rackton stx)
   (syntax-parse stx
     [(_ form ...)
-     (define-values (compiled prov-stx _b _d _t _c _i _impls _macs mono-log inline-log)
+     (define-values (compiled prov-stx _b _d _t _c _i _impls _macs _defs
+                              mono-log inline-log)
        (rackton-elaborate #'(form ...)))
      (define out-forms
        (cond [prov-stx (append compiled (list prov-stx))]
@@ -693,7 +706,8 @@
 (define-syntax (rackton/main stx)
   (syntax-parse stx
     [(_ form ...)
-     (define-values (compiled prov-stx bs dcs tcs cls insts impls macs _mono _inline)
+     (define-values (compiled prov-stx bs dcs tcs cls insts impls macs defs
+                              _mono _inline)
        (rackton-elaborate #'(form ...)))
      (define at-module-level?
        (memq (syntax-local-context) '(module module-begin)))
@@ -707,7 +721,8 @@
                    [classes      (datum->syntax stx cls)]
                    [instances    (datum->syntax stx insts)]
                    [impls        (datum->syntax stx impls)]
-                   [macros       (datum->syntax stx macs)])
+                   [macros       (datum->syntax stx macs)]
+                   [defs-table   (datum->syntax stx defs)])
        (cond
          [at-module-level?
           (syntax/loc stx
@@ -720,13 +735,15 @@
                          rackton-classes
                          rackton-instances
                          rackton-exported-impls
-                         rackton-macros)
+                         rackton-macros
+                         rackton-defs)
                 (define rackton-bindings        'bindings)
                 (define rackton-data-ctors      'data-ctors)
                 (define rackton-tcons           'tcons)
                 (define rackton-classes         'classes)
                 (define rackton-instances       'instances)
                 (define rackton-exported-impls  'impls)
-                (define rackton-macros          'macros))))]
+                (define rackton-macros          'macros)
+                (define rackton-defs            'defs-table))))]
          [else
           (syntax/loc stx (begin out ...))]))]))

@@ -152,6 +152,8 @@
     [(list 'unquote 'src    name) (values state (show-source state name))]
     [(list 'unquote 'accepts ty)  (values state (show-accepts state ty))]
     [(list 'unquote 'a       ty)  (values state (show-accepts state ty))]
+    [(list 'unquote 'search q)    (values state (show-search state q 'signature))]
+    [(list 'unquote 'returns ty)  (values state (show-search state ty 'returns))]
     [(list 'unquote 'colors)      (values state (colors-summary))]
     [(list 'unquote 'colors (? symbol? scheme))
      (values state
@@ -184,6 +186,8 @@
    ",info NAME   show what's bound to NAME\n"
    ",source NAME show the form that defined NAME\n"
    ",accepts TYPE list functions accepting an argument of TYPE\n"
+   ",search SIG   search by whole signature; a string searches names\n"
+   ",returns TYPE list functions returning TYPE\n"
    ",keys        editor key bindings (terminal sessions)\n"
    ",colors      show or set the editor color scheme\n"
    ",clear       reset the session to a fresh prelude env\n"
@@ -211,6 +215,24 @@
      (elaborate-form state synthetic))
    (define sch (env-ref-var env* name))
    (format "~s :: ~a\n" expr-datum (scheme->datum sch))))
+
+;; Hoogle-style search over everything in scope: by whole signature
+;; (modulo unification and argument order), by result type, or — for
+;; a string query — by name.  See repl-search.rkt for the rules.
+(define (show-search state query kind)
+  (with-handlers
+   ([exn:fail?
+     (lambda (e) (format "error: ~a\n" (exn-message e)))])
+   (define env (rackton-repl-state-env state))
+   (match (search-entries (env-search-entries env) query
+                          #:kind kind #:env env)
+     ['bare-query
+      (format "~s is a bare type variable — everything matches\n" query)]
+     ['() (format "no matches for ~s\n" query)]
+     [hits
+      (apply string-append
+             (for/list ([h (in-list hits)])
+               (format "~s :: ~a\n" (car h) (scheme->datum (cdr h)))))])))
 
 ;; List the functions (and data constructors) in scope that accept an
 ;; argument of the queried type.  Bare-type-variable argument

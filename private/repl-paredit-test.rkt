@@ -96,6 +96,10 @@
                  "\"|\""                  "|")
   (check-paredit paredit-forward-delete
                  "|#\\("                  "|")
+  (check-paredit paredit-forward-delete
+                 "(+ #\\(|)"              "(+ #\\(|)")
+  ;; the char before the closer is a literal's payload, not an opener
+  ;; — found by the balance property (seed 873083136)
 
   ;; ----- kill -------------------------------------------------------------
 
