@@ -95,6 +95,33 @@
                (list-ref outs 2))
   (check-regexp-match #rx"hi" (list-ref outs 3)))
 
+(test-case "REPL: return-typed method of a required module's instance"
+  ;; `pure` resolves to a per-instance impl name like $pure:Stream, which a
+  ;; required module does NOT export — the call site must go through the
+  ;; runtime dispatch table (lookup-return-method), where the module's
+  ;; instantiation registered it.  Regression: the kernel handed codegen an
+  ;; empty return-typed-methods set, so the call site emitted a direct
+  ;; $pure:Stream reference, unbound at the top level.
+  (define-values (_ outs)
+    (drive-session
+     '((require rackton/data/lazy)
+       (stream-take 5 (stream-append (pure 3) (pure 4))))))
+  (check-false (regexp-match? #rx"(?i:undefined|error)" (cadr outs))
+               (cadr outs))
+  (check-regexp-match #rx"3" (cadr outs))
+  (check-regexp-match #rx"4" (cadr outs)))
+
+(test-case "REPL: return-typed method of a prelude instance"
+  ;; The prelude registers its impls in the same dispatch table under plain
+  ;; type tags ('Maybe, 'List, …), so routing through the table must keep
+  ;; prelude `pure` working too.
+  (define-values (_ outs)
+    (drive-session '((ann (pure 9) (Maybe Integer)))))
+  (check-false (regexp-match? #rx"(?i:undefined|error)" (car outs))
+               (car outs))
+  (check-regexp-match #rx"9" (car outs))
+  (check-regexp-match #rx"Maybe" (car outs)))
+
 (test-case "REPL: ,quit signals exit"
   (define-values (st _outs) (drive-session '((unquote quit))))
   (check-true (rackton-repl-quit? st)))

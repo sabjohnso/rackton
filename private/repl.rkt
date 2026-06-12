@@ -450,15 +450,18 @@
                             (rackton-repl-state-declared state)
                             (rackton-repl-state-infer-st state)))
     ;; Hand codegen the resolution tables inference just wrote into final-st.
-    ;; return-typed-methods is left #f: a REPL session is incremental, so
-    ;; return-typed calls dispatch through the runtime table rather than a
-    ;; monomorphized per-input impl name (which a later input might not bind).
+    ;; return-typed-methods must be the env's real set: codegen routes a
+    ;; resolved "$pure:Stream"-style call site through the runtime dispatch
+    ;; table (lookup-return-method) only for methods IN the set, and emits a
+    ;; direct impl-name reference otherwise.  A REPL session needs the table
+    ;; route — a required module's impl name is module-internal, so a direct
+    ;; reference is unbound at the top level.
     (define plan
       (codegen-plan (st-table final-st 'method-resolutions)
                     (st-table final-st 'method-dict-resolutions)
                     (st-table final-st 'needs-dict-defs)
                     (st-table final-st 'instance-default-bodies)
-                    #f))
+                    (env-return-typed-methods env*)))
     ;; Thread a fresh codegen state across this input's forms; the REPL evals
     ;; the compiled forms directly, so its inline/export logs aren't needed.
     (define-values (compiled _cgst)
