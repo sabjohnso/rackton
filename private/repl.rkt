@@ -20,6 +20,7 @@
          rackton-read-form
          rackton-parse-command-line
          rackton-repl-completions
+         rackton-name-kind
          (rename-out [rackton-repl-state-quit? rackton-repl-quit?]))
 
 (require racket/match
@@ -151,6 +152,21 @@
     [(list 'unquote 'src    name) (values state (show-source state name))]
     [(list 'unquote 'accepts ty)  (values state (show-accepts state ty))]
     [(list 'unquote 'a       ty)  (values state (show-accepts state ty))]
+    [(list 'unquote 'colors)      (values state (colors-summary))]
+    [(list 'unquote 'colors (? symbol? scheme))
+     (values state
+             (if (set-color-scheme! scheme)
+                 (colors-summary)
+                 (format "unknown scheme: ~a — try ,colors for the list\n"
+                         scheme)))]
+    [(list 'unquote 'colors (? symbol? cat) (? symbol? col))
+     (values state
+             (cond
+               [(not (valid-category? cat))
+                (format "unknown category: ~a — try ,colors for the list\n" cat)]
+               [(not (set-color! cat col))
+                (format "unknown color: ~a — try ,colors for the list\n" col)]
+               [else (colors-summary)]))]
     [_ (values state
                (format "unknown command: ~a\n" (command->string input)))]))
 
@@ -169,6 +185,7 @@
    ",source NAME show the form that defined NAME\n"
    ",accepts TYPE list functions accepting an argument of TYPE\n"
    ",keys        editor key bindings (terminal sessions)\n"
+   ",colors      show or set the editor color scheme\n"
    ",clear       reset the session to a fresh prelude env\n"
    ",quit        exit the REPL\n"
    ",help        this message\n"))
@@ -562,6 +579,18 @@
 
 ;; ----- completion ------------------------------------------------
 
+;; The editor's name classifier, for syntax coloring: the lexer alone
+;; cannot tell a type (`Maybe`) from a data constructor (`Just`) —
+;; both are capitalized symbols — so the env decides.  Classes count
+;; as types.  Unknown names return #f (the identifier category).
+(define (rackton-name-kind state sym)
+  (define env (rackton-repl-state-env state))
+  (cond
+    [(env-ref-tcon env sym) 'type]
+    [(env-ref-data env sym) 'constructor]
+    [(env-ref-class env sym) 'type]
+    [else #f]))
+
 ;; Completion candidates from the session env.  Returns
 ;; a list of strings whose names start with `prefix`.  Consults
 ;; the four user-extensible namespaces — vars, data ctors,
@@ -595,6 +624,7 @@
 (define (rackton-repl-run)
   (display "rackton REPL — ,help for commands, ,quit to exit\n")
   (define current-state (box (rackton-repl-init)))
+  (load-color-prefs!)
   (cond
     [(rackton-term-open (rackton-history-load (rackton-history-path)))
      => (lambda (th) (run-term-loop th current-state))]
@@ -618,7 +648,10 @@
        #:prompt "λ> "
        #:ready? (lambda (s) (rackton-editor-ready? (open-input-string s)))
        #:completions (lambda (prefix)
-                       (rackton-repl-completions (unbox current-state) prefix))))
+                       (rackton-repl-completions (unbox current-state) prefix))
+       ;; Coloring: only the env can tell a type from a constructor.
+       #:name-kind (lambda (sym)
+                     (rackton-name-kind (unbox current-state) sym))))
     (cond
       [(eof-object? text) (close!)]
       [else

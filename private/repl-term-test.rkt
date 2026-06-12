@@ -9,6 +9,8 @@
   (require rackunit
            racket/string
            racket/list
+           racket/file
+           (only-in racket/port with-output-to-string)
            "repl-entry.rkt"
            "repl-term.rkt")
 
@@ -66,6 +68,99 @@
   (check-equal? (layout-cursor "abcdefghij" 5 8 3) '(1 . 3)
                 "point at a wrap boundary starts the next row")
 
+  ;; ----- syntax categories ------------------------------------------------
+
+  ;; A toy classifier standing in for the kernel's env-backed one.
+  (define (kind-of sym)
+    (case sym
+      [(Maybe List) 'type]
+      [(Just Cons) 'constructor]
+      [else #f]))
+
+  (check-equal? (text-categories "(define x (Just 1))" kind-of)
+                '(("(" . paren) ("define" . keyword) ("x" . identifier)
+                  ("(" . paren) ("Just" . constructor) ("1" . literal)
+                  (")" . paren) (")" . paren)))
+
+  (check-equal? (cdr (assoc "Maybe" (text-categories "(f Maybe)" kind-of)))
+                'type)
+  (check-equal? (cdr (assoc "Wibble" (text-categories "(f Wibble)" kind-of)))
+                'identifier
+                "a capitalized name the env does not know is an identifier")
+  (check-equal? (cdr (assoc "\"s\"" (text-categories "\"s\"" kind-of)))
+                'string)
+  (check-equal? (cdr (assoc "; c" (text-categories "x ; c" kind-of)))
+                'comment)
+
+  ;; ----- palette -----------------------------------------------------------
+
+  (check-equal? (hash-ref (scheme-palette 'standard) 'type) 'cyan)
+  (check-equal? (hash-ref (scheme-palette 'standard) 'constructor) 'magenta)
+  (check-equal? (hash-ref (scheme-palette 'standard) 'keyword) 'red)
+  (check-true (for/and ([(c col) (in-hash (scheme-palette 'plain))])
+                (eq? col 'none)))
+  (check-false (scheme-palette 'no-such-scheme))
+
+  (check-equal? (color->sgr 'cyan) "36")
+  (check-equal? (color->sgr 'light-magenta) "95")
+  (check-false (color->sgr 'none))
+  (check-false (color->sgr 'default))
+
+  (check-true (valid-color? 'magenta))
+  (check-false (valid-color? 'mauve))
+  (check-true (valid-category? 'constructor))
+  (check-false (valid-category? 'sparkles))
+
+  ;; resolution: scheme + overrides; NO_COLOR forces plain
+  (parameterize ([current-color-scheme 'standard]
+                 [current-color-overrides '((type . light-cyan))])
+    (check-equal? (hash-ref (resolved-palette) 'type) 'light-cyan
+                  "an override beats the scheme")
+    (check-equal? (hash-ref (resolved-palette) 'keyword) 'red))
+
+  (parameterize ([current-environment-variables
+                  (make-environment-variables #"NO_COLOR" #"1")]
+                 [current-color-scheme 'standard]
+                 [current-color-overrides '()])
+    (check-equal? (hash-ref (resolved-palette) 'keyword) 'none
+                  "NO_COLOR forces the plain palette"))
+
+  ;; emission uses the palette
+  (define (emitted text palette)
+    (with-output-to-string
+      (lambda () (emit-colored text 0 (string-length text) palette kind-of))))
+  (check-regexp-match #rx"\e\\[31mdefine"
+                      (emitted "(define x)" (scheme-palette 'standard)))
+  (check-regexp-match #rx"\e\\[35mJust"
+                      (emitted "(Just 1)" (scheme-palette 'standard)))
+  (check-false (regexp-match #rx"\e\\["
+                             (emitted "(define x)" (scheme-palette 'plain)))
+               "the plain palette emits no escapes")
+
+  ;; ----- persistence ---------------------------------------------------------
+
+  (let ([pref-file (make-temporary-file "rackton-colors-test-~a")])
+    ;; An empty file is not valid preference format; start absent.
+    (delete-file pref-file)
+    (dynamic-wind
+     void
+     (lambda ()
+       (parameterize ([current-color-pref-file pref-file]
+                      [current-color-scheme 'standard]
+                      [current-color-overrides '()])
+         (check-true (set-color! 'type 'light-cyan))
+         (check-true (set-color-scheme! 'plain))
+         (check-false (set-color! 'sparkles 'red))
+         (check-false (set-color-scheme! 'no-such-scheme))
+         ;; a fresh load sees what was saved
+         (parameterize ([current-color-scheme 'standard]
+                        [current-color-overrides '()])
+           (load-color-prefs!)
+           (check-equal? (current-color-scheme) 'plain)
+           (check-equal? (assq 'type (current-color-overrides))
+                         '(type . light-cyan)))))
+     (lambda () (when (file-exists? pref-file) (delete-file pref-file)))))
+
   ;; ----- the editor state machine -----------------------------------------
 
   (define cfg
@@ -76,7 +171,8 @@
      (lambda (prefix)          ; completions
        (filter (lambda (s) (string-prefix? s prefix))
                '("define" "define-alias" "define-struct")))
-     "λ> "))
+     "λ> "
+     (lambda (_sym) #f)))
 
   (define (feed st keys)
     (for/fold ([st st]) ([k (in-list keys)])

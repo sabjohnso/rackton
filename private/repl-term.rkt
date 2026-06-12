@@ -33,6 +33,22 @@
          editor-state-message
          keymap-text
          rackton-keyword-names
+         ;; coloring: classification, palettes, ,colors support
+         token-category
+         text-categories
+         emit-colored
+         scheme-palette
+         color->sgr
+         valid-color?
+         valid-category?
+         current-color-scheme
+         current-color-overrides
+         current-color-pref-file
+         resolved-palette
+         load-color-prefs!
+         set-color-scheme!
+         set-color!
+         colors-summary
          rackton-term-open
          rackton-term-read
          rackton-term-close)
@@ -43,6 +59,7 @@
          (only-in racket/set seteq set-member? set->list)
          (only-in racket/port with-output-to-string)
          (only-in racket/system system)
+         (only-in racket/file get-preference put-preferences)
          "repl-entry.rkt"
          "repl-paredit.rkt"
          (only-in "term.rkt" detect-display-columns))
@@ -238,8 +255,10 @@
 ;; ----- the editor state machine --------------------------------------------
 
 ;; ready?: text → boolean (is this acceptable input);
-;; completions: prefix string → candidate strings; prompt: string.
-(struct editor-config (ready? completions prompt) #:transparent)
+;; completions: prefix string → candidate strings; prompt: string;
+;; name-kind: symbol → 'type | 'constructor | #f (the kernel's
+;; env-backed classifier, for coloring).
+(struct editor-config (ready? completions prompt name-kind) #:transparent)
 
 ;; done: #f | 'accept | 'eof.  hist-pos: #f or the index of the
 ;; history entry currently shown; stash: the in-progress entry saved
@@ -519,11 +538,8 @@
    'raise (entry-command paredit-raise)
    'wrap (entry-command paredit-wrap-round)))
 
-;; ----- coloring ----------------------------------------------------------
+;; ----- coloring: categories --------------------------------------------
 
-;; The same palette the expeditor layer used: parens (and Rackton
-;; keywords) red, literals green, identifiers light blue, comments
-;; yellow, errors light red.
 (define rackton-keyword-set
   (apply seteq
          '(define data newtype struct protocol instance
@@ -541,27 +557,170 @@
 (define rackton-keyword-names
   (sort (map symbol->string (set->list rackton-keyword-set)) string<?))
 
-(define (token-sgr text t)
-  (case (tok-type t)
-    [(parenthesis) "31"]
-    [(string constant) "32"]
-    [(comment sexp-comment) "33"]
-    [(error) "91"]
-    [(symbol)
-     (if (set-member? rackton-keyword-set
-                      (string->symbol (substring text (tok-start t) (tok-end t))))
-         "31"
-         "94")]
-    [else #f]))
+(define color-categories
+  '(paren keyword identifier type constructor string literal comment error))
 
-;; Emit text[a,b) with per-token coloring.
-(define (emit-colored text a b)
+(define (valid-category? c) (and (memq c color-categories) #t))
+
+;; The semantic category of a token.  `name-kind` is the kernel's
+;; env-backed classifier (symbol → 'type | 'constructor | #f) — the
+;; lexer alone cannot tell `Maybe` from `Just`, both capitalized
+;; symbols; only the session env knows.  Unknown names (e.g. a type
+;; being defined in this very entry) are plain identifiers.
+(define (token-category text t name-kind)
+  (case (tok-type t)
+    [(parenthesis) 'paren]
+    [(string) 'string]
+    [(constant) 'literal]
+    [(comment sexp-comment) 'comment]
+    [(error) 'error]
+    [(white-space) #f]
+    [else
+     (define sym (string->symbol (substring text (tok-start t) (tok-end t))))
+     (cond
+       [(set-member? rackton-keyword-set sym) 'keyword]
+       [(name-kind sym) => values]
+       [else 'identifier])]))
+
+;; Every non-whitespace token of `text` with its category, as
+;; (lexeme . category) pairs — the testable face of classification.
+(define (text-categories text name-kind)
+  (for*/list ([t (in-list (tokenize text))]
+              [cat (in-value (token-category text t name-kind))]
+              #:when cat)
+    (cons (substring text (tok-start t) (tok-end t)) cat)))
+
+;; ----- coloring: palettes ------------------------------------------------
+
+;; A palette maps each category to a color name.  'none and 'default
+;; both mean "no escape emitted" — the terminal's own color.
+(define color-sgr-table
+  (hasheq 'black "30" 'red "31" 'green "32" 'yellow "33"
+          'blue "34" 'magenta "35" 'cyan "36" 'light-gray "37"
+          'dark-gray "90" 'light-red "91" 'light-green "92"
+          'light-yellow "93" 'light-blue "94" 'light-magenta "95"
+          'light-cyan "96" 'white "97"))
+
+(define color-names
+  (append (sort (hash-keys color-sgr-table)
+                string<? #:key symbol->string)
+          '(default none)))
+
+(define (valid-color? c) (and (memq c color-names) #t))
+
+(define (color->sgr c) (hash-ref color-sgr-table c #f))
+
+;; Built-in schemes.  'standard is the editor's historical look plus
+;; the type/constructor split; 'plain is color-free.
+(define standard-scheme
+  (hasheq 'paren 'red 'keyword 'red 'identifier 'light-blue
+          'type 'cyan 'constructor 'magenta
+          'string 'green 'literal 'green
+          'comment 'yellow 'error 'light-red))
+
+(define color-schemes
+  (hasheq 'standard standard-scheme
+          'plain (for/hasheq ([c (in-list color-categories)])
+                   (values c 'none))))
+
+(define scheme-names
+  (sort (hash-keys color-schemes) string<? #:key symbol->string))
+
+(define (scheme-palette name) (hash-ref color-schemes name #f))
+
+;; The live selection: a scheme plus per-category overrides, kept in
+;; parameters so tests can sandbox them; persisted via the preferences
+;; file (current-color-pref-file: #f = the system preferences).
+(define current-color-scheme (make-parameter 'standard))
+(define current-color-overrides (make-parameter '()))
+(define current-color-pref-file (make-parameter #f))
+
+;; The palette in force: scheme + overrides — unless NO_COLOR is set
+;; in the environment (the informal standard), which forces 'plain.
+(define (resolved-palette)
+  (cond
+    [(getenv "NO_COLOR") (scheme-palette 'plain)]
+    [else
+     (for/fold ([palette (scheme-palette (current-color-scheme))])
+               ([ov (in-list (current-color-overrides))])
+       (hash-set palette (car ov) (cdr ov)))]))
+
+;; ----- coloring: persistence ----------------------------------------------
+
+;; Preference value: (list scheme-name overrides-alist).  Loading is
+;; forgiving — anything malformed leaves the defaults.
+
+(define (load-color-prefs!)
+  (define v (get-preference 'rackton-colors (lambda () #f) 'timestamp
+                            (current-color-pref-file)))
+  (when (and (list? v) (= (length v) 2))
+    (define scheme (car v))
+    (define overrides (cadr v))
+    (when (scheme-palette scheme)
+      (current-color-scheme scheme))
+    (when (list? overrides)
+      (current-color-overrides
+       (for/list ([ov (in-list overrides)]
+                  #:when (and (pair? ov)
+                              (valid-category? (car ov))
+                              (valid-color? (cdr ov))))
+         ov)))))
+
+(define (save-color-prefs!)
+  (with-handlers ([exn:fail? (lambda (_) (void))])   ; best effort
+    (put-preferences '(rackton-colors)
+                     (list (list (current-color-scheme)
+                                 (current-color-overrides)))
+                     #f
+                     (current-color-pref-file))))
+
+;; Switch scheme (overrides persist across switches).  #f on an
+;; unknown name.
+(define (set-color-scheme! name)
+  (and (scheme-palette name)
+       (begin (current-color-scheme name)
+              (save-color-prefs!)
+              #t)))
+
+;; Override one category.  #f on an unknown category or color.
+(define (set-color! category color)
+  (and (valid-category? category)
+       (valid-color? color)
+       (begin (current-color-overrides
+               (cons (cons category color)
+                     (filter (lambda (ov) (not (eq? (car ov) category)))
+                             (current-color-overrides))))
+              (save-color-prefs!)
+              #t)))
+
+;; The ,colors listing.
+(define (colors-summary)
+  (define palette (resolved-palette))
+  (with-output-to-string
+    (lambda ()
+      (printf "scheme: ~a~a\n"
+              (current-color-scheme)
+              (if (getenv "NO_COLOR") "  (NO_COLOR is set: colors are off)" ""))
+      (for ([cat (in-list color-categories)])
+        (printf "  ~a~a\n"
+                (let ([s (symbol->string cat)])
+                  (string-append s (make-string (- 13 (string-length s)) #\space)))
+                (hash-ref palette cat)))
+      (printf "set with: ,colors SCHEME or ,colors CATEGORY COLOR\n")
+      (printf "schemes: ~a\n" (string-join (map symbol->string scheme-names) " "))
+      (printf "colors:  ~a\n" (string-join (map symbol->string color-names) " ")))))
+
+;; ----- coloring: emission ---------------------------------------------------
+
+;; Emit text[a,b) with per-token coloring under `palette`.
+(define (emit-colored text a b palette name-kind)
   (define toks (tokenize text))
   (for ([t (in-list toks)]
         #:unless (or (<= (tok-end t) a) (>= (tok-start t) b)))
     (define s (max a (tok-start t)))
     (define e (min b (tok-end t)))
-    (define sgr (token-sgr text t))
+    (define cat (token-category text t name-kind))
+    (define sgr (and cat (color->sgr (hash-ref palette cat 'none))))
     (if sgr
         (printf "\e[~am~a\e[0m" sgr (substring text s e))
         (display (substring text s e)))))
@@ -597,8 +756,9 @@
 (define (rackton-term-read h
                            #:prompt [prompt "λ> "]
                            #:ready? [ready? (lambda (_) #t)]
-                           #:completions [completions (lambda (_) '())])
-  (define cfg (editor-config ready? completions prompt))
+                           #:completions [completions (lambda (_) '())]
+                           #:name-kind [name-kind (lambda (_) #f)])
+  (define cfg (editor-config ready? completions prompt name-kind))
   (define in (current-input-port))
   (define hist-box (term-handle-history-box h))
   (define width (or (detect-display-columns) 80))
@@ -667,12 +827,14 @@
   (define rows (layout-rows text width plen))
   (match-define (cons crow ccol)
     (layout-cursor text (entry-point en) width plen))
+  (define palette (resolved-palette))
   (display "\e[?25l\r")
   (when (> prev-rows-up 0) (printf "\e[~aA" prev-rows-up))
   (display "\e[J")
   (for ([r (in-list rows)] [i (in-naturals)])
     (display (if (zero? i) prompt (make-string plen #\space)))
-    (emit-colored text (first r) (second r))
+    (emit-colored text (first r) (second r)
+                  palette (editor-config-name-kind cfg))
     (display "\r\n"))
   (define msg (editor-state-message st))
   (define msg-lines

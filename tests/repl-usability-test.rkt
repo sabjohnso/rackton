@@ -202,6 +202,74 @@
   (check-regexp-match #rx",source" out)
   (check-regexp-match #rx",accepts" out))
 
+;; ----- ,colors --------------------------------------------------------
+
+;; ,colors reads and writes the editor palette; tests isolate the
+;; persistence behind a temporary preferences file.
+
+(require racket/file
+         (only-in "../private/repl-term.rkt"
+                  current-color-pref-file
+                  current-color-scheme
+                  current-color-overrides))
+
+(define (with-color-sandbox proc)
+  (define pref-file (make-temporary-file "rackton-colors-kernel-~a"))
+  ;; An empty file is not valid preference format; start absent.
+  (delete-file pref-file)
+  (dynamic-wind
+   void
+   (lambda ()
+     (parameterize ([current-color-pref-file pref-file]
+                    [current-color-scheme 'standard]
+                    [current-color-overrides '()])
+       (proc)))
+   (lambda () (when (file-exists? pref-file) (delete-file pref-file)))))
+
+(test-case ",colors lists the scheme and every category"
+  (with-color-sandbox
+   (lambda ()
+     (define out (last-output '((unquote colors))))
+     (check-regexp-match #rx"scheme: standard" out)
+     (check-regexp-match #rx"type *cyan" out)
+     (check-regexp-match #rx"constructor *magenta" out))))
+
+(test-case ",colors SCHEME switches schemes"
+  (with-color-sandbox
+   (lambda ()
+     (define out (last-output '((unquote colors plain)
+                                (unquote colors))))
+     (check-regexp-match #rx"scheme: plain" out))))
+
+(test-case ",colors CATEGORY COLOR overrides one category"
+  (with-color-sandbox
+   (lambda ()
+     (define out (last-output '((unquote colors type light-cyan)
+                                (unquote colors))))
+     (check-regexp-match #rx"type *light-cyan" out)
+     (check-regexp-match #rx"constructor *magenta" out))))
+
+(test-case "the editor's name classifier tells types from constructors via the env"
+  (define-values (st _outs)
+    (drive-session '((data Box (MkBox Integer)))))
+  (check-equal? (rackton-name-kind st 'Box) 'type)
+  (check-equal? (rackton-name-kind st 'MkBox) 'constructor)
+  (check-equal? (rackton-name-kind st 'Maybe) 'type)
+  (check-equal? (rackton-name-kind st 'Some) 'constructor)
+  (check-equal? (rackton-name-kind st 'Monad) 'type
+                "classes count as types")
+  (check-false (rackton-name-kind st 'Wibble)
+               "an unknown capitalized name is unclassified"))
+
+(test-case ",colors rejects unknown schemes, categories, and colors"
+  (with-color-sandbox
+   (lambda ()
+     (check-regexp-match #rx"unknown" (last-output '((unquote colors mauve))))
+     (check-regexp-match #rx"unknown"
+                         (last-output '((unquote colors sparkles red))))
+     (check-regexp-match #rx"unknown"
+                         (last-output '((unquote colors type mauve)))))))
+
 ;; ----- function-define echo ----------------------------------------
 
 (test-case "a function define echoes its name and inferred type"

@@ -74,9 +74,14 @@ can break parenthesis structure.
        (@racket[define], @racket[protocol], @racket[match], …).}
 
  @item{@bold{Syntax coloring} — tokens color via the standard Racket
-       lexer (the same lexer that drives the editor's structure), with
-       Rackton keyword heads colored apart from ordinary
-       identifiers.}
+       lexer (the same lexer that drives the editor's structure).
+       Rackton keyword heads, type names, and data constructors each
+       color apart from ordinary identifiers — types and constructors
+       are told apart by the live session environment, so a name
+       starts coloring the moment its definition is accepted.  The
+       palette is customizable with @litchar{,colors} and persists in
+       the Racket preferences; setting the @envvar{NO_COLOR}
+       environment variable disables coloring entirely.}
 
 ]
 
@@ -222,6 +227,24 @@ sum :: (All (t) ((Foldable t) => (-> (t Integer) Integer)))
 @litchar{,keys} prints the structural editor's key bindings —
 generated from the same table that drives key dispatch, so it cannot
 drift from the actual behavior.}
+
+@defidform[#:kind "REPL command" colors]{
+
+@litchar{,colors} shows the editor's color scheme: the active scheme
+name and each syntactic category (@racketidfont{paren},
+@racketidfont{keyword}, @racketidfont{identifier},
+@racketidfont{type}, @racketidfont{constructor},
+@racketidfont{string}, @racketidfont{literal},
+@racketidfont{comment}, @racketidfont{error}) with its color.
+@litchar{,colors} @racket[_scheme] switches schemes
+(@racketidfont{standard} or @racketidfont{plain}); @litchar{,colors}
+@racket[_category] @racket[_color] overrides one category, where
+@racket[_color] is one of the sixteen ANSI color names,
+@racketidfont{default}, or @racketidfont{none}.  Overrides persist
+across sessions (Racket preferences, key
+@racketidfont{rackton-colors}) and survive scheme switches.  The
+@envvar{NO_COLOR} environment variable overrides everything and
+turns coloring off.}
 
 @deftogether[(@defidform[#:kind "REPL command" clear]
               @defidform[#:kind "REPL command" c])]{
