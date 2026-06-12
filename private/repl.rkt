@@ -27,6 +27,7 @@
          racket/list
          racket/string
          (only-in racket/port with-output-to-string)
+         (only-in racket/pretty pretty-format)
          "surface.rkt"
          "infer.rkt"
          "codegen.rkt"
@@ -34,7 +35,11 @@
          "prelude.rkt"
          "env.rkt"
          "types.rkt"
-         "term.rkt")
+         "term.rkt"
+         "repl-input.rkt"
+         "repl-editor.rkt"
+         "repl-source.rkt"
+         "repl-search.rkt")
 
 ;; ----- session state ----------------------------------------------
 
@@ -49,8 +54,11 @@
 ;; transformer bindings themselves live in `nsp`; this list records which
 ;; heads the expansion walk should expand and turns the parser's hygiene
 ;; on once the session defines any macro.
+;; `sources` maps each session-bound name to the input form(s) that
+;; bound it, for the ,source command (see repl-source.rkt).
 (struct rackton-repl-state
   (env declared
+       sources
        infer-st
        nsp
        expr-counter
@@ -64,6 +72,7 @@
     (namespace-require 'racket/base)
     (namespace-require 'rackton))
   (rackton-repl-state prelude-env
+                      (hasheq)
                       (hasheq)
                       (make-infer-state)
                       ns
@@ -133,10 +142,15 @@
     [(list 'unquote 'c)           (values (rackton-repl-init) "session cleared\n")]
     [(list 'unquote 'help)        (values state (help-text))]
     [(list 'unquote 'h)           (values state (help-text))]
+    [(list 'unquote 'keys)        (values state (keys-text))]
     [(list 'unquote 'type expr)   (values state (show-type state expr))]
     [(list 'unquote 't    expr)   (values state (show-type state expr))]
     [(list 'unquote 'info name)   (values state (show-info state name))]
     [(list 'unquote 'i    name)   (values state (show-info state name))]
+    [(list 'unquote 'source name) (values state (show-source state name))]
+    [(list 'unquote 'src    name) (values state (show-source state name))]
+    [(list 'unquote 'accepts ty)  (values state (show-accepts state ty))]
+    [(list 'unquote 'a       ty)  (values state (show-accepts state ty))]
     [_ (values state
                (format "unknown command: ~a\n" (command->string input)))]))
 
@@ -152,9 +166,34 @@
   (string-append
    ",type EXPR   show inferred type of EXPR\n"
    ",info NAME   show what's bound to NAME\n"
+   ",source NAME show the form that defined NAME\n"
+   ",accepts TYPE list functions accepting an argument of TYPE\n"
+   ",keys        editor key bindings (terminal sessions)\n"
    ",clear       reset the session to a fresh prelude env\n"
    ",quit        exit the REPL\n"
    ",help        this message\n"))
+
+;; The expeditor layer's bindings, for terminal sessions.  Esc-( is
+;; bound by repl-editor.rkt; everything else is an expeditor default
+;; worth knowing about.
+(define (keys-text)
+  (string-append
+   "Entry (terminal sessions only):\n"
+   "  Return       accept when the form is complete, else newline\n"
+   "  Esc-Return   newline without accepting\n"
+   "  Tab          complete name, or indent\n"
+   "  Esc-q        re-indent the whole entry\n"
+   "History:\n"
+   "  Esc-Up/Down  previous / next entry  (also Esc-^P / Esc-^N)\n"
+   "  Esc-p        search backward for entries starting like this one\n"
+   "  Esc-P        search backward for entries containing the text\n"
+   "S-expressions:\n"
+   "  Esc-^F/^B    forward / backward one expression\n"
+   "  Esc-^U/^D    up / down one nesting level\n"
+   "  Esc-]        jump to the matching delimiter\n"
+   "  Esc-^T       transpose expressions\n"
+   "  Esc-^K       kill the next expression (Esc-Backspace: previous)\n"
+   "  Esc-(        wrap the next expression in parentheses\n"))
 
 (define (show-type state expr-datum)
   (with-handlers
@@ -165,10 +204,46 @@
    ;; types the expansion; splice the result as syntax to keep its scopes.
    (define exp-stx (expand-session-macros state expr-datum))
    (define synthetic (datum->syntax #f (list 'define name exp-stx)))
-   (define-values (env* _declared* _compiled _final-st)
+   (define-values (env* _declared* _compiled _final-st _parsed)
      (elaborate-form state synthetic))
    (define sch (env-ref-var env* name))
    (format "~s :: ~a\n" expr-datum (scheme->datum sch))))
+
+;; List the functions (and data constructors) in scope that accept an
+;; argument of the queried type.  Bare-type-variable argument
+;; positions never match — see repl-search.rkt.
+(define (show-accepts state type-datum)
+  (with-handlers
+   ([exn:fail?
+     (lambda (e) (format "error: ~a\n" (exn-message e)))])
+   (match (accepts-search (rackton-repl-state-env state) type-datum)
+     ['bare-query
+      (format "~s is a bare type variable — every function accepts it\n"
+              type-datum)]
+     ['()
+      (format "no functions accept ~s\n" type-datum)]
+     [matches
+      (apply string-append
+             (for/list ([m (in-list matches)])
+               (format "~s :: ~a\n" (car m) (scheme->datum (cdr m)))))])))
+
+;; Play back the input form(s) that bound `name`: the definition first,
+;; then — for a class — the live instances the session has seen.
+;; Prelude names show their definition in the prelude source.
+(define (show-source state name)
+  (define env (rackton-repl-state-env state))
+  (define bound?
+    (and (or (env-ref-var env name)
+             (env-ref-data env name)
+             (env-ref-tcon env name)
+             (env-ref-class env name))
+         #t))
+  (match (sources-lookup (rackton-repl-state-sources state) name bound?)
+    [#f (format "~s is unbound\n" name)]
+    ['no-source (format "~s has no recorded source (imported or builtin)\n" name)]
+    [ds (apply string-append
+               (for/list ([d (in-list (reverse ds))])
+                 (string-append (pretty-format d #:mode 'write) "\n")))]))
 
 (define (show-info state name)
   (define env (rackton-repl-state-env state))
@@ -271,10 +346,14 @@
    ([exn:fail?
      (lambda (e) (values state (format "error: ~a\n" (exn-message e))))])
    (eval-in state (datum->syntax #f input))
+   (define names (macro-def-names input))
    (define state*
      (struct-copy rackton-repl-state state
-                  [macros (append (macro-def-names input)
-                                  (rackton-repl-state-macros state))]))
+                  [macros (append names
+                                  (rackton-repl-state-macros state))]
+                  [sources (sources-record-names
+                            (rackton-repl-state-sources state)
+                            names input)]))
    (values state* "")))
 
 ;; ----- session-macro expansion ------------------------------------
@@ -336,10 +415,15 @@
   (with-handlers
    ([exn:fail?
      (lambda (e) (values state (format "error: ~a\n" (exn-message e))))])
-   (define-values (env* declared* compiled final-st) (elaborate-form state stx))
+   (define-values (env* declared* compiled final-st parsed)
+     (elaborate-form state stx))
    (define base
      (struct-copy rackton-repl-state state
-                  [env env*] [declared declared*] [infer-st final-st]))
+                  [env env*] [declared declared*] [infer-st final-st]
+                  [sources (sources-record
+                            (rackton-repl-state-sources state)
+                            (syntax->datum stx)
+                            parsed)]))
    ;; Run the compiled forms (including a `require`'s runtime import)
    ;; before pulling in any exported macros, so a macro that expands into
    ;; the library's runtime bindings finds them already loaded.
@@ -383,12 +467,15 @@
 
 (define (format-top-result input pre-env post-env)
   (match input
-    [`(define ,name . ,_)
-     (define sch (env-ref-var post-env name))
-     (cond
-       [sch (format "~s :: ~a\n" name (scheme->datum sch))]
-       [else ""])]
+    [`(define ,(? symbol? name) . ,_)        (echo-definition name post-env)]
+    [`(define (,(? symbol? name) . ,_) . ,_) (echo-definition name post-env)]
     [_ ""]))
+
+(define (echo-definition name post-env)
+  (define sch (env-ref-var post-env name))
+  (cond
+    [sch (format "~s :: ~a\n" name (scheme->datum sch))]
+    [else ""]))
 
 ;; ----- expression input -------------------------------------------
 
@@ -403,7 +490,7 @@
    (define n (rackton-repl-state-expr-counter state))
    (define name (string->symbol (format "$repl-~a" n)))
    (define synthetic (datum->syntax #f (list 'define name stx)))
-   (define-values (env* declared* compiled final-st)
+   (define-values (env* declared* compiled final-st _parsed)
      (elaborate-form state synthetic))
    (define state*
      (struct-copy rackton-repl-state state
@@ -477,102 +564,17 @@
                 ([p (in-list parsed*)])
         (let-values ([(s cgst*) (compile-top p env* plan cgst)])
           (values (if s (cons s acc) acc) cgst*))))
-    (values env* declared* compiled final-st)))
+    ;; `parsed` (pre-phase) carries the names the USER's form binds —
+    ;; source recording wants those, not the synthesized expansions in
+    ;; `parsed*` (a derive-superclasses instance records once, under
+    ;; the class the user wrote).
+    (values env* declared* compiled final-st parsed)))
 
 (define (eval-in state stx)
   (parameterize ([current-namespace (rackton-repl-state-nsp state)])
     (eval stx)))
 
-;; ----- multi-line input ------------------------------------------
-
-;; Read one rackton form from `port`, accumulating lines
-;; until parens balance.  `prompt-cont` is called with the current
-;; depth count (always positive on continuation prompts) and
-;; should return a continuation-prompt string to display; in tests
-;; pass `(lambda (_) "")` to silence.  Returns the parsed form or
-;; eof when the port is exhausted with nothing read.
-
-;; Parse one line of input into a command datum, or #f when it is not a
-;; command.  A leading `,` (which never begins a valid Rackton form) marks
-;; a command: the rest of the line is read as the command word and its
-;; arguments, producing `(unquote word arg ...)`.  A bare `,` yields
-;; `(unquote)` — the accepted no-op.  Each `read` is guarded so a
-;; malformed tail simply stops accumulation instead of raising.
-(define (rackton-parse-command-line str)
-  (define s (string-trim str))
-  (and (positive? (string-length s))
-       (char=? (string-ref s 0) #\,)
-       (let ([ip (open-input-string (substring s 1))])
-         (let loop ([acc '()])
-           (define d
-             (with-handlers ([exn:fail:read? (lambda (_) eof)])
-               (read ip)))
-           (if (eof-object? d)
-               (cons 'unquote (reverse acc))
-               (loop (cons d acc)))))))
-
-(define (rackton-read-form port [prompt-cont (lambda (_) "..> ")])
-  (let loop ([buf ""] [depth 0])
-    (define line (read-line port))
-    (cond
-      [(eof-object? line)
-       (cond
-         [(zero? (string-length buf)) eof]
-         [(rackton-parse-command-line buf) => values]
-         [else
-          ;; Buffer non-empty but parens never closed — let read
-          ;; raise the natural "expected )" error so the caller
-          ;; sees a useful message.
-          (read (open-input-string buf))])]
-      [else
-       (define buf* (string-append buf line " "))
-       (define new-depth (+ depth (line-paren-delta line)))
-       (cond
-         [(<= new-depth 0)
-          ;; Parens balanced (or never opened).  A leading comma marks a
-          ;; REPL command (handled first); otherwise try to read, and if
-          ;; the buffer is purely whitespace, keep looping.
-          (cond
-            [(rackton-parse-command-line buf*) => values]
-            [else
-             (define trimmed-port (open-input-string buf*))
-             (define form
-               (with-handlers ([exn:fail:read? (lambda (_) #f)])
-                 (read trimmed-port)))
-             (cond
-               [(eof-object? form) (loop "" 0)]    ;; blank-ish line
-               [form form]
-               [else (loop buf* new-depth)])])]
-         [else
-          (display (prompt-cont new-depth))
-          (flush-output)
-          (loop buf* new-depth)])])))
-
-;; Net `(` - `)` for one line, ignoring `;` comments and
-;; string contents.  Brackets `[]` and braces `{}` count too —
-;; Racket treats them as parens.
-(define (line-paren-delta line)
-  (define n (string-length line))
-  (let loop ([i 0] [delta 0] [in-string? #f] [in-comment? #f])
-    (cond
-      [(= i n) delta]
-      [in-comment? delta]
-      [in-string?
-       (define c (string-ref line i))
-       (cond
-         [(char=? c #\") (loop (add1 i) delta #f #f)]
-         [(char=? c #\\) (loop (+ i 2) delta #t #f)]
-         [else (loop (add1 i) delta #t #f)])]
-      [else
-       (define c (string-ref line i))
-       (cond
-         [(char=? c #\;) delta]
-         [(char=? c #\") (loop (add1 i) delta #t #f)]
-         [(or (char=? c #\() (char=? c #\[) (char=? c #\{))
-          (loop (add1 i) (add1 delta) #f #f)]
-         [(or (char=? c #\)) (char=? c #\]) (char=? c #\}))
-          (loop (add1 i) (sub1 delta) #f #f)]
-         [else (loop (add1 i) delta #f #f)])])))
+;; ----- completion ------------------------------------------------
 
 ;; Completion candidates from the session env.  Returns
 ;; a list of strings whose names start with `prefix`.  Consults
@@ -600,13 +602,60 @@
 ;; Drive the kernel from `current-input-port` / `current-output-port`.
 ;; EOF or `,quit` ends the loop.  Exposed as a single entry that
 ;; user-facing shims can call (e.g. via `racket -l rackton/repl`).
-;; Uses readline for history + line editing when stdin
-;; is interactive, plus multi-line input accumulation via
-;; `rackton-read-form`.  Tab completion consults the live session
-;; env for variable / type / class names.
+;;
+;; Two input layers share the kernel: when stdin/stdout are a
+;; recognized terminal, the expeditor layer (repl-editor.rkt) provides
+;; multi-line editing, history, s-expression commands, and coloring;
+;; otherwise — pipes, tests, dumb terminals — the plain line loop with
+;; `rackton-read-form` accumulation runs exactly as before.
 (define (rackton-repl-run)
   (display "rackton REPL — ,help for commands, ,quit to exit\n")
   (define current-state (box (rackton-repl-init)))
+  (cond
+    [(rackton-editor-open (rackton-history-load (rackton-history-path)))
+     => (lambda (ed) (run-editor-loop ed current-state))]
+    [else (run-line-loop current-state)]))
+
+;; The expeditor-driven loop.  Each iteration syncs the session env's
+;; names into the editor's completion namespace, then reads one whole
+;; entry (form or `,command`) as a datum; eof (^D on an empty entry) or
+;; `,quit` closes the editor and persists its history.  A read error in
+;; an accepted entry — the ready test deliberately accepts
+;; malformed-but-closed input — is reported here and the loop
+;; continues.
+(define (run-editor-loop ed current-state)
+  (define (close!)
+    (rackton-history-save! (rackton-history-path)
+                           (rackton-editor-close ed)))
+  (let loop ()
+    (refresh-type-columns!)
+    (rackton-editor-sync-completions!
+     ed (rackton-repl-completions (unbox current-state) ""))
+    (define form
+      (with-handlers ([exn:fail:read?
+                       (lambda (e)
+                         (display (format "error: ~a\n" (exn-message e)))
+                         #f)])
+        (rackton-editor-read ed)))
+    (cond
+      [(eof-object? form)
+       (newline)
+       (close!)]
+      [(not form) (loop)]                  ; read error already reported
+      [else
+       (define-values (state* output)
+         (rackton-repl-step (unbox current-state) form))
+       (display output)
+       (set-box! current-state state*)
+       (cond
+         [(rackton-repl-state-quit? state*) (close!)]
+         [else (loop)])])))
+
+;; The plain line-by-line loop (non-terminal input).  Uses readline for
+;; history + line editing when available, plus multi-line accumulation
+;; via `rackton-read-form`.  Tab completion consults the live session
+;; env for variable / type / class names.
+(define (run-line-loop current-state)
   ;; Set up readline tab completion: callbacks consult the
   ;; current-state box's snapshot of the env.
   (with-handlers ([exn:fail? (lambda (_) (void))])

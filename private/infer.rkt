@@ -26,6 +26,8 @@
          require-spec->submod-spec
          def-scc-order
          generalize
+         ;; surface ty-AST → scheme, under an env's aliases (REPL ,accepts)
+         resolve-scheme
          ;; threaded inference state — the REPL persists one across inputs
          make-infer-state st-table
          current-dict-skolems

@@ -19,7 +19,49 @@ Run it from a shell with:
 The REPL accepts any Rackton expression or top-level form
 (@racket[define], @racket[data], @racket[protocol], etc.)
 and prints the resulting binding's type after each input.  It also
-recognises a handful of meta-commands, each starting with a colon.
+recognises a handful of meta-commands, each starting with a comma.
+
+@section{Line editing in the terminal}
+
+When standard input and output are a recognised terminal, the REPL
+reads input through Racket's expression editor
+(@racketmodname[expeditor #:indirect]):
+
+@itemlist[
+
+ @item{@bold{Whole-form editing} — a multi-line form is a single
+       editable buffer: the arrow keys move anywhere in it, including
+       lines entered earlier.  @litchar{Return} accepts the entry once
+       it reads as a complete form (or comma command) and inserts a
+       newline otherwise; @litchar{Esc-Return} inserts a newline
+       unconditionally.}
+
+ @item{@bold{History} — accepted entries persist across sessions in
+       @filepath{rackton-history} under @racket[(find-system-path
+       'pref-dir)].  @litchar{Esc-Up} / @litchar{Esc-Down} step through
+       history; @litchar{Esc-p} / @litchar{Esc-P} search backward for
+       entries that start with / contain the text before the cursor.}
+
+ @item{@bold{Completion} — @litchar{Tab} completes names from the live
+       session environment: values, data constructors, types, and
+       classes, including ones defined earlier in the session.}
+
+ @item{@bold{Structural editing} — expeditor's s-expression commands
+       (motion, transpose, kill, match-jump) plus @litchar{Esc-(},
+       which wraps the expression after the cursor in parentheses.
+       @litchar{,keys} prints the full list.}
+
+ @item{@bold{Syntax coloring} — strings, numbers, comments, and
+       parens color via the standard Racket lexer, and Rackton
+       keyword heads (@racket[define], @racket[match], @racket[data],
+       …) color separately from ordinary identifiers.}
+
+]
+
+When standard input is not a terminal — pipes, scripts, dumb
+terminals — the REPL falls back to plain line-by-line reading with
+the same multi-line accumulation as earlier releases, so scripted use
+is unchanged.
 
 @section{Embedding in the host Racket REPL}
 
@@ -109,6 +151,51 @@ Monad (class)
     join :: (All (m a) ((Monad m) => (-> (m (m a)) (m a))))
   instances: (Monad (Either a)) (Monad IO) (Monad Identity) (Monad List) (Monad Maybe)
 }|}
+
+@deftogether[(@defidform[#:kind "REPL command" source]
+              @defidform[#:kind "REPL command" src])]{
+
+@litchar{,source} @racket[_name] (or @litchar{,src} @racket[_name])
+pretty-prints the input form that bound @racket[_name] — the form as
+typed into the session, or, for a prelude name, its definition in the
+prelude source.  A data constructor shows its @racket[data] form; a
+method shows its @racket[protocol]; a class shows the protocol
+followed by the instances the session knows (a re-evaluated instance
+replaces its earlier self).  A name imported from a module has no
+recorded source and says so.
+
+@verbatim|{
+λ> ,source Maybe
+(data (Maybe a) None (Some a))
+}|}
+
+@deftogether[(@defidform[#:kind "REPL command" accepts]
+              @defidform[#:kind "REPL command" a])]{
+
+@litchar{,accepts} @racket[_type] (or @litchar{,a} @racket[_type])
+lists the functions and data constructors in scope that accept an
+argument of @racket[_type] — search by argument position, in the
+spirit of Hoogle.  A candidate matches when @racket[_type] unifies
+with one of its argument positions; argument positions that are bare
+type variables are excluded (they accept everything), and a candidate
+whose class constraints can never be satisfied under the match is
+dropped — @racket[fmap] is listed for @litchar{,accepts (List
+Integer)} because @racket[(Functor List)] exists, while a
+@racketidfont{MonadWriter}-constrained candidate is not.
+
+@verbatim|{
+λ> ,accepts (List Integer)
+Cons :: (All (a) (-> a (-> (List a) (List a))))
+append :: (All (a) (-> (List a) (-> (List a) (List a))))
+…
+sum :: (All (t) ((Foldable t) => (-> (t Integer) Integer)))
+}|}
+
+@defidform[#:kind "REPL command" keys]{
+
+@litchar{,keys} prints the terminal-session key bindings: entry
+acceptance, history navigation and search, and the s-expression
+editing commands.}
 
 @deftogether[(@defidform[#:kind "REPL command" clear]
               @defidform[#:kind "REPL command" c])]{

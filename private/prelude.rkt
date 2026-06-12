@@ -13,7 +13,8 @@
          "infer.rkt"
          "env.rkt")
 
-(provide prelude-env)
+(provide prelude-env
+         prelude-source-forms)
 
 ;; ----- Prelude source ----------------------------------------------
 

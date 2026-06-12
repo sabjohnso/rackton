@@ -1,6 +1,10 @@
 #lang info
 (define collection "rackton")
-(define deps '("base"))
+;; expeditor-lib + syntax-color-lib: the REPL's terminal input layer
+;; (private/repl-editor.rkt) — multi-line editing, history, coloring.
+(define deps '("base"
+               "expeditor-lib"
+               "syntax-color-lib"))
 (define build-deps '("scribble-lib"
                      "racket-doc"
                      "rackunit-lib"
@@ -19,6 +23,6 @@
 ;; component past the minor is a trailing zero.  A patch-zero release is
 ;; the two-part "0.38" (not "0.38.0"); a non-zero patch is "0.38.1".
 ;; The minor is the release counter.
-(define version "0.51")
+(define version "0.52")
 (define pkg-authors '(sbj))
 (define license '(Apache-2.0 OR MIT))
