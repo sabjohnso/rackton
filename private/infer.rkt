@@ -952,9 +952,13 @@
 (define (resolve-type ty-ast env)
   (run-ctx (resolve-type/m ty-ast) (resolve-ctx (env-aliases env) (seteq))))
 (define (resolve-constraint c env)
-  (run-ctx (resolve-constraint/m c) (resolve-ctx (env-aliases env) (seteq))))
+  (define p (run-ctx (resolve-constraint/m c) (resolve-ctx (env-aliases env) (seteq))))
+  (kind-check-constraint env p (and (constraint? c) (constraint-stx c)))
+  p)
 (define (resolve-scheme ty-ast env)
-  (run-ctx (resolve-scheme/m ty-ast) (resolve-ctx (env-aliases env) (seteq))))
+  (define sch (run-ctx (resolve-scheme/m ty-ast) (resolve-ctx (env-aliases env) (seteq))))
+  (kind-check-scheme env sch (ty-ast->stx ty-ast))
+  sch)
 
 ;; ----- literals -----------------------------------------------------
 
@@ -2349,6 +2353,89 @@
      (elab-kind body env batch-kinds tvar-kinds s)]
     [_ (values (kvar (gensym 'k)) s)]))
 
+;; ----- kinds: the checker --------------------------------------------
+
+;; Rollout control: 'off disables checking, 'warn logs ill-kinded
+;; types to stderr (used to surface false positives across a full
+;; build), 'error rejects them.
+(define current-kind-check (make-parameter 'warn))
+
+(define (ty-ast->stx t)
+  (match t
+    [(ty:var _ stx)      stx]
+    [(ty:con _ stx)      stx]
+    [(ty:app _ _ stx)    stx]
+    [(ty:forall _ _ stx) stx]
+    [(ty:qual _ _ stx)   stx]
+    [_                   #f]))
+
+;; Require a (resolved core) type to have kind `*`.  Returns the
+;; threaded ksubst; raises exn:fail:kind-unify on failure.
+(define (demand-kind-star env t tvar-kinds s)
+  (define-values (k s*) (elab-kind t env (hasheq) tvar-kinds s))
+  (ksubst-compose (unify-kind (apply-ksubst s* k) kstar) s*))
+
+;; Check one predicate: each argument's kind must match the class's
+;; declared parameter kind.  A non-class head (e.g. the `~` equality
+;; predicate) or an unknown class is skipped.
+(define (kind-check-pred env p tvar-kinds s)
+  (define cinfo (env-ref-class env (pred-class p) #f))
+  (cond
+    [(not cinfo) s]
+    [else
+     (for/fold ([s s]) ([arg (in-list (pred-args p))]
+                        [param (in-list (class-info-params cinfo))])
+       (define pk (hash-ref (class-info-kinds cinfo) param kstar))
+       (define-values (ka s*) (elab-kind arg env (hasheq) tvar-kinds s))
+       (ksubst-compose (unify-kind (apply-ksubst s* ka) pk) s*))]))
+
+;; Check a core type that may be qualified: its constraints' argument
+;; kinds, then the body demanded to kind `*`.
+(define (kind-check-core env t tvar-kinds s)
+  (match t
+    [(qual cs body)
+     (define s1 (for/fold ([s s]) ([p (in-list cs)])
+                  (kind-check-pred env p tvar-kinds s)))
+     (demand-kind-star env body tvar-kinds s1)]
+    [_ (demand-kind-star env t tvar-kinds s)]))
+
+;; Run `thunk` under the configured kind-check mode, blaming `stx`:
+;; off → skip, warn → log to stderr, error → raise a syntax error.
+(define (with-kind-check stx thunk)
+  (unless (eq? (current-kind-check) 'off)
+    (with-handlers ([exn:fail:kind-unify?
+                     (lambda (e)
+                       (case (current-kind-check)
+                         [(warn) (eprintf "rackton kind warning: ~a~a\n"
+                                          (exn-message e) (blame-suffix stx))]
+                         [else (raise-syntax-error 'infer
+                                                   (exn-message e) stx)]))])
+      (thunk))))
+
+(define (blame-suffix stx)
+  (if (and (syntax? stx) (syntax-source stx) (syntax-line stx))
+      (format " (~a:~a)" (syntax-source stx) (syntax-line stx))
+      ""))
+
+;; The chokepoint: kind-check a resolved scheme.  Seed each quantified
+;; variable with a fresh kvar (class-param kinds flow in via the
+;; constraints), then check the body.
+(define (kind-check-scheme env sch blame-stx)
+  (with-kind-check blame-stx
+    (lambda ()
+      (define tvar-kinds (make-hasheq))
+      (for ([v (in-list (scheme-vars sch))])
+        (hash-set! tvar-kinds v (kvar (gensym 'k))))
+      (void (kind-check-core env (scheme-body sch) tvar-kinds empty-ksubst)))))
+
+;; Kind-check a standalone constraint (instance head/context, class
+;; superclass, ctor extra-context) — its free type variables get fresh
+;; kvars.
+(define (kind-check-constraint env p blame-stx)
+  (with-kind-check blame-stx
+    (lambda ()
+      (void (kind-check-pred env p (make-hasheq) empty-ksubst)))))
+
 ;; ----- kinds: data-type kind inference (Phase A2.5) ------------------
 
 ;; Infer and record the kind of every `top:data` constructor in this
@@ -3236,22 +3323,43 @@
              (and (ty:var? a)
                   (eq? (ty:var-name a) name)
                   (hash-ref (class-info-kinds cinfo) p #f))))))
+  ;; Each parameter's kind: an explicit `::` annotation if present, else
+  ;; one inherited from a superclass bound, else inferred from how the
+  ;; parameter is used in the method signatures (a parameter applied as
+  ;; `(s a)` is `* -> *`), defaulting to `*` when nothing constrains it.
+  ;; Seeding the unannotated/uninherited params with fresh kvars and
+  ;; solving across all method signatures is the class analogue of
+  ;; data-type kind inference.
   (define class-kinds
-    (for/fold ([acc (hasheq)])
-              ([raw (in-list (constraint-args head))]
-               [name (in-list class-params)])
-      (match raw
-        [(ty:var _ var-stx)
-         (define surface-kind
-           (and (syntax? var-stx)
-                (syntax-property var-stx 'rackton:kind)))
-         (define kind
-           (cond
-             [surface-kind (surface-kind->core surface-kind)]
-             [(kind-from-supers name) => values]
-             [else (surface-kind->core (k:star))]))
-         (hash-set acc name kind)]
-        [_ (hash-set acc name (kind-star))])))
+    (let ()
+      (define param-seeds (make-hasheq))
+      (define seeds
+        (for/list ([raw (in-list (constraint-args head))]
+                   [name (in-list class-params)])
+          (define annotated
+            (match raw
+              [(ty:var _ var-stx)
+               (let ([sk (and (syntax? var-stx)
+                              (syntax-property var-stx 'rackton:kind))])
+                 (and sk (surface-kind->core sk)))]
+              [_ #f]))
+          (define seed (or annotated (kind-from-supers name) (kvar (gensym 'k))))
+          (hash-set! param-seeds name seed)
+          (cons name seed)))
+      ;; Constrain via each method signature (a value type, kind `*`).
+      ;; A per-method copy isolates method-local tvars while the shared
+      ;; param seeds accumulate constraints through the threaded subst.
+      ;; An inconsistency here is left to the dedicated checker; we keep
+      ;; the seed (annotation/superclass) on conflict.
+      (define s
+        (for/fold ([s empty-ksubst]) ([m (in-list methods)] #:when (method-sig? m))
+          (define tk (hash-copy param-seeds))
+          (define core (resolve-type (method-sig-type m) env))
+          (with-handlers ([exn:fail:kind-unify? (lambda (_) s)])
+            (define-values (k s*) (elab-kind core env (hasheq) tk s))
+            (ksubst-compose (unify-kind (apply-ksubst s* k) kstar) s*))))
+      (for/fold ([acc (hasheq)]) ([sd (in-list seeds)])
+        (hash-set acc (car sd) (default-kind (apply-ksubst s (cdr sd)))))))
   (define super-preds
     (for/list ([s (in-list supers)]) (resolve-constraint s env)))
   (define head-pred (pred class-name class-args))
