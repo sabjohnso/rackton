@@ -291,13 +291,16 @@ type the way a type classifies a value: an ordinary type has kind
 @racket[List] has kind @racket[(-> * *)], and @racket[Pair] has kind
 @racket[(-> * (-> * *))].
 
-A type that is not well-kinded is a compile-time error at its
-signature: over-applying a constructor (@racket[(List Integer
-Integer)] — "List has kind @racket[(-> * *)] but is applied to 2
-arguments"), applying an ordinary type (@racket[(Integer Boolean)] —
-"Integer has kind @racket[*] and cannot be applied"), or giving a
-class an argument of the wrong kind (@racket[(Functor Integer)], since
-@racket[Functor]'s parameter is @racket[(-> * *)]).
+A type that is not well-kinded is a compile-time error, blamed at the
+exact offending sub-expression — its line and column, however deeply
+nested inside a larger type — not merely the enclosing signature:
+over-applying a constructor (@racket[(List Integer Integer)] — "List
+has kind @racket[(-> * *)] but is applied to 2 arguments"), applying
+an ordinary type (@racket[(Integer Boolean)] — "Integer has kind
+@racket[*] and cannot be applied"), or giving a class an argument of
+the wrong kind (@racket[(Functor Integer)] — "Functor expects an
+argument of kind @racket[(-> * *)], but this one has kind
+@racket[*]", with the caret on the @racket[Integer] argument).
 
 Kinds are @emph{inferred}; annotations are rarely needed.  A data
 type's kind comes from how its parameters are used in its

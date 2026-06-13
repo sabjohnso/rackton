@@ -45,17 +45,21 @@ explicitly in the head with @racket[::] when you want the kind stated:
   (: fmap2 (-> (-> a b) (-> (f a) (f b)))))
 }
 
-An ill-kinded type is a compile-time error at its signature — a
-constructor applied to too many arguments, an ordinary type applied at
-all, or a class given an argument of the wrong kind:
+An ill-kinded type is a compile-time error — a constructor applied to
+too many arguments, an ordinary type applied at all, or a class given
+an argument of the wrong kind.  The error is blamed at the exact
+offending sub-expression (line and column), even when it is buried
+inside a larger type, so the caret lands on the part that is wrong:
 
 @racketblock[
 (code:comment "List has kind (-> * *) but is applied to 2 arguments")
 (: bad1 (List Integer Integer))
 (code:comment "Integer has kind * and cannot be applied")
 (: bad2 (-> (Integer Boolean) a))
-(code:comment "Functor's parameter is (-> * *), not *")
+(code:comment "Functor expects an argument of kind (-> * *), but this one has kind *")
 (instance (Functor Integer) (define (fmap f x) x))
+(code:comment "blamed on the inner (List …), not the whole signature")
+(: bad3 (-> Integer (-> Boolean (List Integer Integer))))
 ]
 
 @section{Multi-parameter classes}
