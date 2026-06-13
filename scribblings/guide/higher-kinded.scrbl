@@ -24,15 +24,39 @@ type constructors.
       arguments.}
 @item{@racket[(Maybe Integer)] has kind @racket[*].}]
 
-Kind annotations on class parameters use @racket[::]:
+Every type expression is kind-checked, and kinds are @emph{inferred},
+so you rarely write a kind annotation.  A class parameter's kind
+follows from its method signatures — a parameter used as @racket[(f a)]
+must have kind @racket[(-> * *)]:
 
 @rackton-example[#:eval ev #:mode 'defs]{
-(protocol (Functor (f :: (-> * *)))
-  (: fmap (-> (-> a b) (-> (f a) (f b)))))
+(protocol (Mappable f)
+  (: mapp (-> (-> a b) (-> (f a) (f b)))))
 }
 
-Without the annotation @racket[f] defaults to kind @racket[*], which
-would reject @racket[(f a)] as ill-kinded.
+Here @racket[f] is inferred to have kind @racket[(-> * *)] from
+@racket[mapp]'s use of @racket[(f a)] — no annotation needed.  (A data
+type's kind is inferred the same way, from how its parameters appear
+in its constructors.)  You may still annotate a class parameter
+explicitly in the head with @racket[::] when you want the kind stated:
+
+@rackton-example[#:eval ev #:mode 'defs]{
+(protocol (Functor2 (f :: (-> * *)))
+  (: fmap2 (-> (-> a b) (-> (f a) (f b)))))
+}
+
+An ill-kinded type is a compile-time error at its signature — a
+constructor applied to too many arguments, an ordinary type applied at
+all, or a class given an argument of the wrong kind:
+
+@racketblock[
+(code:comment "List has kind (-> * *) but is applied to 2 arguments")
+(: bad1 (List Integer Integer))
+(code:comment "Integer has kind * and cannot be applied")
+(: bad2 (-> (Integer Boolean) a))
+(code:comment "Functor's parameter is (-> * *), not *")
+(instance (Functor Integer) (define (fmap f x) x))
+]
 
 @section{Multi-parameter classes}
 
