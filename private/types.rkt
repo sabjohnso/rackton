@@ -30,6 +30,16 @@
          kind-arrow*
          arity->star-kind
          kind->datum
+         (struct-out kvar)
+         empty-ksubst
+         ksubst-singleton
+         ksubst-extend
+         ksubst-compose
+         apply-ksubst
+         kind-vars
+         default-kind
+         unify-kind
+         (struct-out exn:fail:kind-unify)
 
          type?
          type-vars
@@ -121,10 +131,82 @@
 (define (arity->star-kind n)
   (kind-arrow* (make-list n kstar) kstar))
 
+;; A kind variable, for kind inference.  Residual kvars are defaulted
+;; to `*` (Haskell-98 style; no kind polymorphism).
+(struct kvar (name) #:transparent)
+
 (define (kind->datum k)
   (match k
     [(kind-star)      '*]
-    [(kind-arr a b)   `(-> ,(kind->datum a) ,(kind->datum b))]))
+    [(kind-arr a b)   `(-> ,(kind->datum a) ,(kind->datum b))]
+    [(kvar _)         '?]))
+
+;; ----- Kind unification ----------------------------------------------
+;; The kind analogue of the type unifier (unify.rkt), but far simpler:
+;; no quantifiers, no arity peeling, no escape analysis.  A kind
+;; substitution is an immutable eq-keyed hash: kvar-name → kind.
+
+(define empty-ksubst (hasheq))
+(define (ksubst-singleton name k) (hasheq name k))
+(define (ksubst-extend s name k) (hash-set s name k))
+
+(define (apply-ksubst s k)
+  (cond
+    [(hash-empty? s) k]
+    [else
+     (match k
+       [(kvar n)       (hash-ref s n k)]
+       [(kind-star)    k]
+       [(kind-arr d c) (kind-arr (apply-ksubst s d) (apply-ksubst s c))])]))
+
+;; Compose: (ksubst-compose s2 s1) applies s1 then s2.
+(define (ksubst-compose s2 s1)
+  (define from-s1
+    (for/fold ([acc empty-ksubst]) ([(n k) (in-hash s1)])
+      (hash-set acc n (apply-ksubst s2 k))))
+  (for/fold ([acc from-s1]) ([(n k) (in-hash s2)])
+    (if (hash-has-key? s1 n) acc (hash-set acc n k))))
+
+;; The free kind variables of a kind.
+(define (kind-vars k)
+  (match k
+    [(kvar n)       (seteq n)]
+    [(kind-star)    (seteq)]
+    [(kind-arr d c) (set-union (kind-vars d) (kind-vars c))]))
+
+;; Replace every residual kind variable with `*`.
+(define (default-kind k)
+  (match k
+    [(kvar _)       kstar]
+    [(kind-star)    k]
+    [(kind-arr d c) (kind-arr (default-kind d) (default-kind c))]))
+
+(struct exn:fail:kind-unify exn:fail (left right) #:transparent)
+
+(define (raise-kind-unify! left right)
+  (raise (exn:fail:kind-unify
+          (format "cannot unify kind ~a with ~a"
+                  (kind->datum left) (kind->datum right))
+          (current-continuation-marks)
+          left right)))
+
+(define (unify-kind k1 k2)
+  (match* (k1 k2)
+    [((kvar a) (kvar a))     empty-ksubst]
+    [((kvar a) _)            (bind-kvar a k2 k1 k2)]
+    [(_ (kvar a))            (bind-kvar a k1 k1 k2)]
+    [((kind-star) (kind-star)) empty-ksubst]
+    [((kind-arr d1 c1) (kind-arr d2 c2))
+     (define sd (unify-kind d1 d2))
+     (define sc (unify-kind (apply-ksubst sd c1) (apply-ksubst sd c2)))
+     (ksubst-compose sc sd)]
+    [(_ _) (raise-kind-unify! k1 k2)]))
+
+(define (bind-kvar a k orig-l orig-r)
+  (cond
+    [(equal? (kvar a) k) empty-ksubst]
+    [(set-member? (kind-vars k) a) (raise-kind-unify! orig-l orig-r)]  ; occurs
+    [else (ksubst-singleton a k)]))
 
 ;; A qualified type: `(qual (pred ...) body)` reads "ρ ::= π ... => τ".
 ;; Smart constructor `mqual` collapses an empty context to the bare body.
