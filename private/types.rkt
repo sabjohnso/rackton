@@ -27,6 +27,8 @@
          (struct-out kind-arr)
          kstar
          k->
+         kind-arrow*
+         arity->star-kind
          kind->datum
 
          type?
@@ -78,6 +80,7 @@
 
 (require racket/set
          racket/match
+         (only-in racket/list make-list)
          "diagnostic.rkt")
 
 ;; ----- Type AST ------------------------------------------------------
@@ -106,6 +109,17 @@
 
 (define kstar (kind-star))
 (define (k-> a b) (kind-arr a b))
+
+;; Fold a list of argument kinds and a result kind into an arrow kind:
+;; `(kind-arrow* (list k1 k2) r)` = `k1 -> k2 -> r`.
+(define (kind-arrow* arg-kinds result)
+  (foldr kind-arr result arg-kinds))
+
+;; The all-`*` kind of an arity-n type constructor: `* -> … -> *`
+;; (n stars before the result `*`).  Used as the placeholder/fallback
+;; kind when a precise one has not been inferred (e.g. legacy sidecars).
+(define (arity->star-kind n)
+  (kind-arrow* (make-list n kstar) kstar))
 
 (define (kind->datum k)
   (match k

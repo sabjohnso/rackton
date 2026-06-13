@@ -28,7 +28,7 @@
               [ctors     (gen:list gen:tcon-name #:max-length 3)]
               [abstract? gen:boolean]
               [rtag      (gen:choice (gen:const #f) gen:tcon-name)])
-      (tcon-info name arity ctors abstract? rtag)))
+      (tcon-info name arity (arity->star-kind arity) ctors abstract? rtag)))
 
   (define gen:data-info
     (gen:let ([tname    gen:tcon-name]

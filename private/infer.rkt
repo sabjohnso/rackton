@@ -2282,6 +2282,10 @@
     (define abstract? (top:data-abstract? f))
     (env-extend-tcon e tname
                      (tcon-info tname (length tparams)
+                                ;; Placeholder kind; Phase A2.5
+                                ;; (infer-data-kinds) replaces it with the
+                                ;; inferred kind before any type is checked.
+                                (arity->star-kind (length tparams))
                                 (for/list ([c (in-list ctors)])
                                   (data-ctor-name c))
                                 abstract?
@@ -3030,6 +3034,7 @@
      (define env*
        (env-extend-tcon env tname
                         (tcon-info tname (length tparams)
+                                   (arity->star-kind (length tparams))
                                    (for/list ([c (in-list ctors)])
                                      (data-ctor-name c))
                                    abstract?

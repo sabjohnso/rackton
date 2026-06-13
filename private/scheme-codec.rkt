@@ -92,16 +92,21 @@
         (tcon-info-abstract? ti)
         ;; Opaque runtime dispatch tag (or #f); lets an importer that
         ;; defines a new instance for the type register it correctly.
-        (tcon-info-runtime-tag ti)))
+        (tcon-info-runtime-tag ti)
+        ;; The inferred kind.  Newest field; legacy sidecars without it
+        ;; fall back to the all-`*` arity kind on decode.
+        (encode-kind (tcon-info-kind ti))))
 
 (define (decode-tcon-info datum)
   (match datum
+    [(list name arity ctors abstract? runtime-tag kind)
+     (tcon-info name arity (decode-kind kind) ctors abstract? runtime-tag)]
     [(list name arity ctors abstract? runtime-tag)
-     (tcon-info name arity ctors abstract? runtime-tag)]
+     (tcon-info name arity (arity->star-kind arity) ctors abstract? runtime-tag)]
     [(list name arity ctors abstract?)
-     (tcon-info name arity ctors abstract? #f)]
+     (tcon-info name arity (arity->star-kind arity) ctors abstract? #f)]
     [(list name arity ctors)
-     (tcon-info name arity ctors #f #f)]))
+     (tcon-info name arity (arity->star-kind arity) ctors #f #f)]))
 
 ;; ----- kinds, classes, instances ------------------------------
 
