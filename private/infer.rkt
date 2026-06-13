@@ -2497,8 +2497,16 @@
        (for ([arg (in-list args)] [param (in-list (class-info-params cinfo))])
          (define pk (hash-ref (class-info-kinds cinfo) param kstar))
          (define-values (ka s) (elab-surface arg env (hasheq) tvar-kinds empty-ksubst))
+         ;; A failure here is an argument whose kind ≠ the class
+         ;; parameter's expected kind; phrase it in those terms rather
+         ;; than as a raw unification failure.
          (with-handlers ([exn:fail:kind-unify?
-                          (lambda (e) (kind-fail! (ty-ast->stx arg) (exn-message e)))])
+                          (lambda (e)
+                            (kind-fail! (ty-ast->stx arg)
+                              (format "~a expects an argument of kind ~s, but this one has kind ~s"
+                                      cname
+                                      (kind->datum pk)
+                                      (kind->datum (default-kind (apply-ksubst s ka))))))])
            (unify-kind (apply-ksubst s ka) pk)
            (void))))]
     [_ (void)]))
