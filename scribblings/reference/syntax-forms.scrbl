@@ -275,6 +275,54 @@ in the instance breaks the cycle.
 Instances always escape regardless of @racket[provide]; coherence is a
 module-level property.}
 
+@subsection[#:tag "sf-equality-constraint"]{Type-equality constraints}
+
+The constraint @racket[(~ _τ _σ)] asserts that two types are
+@emph{equal}.  It occupies the same @racket[=>] position as a class
+constraint — in a method or function signature's qualified scheme, or
+in an @racket[instance] context — but it is not a type class: it has
+no instances and no dictionary.  It is discharged structurally, by
+@emph{unification} of its two arguments; for fully-resolved concrete
+types that simply means the two types are the same.  @racketidfont{~}
+is the one constraint head that is not a class name (class names must
+begin with an uppercase letter).
+
+@bold{Explicitly}, a signature may demand that two of its type
+variables coincide.  The caller must then supply types that already
+satisfy the equality — Rackton checks the equality, it never makes the
+types equal:
+
+@racketblock[
+(: pair-eq ((~ a b) => (-> a (-> b (Pair a b)))))
+(define (pair-eq x y) (Pair x y))
+
+(pair-eq 7 7)     (code:comment "ok: (~ Integer Integer) holds")
+(pair-eq 7 #t)    (code:comment "error: type-equality fails: Integer ≠ Boolean")]
+
+@bold{Implicitly}, type-equality constraints are how GADT pattern
+matching recovers a refined index type.  A constructor whose return
+type pins the parameter — @racket[(Lit : (-> Integer (Expr Integer)))]
+— demands, when matched, that the scrutinee's index equal that
+concrete type.  Matching against such a constructor @emph{locally
+refines} the index within that arm, which is what lets a polymorphic
+eliminator return each constructor's specific result type:
+
+@racketblock[
+(data (Expr a)
+  (Lit  : (-> Integer (Expr Integer)))
+  (BVal : (-> Boolean (Expr Boolean))))
+
+(: eval (-> (Expr a) a))
+(define (eval e)
+  (match e
+    [(Lit n)  n]        (code:comment "a is locally Integer here")
+    [(BVal b) b]))]     (code:comment "a is locally Boolean here")
+
+The refinement is scoped to the arm: it never leaks to a sibling arm
+or to the function's outer type.  A field-less GADT constructor
+refines its index the same way through a non-arrow signature
+(@racket[(Tag : (Tagged Integer))]).
+
 @defform*[
           [(define-alias Name type)
            (define-alias (Name a ...) type)]]{
