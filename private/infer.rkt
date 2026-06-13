@@ -1257,7 +1257,9 @@
 (define (infer-ann/m expr ty-ast stx env)
   (let/infer ([re (infer-expr/m expr env)])
     (let* ([s-e (car re)] [t-e (cdr re)]
-           [declared (qual-body-type (resolve-type ty-ast env))]
+           [resolved (resolve-type ty-ast env)]
+           [_kc (kind-check-type env resolved (ty-ast->stx ty-ast))]
+           [declared (qual-body-type resolved)]
            [s-u (with-handlers
                  ([exn:fail:unify?
                    (lambda (_)
@@ -1266,7 +1268,9 @@
       (infer-return (cons (subst-compose s-u s-e) (apply-subst s-u declared))))))
 
 (define (infer-escape/m ty-ast vars stx env)
-  (define expected (qual-body-type (resolve-type ty-ast env)))
+  (define resolved (resolve-type ty-ast env))
+  (kind-check-type env resolved (ty-ast->stx ty-ast))
+  (define expected (qual-body-type resolved))
   (for ([v (in-list vars)])
     (unless (env-ref-var env v)
       (raise-syntax-error 'infer
@@ -2340,8 +2344,23 @@
          (values (cons ka acc) s*)))
      (define result (kvar (gensym 'k)))
      (define expected (kind-arrow* kargs result))
+     ;; A concrete head kind that accepts fewer arguments than supplied
+     ;; gets a precise message (over-application of a constructor, or a
+     ;; `*`-kinded type applied at all); other failures fall through to
+     ;; the generic kind-unify error.
+     (define kh* (apply-ksubst s2 kh))
+     (when (and (set-empty? (kind-vars kh*))
+                (< (kind-arity kh*) (length args)))
+       (raise (exn:fail:kind-unify
+               (if (zero? (kind-arity kh*))
+                   (format "~a has kind ~s and cannot be applied"
+                           (type-head-name h) (kind->datum kh*))
+                   (format "~a has kind ~s but is applied to ~a argument~a"
+                           (type-head-name h) (kind->datum kh*)
+                           (length args) (if (= (length args) 1) "" "s")))
+               (current-continuation-marks) kh* expected)))
      (define s3 (ksubst-compose
-                 (unify-kind (apply-ksubst s2 kh) (apply-ksubst s2 expected))
+                 (unify-kind kh* (apply-ksubst s2 expected))
                  s2))
      (values (apply-ksubst s3 result) s3)]
     [(tforall vs body)
@@ -2358,7 +2377,7 @@
 ;; Rollout control: 'off disables checking, 'warn logs ill-kinded
 ;; types to stderr (used to surface false positives across a full
 ;; build), 'error rejects them.
-(define current-kind-check (make-parameter 'warn))
+(define current-kind-check (make-parameter 'error))
 
 (define (ty-ast->stx t)
   (match t
@@ -2408,9 +2427,18 @@
                        (case (current-kind-check)
                          [(warn) (eprintf "rackton kind warning: ~a~a\n"
                                           (exn-message e) (blame-suffix stx))]
-                         [else (raise-syntax-error 'infer
-                                                   (exn-message e) stx)]))])
+                         [else
+                          (raise-syntax-error 'infer
+                            (format "kind error: ~a" (exn-message e)) stx)]))])
       (thunk))))
+
+;; A readable name for the head of an application, for kind errors.
+(define (type-head-name t)
+  (match t
+    [(tcon n) n]
+    [(tvar n) n]
+    [(tapp h _) (type-head-name h)]
+    [_ "this type"]))
 
 (define (blame-suffix stx)
   (if (and (syntax? stx) (syntax-source stx) (syntax-line stx))
@@ -2435,6 +2463,14 @@
   (with-kind-check blame-stx
     (lambda ()
       (void (kind-check-pred env p (make-hasheq) empty-ksubst)))))
+
+;; Kind-check a standalone value type (an `ann`/`racket` annotation,
+;; an effect-op type, an instance type-family binding) — it must have
+;; kind `*`; free type variables get fresh kvars.
+(define (kind-check-type env t blame-stx)
+  (with-kind-check blame-stx
+    (lambda ()
+      (void (kind-check-core env t (make-hasheq) empty-ksubst)))))
 
 ;; ----- kinds: data-type kind inference (Phase A2.5) ------------------
 
@@ -3212,6 +3248,8 @@
          (define arg-tys (map (lambda (t) (resolve-type t env))
                               (effect-op-arg-types o)))
          (define res-ty  (resolve-type (effect-op-result-type o) env))
+         (for ([t (in-list arg-tys)]) (kind-check-type env t stx))
+         (kind-check-type env res-ty stx)
          (define normalized-arg-tys
            (cond
              [(null? arg-tys) (list (tcon 'Unit))]
@@ -3380,6 +3418,7 @@
                  symbol<?))
          (define quantified (append class-params extra-vars))
          (define sch (scheme quantified body))
+         (kind-check-scheme env sch (method-sig-stx m))
          (hash-set acc (method-sig-name m) sch)]
         [else acc])))
   (define defaults
@@ -4559,9 +4598,9 @@
   (define type-family-bindings
     (for/fold ([acc (hasheq)]) ([m (in-list methods)]
                                 #:when (inst-type-fam? m))
-      (hash-set acc
-                (inst-type-fam-name m)
-                (resolve-type (inst-type-fam-type m) env))))
+      (define t (resolve-type (inst-type-fam-type m) env))
+      (kind-check-type env t (inst-type-fam-stx m))
+      (hash-set acc (inst-type-fam-name m) t)))
   (for ([fam (in-list (class-info-type-families cinfo))])
     (unless (hash-has-key? type-family-bindings fam)
       (raise-syntax-error 'infer

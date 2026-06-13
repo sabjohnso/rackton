@@ -37,6 +37,7 @@
          ksubst-compose
          apply-ksubst
          kind-vars
+         kind-arity
          default-kind
          unify-kind
          (struct-out exn:fail:kind-unify)
@@ -173,6 +174,12 @@
     [(kvar n)       (seteq n)]
     [(kind-star)    (seteq)]
     [(kind-arr d c) (set-union (kind-vars d) (kind-vars c))]))
+
+;; The number of arguments a kind accepts (its leading arrow count).
+(define (kind-arity k)
+  (match k
+    [(kind-arr _ c) (add1 (kind-arity c))]
+    [_              0]))
 
 ;; Replace every residual kind variable with `*`.
 (define (default-kind k)

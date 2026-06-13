@@ -281,6 +281,35 @@ in the instance breaks the cycle.
 Instances always escape regardless of @racket[provide]; coherence is a
 module-level property.}
 
+@subsection[#:tag "sf-kinds"]{Kinds}
+
+Every type expression is kind-checked.  A @deftech{kind} classifies a
+type the way a type classifies a value: an ordinary type has kind
+@racket[*], and a type constructor that takes an argument of kind
+@racket[_k1] to produce a type of kind @racket[_k2] has kind
+@racket[(-> _k1 _k2)].  So @racket[Integer] has kind @racket[*],
+@racket[List] has kind @racket[(-> * *)], and @racket[Pair] has kind
+@racket[(-> * (-> * *))].
+
+A type that is not well-kinded is a compile-time error at its
+signature: over-applying a constructor (@racket[(List Integer
+Integer)] — "List has kind @racket[(-> * *)] but is applied to 2
+arguments"), applying an ordinary type (@racket[(Integer Boolean)] —
+"Integer has kind @racket[*] and cannot be applied"), or giving a
+class an argument of the wrong kind (@racket[(Functor Integer)], since
+@racket[Functor]'s parameter is @racket[(-> * *)]).
+
+Kinds are @emph{inferred}; annotations are rarely needed.  A data
+type's kind comes from how its parameters are used in its
+constructors (so @racket[(data (StateT s m a) (MkStateT (-> s (m (Pair
+s a)))))] gives @racket[StateT] the kind @racket[(-> * (-> (-> * *)
+(-> * *)))], with @racket[m] inferred as @racket[(-> * *)]); a class
+parameter's kind comes from its method signatures (a parameter used as
+@racket[(s a)] is @racket[(-> * *)]); and a higher-kinded type
+variable in any signature is inferred from its use.  A class parameter
+may still be annotated explicitly with @racket[(param :: kind)] in the
+@racket[protocol] head when desired.
+
 @subsection[#:tag "sf-equality-constraint"]{Type-equality constraints}
 
 The constraint @racket[(~ _τ _σ)] asserts that two types are
