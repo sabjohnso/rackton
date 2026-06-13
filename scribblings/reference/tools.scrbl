@@ -48,6 +48,43 @@ characters (identical to LSP's UTF-16 units for all of the Basic
 Multilingual Plane); references, rename, and formatting are not
 implemented.
 
+@section{The debug server}
+
+@defmodule[rackton/dap]
+
+A Debug Adapter Protocol server for @hash-lang[]
+@racketmodfont{rackton} programs:
+
+@commandline{racket -l rackton/dap}
+
+It runs the program under DrRacket's debugger annotation — viable
+because the compiler preserves source positions end to end — and
+provides: breakpoints by Rackton source line (validated, so a line
+that compiles to no code reports as unverified), stop/continue,
+step in/over/out, stack frames with Rackton lines, and locals under
+their source names with live values.  Program output is forwarded as
+DAP output events.  Proper tail calls genuinely have no stack
+frames, and the debugger reports the stack as it is rather than
+inventing frames.
+
+Requires the @racketidfont{gui-debugger} collection at runtime
+(@commandline{raco pkg install drracket}) — a runtime prerequisite,
+deliberately not a package dependency.
+
+For Emacs with dape:
+
+@verbatim|{
+(add-to-list 'dape-configs
+             `(rackton
+               command "racket" command-args ("-l" "rackton/dap")
+               :program dape-buffer-default))
+}|
+
+Not implemented (v1): conditional breakpoints, watch expressions,
+evaluate-in-frame, attach.  Stack traces also work without the
+debugger via errortrace:
+@commandline{racket -l errortrace -t program.rkt}
+
 @section{Signature search from the shell}
 
 @defmodule[rackton/search]
