@@ -467,4 +467,48 @@
                   (list (top:def '==
                                  (e:lam '(x y) (e:var 'x #f) #f)
                                  #f))
-                  #f)))
+                  #f))
+
+  ;; ----- class names must begin with an uppercase letter -----------
+  ;; A class name is an uppercase-initial identifier; the reserved
+  ;; type/kind operators (-> * => ::) are not class names, even though
+  ;; they are "non-lowercase".  This catches a `=>` written where `::`
+  ;; was meant — the kind expression `(-> * *)` is no longer accepted
+  ;; as a superclass.
+
+  ;; Protocol name.
+  (check-exn exn:fail:syntax?
+             (lambda () (ptop '(protocol (-> a) (: m (-> a a))))))
+  (check-exn exn:fail:syntax?
+             (lambda () (ptop '(protocol (* a) (: m (-> a a))))))
+  (check-equal? (top:class-supers
+                 (parse-top (datum->syntax #f '(protocol (Foo a)
+                                                 (: m (-> a a))))))
+                '()
+                "an uppercase protocol name still parses")
+
+  ;; Superclass bound — the user's reported case.
+  (check-exn exn:fail:syntax?
+             (lambda ()
+               (ptop '(protocol (Contravariant (t => (-> * *)))
+                        (: contramap (-> (-> b a) (t a) (t b)))))))
+  ;; A real superclass bound still parses.
+  (check-equal? (length (top:class-supers
+                         (parse-top (datum->syntax #f
+                                     '(protocol (Ord (a => Eq))
+                                        (: cmp (-> a (-> a Boolean))))))))
+                1
+                "an uppercase superclass bound still parses")
+
+  ;; Instance / constraint heads.
+  (check-exn exn:fail:syntax?
+             (lambda () (ptop '(instance (-> Integer) (define m =)))))
+
+  ;; The `~` equality predicate is NOT a class but is a legitimate
+  ;; constraint head and must still parse.
+  (check-equal? (ptop '(: pair-eq ((~ a b) => (-> a (-> b (Pair a b))))))
+                (ptop '(: pair-eq ((~ a b) => (-> a (-> b (Pair a b)))))))
+  (check-exn exn:fail:syntax?
+             (lambda () (parse-type (datum->syntax #f
+                         '((foo a) => (-> a a)))))
+             "a lowercase constraint head is still rejected"))

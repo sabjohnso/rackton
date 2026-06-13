@@ -52,6 +52,26 @@
                 (and (char-alphabetic? c)
                      (char-lower-case? c)))))))
 
+;; A class name (and a type/data-constructor name) is conventionally a
+;; non-lowercase identifier, but the reserved type/kind operators
+;; (`->` `*` `=>` `::`) are also non-lowercase without being class
+;; names.  `uppercase-id?` is the tighter predicate for *class* names:
+;; the first character must be an uppercase letter.  It rejects an
+;; operator written where a class was expected — e.g. the kind
+;; expression `(-> * *)` slipped in after `=>` instead of `::`.
+(define (uppercase-id? sym)
+  (and (symbol? sym)
+       (let ([s (symbol->string sym)])
+         (and (positive? (string-length s))
+              (let ([c (string-ref s 0)])
+                (and (char-alphabetic? c)
+                     (char-upper-case? c)))))))
+
+;; A valid constraint head: a class name, or the built-in type-equality
+;; predicate `~` (which is not a class but is a legitimate constraint).
+(define (constraint-head-id? sym)
+  (or (uppercase-id? sym) (eq? sym '~)))
+
 (define (wildcard-symbol? sym) (eq? sym '_))
 
 ;; ----- expressions --------------------------------------------------
@@ -1228,8 +1248,8 @@
 (define (parse-constraint stx)
   (syntax-parse stx
     [(name:id arg ...+)
-     #:fail-unless (not (lowercase-id? (syntax->datum #'name)))
-     "class name in a constraint must be a non-lowercase identifier"
+     #:fail-unless (constraint-head-id? (syntax->datum #'name))
+     "class name in a constraint must begin with an uppercase letter"
      (constraint (syntax->datum #'name)
                  (for/list ([a (in-list (syntax->list #'(arg ...)))])
                    (parse-type a))
@@ -1520,12 +1540,12 @@
 (define (bound->constraint stx var)
   (syntax-parse stx
     [c:id
-     #:fail-unless (not (lowercase-id? (syntax->datum #'c)))
-     "superclass in a bound must be a non-lowercase class name"
+     #:fail-unless (uppercase-id? (syntax->datum #'c))
+     "superclass in a bound must begin with an uppercase letter (did you mean :: for a kind?)"
      (constraint (syntax->datum #'c) (list var) stx)]
     [(c:id arg ...+)
-     #:fail-unless (not (lowercase-id? (syntax->datum #'c)))
-     "superclass head in a bound must be a non-lowercase class name"
+     #:fail-unless (uppercase-id? (syntax->datum #'c))
+     "superclass head in a bound must begin with an uppercase letter (did you mean :: for a kind?)"
      (constraint (syntax->datum #'c)
                  (append (for/list ([a (in-list (syntax->list #'(arg ...)))])
                            (parse-type a))
@@ -1562,8 +1582,8 @@
 (define (parse-class-head stx)
   (syntax-parse stx
     [(name:id binder ...+)
-     #:fail-unless (not (lowercase-id? (syntax->datum #'name)))
-     "class name must be a non-lowercase identifier"
+     #:fail-unless (uppercase-id? (syntax->datum #'name))
+     "class name must begin with an uppercase letter"
      (define-values (vars super-lists)
        (for/lists (vs ss)
                   ([b (in-list (syntax->list #'(binder ...)))])
@@ -1622,8 +1642,8 @@
 (define (parse-derive-clause stx)
   (syntax-parse stx
     [(super:id m ...+)
-     #:fail-unless (not (lowercase-id? (syntax->datum #'super)))
-     "superclass in #:derive must be a non-lowercase class name"
+     #:fail-unless (uppercase-id? (syntax->datum #'super))
+     "superclass in #:derive must begin with an uppercase letter"
      (class-super-derive
       (syntax->datum #'super)
       (for/list ([md (in-list (syntax->list #'(m ...)))])
