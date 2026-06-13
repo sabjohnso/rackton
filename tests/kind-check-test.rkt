@@ -51,6 +51,21 @@
     (: g (-> (Box Integer Integer) Integer))
     (define (g z) 0))))
 
+(test-case "a nested ill-kinded type blames the exact sub-expression"
+  ;; The bad part is buried inside an arrow type; blame must be the
+  ;; inner (List Integer Integer) node, not the enclosing signature.
+  (define blamed
+    (with-handlers ([exn:fail:syntax?
+                     (lambda (e)
+                       (and (pair? (exn:fail:syntax-exprs e))
+                            (syntax->datum (car (exn:fail:syntax-exprs e)))))])
+      (eval #'(rackton
+               (: f (-> Integer (-> Boolean (List Integer Integer))))
+               (define (f a b) Nil))
+            (variable-reference->namespace (#%variable-reference)))
+      #f))
+  (check-equal? blamed '(List Integer Integer)))
+
 ;; ----- rejection: wrong-kinded class argument ------------------------
 
 (test-case "an instance whose argument has the wrong kind is rejected"

@@ -952,13 +952,11 @@
 (define (resolve-type ty-ast env)
   (run-ctx (resolve-type/m ty-ast) (resolve-ctx (env-aliases env) (seteq))))
 (define (resolve-constraint c env)
-  (define p (run-ctx (resolve-constraint/m c) (resolve-ctx (env-aliases env) (seteq))))
-  (kind-check-constraint env p (and (constraint? c) (constraint-stx c)))
-  p)
+  (when (constraint? c) (kind-check-constraint-surface env c))
+  (run-ctx (resolve-constraint/m c) (resolve-ctx (env-aliases env) (seteq))))
 (define (resolve-scheme ty-ast env)
-  (define sch (run-ctx (resolve-scheme/m ty-ast) (resolve-ctx (env-aliases env) (seteq))))
-  (kind-check-scheme env sch (ty-ast->stx ty-ast))
-  sch)
+  (kind-check-surface env ty-ast)
+  (run-ctx (resolve-scheme/m ty-ast) (resolve-ctx (env-aliases env) (seteq))))
 
 ;; ----- literals -----------------------------------------------------
 
@@ -1255,11 +1253,10 @@
               (infer-return (cons s-final (apply-subst s-final t-then))))))))))
 
 (define (infer-ann/m expr ty-ast stx env)
+  (kind-check-surface env ty-ast)
   (let/infer ([re (infer-expr/m expr env)])
     (let* ([s-e (car re)] [t-e (cdr re)]
-           [resolved (resolve-type ty-ast env)]
-           [_kc (kind-check-type env resolved (ty-ast->stx ty-ast))]
-           [declared (qual-body-type resolved)]
+           [declared (qual-body-type (resolve-type ty-ast env))]
            [s-u (with-handlers
                  ([exn:fail:unify?
                    (lambda (_)
@@ -1268,9 +1265,8 @@
       (infer-return (cons (subst-compose s-u s-e) (apply-subst s-u declared))))))
 
 (define (infer-escape/m ty-ast vars stx env)
-  (define resolved (resolve-type ty-ast env))
-  (kind-check-type env resolved (ty-ast->stx ty-ast))
-  (define expected (qual-body-type resolved))
+  (kind-check-surface env ty-ast)
+  (define expected (qual-body-type (resolve-type ty-ast env)))
   (for ([v (in-list vars)])
     (unless (env-ref-var env v)
       (raise-syntax-error 'infer
@@ -2372,7 +2368,12 @@
      (elab-kind body env batch-kinds tvar-kinds s)]
     [_ (values (kvar (gensym 'k)) s)]))
 
-;; ----- kinds: the checker --------------------------------------------
+;; ----- kinds: the surface-AST checker --------------------------------
+;; Kind-checking walks the SURFACE type AST, where every node carries
+;; its own syntax — so a kind error blames the exact offending
+;; sub-expression (line and column), however deeply nested.  An alias
+;; application is expanded through resolve-type and the core walker
+;; (elab-kind), blaming the alias use site.
 
 ;; Rollout control: 'off disables checking, 'warn logs ill-kinded
 ;; types to stderr (used to surface false positives across a full
@@ -2388,89 +2389,141 @@
     [(ty:qual _ _ stx)   stx]
     [_                   #f]))
 
-;; Require a (resolved core) type to have kind `*`.  Returns the
-;; threaded ksubst; raises exn:fail:kind-unify on failure.
-(define (demand-kind-star env t tvar-kinds s)
-  (define-values (k s*) (elab-kind t env (hasheq) tvar-kinds s))
-  (ksubst-compose (unify-kind (apply-ksubst s* k) kstar) s*))
-
-;; Check one predicate: each argument's kind must match the class's
-;; declared parameter kind.  A non-class head (e.g. the `~` equality
-;; predicate) or an unknown class is skipped.
-(define (kind-check-pred env p tvar-kinds s)
-  (define cinfo (env-ref-class env (pred-class p) #f))
-  (cond
-    [(not cinfo) s]
-    [else
-     (for/fold ([s s]) ([arg (in-list (pred-args p))]
-                        [param (in-list (class-info-params cinfo))])
-       (define pk (hash-ref (class-info-kinds cinfo) param kstar))
-       (define-values (ka s*) (elab-kind arg env (hasheq) tvar-kinds s))
-       (ksubst-compose (unify-kind (apply-ksubst s* ka) pk) s*))]))
-
-;; Check a core type that may be qualified: its constraints' argument
-;; kinds, then the body demanded to kind `*`.
-(define (kind-check-core env t tvar-kinds s)
-  (match t
-    [(qual cs body)
-     (define s1 (for/fold ([s s]) ([p (in-list cs)])
-                  (kind-check-pred env p tvar-kinds s)))
-     (demand-kind-star env body tvar-kinds s1)]
-    [_ (demand-kind-star env t tvar-kinds s)]))
-
-;; Run `thunk` under the configured kind-check mode, blaming `stx`:
-;; off → skip, warn → log to stderr, error → raise a syntax error.
-(define (with-kind-check stx thunk)
-  (unless (eq? (current-kind-check) 'off)
-    (with-handlers ([exn:fail:kind-unify?
-                     (lambda (e)
-                       (case (current-kind-check)
-                         [(warn) (eprintf "rackton kind warning: ~a~a\n"
-                                          (exn-message e) (blame-suffix stx))]
-                         [else
-                          (raise-syntax-error 'infer
-                            (format "kind error: ~a" (exn-message e)) stx)]))])
-      (thunk))))
-
-;; A readable name for the head of an application, for kind errors.
-(define (type-head-name t)
-  (match t
-    [(tcon n) n]
-    [(tvar n) n]
-    [(tapp h _) (type-head-name h)]
-    [_ "this type"]))
-
 (define (blame-suffix stx)
   (if (and (syntax? stx) (syntax-source stx) (syntax-line stx))
       (format " (~a:~a)" (syntax-source stx) (syntax-line stx))
       ""))
 
-;; The chokepoint: kind-check a resolved scheme.  Seed each quantified
-;; variable with a fresh kvar (class-param kinds flow in via the
-;; constraints), then check the body.
-(define (kind-check-scheme env sch blame-stx)
-  (with-kind-check blame-stx
-    (lambda ()
-      (define tvar-kinds (make-hasheq))
-      (for ([v (in-list (scheme-vars sch))])
-        (hash-set! tvar-kinds v (kvar (gensym 'k))))
-      (void (kind-check-core env (scheme-body sch) tvar-kinds empty-ksubst)))))
+;; A readable name for the head of an application (surface or core).
+(define (type-head-name t)
+  (match t
+    [(ty:con n _)   n]
+    [(ty:var n _)   n]
+    [(ty:app h _ _) (type-head-name h)]
+    [(tcon n)       n]
+    [(tvar n)       n]
+    [(tapp h _)     (type-head-name h)]
+    [_              "this type"]))
 
-;; Kind-check a standalone constraint (instance head/context, class
-;; superclass, ctor extra-context) — its free type variables get fresh
-;; kvars.
-(define (kind-check-constraint env p blame-stx)
-  (with-kind-check blame-stx
-    (lambda ()
-      (void (kind-check-pred env p (make-hasheq) empty-ksubst)))))
+;; Report an ill-kinded type at `stx`: skip when off, log when warn,
+;; raise a located syntax error when enforcing.
+(define (kind-fail! stx msg)
+  (case (current-kind-check)
+    [(off)  (void)]
+    [(warn) (eprintf "rackton kind warning: ~a~a\n" msg (blame-suffix stx))]
+    [else   (raise-syntax-error 'infer (format "kind error: ~a" msg) stx)]))
 
-;; Kind-check a standalone value type (an `ann`/`racket` annotation,
-;; an effect-op type, an instance type-family binding) — it must have
-;; kind `*`; free type variables get fresh kvars.
-(define (kind-check-type env t blame-stx)
-  (with-kind-check blame-stx
-    (lambda ()
-      (void (kind-check-core env t (make-hasheq) empty-ksubst)))))
+;; Infer the kind of a surface type AST, reporting any ill-kinded
+;; application at the offending node's syntax.  `tvar-kinds` is a
+;; mutable name→kind hash, seeded with the in-scope variables and
+;; auto-extended for the rest; `batch-kinds` holds data-type seed kinds
+;; during data-kind inference (empty otherwise).  Returns
+;; (values kind ksubst).
+(define (elab-surface t env batch-kinds tvar-kinds s)
+  (match t
+    [(ty:var n _)
+     (values (hash-ref! tvar-kinds n (lambda () (kvar (gensym 'k)))) s)]
+    [(ty:con n stx)
+     (if (env-ref-alias env n #f)
+         (elab-alias t env batch-kinds tvar-kinds s)
+         (values (or (tcon-kind-of env batch-kinds n) (kvar (gensym 'k))) s))]
+    [(ty:app h args stx)
+     (cond
+       [(and (ty:con? h) (env-ref-alias env (ty:con-name h) #f))
+        (elab-alias t env batch-kinds tvar-kinds s)]
+       [else
+        (define-values (kh s1) (elab-surface h env batch-kinds tvar-kinds s))
+        (define-values (kargs s2)
+          (for/fold ([acc '()] [s s1] #:result (values (reverse acc) s))
+                    ([a (in-list args)])
+            (define-values (ka s*) (elab-surface a env batch-kinds tvar-kinds s))
+            (values (cons ka acc) s*)))
+        (define kh* (apply-ksubst s2 kh))
+        ;; A concrete head kind that accepts fewer arguments than
+        ;; supplied gets a precise message at this application's node.
+        (when (and (set-empty? (kind-vars kh*))
+                   (< (kind-arity kh*) (length args)))
+          (kind-fail! stx
+            (if (zero? (kind-arity kh*))
+                (format "~a has kind ~s and cannot be applied"
+                        (type-head-name h) (kind->datum kh*))
+                (format "~a has kind ~s but is applied to ~a argument~a"
+                        (type-head-name h) (kind->datum kh*)
+                        (length args) (if (= (length args) 1) "" "s")))))
+        (define result (kvar (gensym 'k)))
+        (define expected (kind-arrow* kargs result))
+        (define s3
+          (with-handlers ([exn:fail:kind-unify?
+                           (lambda (e) (kind-fail! stx (exn-message e)) s2)])
+            (ksubst-compose (unify-kind kh* (apply-ksubst s2 expected)) s2)))
+        (values (apply-ksubst s3 result) s3)])]
+    [(ty:forall vs body _)
+     (for ([v (in-list vs)]) (hash-set! tvar-kinds v (kvar (gensym 'k))))
+     (elab-surface body env batch-kinds tvar-kinds s)]
+    [(ty:qual _cs body _)
+     ;; A qualified body's constraints are checked by the entry points;
+     ;; the type's kind is its body's.
+     (elab-surface body env batch-kinds tvar-kinds s)]
+    [_ (values (kvar (gensym 'k)) s)]))
+
+;; An alias application: resolve it (expanding the alias, which also
+;; guards against recursive aliases) and infer the expansion's kind via
+;; the core walker, reporting any failure at the alias use site.
+(define (elab-alias t env batch-kinds tvar-kinds s)
+  (with-handlers ([exn:fail:kind-unify?
+                   (lambda (e)
+                     (kind-fail! (ty-ast->stx t) (exn-message e))
+                     (values (kvar (gensym 'k)) s))])
+    (elab-kind (resolve-type t env) env batch-kinds tvar-kinds s)))
+
+;; Require a surface type to have kind `*` (a value-type position),
+;; blaming the type's node on failure.
+(define (demand-star env t tvar-kinds)
+  (define-values (k s) (elab-surface t env (hasheq) tvar-kinds empty-ksubst))
+  (with-handlers ([exn:fail:kind-unify?
+                   (lambda (e) (kind-fail! (ty-ast->stx t) (exn-message e)))])
+    (unify-kind (apply-ksubst s k) kstar)
+    (void)))
+
+;; Check a surface constraint: each argument's kind must match the
+;; class's declared parameter kind, blaming the specific argument.  A
+;; non-class head (the `~` equality predicate) or an unknown class is
+;; skipped.
+(define (kc-constraint env c tvar-kinds)
+  (match c
+    [(constraint cname args _)
+     (define cinfo (env-ref-class env cname #f))
+     (when cinfo
+       (for ([arg (in-list args)] [param (in-list (class-info-params cinfo))])
+         (define pk (hash-ref (class-info-kinds cinfo) param kstar))
+         (define-values (ka s) (elab-surface arg env (hasheq) tvar-kinds empty-ksubst))
+         (with-handlers ([exn:fail:kind-unify?
+                          (lambda (e) (kind-fail! (ty-ast->stx arg) (exn-message e)))])
+           (unify-kind (apply-ksubst s ka) pk)
+           (void))))]
+    [_ (void)]))
+
+;; A value-type position (signature, annotation, effect op, …): the
+;; whole surface type must have kind `*`.  Handles a leading forall and
+;; a qualified body (whose constraints are checked too).
+(define (kind-check-surface env ty-ast)
+  (unless (eq? (current-kind-check) 'off)
+    (define tvar-kinds (make-hasheq))
+    (let loop ([t ty-ast])
+      (match t
+        [(ty:forall vs body _)
+         (for ([v (in-list vs)]) (hash-set! tvar-kinds v (kvar (gensym 'k))))
+         (loop body)]
+        [(ty:qual cs body _)
+         (for ([c (in-list cs)]) (kc-constraint env c tvar-kinds))
+         (demand-star env body tvar-kinds)]
+        [_ (demand-star env t tvar-kinds)]))))
+
+;; A standalone surface constraint (instance head/context, class
+;; superclass, #:requires) — its free type variables get fresh kvars.
+(define (kind-check-constraint-surface env c)
+  (unless (eq? (current-kind-check) 'off)
+    (kc-constraint env c (make-hasheq))))
 
 ;; ----- kinds: data-type kind inference (Phase A2.5) ------------------
 
@@ -2497,9 +2550,15 @@
        (for/fold ([h (hasheq)]) ([sd (in-list seeds)])
          (hash-set h (top:data-name (car sd)) (caddr sd))))
      ;; 2. Constrain: every constructor field and GADT result is kind *.
-     (define (demand-star core tvar-kinds s)
-       (define-values (k s*) (elab-kind core env batch-kinds tvar-kinds s))
-       (ksubst-compose (unify-kind (apply-ksubst s* k) kstar) s*))
+     ;; Walk the SURFACE field type so an ill-kinded field blames its
+     ;; own node.
+     (define (demand-star surface-ty tvar-kinds s)
+       (define-values (k s*) (elab-surface surface-ty env batch-kinds tvar-kinds s))
+       (with-handlers ([exn:fail:kind-unify?
+                        (lambda (e)
+                          (kind-fail! (ty-ast->stx surface-ty) (exn-message e))
+                          s*)])
+         (ksubst-compose (unify-kind (apply-ksubst s* k) kstar) s*)))
      (define s
        (for/fold ([s empty-ksubst]) ([sd (in-list seeds)])
          (match-define (list f param-kvars _) sd)
@@ -2511,11 +2570,10 @@
              (hash-set! tvar-kinds ev (kvar (gensym 'k))))
            (define s-fields
              (for/fold ([s s]) ([ft (in-list (data-ctor-field-types c))])
-               (demand-star (resolve-type ft env) tvar-kinds s)))
+               (demand-star ft tvar-kinds s)))
            (cond
              [(data-ctor-result-type c)
-              (demand-star (resolve-type (data-ctor-result-type c) env)
-                           tvar-kinds s-fields)]
+              (demand-star (data-ctor-result-type c) tvar-kinds s-fields)]
              [else s-fields]))))
      ;; 3. Solve & default, writing the concrete kind into each shell.
      (for/fold ([env env]) ([sd (in-list seeds)])
@@ -3248,8 +3306,8 @@
          (define arg-tys (map (lambda (t) (resolve-type t env))
                               (effect-op-arg-types o)))
          (define res-ty  (resolve-type (effect-op-result-type o) env))
-         (for ([t (in-list arg-tys)]) (kind-check-type env t stx))
-         (kind-check-type env res-ty stx)
+         (for ([t (in-list (effect-op-arg-types o))]) (kind-check-surface env t))
+         (kind-check-surface env (effect-op-result-type o))
          (define normalized-arg-tys
            (cond
              [(null? arg-tys) (list (tcon 'Unit))]
@@ -3418,7 +3476,7 @@
                  symbol<?))
          (define quantified (append class-params extra-vars))
          (define sch (scheme quantified body))
-         (kind-check-scheme env sch (method-sig-stx m))
+         (kind-check-surface env (method-sig-type m))
          (hash-set acc (method-sig-name m) sch)]
         [else acc])))
   (define defaults
@@ -4598,9 +4656,8 @@
   (define type-family-bindings
     (for/fold ([acc (hasheq)]) ([m (in-list methods)]
                                 #:when (inst-type-fam? m))
-      (define t (resolve-type (inst-type-fam-type m) env))
-      (kind-check-type env t (inst-type-fam-stx m))
-      (hash-set acc (inst-type-fam-name m) t)))
+      (kind-check-surface env (inst-type-fam-type m))
+      (hash-set acc (inst-type-fam-name m) (resolve-type (inst-type-fam-type m) env))))
   (for ([fam (in-list (class-info-type-families cinfo))])
     (unless (hash-has-key? type-family-bindings fam)
       (raise-syntax-error 'infer
