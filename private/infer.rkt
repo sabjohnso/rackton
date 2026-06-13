@@ -2224,9 +2224,14 @@
     (for/fold ([e env-A3]) ([f (in-list forms)] #:when (top:struct-fields? f))
       (env-extend-struct-fields e (top:struct-fields-struct-name f)
                                 (top:struct-fields-field-names f))))
+  ;; A4.5: infer each data type's kind from its constructor field types
+  ;; (replacing the arity-placeholder kinds on the shells).  Runs after
+  ;; aliases (A3) — field types may use them — and before any kind-
+  ;; checked resolution of a type that mentions these constructors.
+  (define env-A4.5 (infer-data-kinds env-A4 forms))
   ;; A5: effects (resolve op types against the tcon-complete env).
   (define env-A5
-    (for/fold ([e env-A4]) ([f (in-list forms)] #:when (top:effect? f))
+    (for/fold ([e env-A4.5]) ([f (in-list forms)] #:when (top:effect? f))
       ;; Phase-A forms (require/effect/class) are pure: a throwaway st suffices.
       (let-values ([(e* _ _st) (handle-top-form f e (hasheq) (make-infer-state))])
         e*)))
@@ -2290,6 +2295,113 @@
                                   (data-ctor-name c))
                                 abstract?
                                 (top:data-runtime-tag f)))))
+
+;; ----- kinds: the elaboration walk -----------------------------------
+
+;; The kinds of the primitive type constructors that are never
+;; registered as data: the scalar types and the function arrow.  All
+;; other constructors carry their kind in tcon-info.
+(define primitive-kind-table
+  (hasheq 'Integer kstar 'Boolean kstar 'String kstar 'Float kstar
+          '-> (kind-arrow* (list kstar kstar) kstar)))
+
+;; The kind of type constructor `name`: a batch seed (during
+;; data-kind inference) wins, then the env's stored kind, then the
+;; primitive table; #f when unknown (a resolved type should never
+;; mention an unknown tcon, so callers may treat #f leniently).
+(define (tcon-kind-of env batch-kinds name)
+  (or (hash-ref batch-kinds name #f)
+      (let ([ti (env-ref-tcon env name #f)]) (and ti (tcon-info-kind ti)))
+      (hash-ref primitive-kind-table name #f)))
+
+;; Infer the kind of a resolved core type.  `tvar-kinds` is a mutable
+;; hasheq name→kind, pre-seeded with the in-scope type variables and
+;; auto-extended (fresh kvar) for any not seeded.  `batch-kinds` holds
+;; the seed kinds of data types being inferred together (for self/
+;; mutual recursion).  Returns (values kind ksubst); raises
+;; exn:fail:kind-unify on an ill-kinded application.
+(define (elab-kind t env batch-kinds tvar-kinds s)
+  (match t
+    [(tvar n)
+     (values (hash-ref! tvar-kinds n (lambda () (kvar (gensym 'k)))) s)]
+    [(tcon n)
+     (define k (tcon-kind-of env batch-kinds n))
+     (values (or k (kvar (gensym 'k))) s)]
+    [(tapp h args)
+     (define-values (kh s1) (elab-kind h env batch-kinds tvar-kinds s))
+     (define-values (kargs s2)
+       (for/fold ([acc '()] [s s1] #:result (values (reverse acc) s))
+                 ([a (in-list args)])
+         (define-values (ka s*) (elab-kind a env batch-kinds tvar-kinds s))
+         (values (cons ka acc) s*)))
+     (define result (kvar (gensym 'k)))
+     (define expected (kind-arrow* kargs result))
+     (define s3 (ksubst-compose
+                 (unify-kind (apply-ksubst s2 kh) (apply-ksubst s2 expected))
+                 s2))
+     (values (apply-ksubst s3 result) s3)]
+    [(tforall vs body)
+     (for ([v (in-list vs)]) (hash-set! tvar-kinds v (kvar (gensym 'k))))
+     (elab-kind body env batch-kinds tvar-kinds s)]
+    [(qual _cs body)
+     ;; The predicates' own kinds are checked at their resolution sites;
+     ;; the qualified type's kind is its body's.
+     (elab-kind body env batch-kinds tvar-kinds s)]
+    [_ (values (kvar (gensym 'k)) s)]))
+
+;; ----- kinds: data-type kind inference (Phase A2.5) ------------------
+
+;; Infer and record the kind of every `top:data` constructor in this
+;; batch.  Seed each `T(p1..pn)` with `κp1 -> … -> κpn -> *` (a data
+;; type's result is always `*`), seeding ALL batch types before
+;; constraining so self- and mutual recursion resolve against the
+;; shared seeds; constrain every constructor field (and GADT result)
+;; to kind `*`; then default residual param kvars to `*` and write the
+;; concrete kind into the tcon shell.  `env` must already carry the
+;; tcon shells (Phase A2) and aliases (A3) — field types may use both.
+(define (infer-data-kinds env forms)
+  (define datas (filter top:data? forms))
+  (cond
+    [(null? datas) env]
+    [else
+     ;; 1. Seed.
+     (define seeds
+       (for/list ([f (in-list datas)])
+         (match-define (top:data _ tparams _ _ _ _) f)
+         (define pkvars (for/list ([_ (in-list tparams)]) (kvar (gensym 'k))))
+         (list f (map cons tparams pkvars) (kind-arrow* pkvars kstar))))
+     (define batch-kinds
+       (for/fold ([h (hasheq)]) ([sd (in-list seeds)])
+         (hash-set h (top:data-name (car sd)) (caddr sd))))
+     ;; 2. Constrain: every constructor field and GADT result is kind *.
+     (define (demand-star core tvar-kinds s)
+       (define-values (k s*) (elab-kind core env batch-kinds tvar-kinds s))
+       (ksubst-compose (unify-kind (apply-ksubst s* k) kstar) s*))
+     (define s
+       (for/fold ([s empty-ksubst]) ([sd (in-list seeds)])
+         (match-define (list f param-kvars _) sd)
+         (for/fold ([s s]) ([c (in-list (top:data-ctors f))])
+           (define tvar-kinds (make-hasheq))
+           (for ([pk (in-list param-kvars)])
+             (hash-set! tvar-kinds (car pk) (cdr pk)))
+           (for ([ev (in-list (data-ctor-extra-tvars c))])
+             (hash-set! tvar-kinds ev (kvar (gensym 'k))))
+           (define s-fields
+             (for/fold ([s s]) ([ft (in-list (data-ctor-field-types c))])
+               (demand-star (resolve-type ft env) tvar-kinds s)))
+           (cond
+             [(data-ctor-result-type c)
+              (demand-star (resolve-type (data-ctor-result-type c) env)
+                           tvar-kinds s-fields)]
+             [else s-fields]))))
+     ;; 3. Solve & default, writing the concrete kind into each shell.
+     (for/fold ([env env]) ([sd (in-list seeds)])
+       (match-define (list f _ seed) sd)
+       (define name (top:data-name f))
+       (define ti (env-ref-tcon env name))
+       (env-extend-tcon env name
+                        (struct-copy tcon-info ti
+                                     [kind (default-kind (apply-ksubst s seed))])))]))
 
 ;; Resolve every top:data form's ctor field types against the
 ;; type-level-complete env, registering each ctor as a data binding.
