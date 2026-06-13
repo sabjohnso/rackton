@@ -1975,6 +1975,13 @@
   ;; each `#:derive-superclasses` instance into the plain instances it
   ;; synthesizes.  Every later phase — and codegen — runs over `forms*`.
   (define forms* (expand-derive-instances forms env-after-A))
+  ;; ---- Superclass existence ----
+  ;; Every superclass a protocol names must be a class that actually
+  ;; exists.  Checked here, after Phase A, so a forward reference (a
+  ;; subclass declared before its superclass) and an imported
+  ;; superclass both resolve; only a genuinely undefined name — a typo,
+  ;; or a non-class identifier — is flagged.
+  (check-superclass-existence env-after-A forms*)
   ;; ---- Phase B: pre-register def names ----
   (define-values (env-after-B def-tvars st1)
     (run-phase-B env-after-A declared forms* st0))
@@ -1999,6 +2006,26 @@
             (hash-remove d (top:def-name f)))
           forms*
           st3))
+
+;; Verify that every superclass named in a protocol declaration refers
+;; to a class that exists in `env` (locally defined or imported).  This
+;; is the definition-time complement to check-superclass-obligations
+;; (which checks instances): it catches a superclass that is an
+;; uppercase but undefined name — a typo like `Functr` for `Functor` —
+;; which the syntactic class-name check cannot see.  The `~` equality
+;; predicate is a constraint head but not a class (it is discharged by
+;; unification, never by an instance), so it is skipped, exactly as the
+;; entailment checker special-cases it.
+(define (check-superclass-existence env forms)
+  (for* ([f (in-list forms)] #:when (top:class? f)
+         [s (in-list (top:class-supers f))]
+         #:unless (eq? (constraint-class s) '~))
+    (unless (env-ref-class env (constraint-class s) #f)
+      (raise-syntax-error 'infer
+        (format "class ~a: superclass ~a is not a defined class"
+                (constraint-class (top:class-head f))
+                (constraint-class s))
+        (or (constraint-stx s) (top:class-stx f))))))
 
 ;; Verify that every instance declared in `forms` satisfies the
 ;; superclass constraints of its class.  For an instance `C T₁…Tₙ` with

@@ -196,6 +196,12 @@ parameters at once — and so cannot be attached to a single
 parameter — is written as a trailing @racket[#:requires] clause in the
 body, listing the constraints directly.
 
+Every superclass must name a class that exists — defined in the same
+program (in any order) or imported — and this is checked when the
+@racket[protocol] is declared, not deferred to an instance.  A
+superclass that names no such class (a typo, say) is a compile-time
+error at the declaration.
+
 Class parameters may carry an explicit kind annotation
 (@racket[(param :: kind)]); without one the kind defaults to
 @racket[*], unless a superclass determines it.  Wherever a parameter

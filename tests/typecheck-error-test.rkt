@@ -159,3 +159,43 @@
               (instance ((Ord a) => (Ord (Box a)))
                 (define (< x y) #f)))
            (variable-reference->namespace (#%variable-reference))))))
+
+;; ----- superclass existence (checked at protocol-definition time) -----
+
+(test-case "a protocol's superclass must name a defined class"
+  ;; Functr is uppercase (so it passes the syntactic class-name check)
+  ;; but no such class exists; this must error at the protocol, not
+  ;; silently compile.
+  (check-rackton-compile-error
+   (protocol (Foo (t => Functr))
+     (: foo (-> (t a) (t a))))))
+
+(test-case "an undefined #:requires superclass is rejected"
+  (check-rackton-compile-error
+   (protocol (Bar a)
+     (#:requires (Nonesuch a))
+     (: bar (-> a a)))))
+
+(test-case "a forward-referenced superclass is fine"
+  ;; Sub names Super before Super is declared; the check runs after all
+  ;; classes are registered, so order does not matter.
+  (check-not-exn
+   (lambda ()
+     (eval #'(rackton
+              (protocol (Sub (a => Super)) (: subm (-> a a)))
+              (protocol (Super a) (: superm (-> a a))))
+           (variable-reference->namespace (#%variable-reference))))))
+
+(test-case "a prelude class is a valid superclass"
+  (check-not-exn
+   (lambda ()
+     (eval #'(rackton
+              (protocol (MyOrd (a => Eq)) (: cmp (-> a (-> a Boolean)))))
+           (variable-reference->namespace (#%variable-reference))))))
+
+(test-case "the ~ equality predicate is not flagged as a missing superclass"
+  (check-not-exn
+   (lambda ()
+     (eval #'(rackton
+              (protocol (Same a b) (#:requires (~ a b)) (: same (-> a b))))
+           (variable-reference->namespace (#%variable-reference))))))
