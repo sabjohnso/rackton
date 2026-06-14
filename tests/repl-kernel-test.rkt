@@ -163,3 +163,24 @@
 (test-case "REPL: ,quit signals exit"
   (define-values (st _outs) (drive-session '((unquote quit))))
   (check-true (rackton-repl-quit? st)))
+
+(test-case "REPL: data ctors print without the $ctor: prefix"
+  ;; A constructor value prints under its bare name, recursively, and a
+  ;; nullary ctor has no parens.
+  (define-values (_ outs)
+    (drive-session '((data (Pair a b) (MkPair a b))
+                     (data (Box a) (Boxed a) Empty)
+                     (MkPair (quote x) 3)
+                     (Boxed (MkPair 1 2))
+                     Empty)))
+  (define pair-out (list-ref outs 2))
+  (check-regexp-match #rx"\\(MkPair 'x 3\\)" pair-out)
+  (check-false (regexp-match? #rx"ctor:" pair-out) pair-out)
+  (check-regexp-match #rx"\\(Boxed \\(MkPair 1 2\\)\\)" (list-ref outs 3))
+  (check-regexp-match #rx"^Empty :: " (list-ref outs 4)))
+
+(test-case "REPL: a function value prints as <lambda> but keeps its type"
+  (define-values (_ outs) (drive-session '((lambda (x) x))))
+  (check-regexp-match #rx"<lambda> :: " (car outs))
+  (check-regexp-match #rx"->" (car outs))
+  (check-false (regexp-match? #rx"procedure" (car outs)) (car outs)))

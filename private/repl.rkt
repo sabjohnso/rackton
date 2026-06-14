@@ -744,7 +744,35 @@
 
 ;; ----- value rendering --------------------------------------------
 
-;; Top-level catch-all: print everything via ~v for now.  Rackton
-;; data ctors are Racket structs whose printers already render them
-;; readably.
-(define (format-value v) (~v v))
+;; Render a Rackton value the way the user wrote it.  Data
+;; constructors are transparent structs named `$ctor:<Name>`; print
+;; them under the bare `<Name>` (a nullary ctor with no parens, an
+;; n-ary one as `(Name field …)`, recursively).  Functions print as
+;; `<lambda>` rather than Racket's `#<procedure:…>`; the type, printed
+;; alongside, carries the real information.  Everything else (numbers,
+;; strings, symbols, Maps, …) falls back to `~v`.
+(define (format-value v)
+  (cond
+    [(data-ctor-value? v)
+     (define-values (name fields) (data-ctor-name+fields v))
+     (if (null? fields)
+         name
+         (format "(~a~a)" name
+                 (apply string-append
+                        (for/list ([f (in-list fields)])
+                          (string-append " " (format-value f))))))]
+    [(procedure? v) "<lambda>"]
+    [else (~v v)]))
+
+;; A data-ctor value is a struct whose type name starts with `$ctor:`.
+(define (data-ctor-value? v)
+  (and (struct? v)
+       (regexp-match? #rx"^struct:[$]ctor:"
+                      (symbol->string (vector-ref (struct->vector v) 0)))))
+
+;; The bare constructor name and field values of a data-ctor struct.
+(define (data-ctor-name+fields v)
+  (define sv (struct->vector v))
+  (define raw (symbol->string (vector-ref sv 0)))   ; "struct:$ctor:Name"
+  (values (substring raw (string-length "struct:$ctor:"))
+          (cdr (vector->list sv))))
