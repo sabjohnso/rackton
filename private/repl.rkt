@@ -184,7 +184,7 @@
 
 (define (help-text)
   (string-append
-   ",type EXPR   show inferred type of EXPR\n"
+   ",type EXPR   show the value and inferred type of EXPR\n"
    ",info NAME   show what's bound to NAME\n"
    ",source NAME show the form that defined NAME\n"
    ",accepts TYPE list functions accepting an argument of TYPE\n"
@@ -214,10 +214,15 @@
    ;; types the expansion; splice the result as syntax to keep its scopes.
    (define exp-stx (expand-session-macros state expr-datum))
    (define synthetic (datum->syntax #f (list 'define name exp-stx)))
-   (define-values (env* _declared* _compiled _final-st _parsed)
+   (define-values (env* _declared* compiled _final-st _parsed)
      (elaborate-form state synthetic))
    (define sch (env-ref-var env* name))
-   (format "~s :: ~a\n" expr-datum (scheme->datum sch))))
+   ;; Evaluate in the session namespace (without persisting the binding
+   ;; into the session env) so the value can be shown alongside the
+   ;; type, rendered the same way a bare expression result is.
+   (for ([c (in-list compiled)]) (eval-in state c))
+   (define value (eval-in state (datum->syntax #f name)))
+   (format "~a :: ~a\n" (format-value value) (scheme->datum sch))))
 
 ;; Hoogle-style search over everything in scope: by whole signature
 ;; (modulo unification and argument order), by result type, or — for

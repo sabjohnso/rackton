@@ -31,9 +31,15 @@
   (check-regexp-match #rx"7" (cadr outs))
   (check-regexp-match #rx"Integer" (cadr outs)))
 
-(test-case "REPL: ,type prints the inferred type without evaluating"
+(test-case "REPL: ,type shows the value and the inferred type"
+  ;; A function shows as <lambda> with its type.
   (define-values (_ outs) (drive-session '((unquote type (lambda (x) x)))))
-  (check-regexp-match #rx"->" (car outs)))
+  (check-regexp-match #rx"<lambda> :: " (car outs))
+  (check-regexp-match #rx"->" (car outs))
+  ;; The expression is evaluated — its value, not its source, is shown.
+  (define-values (_2 outs2) (drive-session '((unquote type (+ 1 2)))))
+  (check-regexp-match #rx"^3 :: " (car outs2))
+  (check-regexp-match #rx"Integer" (car outs2)))
 
 (test-case "REPL: bare , is an accepted no-op"
   ;; A lone comma reads as `(unquote)`; it leaves the session untouched,

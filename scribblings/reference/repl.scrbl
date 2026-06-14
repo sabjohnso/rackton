@@ -150,11 +150,15 @@ ordinary input.  A bare @litchar{,} on its own is an accepted no-op.
               @defidform[#:kind "REPL command" t])]{
 
 @litchar{,type} @racket[_expr] (or @litchar{,t} @racket[_expr])
-shows the inferred type of @racket[_expr] without evaluating it.
+evaluates @racket[_expr] and shows its value and inferred type, the
+value rendered the same way a bare expression's result is (data
+constructors under their bare names, functions as @racketresultfont{<lambda>}).
 
 @verbatim|{
 λ> ,type (lambda (x) (Cons x Nil))
-(lambda (x) (Cons x Nil)) :: (All (a) (-> a (List a)))
+<lambda> :: (All (a) (-> a (List a)))
+λ> ,type (Cons 1 Nil)
+(Cons 1 Nil) :: (List Integer)
 }|}
 
 @deftogether[(@defidform[#:kind "REPL command" info]
