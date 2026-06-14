@@ -1591,9 +1591,10 @@
                              (let/infer ([_ (m:apply-subst-to-preds s-acc)]
                                          [current (m:snapshot-preds)])
                                (m:set-preds
-                                (reduce-context env
-                                                (map (lambda (p) (apply-subst s-acc p)) ex-hyps)
-                                                current))))])
+                                (parameterize ([current-reduce-blame (clause-stx cl)])
+                                  (reduce-context env
+                                                  (map (lambda (p) (apply-subst s-acc p)) ex-hyps)
+                                                  current)))))])
            (let ()
           ;; Apply the arm's local skolem refinement before checking body type.
           (define refined-result-type
@@ -2665,7 +2666,12 @@
 ;; pre-registered def names from Phase B.
 (define (run-phase-C env declared forms st)
   (for/fold ([e env] [st st]) ([f (in-list forms)] #:when (top:instance? f))
-    (define-values (e* _ st′) (handle-top-form f e declared st))
+    ;; Blame this instance for any constraint error raised while
+    ;; checking it — including ones deep in generalize* — unless a
+    ;; narrower blame (e.g. a method body) is set inside.
+    (define-values (e* _ st′)
+      (parameterize ([current-reduce-blame (top:instance-stx f)])
+        (handle-top-form f e declared st)))
     (values e* st′)))
 
 ;; Phase D — infer top:def bodies in dependency order using SCC
@@ -2678,7 +2684,14 @@
       (hash-set acc (top:def-name d) d)))
   (define sccs (def-scc-order forms))
   (for/fold ([env env] [st st]) ([scc (in-list sccs)])
-    (infer-def-scc env declared def-tvars defs-by-name scc st)))
+    ;; Blame this SCC's first definition for a constraint error raised
+    ;; while inferring it — including ones deep in generalize* — unless
+    ;; a per-definition handler sets a narrower blame inside.
+    (define blame
+      (let ([f (hash-ref defs-by-name (car scc) #f)])
+        (and f (top:def-stx f))))
+    (parameterize ([current-reduce-blame blame])
+      (infer-def-scc env declared def-tvars defs-by-name scc st))))
 
 ;; The dependency-order SCC list for the top:def forms in `forms`.
 ;; Each SCC is a list of names; the outer list is in topological

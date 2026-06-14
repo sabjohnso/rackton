@@ -121,3 +121,19 @@
             (variable-reference->namespace (#%variable-reference)))
       #f))
   (check-equal? blamed 'instance))
+
+(test-case "a def-level missing-instance error carries a source location"
+  ;; Reaches reduce-context through the def-body / generalize path,
+  ;; which is now blamed on the definition form.
+  (define blamed
+    (with-handlers ([exn:fail:syntax?
+                     (lambda (e)
+                       (and (pair? (exn:fail:syntax-exprs e))
+                            (car (syntax->datum (car (exn:fail:syntax-exprs e))))))])
+      (eval #'(rackton
+               (data Widget (Widget Integer))
+               (: oops String)
+               (define oops (show (Widget 1))))
+            (variable-reference->namespace (#%variable-reference)))
+      #f))
+  (check-equal? blamed 'define))
