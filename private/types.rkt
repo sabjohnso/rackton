@@ -507,6 +507,16 @@
        (char=? (string-ref s 0) #\$)
        (regexp-match? #rx"skolem" s)))
 
+;; The original type variable a skolem stands for, recovered from its
+;; gensym name (`$gen-skolem.m.3115` → `m`); #f if `n` is not a skolem
+;; or the name doesn't fit the pattern.  Used to display a skolem under
+;; the user's own variable name rather than its internal gensym.
+(define (skolem-origin-name n)
+  (and (skolem-tcon-name? n)
+       (let ([m (regexp-match #px"^[$][a-z-]*skolem[.](.+)[.][0-9]+$"
+                              (symbol->string n))])
+         (and m (string->symbol (cadr m))))))
+
 ;; Renameable display names across `ts` in first-occurrence order: free
 ;; type variables plus skolem tcons, sharing one letter sequence so a
 ;; rigid skolem and the flexible variables around it read as distinct
@@ -599,11 +609,18 @@
      (format-pretty-datum
       `(All ,(map renamed vs) ,(type->pretty-datum (apply-subst σ body))))]))
 
-;; Same shared renaming, for class-constraint predicates.
+;; Same shared renaming, for class-constraint predicates.  Free type
+;; variables are renamed to letters; skolem tcons are shown under the
+;; variable they stand for (`$gen-skolem.m.3115` → `m`) rather than
+;; their internal gensym.
 (define (format-preds ps)
   (define σ (display-subst (ordered-free-vars ps)))
+  (define skmap
+    (for/fold ([m (hasheq)]) ([nm (in-list (ordered-display-names ps))]
+                              #:when (skolem-tcon-name? nm))
+      (hash-set m nm (or (skolem-origin-name nm) nm))))
   (for/list ([p (in-list ps)])
-    (format-pretty-datum (pred->pretty-datum (apply-subst σ p)))))
+    (format-pretty-datum (pred->pretty-datum/sk (apply-subst σ p) skmap))))
 
 (define (format-pred p)
   (car (format-preds (list p))))

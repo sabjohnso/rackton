@@ -20,6 +20,7 @@
          env-class-has-overlap?
          entail?
          reduce-context
+         current-reduce-blame
          by-super
          match-pred
          normalize-type)
@@ -31,6 +32,20 @@
          "env.rkt"
          "unify.rkt"
          "diagnostic.rkt")
+
+;; A syntax object to blame for a constraint error raised inside
+;; `reduce-context` (which has no per-pred source).  Callers that know
+;; the enclosing form parameterize this; when #f the error is raised
+;; without a location, as before.
+(define current-reduce-blame (make-parameter #f))
+
+;; Raise a constraint error, attaching the blame location when one is
+;; in scope so the message points at the offending form.
+(define (raise-constraint-error msg)
+  (define stx (current-reduce-blame))
+  (if stx
+      (raise-syntax-error 'infer msg stx)
+      (raise (exn:fail msg (current-continuation-marks)))))
 
 ;; ----- one-way pattern matching ------------------------------------
 
@@ -258,10 +273,8 @@
                      (not (has-tvar? (cadr args))))
                 (match-define (list l r)
                   (format-types (list (car args) (cadr args))))
-                (raise
-                 (exn:fail
-                  (format "type-equality fails: ~a ≠ ~a" l r)
-                  (current-continuation-marks)))]
+                (raise-constraint-error
+                 (format "type-equality fails: ~a ≠ ~a" l r))]
                [else (loop (cdr ps) (cons p acc))])])]
          [(in-hnf? p)
           ;; Still keep unless redundant against hypotheses.
@@ -303,10 +316,8 @@
                      (doc-text (format-pred p))
                      avail-doc
                      (doc-text derive-hint)))
-          (raise
-           (exn:fail
-            (render-doc msg-doc (current-type-columns))
-            (current-continuation-marks)))])])))
+          (raise-constraint-error
+           (render-doc msg-doc (current-type-columns)))])])))
 
 ;; Suggest `#:deriving Class` when (a) Class is one of
 ;; the auto-derivable classes and (b) the missing-instance type's

@@ -2920,8 +2920,9 @@
   (define-values (hyp-fd-sub st4) (improve-by-hyp-fds env hyp-closure st3))
   (define final-subst (subst-compose hyp-fd-sub (subst-compose fd-sub final-subst0)))
   (define remaining-preds
-    (reduce-context env (map (lambda (p) (apply-subst final-subst p)) decl-preds)
-                    (st:preds st4)))
+    (parameterize ([current-reduce-blame stx])
+      (reduce-context env (map (lambda (p) (apply-subst final-subst p)) decl-preds)
+                      (st:preds st4))))
   (when (not (null? remaining-preds))
     (raise-syntax-error 'infer
       (render-doc (labeled-block (format "unsolved constraints in ~a:" name)
@@ -3181,7 +3182,8 @@
         (define final-subst (subst-compose s-u s))
         (define st2 (st:apply-subst-to-preds st1 final-subst))
         (define remaining-preds
-          (reduce-context env decl-preds (st:preds st2)))
+          (parameterize ([current-reduce-blame stx])
+            (reduce-context env decl-preds (st:preds st2))))
         (when (not (null? remaining-preds))
           (raise-syntax-error 'infer
             (render-doc (labeled-block (format "unsolved constraints in ~a:" name)
@@ -4978,9 +4980,10 @@
     (define final-subst
       (subst-compose m-hyp-fd-sub (subst-compose m-fd-sub final-subst0)))
     (define leftovers
-      (reduce-context env
-                      (map (lambda (p) (apply-subst final-subst p)) hyp-preds)
-                      (st:preds st4)))
+      (parameterize ([current-reduce-blame stx])
+        (reduce-context env
+                        (map (lambda (p) (apply-subst final-subst p)) hyp-preds)
+                        (st:preds st4))))
     (unless (null? leftovers)
       (raise-syntax-error 'infer
         (render-doc (labeled-block

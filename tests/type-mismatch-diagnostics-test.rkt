@@ -90,3 +90,34 @@
      (define (f n) "n")))
   (check-false (regexp-match? #rx"earlier clauses" msg) msg)
   (check-true  (regexp-match? #rx"expected result type" msg) msg))
+
+(test-case "a missing-constraint instance error names the variable, not a skolem"
+  ;; The Category instance for (Kleisli m) needs (Monad m); the error
+  ;; must read `(Monad m)`, not `(Monad $gen-skolem.m.NN)`.
+  (define msg
+    (compile-error
+     (data (Kleisli m a b) (Kleisli (-> a (m b))))
+     (instance (Category (Kleisli m))
+       (define ident (Kleisli pure))
+       (define (comp (Kleisli f) (Kleisli g))
+         (Kleisli (lambda (x) (flatmap f (g x))))))))
+  (check-true  (regexp-match? #rx"no instance for \\(Monad m\\)" msg) msg)
+  (check-false (regexp-match? #rx"skolem" msg) msg))
+
+(test-case "a missing-constraint instance error carries a source location"
+  ;; The error is a syntax error blaming the instance form, not a bare
+  ;; exn:fail with no location.
+  (define blamed
+    (with-handlers ([exn:fail:syntax?
+                     (lambda (e)
+                       (and (pair? (exn:fail:syntax-exprs e))
+                            (car (syntax->datum (car (exn:fail:syntax-exprs e))))))])
+      (eval #'(rackton
+               (data (Kleisli m a b) (Kleisli (-> a (m b))))
+               (instance (Category (Kleisli m))
+                 (define ident (Kleisli pure))
+                 (define (comp (Kleisli f) (Kleisli g))
+                   (Kleisli (lambda (x) (flatmap f (g x)))))))
+            (variable-reference->namespace (#%variable-reference)))
+      #f))
+  (check-equal? blamed 'instance))
