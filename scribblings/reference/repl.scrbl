@@ -251,6 +251,23 @@ shell, with each match's defining module and line:
 @commandline{racket -l rackton/search -- --returns "(List Integer)"}
 @commandline{racket -l rackton/search -- --name "stream"}}
 
+@defidform[#:kind "REPL command" complete]{
+
+@litchar{,complete} @racket[_prefix] prints the names that complete
+@racket[_prefix] — the session's vars, data constructors, classes, and
+type constructors, plus the surface keywords — one per line, or nothing
+when none match.  It is the pipe transport for editor completion: the
+structural editor's Tab and a piped client (such as the Emacs inferior
+REPL) draw on the same candidates.
+
+@verbatim|{
+λ> ,complete ma
+mappend
+match
+max
+…
+}|}
+
 @defidform[#:kind "REPL command" keys]{
 
 @litchar{,keys} prints the structural editor's key bindings —

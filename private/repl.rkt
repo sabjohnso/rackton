@@ -154,6 +154,8 @@
     [(list 'unquote 'a       ty)  (values state (show-accepts state ty))]
     [(list 'unquote 'search q)    (values state (show-search state q 'signature))]
     [(list 'unquote 'returns ty)  (values state (show-search state ty 'returns))]
+    [(list 'unquote 'complete pfx) (values state (show-completions state pfx))]
+    [(list 'unquote 'complete)    (values state (show-completions state ""))]
     [(list 'unquote 'colors)      (values state (colors-summary))]
     [(list 'unquote 'colors (? symbol? scheme))
      (values state
@@ -188,6 +190,7 @@
    ",accepts TYPE list functions accepting an argument of TYPE\n"
    ",search SIG   search by whole signature; a string searches names\n"
    ",returns TYPE list functions returning TYPE\n"
+   ",complete PFX list names completing PFX (editor transport)\n"
    ",keys        editor key bindings (terminal sessions)\n"
    ",colors      show or set the editor color scheme\n"
    ",clear       reset the session to a fresh prelude env\n"
@@ -631,6 +634,16 @@
   (sort (remove-duplicates
          (filter (lambda (s) (string-prefix? s prefix)) all-names))
         string<?))
+
+;; The `,complete PREFIX` command: the pipe transport for editor
+;; completion.  Prints the candidates one per line (empty output when
+;; there are none), so a piped client — e.g. the Emacs inferior REPL —
+;; can offer completion-at-point.  PFX is the command argument datum;
+;; `~a' renders a symbol prefix as its text and "" (no argument) as the
+;; empty prefix, which matches every name.
+(define (show-completions state pfx)
+  (define cs (rackton-repl-completions state (format "~a" pfx)))
+  (if (null? cs) "" (string-append (string-join cs "\n") "\n")))
 
 ;; ----- interactive loop -------------------------------------------
 
