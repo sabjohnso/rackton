@@ -68,9 +68,9 @@ Launch the REPL with:
 
 REPL commands are typed with a leading comma — @litchar{,type},
 @litchar{,info}, @litchar{,clear}, @litchar{,quit}, @litchar{,help}.  A
-comma reads as an @racket[unquote], which is never
-valid Rackton, so a command can never be mistaken for ordinary input; a
-bare @litchar{,} is an accepted no-op.
+leading comma reads as an @racket[unquote], which is valid only inside a
+@racket[quasiquote] — never as a top-level form — so a command can never
+be mistaken for ordinary input; a bare @litchar{,} is an accepted no-op.
 
 Tab completion, multi-line input, and history are all supported.  See
 @secref["repl" #:doc '(lib "rackton/scribblings/reference/rackton-reference.scrbl")]

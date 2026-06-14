@@ -32,7 +32,9 @@ identifiers) bind in the body's scope.
           (list @racket[#\A]          "character literal")
           (list @racket[None]         "nullary constructor")
           (list @racket[(Some x)]     "n-ary constructor with sub-patterns")
-          (list @racket[(Cons h t)]   "Cons of two patterns"))]
+          (list @racket[(Cons h t)]   "Cons of two patterns")
+          (list @racket[(list a b c)] "fixed-length list pattern")
+          (list @racket['(1 2 3)]     "quoted literal list pattern"))]
 
 Sub-patterns nest arbitrarily:
 
@@ -40,6 +42,42 @@ Sub-patterns nest arbitrarily:
 (match (Cons (Some 0) Nil)
   [(Cons (Some 0) rest) (length rest)]
   [_                    -1])
+}
+
+@section[#:tag "list-patterns"]{Quoted and @racket[list] patterns}
+
+Quotation and the @racket[list] form work in pattern position too,
+mirroring the @secref["quoted-list-literals"] on the expression side.  A @racket[(list …)] pattern matches a list of
+exactly that many elements:
+
+@rackton-example[#:eval ev #:mode 'value]{
+(match (list 10 20 30)
+  [(list a b c) (+ a (+ b c))]
+  [_            0])
+}
+
+A trailing rest-binder — a variable or @racket[_] followed by
+@litchar{...} — binds the @emph{rest} of the list as a single
+@racket[(List _)].  So @racket[(list a b ...)] is exactly
+@racket[(Cons a b)]: @racket[a] is the head and @racket[b] the tail.
+
+@rackton-example[#:eval ev #:mode 'value]{
+(match (list 1 2 3 4)
+  [(list first rest ...) rest]
+  [(list)                Nil])
+}
+
+The pattern before @litchar{...} must be a variable or @racket[_], and
+@litchar{...} must be the final element; both together with @racket[(list)]
+cover every list, so the match above is exhaustive.
+
+A quoted list is a fixed pattern that matches the literal data, and a
+quasiquoted list may carry @litchar{,}-escaped sub-patterns:
+
+@rackton-example[#:eval ev #:mode 'value]{
+(match (list 1 99 3)
+  [`(1 ,x 3) x]
+  [_         0])
 }
 
 @section{Exhaustiveness}

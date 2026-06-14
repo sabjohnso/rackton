@@ -85,6 +85,92 @@
                  (list (car elems) (build-list-ast (cdr elems) stx))
                  stx)]))
 
+;; ----- quotation ----------------------------------------------------
+;;
+;; `'datum` and `` `datum `` build *typed homogeneous list literals*.  A
+;; quoted atom becomes the matching literal (numbers → Integer, strings →
+;; String, identifiers → Symbol, …); a quoted list becomes a Cons/Nil
+;; chain, so ordinary inference types it as `(List a)` and rejects a
+;; heterogeneous list by unification.  Quasiquote additionally honours
+;; `,e` (unquote: evaluate the Rackton expression `e`) and `,@e`
+;; (unquote-splicing: concatenate the list value of `e` via the prelude's
+;; `append`).
+;;
+;; A single integer `level` carries the quasiquote nesting depth: 0 means
+;; not inside any quasiquote, so a *direct* unquote / unquote-splicing
+;; there is an error (the user-facing rule: escapes are legal only inside
+;; a quasiquote); 1 means inside one quasiquote, where an unquote escapes;
+;; deeper levels keep the unquote as data with the level decremented, and
+;; a nested quasiquote increments it — Racket-standard level tracking.
+;; `quote` enters at level 0, `quasiquote` at level 1.
+
+;; A two-element data list `(sym inner)`, i.e. `(Cons 'sym (Cons inner
+;; Nil))` — how a non-escaping unquote / quasiquote keyword survives as
+;; data at a deeper nesting level.
+(define (quote-data-form sym inner stx)
+  (e:app (e:var 'Cons stx)
+         (list (e:literal sym stx)
+               (e:app (e:var 'Cons stx)
+                      (list inner (e:var 'Nil stx))
+                      stx))
+         stx))
+
+;; Convert a quoted/quasiquoted datum to a core AST node.
+(define (quote->ast d level stx)
+  (syntax-parse d
+    #:datum-literals (quasiquote unquote unquote-splicing)
+    [(unquote e)
+     (cond
+       [(= level 0)
+        (raise-syntax-error 'rackton "unquote not in quasiquote" stx d)]
+       [(= level 1) (parse-expr #'e)]
+       [else (quote-data-form 'unquote (quote->ast #'e (sub1 level) stx) stx)])]
+    [(unquote-splicing _)
+     ;; A splice is only meaningful in list position (handled by
+     ;; quote-list); reaching it here is a bare `,@e`.
+     (if (= level 0)
+         (raise-syntax-error 'rackton "unquote-splicing not in quasiquote" stx d)
+         (raise-syntax-error 'rackton "unquote-splicing not in a list" stx d))]
+    [(quasiquote e)
+     (quote-data-form 'quasiquote (quote->ast #'e (add1 level) stx) stx)]
+    [n:number  (e:literal (syntax->datum #'n) stx)]
+    [b:boolean (e:literal (syntax->datum #'b) stx)]
+    [s:string  (e:literal (syntax->datum #'s) stx)]
+    [c:char    (e:literal (syntax->datum #'c) stx)]
+    [by:bytes  (e:literal (syntax->datum #'by) stx)]
+    [x:id      (e:literal (syntax->datum #'x) stx)]
+    [(elem ...) (quote-list (syntax->list #'(elem ...)) level stx)]
+    [_ (raise-syntax-error 'rackton
+                           "unsupported quoted form (improper list?)" stx d)]))
+
+;; Build a quoted list, splicing `,@e` elements positionally.
+(define (quote-list elems level stx)
+  (cond
+    [(null? elems) (e:var 'Nil stx)]
+    [else
+     (syntax-parse (car elems)
+       #:datum-literals (unquote-splicing)
+       [(unquote-splicing e)
+        (cond
+          [(= level 0)
+           (raise-syntax-error 'rackton "unquote-splicing not in quasiquote"
+                               stx (car elems))]
+          [(= level 1)
+           (e:app (e:var 'append stx)
+                  (list (parse-expr #'e) (quote-list (cdr elems) level stx))
+                  stx)]
+          [else
+           (e:app (e:var 'Cons stx)
+                  (list (quote-data-form 'unquote-splicing
+                                         (quote->ast #'e (sub1 level) stx) stx)
+                        (quote-list (cdr elems) level stx))
+                  stx)])]
+       [_
+        (e:app (e:var 'Cons stx)
+               (list (quote->ast (car elems) level stx)
+                     (quote-list (cdr elems) level stx))
+               stx)])]))
+
 ;; ----- local-binding hygiene ----------------------------------------
 ;;
 ;; The parser emits symbols; lexical scoping is resolved later, by symbol,
@@ -133,8 +219,14 @@
 ;; rename environment before a binding form's body is parsed.
 (define (pattern-binder-ids pat-stx)
   (syntax-parse pat-stx
-    #:datum-literals (quote)
+    #:datum-literals (quote quasiquote)
+    ;; A plain quote is all-literal, so it binds nothing.  A quasiquote
+    ;; binds only the variables under its `,` escapes.  `(list …)` and
+    ;; other parenthesised patterns fall through to the ctor branch, whose
+    ;; recursion already collects their binders (and skips the `...` token,
+    ;; which is not a lowercase identifier).
     [(quote _)         '()]
+    [(quasiquote d)    (quasi-pattern-binder-ids #'d 1)]
     [x:id
      (let ([name (syntax->datum #'x)])
        (if (or (wildcard-symbol? name) (not (lowercase-id? name)))
@@ -143,20 +235,39 @@
     [(ctor:id arg ...) (append-map pattern-binder-ids (syntax->list #'(arg ...)))]
     [_                 '()]))
 
+;; Binders introduced by the `,` escapes inside a quasiquoted pattern, with
+;; Racket-standard nesting levels (an unquote escapes only at level 1).
+(define (quasi-pattern-binder-ids d level)
+  (syntax-parse d
+    #:datum-literals (quasiquote unquote unquote-splicing)
+    [(unquote e)
+     (if (= level 1)
+         (pattern-binder-ids #'e)
+         (quasi-pattern-binder-ids #'e (sub1 level)))]
+    [(unquote-splicing _) '()]
+    [(quasiquote e) (quasi-pattern-binder-ids #'e (add1 level))]
+    [(elem ...)
+     (append-map (lambda (e) (quasi-pattern-binder-ids e level))
+                 (syntax->list #'(elem ...)))]
+    [_ '()]))
+
 (define (parse-expr stx)
   (syntax-parse stx
-    #:datum-literals (lambda λ case-lambda case-λ let let& let% let+ letrec let* if cond else ann match racket do proc delay <- update handle return describe context list -> quote)
+    #:datum-literals (lambda λ case-lambda case-λ let let& let% let+ letrec let* if cond else ann match racket do proc delay <- update handle return describe context list -> quote quasiquote unquote unquote-splicing)
     [n:number  (e:literal (syntax->datum #'n) stx)]
     [b:boolean (e:literal (syntax->datum #'b) stx)]
     [s:string  (e:literal (syntax->datum #'s) stx)]
     [c:char    (e:literal (syntax->datum #'c) stx)]
     [by:bytes  (e:literal (syntax->datum #'by) stx)]
-    ;; Quoted symbol literal: 'foo evaluates to the Symbol 'foo.
-    [(quote s:id) (e:literal (syntax->datum #'s) stx)]
-    [(quote other)
-     (raise-syntax-error 'rackton
-                         "only quoted symbols are supported as Symbol literals"
-                         stx #'other)]
+    ;; Quotation builds typed list literals (see `quote->ast`): `'foo` is
+    ;; the Symbol 'foo, `'(1 2 3)` is a `(List Integer)`, and quasiquote
+    ;; adds `,`/`,@` escapes.  An unquote outside a quasiquote is an error.
+    [(quote datum)      (quote->ast #'datum 0 stx)]
+    [(quasiquote datum) (quote->ast #'datum 1 stx)]
+    [(unquote _)
+     (raise-syntax-error 'rackton "unquote not in quasiquote" stx stx)]
+    [(unquote-splicing _)
+     (raise-syntax-error 'rackton "unquote-splicing not in quasiquote" stx stx)]
 
     ;; `lambda` / `λ` — each parameter is a bare identifier or a
     ;; constructor pattern like `(Pair x y)`, desugared via the same
@@ -1075,18 +1186,105 @@
 
 ;; ----- patterns -----------------------------------------------------
 
-(define (parse-pattern stx)
-  (syntax-parse stx
-    #:datum-literals (quote)
+;; A list pattern is Cons/Nil, the dual of `build-list-ast`: fold `pats`
+;; into nested `(Cons p rest)` constructor patterns, ending at `tail`
+;; (`Nil` for a fixed-arity list, or a rest-binder for a `… ...` tail).
+(define (build-cons-pattern pats tail stx)
+  (cond
+    [(null? pats) tail]
+    [else (p:ctor 'Cons
+                  (list (car pats) (build-cons-pattern (cdr pats) tail stx))
+                  stx)]))
+
+;; The literal-data form of a deep-nested quasiquote keyword in a pattern:
+;; `(sym inner)` as a Cons/Nil pattern.  Mirrors `quote-data-form`.
+(define (quote-data-pattern sym inner stx)
+  (p:ctor 'Cons
+          (list (p:lit sym stx)
+                (p:ctor 'Cons (list inner (p:ctor 'Nil '() stx)) stx))
+          stx))
+
+;; The pattern dual of `quote->ast`: convert a quoted/quasiquoted datum to
+;; a pattern.  `level` tracks quasiquote nesting exactly as on the
+;; expression side — 0 = not inside a quasiquote (a direct unquote is an
+;; error), 1 = unquote escapes to an ordinary sub-pattern, deeper levels
+;; keep it as data.  A quoted list is always fixed-arity (Nil-terminated);
+;; `,@` (splice) has no pattern meaning and is rejected.
+(define (quote->pattern d level stx)
+  (syntax-parse d
+    #:datum-literals (quasiquote unquote unquote-splicing)
+    [(unquote e)
+     (cond
+       [(= level 0)
+        (raise-syntax-error 'rackton "unquote not in quasiquote" stx d)]
+       [(= level 1) (parse-pattern #'e)]
+       [else (quote-data-pattern 'unquote
+                                 (quote->pattern #'e (sub1 level) stx) stx)])]
+    [(unquote-splicing _)
+     (raise-syntax-error 'rackton
+                         "unquote-splicing is not supported in patterns" stx d)]
+    [(quasiquote e)
+     (quote-data-pattern 'quasiquote (quote->pattern #'e (add1 level) stx) stx)]
     [n:number  (p:lit (syntax->datum #'n) stx)]
     [b:boolean (p:lit (syntax->datum #'b) stx)]
     [s:string  (p:lit (syntax->datum #'s) stx)]
-    ;; Quoted symbol literal pattern: 'foo matches the Symbol 'foo.
-    [(quote s:id) (p:lit (syntax->datum #'s) stx)]
-    [(quote other)
+    [c:char    (p:lit (syntax->datum #'c) stx)]
+    [by:bytes  (p:lit (syntax->datum #'by) stx)]
+    [x:id      (p:lit (syntax->datum #'x) stx)]
+    [(elem ...)
+     (build-cons-pattern
+      (for/list ([e (in-list (syntax->list #'(elem ...)))])
+        (quote->pattern e level stx))
+      (p:ctor 'Nil '() stx) stx)]
+    [_ (raise-syntax-error 'rackton "unsupported quoted pattern" stx d)]))
+
+;; A literal `...` token (the ellipsis identifier).
+(define (ellipsis-id? s) (and (identifier? s) (eq? (syntax-e s) '...)))
+
+;; `(list p …)` pattern.  A plain list is fixed-arity (matches exactly
+;; that many elements, Nil-terminated).  A single trailing `<pat> ...`
+;; makes `<pat>` a rest-binder over the remaining elements — desugaring to
+;; the tail position of the Cons chain — so it must be a variable or `_`.
+(define (parse-list-pattern elems stx)
+  (cond
+    [(and (pair? elems) (ellipsis-id? (last elems)))
+     (define body (drop-right elems 1))    ;; without the trailing `...`
+     (when (null? body)
+       (raise-syntax-error 'rackton
+                           "`...` must follow a pattern in a list pattern" stx))
+     (when (ormap ellipsis-id? body)
+       (raise-syntax-error 'rackton
+                           "`...` must be the final element of a list pattern" stx))
+     (define rest-stx (last body))
+     (define rest-pat (parse-pattern rest-stx))
+     (unless (or (p:var? rest-pat) (p:wild? rest-pat))
+       (raise-syntax-error 'rackton
+         "the pattern before `...` must be a variable or `_` (it binds the rest of the list)"
+         stx rest-stx))
+     (build-cons-pattern (map parse-pattern (drop-right body 1)) rest-pat stx)]
+    [(ormap ellipsis-id? elems)
      (raise-syntax-error 'rackton
-                         "only quoted symbols are supported as Symbol literals"
-                         stx #'other)]
+                         "`...` must be the final element of a list pattern" stx)]
+    [else
+     (build-cons-pattern (map parse-pattern elems) (p:ctor 'Nil '() stx) stx)]))
+
+(define (parse-pattern stx)
+  (syntax-parse stx
+    #:datum-literals (quote quasiquote unquote unquote-splicing list)
+    [n:number  (p:lit (syntax->datum #'n) stx)]
+    [b:boolean (p:lit (syntax->datum #'b) stx)]
+    [s:string  (p:lit (syntax->datum #'s) stx)]
+    ;; Quotation builds list patterns (see `quote->pattern`): `'foo` is the
+    ;; Symbol 'foo, `'(1 2 3)` matches that literal list, and quasiquote
+    ;; adds `,sub` escapes.  An unquote outside a quasiquote is an error.
+    [(quote datum)      (quote->pattern #'datum 0 stx)]
+    [(quasiquote datum) (quote->pattern #'datum 1 stx)]
+    [(unquote _)
+     (raise-syntax-error 'rackton "unquote not in quasiquote" stx stx)]
+    [(unquote-splicing _)
+     (raise-syntax-error 'rackton "unquote-splicing not in quasiquote" stx stx)]
+    ;; `(list p …)` — fixed-arity or `<var> ...` rest-binder list pattern.
+    [(list elem ...) (parse-list-pattern (syntax->list #'(elem ...)) stx)]
     [x:id
      (define name (syntax->datum #'x))
      (cond

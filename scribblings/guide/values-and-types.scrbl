@@ -63,6 +63,67 @@ For each type's full set of instances, its literal syntax, and the
 operations that build and consume it, see
 @secref["ref-primitive-types" #:doc '(lib "rackton/scribblings/reference/rackton-reference.scrbl")].
 
+@section[#:tag "quoted-list-literals"]{Quoted list literals}
+
+A quoted identifier is a @racket[Symbol] (@racket['foo]).  Quoting a
+parenthesized form generalizes this: @racket[quote] builds a
+@racket[List] literal from the quoted data, and inference gives it the
+obvious element type.  A list of integer literals is a
+@racket[(List Integer)]:
+
+@rackton-example[#:eval ev #:mode 'value]{
+'(1 2 3)        ;; :: (List Integer)
+}
+
+A list of bare identifiers is a @racket[(List Symbol)]:
+
+@rackton-example[#:eval ev #:mode 'value]{
+'(a b c)        ;; :: (List Symbol)
+}
+
+Nesting works the same way — a quoted sublist is itself a @racket[List]:
+
+@rackton-example[#:eval ev #:mode 'value]{
+'((a b) (c d))  ;; :: (List (List Symbol))
+}
+
+Like every @racket[List], a quoted list is @bold{homogeneous}: all its
+elements must share one type.  A quoted list whose elements disagree is a
+type error, reported as the ordinary unification failure it is.  Here the
+leading symbol @racket[Pair] fixes the element type to @racket[Symbol], so
+the @racket[String] @racket["abc"] does not fit:
+
+@rackton-example[#:eval ev #:mode 'display]{
+'(Pair "abc" 1 2 3)   ;; type error: expected Symbol, got String
+}
+
+@subsection{Quasiquotation}
+
+Backquote (@racket[quasiquote]) is @racket[quote] with two escapes.  An
+@racket[unquote] (@litchar{,}) drops back into an ordinary Rackton
+expression and contributes its value as one element — so a quasiquoted
+list can hold computed values, not just literals:
+
+@rackton-example[#:eval ev #:mode 'value]{
+`(,(+ 1 2) ,(* 2 3))   ;; :: (List Integer)
+}
+
+An @racket[unquote-splicing] (@litchar[",@"]) instead splices a
+list-valued expression into the surrounding list:
+
+@rackton-example[#:eval ev #:mode 'value]|{
+`(1 2 ,@(list 3 4) 5)   ;; :: (List Integer)
+}|
+
+Escapes are honored only inside a quasiquote.  Writing @litchar{,} or
+@litchar[",@"] anywhere else — including inside a plain @racket[quote] — is a
+compile error, matching Racket.  (That is exactly what lets the REPL claim
+a leading comma for its commands; see @secref["quickstart"].)
+
+Quotation and the @racket[list] form work in @racket[match] patterns too —
+including a @racket[(list a b ...)] head/tail binder; see
+@secref["list-patterns"].
+
 @section{Type signatures and inference}
 
 A top-level definition without a signature is inferred:
