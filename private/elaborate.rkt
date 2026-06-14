@@ -282,7 +282,7 @@
   ;; exported-impls that codegen writes thread through cg-st.  No parameters.
   (let ()
     ;; infer-program also returns the post-expansion form list — every
-    ;; `#:derive-superclasses` instance replaced by the plain instances it
+    ;; `#:derive-supers` instance replaced by the plain instances it
     ;; synthesized.  Codegen and export resolution run over THIS list so
     ;; the synthesized superclass instances are lowered and escape.
     ;;

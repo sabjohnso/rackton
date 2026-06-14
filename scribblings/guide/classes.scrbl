@@ -4,16 +4,17 @@
          "../rackton-eval.rkt"]
 @(define ev (make-rackton-eval))
 
-@title[#:tag "type-classes"]{Type classes}
+@title[#:tag "type-classes"]{Protocols}
 
-Type classes let you overload an operation across many types while
-keeping each call site fully resolved at type-check time.  Rackton's
-classes are modelled on Haskell's: a class declares one or more
-method signatures, instances provide implementations, and constraints
-flow through type signatures so a polymorphic function can demand the
+Protocols are Rackton's @deftech{type classes} (the term Haskell uses):
+they let you overload an operation across many types while keeping each
+call site fully resolved at type-check time.  Rackton's protocols are
+modelled on Haskell's classes: a protocol declares one or more method
+signatures, instances provide implementations, and constraints flow
+through type signatures so a polymorphic function can demand the
 operations it needs.
 
-@section{Declaring a class}
+@section{Declaring a protocol}
 
 @rackton-example[#:eval ev #:mode 'defs #:context? #t]{
 (protocol (Eq a)
@@ -22,16 +23,16 @@ operations it needs.
   (define (/= x y) (if (== x y) #f #t)))
 }
 
-A class declaration introduces zero or more @italic{method signatures}
+A protocol declaration introduces zero or more @italic{method signatures}
 (@racket[(: name type)]) and zero or more @italic{default
 implementations} (@racket[(define …)]).  Each method is added to the
 value environment with the qualified scheme @racket[(All (a) ((Eq a) => τ))],
 so any polymorphic use of @racket[==] automatically carries the
-class constraint.
+protocol constraint.
 
-@section{Superclasses}
+@section{Superprotocols}
 
-A class can demand its parameters already satisfy another class.  The
+A protocol can demand its parameters already satisfy another protocol.  The
 requirement is written as a
 @tech[#:doc '(lib "rackton/scribblings/reference/rackton-reference.scrbl")]{bound}
 on the parameter, after @racket[=>]:
@@ -42,24 +43,24 @@ on the parameter, after @racket[=>]:
 }
 
 A bound @racket[[a => Eq]] reads ``@racket[a] is an @racket[Eq]'' and
-desugars to the superclass constraint @racket[(Eq a)].  Several classes
-may be stacked on one parameter (@racket[[a => Num Ord]]), and a
-multi-parameter class bounds each parameter in turn
+desugars to the superprotocol constraint @racket[(Eq a)].  Several
+protocols may be stacked on one parameter (@racket[[a => Num Ord]]), and a
+multi-parameter protocol bounds each parameter in turn
 (@racket[(MonadWriter [w => Monoid] [m => Monad])]).  When the bound's
-class needs more arguments, supply them and let the parameter fill the
+protocol needs more arguments, supply them and let the parameter fill the
 last slot: @racket[[b => (Convert a)]] desugars to @racket[(Convert a b)].
-A superclass that genuinely relates several parameters at once is
+A superprotocol that genuinely relates several parameters at once is
 written instead as a trailing @racket[(#:requires (C …))] clause in the
 body.
 
-The older head-prefix form, which listed superclasses before the class
-head as @racket[(protocol ((Eq a) => (Ord a)) …)], has been retired and
-is now a syntax error.  Restate each superclass as a parameter bound or
-a @racket[#:requires] clause.  (This is distinct from an @italic{instance}
-context, @racket[((Eq a) => (Eq (Maybe a)))], which is unchanged — see
-below.)
+The older head-prefix form, which listed superprotocols before the
+protocol head as @racket[(protocol ((Eq a) => (Ord a)) …)], has been
+retired and is now a syntax error.  Restate each superprotocol as a
+parameter bound or a @racket[#:requires] clause.  (This is distinct from
+an @italic{instance} context, @racket[((Eq a) => (Eq (Maybe a)))], which
+is unchanged — see below.)
 
-Superclass closure is followed during entailment: any program with an
+Superprotocol closure is followed during entailment: any program with an
 @racket[Ord] constraint on @racket[a] automatically discharges
 @racket[Eq] constraints on the same type.
 
@@ -78,11 +79,11 @@ Superclass closure is followed during entailment: any program with an
 
 The head of an instance can carry a context (@racket[((Eq a) => …)])
 that becomes a hypothesis available to the body and required at use
-sites.  Omitted methods fall back to the class's default.
+sites.  Omitted methods fall back to the protocol's default.
 
 @section{Constrained polymorphic functions}
 
-A function that uses a class method picks up its constraint
+A function that uses a protocol method picks up its constraint
 automatically:
 
 @rackton-example[#:eval ev #:mode 'defs #:context? #t]{
@@ -95,14 +96,14 @@ automatically:
 
 The inferred scheme is
 @racket[(All (a) ((Eq a) => (-> a (-> (Maybe a) Boolean))))].  Rackton
-discharges class constraints by dispatching at runtime on the type
+discharges protocol constraints by dispatching at runtime on the type
 tag of the value argument, so the constraint is fully erased from the
 calling convention — no explicit dictionary is threaded through user
 code.
 
 @section{Default methods}
 
-A default method body inside a class declaration is used by any
+A default method body inside a protocol declaration is used by any
 instance that omits it:
 
 @rackton-example[#:eval ev #:mode 'defs]{
@@ -113,15 +114,15 @@ instance that omits it:
 
 (instance (Eq Integer)
   (define (== x y) (= x y)))
-;; /= for Integer falls back to the class default.
+;; /= for Integer falls back to the protocol default.
 }
 
-Defaults can call other methods of the same class — Rackton resolves
+Defaults can call other methods of the same protocol — Rackton resolves
 each call to the eventual instance's body.
 
 @section{Cyclic defaults}
 
-Some classes arrange their defaults in a cycle so an instance can pick
+Some protocols arrange their defaults in a cycle so an instance can pick
 whichever method is most natural and the others derive.  The prelude's
 @racket[Monad] is a 2-cycle:
 
@@ -156,13 +157,13 @@ Rackton enforces @italic{module-level} coherence: an instance is
 visible everywhere its defining module is loaded, regardless of any
 @racket[provide] form.  This is the Haskell tradition.  It guarantees
 that two different parts of a program can never disagree about which
-instance to use for a given class/type pair.
+instance to use for a given protocol/type pair.
 
 @section{See also}
 
 @itemlist[
-@item{@secref["higher-kinded"] — kinds, multi-parameter classes, and
+@item{@secref["higher-kinded"] — kinds, multi-parameter protocols, and
       functional dependencies.}
 @item{@secref["do-and-monads"] — monads and @racket[do]-notation.}
 @item{Reference: @secref["classes" #:doc '(lib "rackton/scribblings/reference/rackton-reference.scrbl")]
-      for the full list of prelude classes and methods.}]
+      for the full list of prelude protocols and methods.}]

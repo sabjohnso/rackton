@@ -13,9 +13,9 @@ Rackton ships the full @racket[Functor] / @racket[Applicative] /
 This chapter assumes you've read @secref["type-classes"] and
 @secref["higher-kinded"].
 
-@section{The Monad class}
+@section{The Monad protocol}
 
-A @racket[Monad] is a higher-kinded class providing @racket[flatmap]
+A @racket[Monad] is a higher-kinded protocol providing @racket[flatmap]
 (the function-first cousin of Haskell's @tt{>>=}):
 
 @rackton-example[#:eval ev #:mode 'display]{
@@ -142,9 +142,9 @@ bare value binding such as
 is still rejected at compile time --- ascribe it
 (@racket[(: x (Maybe Integer))]) or wrap it in a function.
 
-@section{MTL-style classes}
+@section{MTL-style protocols}
 
-The four MTL classes — @racket[MonadState], @racket[MonadEnv],
+The four MTL protocols — @racket[MonadState], @racket[MonadEnv],
 @racket[MonadWriter], @racket[MonadError] — let you write a single
 function body that runs against any monad supporting the effect:
 
@@ -165,4 +165,4 @@ This @racket[count-down] runs against the bare @racket[State Integer]
 monad, or against @racket[(StateT Integer IO)], or even
 @racket[(EnvT String (StateT Integer Identity))] — the instance is
 resolved at each call site.  See @secref["classes" #:doc '(lib "rackton/scribblings/reference/rackton-reference.scrbl")]
-for the full method list of each MTL class.
+for the full method list of each MTL protocol.

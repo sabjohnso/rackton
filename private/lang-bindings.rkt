@@ -40,7 +40,7 @@
 (define-rackton-form : "type ascription")
 (define-rackton-form data "data type declaration")
 (define-rackton-form newtype "newtype declaration")
-(define-rackton-form protocol "type class (protocol) declaration")
+(define-rackton-form protocol "protocol declaration")
 (define-rackton-form instance "instance declaration")
 (define-rackton-form define-alias "type alias declaration")
 (define-rackton-form define-effect "algebraic effect declaration")
@@ -110,7 +110,7 @@
          (provide name)
          (define-syntax (name use-stx)
            (raise-syntax-error 'name
-                               "Rackton class name; not a value — use only in class declarations, instance heads, and constraint contexts inside (rackton …)"
+                               "Rackton protocol name; not a value — use only in protocol declarations, instance heads, and constraint contexts inside (rackton …)"
                                use-stx)))]))
 
 (define-syntax-rule (define-rackton-classes name ...)
@@ -153,7 +153,7 @@
          (provide name)
          (define-syntax (name use-stx)
            (raise-syntax-error 'name
-                               "Rackton class method; resolved at type-check time — use only inside (rackton …) where its return type can be inferred"
+                               "Rackton protocol method; resolved at type-check time — use only inside (rackton …) where its return type can be inferred"
                                use-stx)))]))
 
 (define-syntax-rule (define-rackton-methods name ...)

@@ -1,7 +1,7 @@
 #lang racket/base
 
 ;; Cross-class derivation: a Monad instance opts in with
-;; `#:derive-superclasses` and bundles only the irreducible primitives
+;; `#:derive-supers` and bundles only the irreducible primitives
 ;; that no derivation can supply (`pure` and one of `flatmap`/`join`).
 ;; The compiler then synthesizes the missing `Functor` and `Applicative`
 ;; instances, filling each superclass method from (in order):
@@ -25,7 +25,7 @@
 
   ;; Only pure (Applicative floor) and flatmap (Monad primitive) given;
   ;; Functor Box and the rest of Applicative Box are synthesized.
-  (instance (Monad Box) #:derive-superclasses
+  (instance (Monad Box) #:derive-supers
     (define (pure x)      (MkBox x))
     (define (flatmap f b) (match b [(MkBox x) (f x)])))
 
@@ -69,7 +69,7 @@
   (instance (Functor Bin)
     (define (fmap f b) (match b [(MkBin x) (MkBin (f x))])))
 
-  (instance (Monad Bin) #:derive-superclasses
+  (instance (Monad Bin) #:derive-supers
     (define (pure x)      (MkBin x))
     (define (flatmap f b) (match b [(MkBin x) (f x)])))
 
@@ -95,7 +95,7 @@
         (data (Cell a) (MkCell a))
         ;; pure is the irreducible Applicative floor — no derivation can
         ;; supply it, so synthesizing Applicative Cell must fail here.
-        (instance (Monad Cell) #:derive-superclasses
+        (instance (Monad Cell) #:derive-supers
           (define (flatmap f c) (match c [(MkCell x) (f x)]))))))))
 
 ;; ----- parametric: synthesized instances inherit the context ------
@@ -107,7 +107,7 @@
   ;; WrapT-level flatmap/pure, in turn requiring `(Monad m)`) won't check.
   (data (WrapT m a) (MkWrapT (m a)))
 
-  (instance ((Monad m) => (Monad (WrapT m))) #:derive-superclasses
+  (instance ((Monad m) => (Monad (WrapT m))) #:derive-supers
     (define (pure x) (MkWrapT (pure x)))
     (define (flatmap f w)
       (match w
@@ -150,7 +150,7 @@
   ;; Only the Applicative primitives (pure + fapply) are given; the
   ;; Functor instance is synthesized via `fmap f x = fapply (pure f) x`
   ;; (the Applicative class's own #:derive Functor clause).
-  (instance (Applicative Af) #:derive-superclasses
+  (instance (Applicative Af) #:derive-supers
     (define (pure x) (MkAf x))
     (define (fapply ff fx)
       (match ff [(MkAf f) (match fx [(MkAf x) (MkAf (f x))])])))
@@ -170,7 +170,7 @@
 
 (rackton
   (data (Bx a) (MkBx a))
-  (instance (Monad Bx) #:derive-superclasses
+  (instance (Monad Bx) #:derive-supers
     (define (pure x) (MkBx x))
     (define (flatmap f b) (match b [(MkBx x) (f x)])))
 
@@ -221,7 +221,7 @@
         (cbind (lambda (g) (cbind (lambda (a) (unit (g a))) fx)) ff))]))
 
   ;; Bundle only the floors; Shape Cap and Applic Cap are synthesized.
-  (instance (Chainer Cap) #:derive-superclasses
+  (instance (Chainer Cap) #:derive-supers
     (define (unit x)      (MkCap x))
     (define (cbind f c)   (match c [(MkCap x) (f x)])))
 
@@ -239,7 +239,7 @@
   (check-equal? cap-combine 42))
 
 ;; ----- cross-class default/derived cycle detection -----------------
-;; A `#:derive-superclasses` instance can leave BOTH ends of a cross-class
+;; A `#:derive-supers` instance can leave BOTH ends of a cross-class
 ;; loop to be auto-filled: a deriving-class method left to its class
 ;; default that calls a superclass method, and that superclass method
 ;; filled from the `#:derive` table in terms of the first.  Here Comonad's
@@ -269,7 +269,7 @@
             (define (fmap f wa) (extend (compose f extract) wa))]))
         ;; defines extract + duplicate but NOT extend → extend (default)
         ;; and fmap (derived) form a cross-class loop.
-        (instance (Comonad (Pair a)) #:derive-superclasses
+        (instance (Comonad (Pair a)) #:derive-supers
           (define (extract (Pair a b)) b)
           (define (duplicate (Pair a b)) (Pair a (Pair a b)))))))))
 
@@ -288,7 +288,7 @@
     ([Functor
       (define (fmap f wa) (extend (compose f extract) wa))]))
 
-  (instance (Comonad2 (Pair a)) #:derive-superclasses
+  (instance (Comonad2 (Pair a)) #:derive-supers
     (define (extract (Pair a b)) b)
     (define (duplicate (Pair a b)) (Pair a (Pair a b)))
     (define (extend f (Pair a b)) (Pair a (f (Pair a b)))))

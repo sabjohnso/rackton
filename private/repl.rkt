@@ -304,12 +304,12 @@
             (format "~s" (pred->datum (instance-info-head ii))))
           string<?))
   (string-append
-   (format "~s (class)\n" name)
+   (format "~s (protocol)\n" name)
    (format "  parameters:   ~a\n"
            (string-join (map symbol->string (class-info-params ci)) " "))
    (if (null? supers)
        ""
-       (format "  superclasses: ~a\n"
+       (format "  superprotocols: ~a\n"
                (string-join (for/list ([p (in-list supers)])
                               (format "~s" (pred->datum p)))
                             " ")))
@@ -570,7 +570,7 @@
     ;; REPL input is order-invariant just like a module body.  Pass the
     ;; persisted st so resolution tables accumulate; get the final st back.
     ;; infer-program/phases also returns the post-expansion form list
-    ;; (`#:derive-superclasses` instances replaced by the plain instances they
+    ;; (`#:derive-supers` instances replaced by the plain instances they
     ;; synthesize); compile THAT so derived instances are lowered.
     (define-values (env* declared* parsed* final-st)
       (infer-program/phases parsed
@@ -599,7 +599,7 @@
           (values (if s (cons s acc) acc) cgst*))))
     ;; `parsed` (pre-phase) carries the names the USER's form binds —
     ;; source recording wants those, not the synthesized expansions in
-    ;; `parsed*` (a derive-superclasses instance records once, under
+    ;; `parsed*` (a derive-supers instance records once, under
     ;; the class the user wrote).
     (values env* declared* compiled final-st parsed)))
 

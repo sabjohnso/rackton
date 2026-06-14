@@ -70,7 +70,7 @@ can break parenthesis structure.
 
  @item{@bold{Completion} — @litchar{Tab} completes the name before
        the cursor from the live session environment — values, data
-       constructors, types, classes — plus the surface keywords
+       constructors, types, protocols — plus the surface keywords
        (@racket[define], @racket[protocol], @racket[match], …).}
 
  @item{@bold{Syntax coloring} — tokens color via the standard Racket
@@ -166,17 +166,17 @@ constructors under their bare names, functions as @racketresultfont{<lambda>}).
 
 @litchar{,info} @racket[_name] (or @litchar{,i} @racket[_name])
 prints what @racket[_name] is bound to in the current environment.  A
-value or data constructor prints its scheme on one line.  A class lists
-its parameters, superclasses, methods (each with its scheme), and known
+value or data constructor prints its scheme on one line.  A protocol lists
+its parameters, superprotocols, methods (each with its scheme), and known
 instances; a type constructor lists its arity, its constructors, and the
-classes it has instances of.  A type declared @racket[#:abstract] is
+protocols it has instances of.  A type declared @racket[#:abstract] is
 marked @litchar{sealed}.
 
 @verbatim|{
 λ> ,info Monad
-Monad (class)
+Monad (protocol)
   parameters:   m
-  superclasses: (Applicative m)
+  superprotocols: (Applicative m)
   methods:
     flatmap :: (All (m a b) ((Monad m) => (-> (-> a (m b)) (-> (m a) (m b)))))
     join :: (All (m a) ((Monad m) => (-> (m (m a)) (m a))))
@@ -190,7 +190,7 @@ Monad (class)
 pretty-prints the input form that bound @racket[_name] — the form as
 typed into the session, or, for a prelude name, its definition in the
 prelude source.  A data constructor shows its @racket[data] form; a
-method shows its @racket[protocol]; a class shows the protocol
+method shows its @racket[protocol]; a protocol shows the protocol
 followed by the instances the session knows (a re-evaluated instance
 replaces its earlier self).  A name imported from a module has no
 recorded source and says so.
@@ -209,7 +209,7 @@ argument of @racket[_type] — search by argument position, in the
 spirit of Hoogle.  A candidate matches when @racket[_type] unifies
 with one of its argument positions; argument positions that are
 @emph{unconstrained} type variables are excluded (they accept
-everything), and a candidate whose class constraints can never be
+everything), and a candidate whose protocol constraints can never be
 satisfied under the match is dropped.  A @emph{constrained} variable
 participates and stands or falls with its constraints:
 @litchar{,accepts Integer} lists @racket[+] because @racket[(Num
@@ -236,7 +236,7 @@ arguments in order (listed first) or permuted (listed after).  A
 non-arrow query finds values of that type; a string query
 (@litchar{,search "fold"}) searches names.  @litchar{,returns}
 @racket[_type] matches the (curried) result type instead;
-bare-variable results are excluded, and class constraints must remain
+bare-variable results are excluded, and protocol constraints must remain
 satisfiable, as with @litchar{,accepts}.
 
 @verbatim|{
@@ -258,7 +258,7 @@ shell, with each match's defining module and line:
 @defidform[#:kind "REPL command" complete]{
 
 @litchar{,complete} @racket[_prefix] prints the names that complete
-@racket[_prefix] — the session's vars, data constructors, classes, and
+@racket[_prefix] — the session's vars, data constructors, protocols, and
 type constructors, plus the surface keywords — one per line, or nothing
 when none match.  It is the pipe transport for editor completion: the
 structural editor's Tab and a piped client (such as the Emacs inferior
@@ -300,7 +300,7 @@ turns coloring off.}
               @defidform[#:kind "REPL command" c])]{
 
 @litchar{,clear} (or @litchar{,c}) resets the session to a fresh prelude
-environment, discarding every definition, data type, class, and instance
+environment, discarding every definition, data type, protocol, and instance
 made since the session began.}
 
 @deftogether[(@defidform[#:kind "REPL command" quit]

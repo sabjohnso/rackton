@@ -24,15 +24,15 @@
   (define-values (_ outs) (drive-session (list (list 'unquote 'info name))))
   (car outs))
 
-(test-case ",info on a class lists parameters, superclasses, and methods"
+(test-case ",info on a protocol lists parameters, superprotocols, and methods"
   (define out (info-output 'Monad))
-  (check-regexp-match #rx"class" out)
-  (check-regexp-match #rx"m" out)              ; the class parameter
-  (check-regexp-match #rx"Applicative" out)    ; the superclass
+  (check-regexp-match #rx"protocol" out)
+  (check-regexp-match #rx"m" out)              ; the protocol parameter
+  (check-regexp-match #rx"Applicative" out)    ; the superprotocol
   (check-regexp-match #rx"flatmap" out)
   (check-regexp-match #rx"join" out))
 
-(test-case ",info on a class lists its known instances"
+(test-case ",info on a protocol lists its known instances"
   (define out (info-output 'Monad))
   (check-regexp-match #rx"\\(Monad Maybe\\)" out)
   (check-regexp-match #rx"\\(Monad List\\)" out))
@@ -46,7 +46,7 @@
   ;; Cons's scheme should be rendered, arrow included.
   (check-regexp-match #rx"->" out))
 
-(test-case ",info on a type ctor lists the classes it has instances of"
+(test-case ",info on a type ctor lists the protocols it has instances of"
   (define out (info-output 'List))
   (check-regexp-match #rx"\\(Functor List\\)" out)
   (check-regexp-match #rx"\\(Monad List\\)" out))
@@ -63,14 +63,14 @@
   (check-regexp-match #rx"sealed" out)
   (check-regexp-match #rx"MkHidden" out))
 
-(test-case ",info on a session-defined class shows its methods"
+(test-case ",info on a session-defined protocol shows its methods"
   (define-values (_ outs)
     (drive-session
      '((protocol (Greet a)
          (: greet (-> a String)))
        (unquote info Greet))))
   (define out (last outs))
-  (check-regexp-match #rx"class" out)
+  (check-regexp-match #rx"protocol" out)
   (check-regexp-match #rx"greet" out)
   (check-regexp-match #rx"String" out))
 

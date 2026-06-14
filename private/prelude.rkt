@@ -230,7 +230,7 @@
       (define (liftA2 g x y) (fapply (fmap g x) y))
       (define (product x y) (liftA2 Pair x y))
       ;; Cross-class derivation of the Functor superclass: an Applicative
-      ;; instance written with `#:derive-superclasses` (supplying `pure`
+      ;; instance written with `#:derive-supers` (supplying `pure`
       ;; and `fapply`) gets `Functor` for free via `fmap f = pure f <*>`.
       #:derive
       ([Functor
@@ -242,7 +242,7 @@
     ;; ordering matches `flip (>>=)` from Haskell.
     ;; Monad also carries cross-class derivations for its Applicative and
     ;; Functor superclasses: an instance written with
-    ;; `#:derive-superclasses` need only supply `pure` (the irreducible
+    ;; `#:derive-supers` need only supply `pure` (the irreducible
     ;; Applicative primitive) and one of `flatmap`/`join`; `fmap` and the
     ;; Applicative combinators are synthesized from these.
     (protocol (Monad [m => Applicative])

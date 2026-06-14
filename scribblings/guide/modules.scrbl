@@ -9,12 +9,12 @@
 Rackton uses Racket's module system unchanged, but layers type
 information on top: an importing module sees not just the runtime
 bindings but also their schemes, data constructors, type
-constructors, classes, and instances.
+constructors, protocols, and instances.
 
 @section{provide controls export}
 
 A Rackton module exports nothing by default.  Every binding,
-constructor, type, class, and class method is module-private unless
+constructor, type, protocol, and protocol method is module-private unless
 listed in a @racket[(provide …)] form.
 
 @rackton-example[#:eval ev #:mode 'display]{
@@ -71,9 +71,9 @@ schemes.  Plain Racket modules can still be @racket[require]d, but
 their bindings are invisible to the type checker — they're runtime
 only.
 
-@section{Cross-file classes and instances}
+@section{Cross-file protocols and instances}
 
-@hash-lang[] @racketmodfont{rackton} modules also export their class
+@hash-lang[] @racketmodfont{rackton} modules also export their protocol
 declarations and instance registrations.  An importing module sees
 both, so the type checker can discharge constraints against imported
 instances without local redeclaration:
@@ -97,7 +97,7 @@ instances without local redeclaration:
 (define result (empty? (Push 1 Empty)))
 }
 
-Class default-method bodies still bind in the @italic{defining}
+Protocol default-method bodies still bind in the @italic{defining}
 module's lexical scope; when an importing module uses a default, the
 identifiers in the default body are re-anchored to the instance site
 so they resolve via that module's imports.

@@ -33,7 +33,7 @@ Bring it all into scope with a single import:
 }
 
 A consumer should @racketidfont{require} only @tt{rackton/unit} (not the
-individual submodules); the framework funnels its class instances
+individual submodules); the framework funnels its protocol instances
 through a single import path so module-level instance coherence is
 satisfied.
 
@@ -152,8 +152,8 @@ reproduces a failure deterministically.
 @section{Notes and limitations}
 
 @itemlist[
-@item{There is no type-directed @racketidfont{Arbitrary} class in this
-      version: a class member returning @racketidfont{(Gen a)} would be
+@item{There is no type-directed @racketidfont{Arbitrary} protocol in this
+      version: a protocol member returning @racketidfont{(Gen a)} would be
       return-typed, and return-typed methods are resolved per instance at
       compile time and do not cross module boundaries.  Use the explicit
       generators instead.}

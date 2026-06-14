@@ -78,7 +78,7 @@ continuation, collecting the rendered pieces into the final @racket[String].}
 @section{rackton/text/read}
 @defmodule[rackton/text/read]
 
-Parse @racket[String]s back into typed values, the Rackton analogue of Haskell's @tt{Text.Read}. Rackton has no @tt{Read} class, so these are type-specific readers that each return @racket[(Maybe a)], yielding @racket[None] when the string does not parse.
+Parse @racket[String]s back into typed values, the Rackton analogue of Haskell's @tt{Text.Read}. Rackton has no @tt{Read} protocol, so these are type-specific readers that each return @racket[(Maybe a)], yielding @racket[None] when the string does not parse.
 
 @defproc[(read-int [s String]) (Maybe Integer)]{
   Parses a decimal @racket[Integer], reusing the prelude's @racket[string->integer] primitive.}
@@ -96,7 +96,7 @@ Parse @racket[String]s back into typed values, the Rackton analogue of Haskell's
 Text.Show's @racket[ShowS] machinery: freestanding combinators for building
 string output by composing prepend-functions rather than repeatedly
 @racket[mappend]-ing strings, which keeps concatenation linear. The
-@racket[Show] class and @racket[show] itself live in the prelude; only the
+@racket[Show] protocol and @racket[show] itself live in the prelude; only the
 combinators are defined here.
 
 @defidform[#:kind "type" ShowS]{

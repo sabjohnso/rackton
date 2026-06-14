@@ -47,7 +47,7 @@ when used in an unreachable branch.}
 @section[#:tag "numeric-helpers"]{Numeric helpers}
 
 These functions complement the @racket[Num] / @racket[Integral] /
-@racket[Fractional] class methods.  See @secref["classes"] for
+@racket[Fractional] protocol methods.  See @secref["classes"] for
 @racket[+], @racket[-], @racket[*], @racket[abs], @racket[negate],
 @racket[div], @racket[mod], @racket[quot], @racket[rem],
 @racket[float-div], @racket[exp], @racket[log], @racket[sqrt],
@@ -269,7 +269,7 @@ chapter of the Guide walks through them.}
 @section[#:tag "monad-helpers"]{Monad-specific helpers}
 
 @para{The @racket[State], @racket[Env], @racket[Writer], and
-@racket[Except] families each ship a small set of non-class accessors and
+@racket[Except] families each ship a small set of non-method accessors and
 runners (@racket[run-state], @racket[eval-state], @racket[get-state],
 @racket[ask], @racket[tell], @racket[throw-error], and the transformer
 variants).  These live in @tt{rackton/control/monad} —

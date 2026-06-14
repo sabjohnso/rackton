@@ -28,7 +28,7 @@ clause to introduce the hidden variable:
 
 Each @racket[Wrap] inside @racket[many] has a different @racket[a],
 but they all coexist in @racket[(List Anything)].  Add a
-@racket[#:where] clause to require the existential to satisfy class
+@racket[#:where] clause to require the existential to satisfy protocol
 constraints — those become hypotheses inside any clause that matches
 the constructor:
 
@@ -165,7 +165,7 @@ encapsulation boundary.
 
 @section{Associated type families}
 
-A class may declare an associated type via a @racket[#:type] clause
+A protocol may declare an associated type via a @racket[#:type] clause
 inside its body:
 
 @rackton-example[#:eval ev #:mode 'defs #:context? #t]{
@@ -188,5 +188,5 @@ Each instance supplies a concrete type for the family with
 Calls to @racket[head] on a @racket[(List Integer)] resolve
 @racket[(Elem (List Integer))] to @racket[Integer], and the result type
 becomes @racket[(Maybe Integer)] with no further declaration needed.
-Associated types are how Rackton lets a class abstract over a type
+Associated types are how Rackton lets a protocol abstract over a type
 relationship that's more flexible than a fundep.

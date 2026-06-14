@@ -43,7 +43,7 @@ behind a uniform @racket[num-]-prefixed interface, adds a @racket[Rational] to
 @defmodule[rackton/numeric/integer]
 
 Integral helper combinators over the prelude's @racket[Integer], derived
-from the prelude's @racket[Integral] and @racket[Num] classes. Names are
+from the prelude's @racket[Integral] and @racket[Num] protocols. Names are
 prefixed @racket[num-] so they don't shadow @tt{racket/base}'s
 @tt{gcd}, @tt{lcm}, @tt{even?}, and @tt{odd?} inside @racket[(racket …)]
 escapes.

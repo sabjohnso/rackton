@@ -101,7 +101,7 @@
 ;; and the body (signatures + defaults).
 (struct top:class    (supers head methods stx) #:transparent)
 (struct top:instance (context head methods stx) #:transparent)
-;; An instance written with `#:derive-superclasses`: the user bundles
+;; An instance written with `#:derive-supers`: the user bundles
 ;; only the irreducible primitives (e.g. `pure` and `flatmap`) and the
 ;; compiler synthesizes the missing superclass instances from the
 ;; deriving class's cross-class derivation table.  Expanded into plain

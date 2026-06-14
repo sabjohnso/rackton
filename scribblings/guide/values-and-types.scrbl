@@ -23,9 +23,9 @@ introduces a fresh binding or refers to an existing one:
       names like @racket[->], @racket[+], @racket[==], @racket[>=] —
       is always a @italic{reference} to an already-bound name, never
       a fresh binding.  What it refers to depends on position: a
-      @italic{type constructor} or @italic{class name} in a type, a
+      @italic{type constructor} or @italic{protocol name} in a type, a
       @italic{data constructor} as a pattern head, and a
-      @italic{value}, @italic{function}, @italic{class method}, or
+      @italic{value}, @italic{function}, @italic{protocol method}, or
       @italic{data constructor} in an expression.}
 @item{The underscore @racket[_] is the wildcard pattern.}]
 
@@ -91,7 +91,7 @@ file:
 (define (odd?  n) (if (= n 0) #f (even? (- n 1))))
 }
 
-The same rule applies to data types, classes, instances, and
+The same rule applies to data types, protocols, instances, and
 references to a value defined later in the file:
 
 @rackton-example[#:eval ev #:mode 'defs]{
@@ -104,7 +104,7 @@ references to a value defined later in the file:
 (data Tree Leaf (Br Forest Forest))
 (data Forest Empty (Cns Tree Forest))
 
-;; A class used before its declaration:
+;; A protocol used before its declaration:
 (define (greet x) (pretty x))
 (protocol (Pretty a)
   (: pretty (-> a String)))

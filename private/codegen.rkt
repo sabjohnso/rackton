@@ -825,7 +825,7 @@
 
   (define cinfo (env-ref-class env head-pred-class))
   (unless cinfo
-    (error 'compile-instance "unknown class: ~s" head-pred-class))
+    (error 'compile-instance "unknown protocol: ~s" head-pred-class))
 
   ;; Positional dispatch keys on the class's DETERMINING parameter(s) —
   ;; for a fundep class like (MonadState s m | m -> s) that is `m` (the

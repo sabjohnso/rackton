@@ -6,7 +6,7 @@
 
 @defmodule[rackton]
 
-This reference describes every form, type, class, and binding that
+This reference describes every form, type, protocol, and binding that
 Rackton makes available to user programs.  It is organized by topic
 rather than by chronology: read the chapter that names the feature you
 need.  For a narrative introduction, see

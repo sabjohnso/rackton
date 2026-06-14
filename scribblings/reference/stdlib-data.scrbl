@@ -14,7 +14,7 @@ hierarchy.  It spans the concrete collections
 and @racketmodname[rackton/data/list/nonempty]); the small sum types for
 optional and fallible values (@racketmodname[rackton/data/maybe],
 @racketmodname[rackton/data/either], @racketmodname[rackton/data/result]);
-the classes that abstract over containers
+the protocols that abstract over containers
 (@racketmodname[rackton/data/semigroup],
 @racketmodname[rackton/data/monoid],
 @racketmodname[rackton/data/functor],
@@ -33,7 +33,7 @@ auto-prelude — import the specific module you need.
 
 Bitwise operations over the prelude's @racket[Integer], in the spirit of
 Haskell's @tt{Data.Bits}. Because Rackton has a single integral type, these
-are plain @racket[bit-]-prefixed functions rather than a @racket[Bits] class;
+are plain @racket[bit-]-prefixed functions rather than a @racket[Bits] protocol;
 integers are two's-complement of unbounded width, so @racket[bit-not] of a
 non-negative value is negative and @racket[bit-count] is defined for
 non-negative inputs.
@@ -184,7 +184,7 @@ Data.Either over the prelude's @racket[Either] type (@racket[Left] /
 @racket[Right]). The
 @racket[Functor]/@racket[Applicative]/@racket[Monad]/@racket[Bifunctor]
 instances for @racket[Either] live in the prelude; this module provides the
-non-class eliminators, predicates, and collectors.
+non-method eliminators, predicates, and collectors.
 
 @defproc[(either [f (-> a c)] [g (-> b c)] [r (Either a b)]) c]{
   Eliminator: applies @racket[f] to a @racket[Left] payload and @racket[g] to
@@ -223,7 +223,7 @@ prelude's @racket[Either] (@racket[Err] ↔ @racket[Left], @racket[Ok] ↔
 @racket[Right]) but a @emph{distinct nominal type}, for code where the
 @tt{Ok}/@tt{Err} naming reads better than @tt{Left}/@tt{Right}.  Unlike the
 helpers in @racketmodname[rackton/data/either], this module also defines
-@racket[Result]'s own class instances; @racket[result->either] /
+@racket[Result]'s own protocol instances; @racket[result->either] /
 @racket[either->result] bridge to the prelude coproduct.
 
 @deftogether[(
@@ -314,7 +314,7 @@ combinators @racket[id], @racket[const], @racket[flip], and
 @section{rackton/data/functor}
 @defmodule[rackton/data/functor]
 
-Data.Functor helpers built on the prelude's @racket[Functor] class. The
+Data.Functor helpers built on the prelude's @racket[Functor] protocol. The
 core @racket[fmap] method and @tt{void} live in the prelude; this
 module adds the @racket[<$], @racket[<&>], and @racket[$>] combinators.
 
@@ -947,7 +947,7 @@ endomorphisms under @tt{.}), and the order-flipping wrapper
 @section{rackton/data/ord}
 @defmodule[rackton/data/ord]
 
-Ordering helpers built on the prelude's @racket[Ord] class (where @racket[min], @racket[max], and the comparison operators live). Provides range clamping and key-projected min/max.
+Ordering helpers built on the prelude's @racket[Ord] protocol (where @racket[min], @racket[max], and the comparison operators live). Provides range clamping and key-projected min/max.
 
 @defproc[(clamp [lo a] [hi a] [x a]) a]{Confines @racket[x] to the inclusive range @tt{[lo, hi]}, for any @racket[(Ord a)].}
 
@@ -992,7 +992,7 @@ between them, found via the continued-fraction quotients of the endpoints.}
 
 Data.Semigroup selection newtypes whose @racket[mappend] keeps the smaller, larger,
 first, or last operand. The @racket[mappend] operation itself and the
-@racket[Semigroup] / @racket[Monoid] classes live in the prelude. @racket[Min] and
+@racket[Semigroup] / @racket[Monoid] protocols live in the prelude. @racket[Min] and
 @racket[Max] carry only @racket[Semigroup] (no @racket[Monoid], since that would need
 a bounded identity Rackton's numeric types don't provide).
 
@@ -1096,7 +1096,7 @@ elements of @racket[s] satisfying @racket[p].}
 @defmodule[rackton/data/traversable]
 
 Derived forms of @racket[Data.Traversable], built on the prelude's
-@racket[Traversable] class method @racket[traverse].
+@racket[Traversable] protocol method @racket[traverse].
 
 @defproc[(sequence-a [t (t (f a))]) (f (t a))]{
   Turns a structure of actions into an action of a structure (Haskell

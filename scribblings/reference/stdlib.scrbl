@@ -21,7 +21,7 @@ that mirror Haskell's @tt{base} layout.  Import a module with the
 (require rackton/control/monad/state)
 }
 
-Type-class @emph{instances} always escape a module regardless of its
+Protocol @emph{instances} always escape a module regardless of its
 @secref["provide-specs"] form (instance coherence is a global
 property), so importing a module makes both its bindings and its
 instances available.
@@ -67,13 +67,13 @@ manual @racket[free-ptr] — a stray offset, a double free, or a
 use-after-free corrupts memory or crashes the process, exactly as
 Haskell's @tt{Foreign} does.  It is @emph{not} part of @tt{batteries};
 require it explicitly, and only when you must touch raw memory.  There
-is no @tt{Storable} class, so reads and writes are the type-specific
+is no @tt{Storable} protocol, so reads and writes are the type-specific
 @racket[peek-int] / @racket[poke-int] / … rather than one polymorphic
 pair.
 
 @subsection{rackton/foreign/c}
 @defmodule[rackton/foreign/c]
-A curated set of @tt{libm} functions the prelude's Floating class
+A curated set of @tt{libm} functions the prelude's Floating protocol
 doesn't cover, bound through the @racket[foreign] form: @racket[c-cbrt],
 @racket[c-hypot], @racket[c-expm1], @racket[c-log1p], @racket[c-tgamma]
 (gamma), @racket[c-lgamma], @racket[c-erf], @racket[c-erfc].  It also

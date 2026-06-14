@@ -93,7 +93,7 @@ Untouched fields are copied verbatim.  This is the only way to
 @section{Deriving common instances}
 
 Listing @racket[#:deriving] at the end of a @racket[data] or
-@racket[struct] synthesises the named class instances:
+@racket[struct] synthesises the named protocol instances:
 
 @rackton-example[#:eval ev #:mode 'defs]{
 (data (Tree a)
@@ -102,7 +102,7 @@ Listing @racket[#:deriving] at the end of a @racket[data] or
   #:deriving Eq Show Functor)
 }
 
-Available classes for deriving include @racket[Eq], @racket[Ord]
+Available protocols for deriving include @racket[Eq], @racket[Ord]
 (which auto-derives @racket[Eq] as well), @racket[Show],
 @racket[Functor], @racket[Foldable], @racket[Traversable],
 @racket[Bifunctor], @racket[Semigroup], @racket[Monoid], plus the

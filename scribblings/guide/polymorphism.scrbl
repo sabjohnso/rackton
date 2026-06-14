@@ -104,7 +104,7 @@ clause:
 @racket[Wrap] takes a value of any type and a printer for that type;
 the type variable @racket[a] is hidden from the outside.  Add
 @racket[#:where] to require the existential to satisfy one or more
-class constraints — those constraints become hypotheses available
+protocol constraints — those constraints become hypotheses available
 inside any clause that matches the constructor:
 
 @rackton-example[#:eval ev #:mode 'defs]{

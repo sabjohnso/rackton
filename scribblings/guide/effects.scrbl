@@ -113,7 +113,7 @@ The choice is a matter of style:
 @itemlist[
 @item{@bold{Monads / transformers} give you static effect tracking,
       composable algebraic structure, and a richer set of operations
-      via the MTL classes.  They are the choice for most code.}
+      via the MTL protocols.  They are the choice for most code.}
 @item{@bold{Algebraic effects} give you direct delimited continuations
       (one-shot or multi-shot), more flexible handler composition, and
       a simpler mental model for some patterns (e.g., backtracking

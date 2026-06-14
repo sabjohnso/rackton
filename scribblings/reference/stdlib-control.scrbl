@@ -9,12 +9,12 @@ combinators and the monad-transformer stack, after Haskell's
 @tt{Control.*} modules.  It holds the extra
 @racketmodname[rackton/control/applicative] and
 @racketmodname[rackton/control/monad] combinators that build on the
-prelude's classes; the standard transformers —
+prelude's protocols; the standard transformers —
 @racketmodname[rackton/control/monad/reader],
 @racketmodname[rackton/control/monad/state],
 @racketmodname[rackton/control/monad/writer],
 @racketmodname[rackton/control/monad/except], and their
-@racketmodname[rackton/control/monad/trans] lifting class; and the
+@racketmodname[rackton/control/monad/trans] lifting protocol; and the
 concurrency and software-transactional-memory modules
 @racketmodname[rackton/control/concurrent] and
 @racketmodname[rackton/control/stm].
@@ -89,7 +89,7 @@ the contents of @racket[mv] with @racket[f] applied to its current value.}
 Control.Monad combinators that work over any @racket[(Monad m)]: monadic
 mapping, sequencing, folding, replication, and filtering. These build on
 @racket[flatmap] (via @racket[do]) and @racket[pure]; the @racket[Monad]
-class itself, plus @racket[join], @tt{when}, @tt{unless}, and
+protocol itself, plus @racket[join], @tt{when}, @tt{unless}, and
 @tt{void}, live in the prelude.
 
 @defproc[(map-m [f (-> a (m b))] [xs (List a)]) (m (List b))]{
@@ -270,7 +270,7 @@ both, plus the @racket[StateT]-outer pass-through instances for
 The @racket[WriterT] transformer: an accumulating writer over an inner
 monad. This module owns every mtl instance where @racket[WriterT] is the
 outer transformer; the non-transformer @tt{Writer} role is served by
-@racket[WriterT] over @tt{Identity}, while the @tt{MonadWriter} class
+@racket[WriterT] over @tt{Identity}, while the @tt{MonadWriter} protocol
 itself lives in the prelude.
 
 @deftogether[(

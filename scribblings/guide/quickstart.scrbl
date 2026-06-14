@@ -87,7 +87,7 @@ This guide proceeds top-down: each chapter builds on the previous.
       and the type signature form.}
 @item{@secref["pattern-matching"] — destructuring with @racket[match].}
 @item{@secref["adts-and-records"] — your own data types.}
-@item{@secref["type-classes"] — type classes and instances.}]
+@item{@secref["type-classes"] — protocols and instances.}]
 
 For exhaustive signatures of every binding the prelude ships, see the
 @other-doc['(lib "rackton/scribblings/reference/rackton-reference.scrbl")].

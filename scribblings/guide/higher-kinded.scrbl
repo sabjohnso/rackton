@@ -4,10 +4,10 @@
          "../rackton-eval.rkt"]
 @(define ev (make-rackton-eval))
 
-@title[#:tag "higher-kinded"]{Higher-kinded and multi-parameter classes}
+@title[#:tag "higher-kinded"]{Higher-kinded and multi-parameter protocols}
 
 This chapter covers three orthogonal extensions to single-parameter
-classes: higher-kinded type parameters, multi-parameter classes, and
+protocols: higher-kinded type parameters, multi-parameter protocols, and
 functional dependencies.
 
 @section[#:tag "guide-kinds"]{Kinds}
@@ -25,7 +25,7 @@ type constructors.
 @item{@racket[(Maybe Integer)] has kind @racket[*].}]
 
 Every type expression is kind-checked, and kinds are @emph{inferred},
-so you rarely write a kind annotation.  A class parameter's kind
+so you rarely write a kind annotation.  A protocol parameter's kind
 follows from its method signatures — a parameter used as @racket[(f a)]
 must have kind @racket[(-> * *)]:
 
@@ -37,7 +37,7 @@ must have kind @racket[(-> * *)]:
 Here @racket[f] is inferred to have kind @racket[(-> * *)] from
 @racket[mapp]'s use of @racket[(f a)] — no annotation needed.  (A data
 type's kind is inferred the same way, from how its parameters appear
-in its constructors.)  You may still annotate a class parameter
+in its constructors.)  You may still annotate a protocol parameter
 explicitly in the head with @racket[::] when you want the kind stated:
 
 @rackton-example[#:eval ev #:mode 'defs]{
@@ -46,7 +46,7 @@ explicitly in the head with @racket[::] when you want the kind stated:
 }
 
 An ill-kinded type is a compile-time error — a constructor applied to
-too many arguments, an ordinary type applied at all, or a class given
+too many arguments, an ordinary type applied at all, or a protocol given
 an argument of the wrong kind.  The error is blamed at the exact
 offending sub-expression (line and column), even when it is buried
 inside a larger type, so the caret lands on the part that is wrong:
@@ -62,9 +62,9 @@ inside a larger type, so the caret lands on the part that is wrong:
 (: bad3 (-> Integer (-> Boolean (List Integer Integer))))
 ]
 
-@section{Multi-parameter classes}
+@section{Multi-parameter protocols}
 
-A class declaration may carry more than one type parameter:
+A protocol declaration may carry more than one type parameter:
 
 @rackton-example[#:eval ev #:mode 'defs]{
 (protocol (Convertible a b)
@@ -77,7 +77,7 @@ A class declaration may carry more than one type parameter:
   (define (convert b) (if b "yes" "no")))
 }
 
-Runtime dispatch uses the first argument whose type mentions a class
+Runtime dispatch uses the first argument whose type mentions a protocol
 parameter — for @racket[convert] that's its single argument.  The
 non-dispatching parameters are resolved at compile time only; an
 ambiguous call site may need a @racket[(ann e τ)] ascription to pin
@@ -85,7 +85,7 @@ the result type.
 
 @section{Functional dependencies}
 
-A multi-parameter class may declare that some parameters are uniquely
+A multi-parameter protocol may declare that some parameters are uniquely
 determined by others:
 
 @rackton-example[#:eval ev #:mode 'defs]{
@@ -107,8 +107,8 @@ inconsistent with the fundep.
 
 @section{Higher-kinded with constraint}
 
-The two combine naturally — @racket[Monad] is a higher-kinded class
-with a @racket[Functor] superclass.  The bound carries both facts at
+The two combine naturally — @racket[Monad] is a higher-kinded protocol
+with a @racket[Functor] superprotocol.  The bound carries both facts at
 once: because @racket[Functor]'s parameter has kind @racket[(-> * *)],
 the bound @racket[[m => Functor]] makes @racket[m] higher-kinded
 without a separate @racket[::] annotation:
@@ -118,11 +118,11 @@ without a separate @racket[::] annotation:
   (: flatmap (-> (-> a (m b)) (-> (m a) (m b)))))
 }
 
-Dispatch for higher-kinded class methods uses the position of the
-first argument whose type mentions a class parameter.  For
+Dispatch for higher-kinded protocol methods uses the position of the
+first argument whose type mentions a protocol parameter.  For
 @racket[fmap], that is the second argument (the container); for
 @racket[flatmap], that is also the second argument (the @racket[(m a)]
-follows the continuation).  This is computed automatically at class
+follows the continuation).  This is computed automatically at protocol
 definition.
 
 @section{Built-in instances}

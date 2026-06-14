@@ -42,12 +42,12 @@
   (check-regexp-match #rx"expected: +Integer" msg)
   (check-regexp-match #rx"got: +String"       msg))
 
-(test-case "unknown class suggests a near match"
+(test-case "unknown protocol suggests a near match"
   (define msg
     (rackton-error
      (instance (Eqq Integer)
        (define (eq x y) (= x y)))))
-  (check-regexp-match #rx"unknown class: Eqq" msg)
+  (check-regexp-match #rx"unknown protocol: Eqq" msg)
   (check-regexp-match #rx"did you mean `Eq`"  msg))
 
 (test-case "unknown constructor in a pattern suggests"

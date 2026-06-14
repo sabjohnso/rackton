@@ -10,7 +10,7 @@
 
 Rackton offers three layers of concurrency primitives — threads with
 mutable variables, asynchronous channels, and software transactional
-memory — plus a polymorphic @racket[Concurrent] class that abstracts
+memory — plus a polymorphic @racket[Concurrent] protocol that abstracts
 over them.
 
 The thread, @racket[MVar], and channel primitives live in
@@ -131,10 +131,10 @@ so the final balance is the sum of both deposits:
     (println (string-append "balance: " (show final)))))
 }
 
-@section{The @racket[Concurrent] class}
+@section{The @racket[Concurrent] protocol}
 
 For polymorphic code that works against either real threads or a
-deterministic mock, the @racket[Concurrent] class abstracts
+deterministic mock, the @racket[Concurrent] protocol abstracts
 @racket[fork-c], @racket[await-c], and @racket[yield-c]:
 
 @rackton-example[#:eval ev #:mode 'defs #:context? #t]{

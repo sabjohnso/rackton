@@ -4,7 +4,7 @@
 
 @title[#:tag "provide-specs"]{@racket[provide] specs}
 A Rackton module exports nothing by default — every binding,
-constructor, type, class, and class method is module-private unless
+constructor, type, protocol, and protocol method is module-private unless
 explicitly exported with a @racket[(provide …)] form.  Multiple
 @racket[provide] forms in the same module are unioned.
 
@@ -22,7 +22,7 @@ property in the Haskell tradition.
 @defidform[#:kind "provide spec" all-defined-out]{
 
 Exports every locally-defined value binding, data constructor, type
-constructor, and class.  Imported and prelude names are not
+constructor, and protocol.  Imported and prelude names are not
 re-exported.
 
 @racketblock[(provide (all-defined-out))]}
@@ -31,7 +31,7 @@ re-exported.
          (all-from-out module-path ...)]{
 
 Re-exports every name imported from each @racket[module-path] — value
-bindings, data constructors, type constructors, and classes — without
+bindings, data constructors, type constructors, and protocols — without
 listing them individually.  Use it to build a re-export chain or an
 umbrella module.  Instances escape regardless of @racket[provide], so
 they are carried through too.
@@ -96,7 +96,7 @@ exported.
 
 A @racket[provide] body may also contain a bare identifier, which
 exports the named value binding, data constructor, type constructor, or
-class.  Data constructors exported this way are exported both as a
+protocol.  Data constructors exported this way are exported both as a
 runtime value and (when their owning type is not @racket[#:abstract])
 as a type-checker entry.
 

@@ -102,7 +102,7 @@ that is not generalised at the surrounding @racket[define].
          #:grammar
          [(ctor-spec       bare-ctor (Ctor type ...))
           (bare-ctor       id)
-          (maybe-deriving  code:blank (code:line #:deriving class ...))]]{
+          (maybe-deriving  code:blank (code:line #:deriving protocol ...))]]{
 
 Declares an algebraic data type @racket[Name] parameterised by
 @racket[a ...], with one or more constructors.  Each constructor is
@@ -110,7 +110,7 @@ either a bare identifier (nullary) or a parenthesised form naming the
 constructor and its field types.
 
 The optional @racket[#:deriving] clause synthesises instances of the
-named classes; see @racket[Eq], @racket[Ord], @racket[Show],
+named protocols; see @racket[Eq], @racket[Ord], @racket[Show],
 @racket[Functor], @racket[Foldable], @racket[Traversable],
 @racket[Bifunctor], @racket[Semigroup], @racket[Monoid], and the
 auto-derived lens and prism families.
@@ -144,7 +144,7 @@ runtime overhead beyond a struct tag.  Equivalent to
           [(struct Name [field : type] ... maybe-deriving)
            (struct (Name a ...) [field : type] ... maybe-deriving)]
           #:grammar
-          ([maybe-deriving  code:blank (code:line #:deriving class ...)])]{
+          ([maybe-deriving  code:blank (code:line #:deriving protocol ...)])]{
 
 Declares a single-constructor product type with typed named fields and
 auto-generated field accessors @racketidfont{Name}@racketidfont{-}@racket[_field].
@@ -156,96 +156,97 @@ have the appropriate polymorphic schemes.
 (define p (Point 3 4))
 (define px (Point-x p))]
 
-@racket[#:deriving] honours the same classes as
+@racket[#:deriving] honours the same protocols as
 @racket[data], including @racket[Foldable] and the auto-derived
 field-lens family.}
 
 @defform[
-          (protocol class-head method ...)
+          (protocol protocol-head method ...)
           #:grammar
-          ([class-head    (ClassName param ...)]
+          ([protocol-head (ProtocolName param ...)]
            [param         id
                           (id :: kind)
                           (id => bound ...)]
-           [bound         ClassName
-                          (ClassName type ...)]
+           [bound         ProtocolName
+                          (ProtocolName type ...)]
            [method        (code:line (: method-name type))
                           (code:line (define (method-name p ...) body))
                           (code:line #:requires constraint ...)
                           (code:line #:fundep var ... -> var ...)
                           (code:line #:derive (derivation ...))]
-           [derivation    (SuperClass (define …) ...)]
-           [constraint    (ClassName type ...)])]{
+           [derivation    (SuperProtocol (define …) ...)]
+           [constraint    (ProtocolName type ...)])]{
 
-Declares a type class.  Each method signature
-(@racket[(: name type)]) is added to the value environment with a
-qualified scheme @racket[(All (param ...) ((C param ...) => τ))], so a
-polymorphic use of the method automatically carries the class
+Declares a protocol (Haskell's @italic{type class}).  Each method
+signature (@racket[(: name type)]) is added to the value environment with
+a qualified scheme @racket[(All (param ...) ((C param ...) => τ))], so a
+polymorphic use of the method automatically carries the protocol
 constraint.  Default method bodies (@racket[(define …)]) are used by
 instances that omit the corresponding method.
 
-A superclass requirement is written as a @deftech{bound} on the
+A superprotocol requirement is written as a @deftech{bound} on the
 parameter it constrains: @racket[(id => bound ...)].  A bare
-@racket[ClassName] bound on @racket[id] desugars to the constraint
-@racket[(ClassName id)]; a partially-applied bound
-@racket[(ClassName type ...)] appends @racket[id] as the final
+@racket[ProtocolName] bound on @racket[id] desugars to the constraint
+@racket[(ProtocolName id)]; a partially-applied bound
+@racket[(ProtocolName type ...)] appends @racket[id] as the final
 argument, so @racket[(b => (Convert a))] desugars to
 @racket[(Convert a b)].  Several bounds may be stacked on one
-parameter (@racket[(a => Num Ord)]).  A superclass that relates several
+parameter (@racket[(a => Num Ord)]).  A superprotocol that relates several
 parameters at once — and so cannot be attached to a single
 parameter — is written as a trailing @racket[#:requires] clause in the
 body, listing the constraints directly.
 
-Every superclass must name a class that exists — defined in the same
+Every superprotocol must name a protocol that exists — defined in the same
 program (in any order) or imported — and this is checked when the
 @racket[protocol] is declared, not deferred to an instance.  A
-superclass that names no such class (a typo, say) is a compile-time
+superprotocol that names no such protocol (a typo, say) is a compile-time
 error at the declaration.
 
-Class parameters may carry an explicit kind annotation
+Protocol parameters may carry an explicit kind annotation
 (@racket[(param :: kind)]); without one the kind defaults to
-@racket[*], unless a superclass determines it.  Wherever a parameter
-appears directly as an argument of a superclass constraint — whether
+@racket[*], unless a superprotocol determines it.  Wherever a parameter
+appears directly as an argument of a superprotocol constraint — whether
 as a bound's subject (@racket[[w => Functor]], i.e. @racket[(Functor
 w)]) or mentioned inside another parameter's bound (@racket[[g =>
 (Pairing f)]], i.e. @racket[(Pairing f g)], which pins @racket[f] as
 well) — it inherits the kind of the corresponding parameter of that
-superclass.  Kinds are written as @racket[*] for ordinary types or
+superprotocol.  Kinds are written as @racket[*] for ordinary types or
 @racket[(-> k1 k2)] for type-constructor kinds.
 
-A class may declare one or more functional dependencies via
+A protocol may declare one or more functional dependencies via
 @racket[#:fundep] clauses inside the body.
 
 A single @racket[#:derive] keyword introduces a list of
-@deftech{cross-class derivation}s, one bracketed
-@racket[(SuperClass (define …) ...)] clause per superclass.  Each clause
-gives canonical bodies that fill that @emph{superclass}'s methods in terms
-of @emph{this} class's methods; it is the inter-class analogue of a default
-method.  For example, @racket[Monad] derives its @racket[Functor] and
-@racket[Applicative] superclasses from @racket[flatmap] and @racket[pure].
+@deftech{cross-protocol derivation}s, one bracketed
+@racket[(SuperProtocol (define …) ...)] clause per superprotocol.  Each
+clause gives canonical bodies that fill that @emph{superprotocol}'s methods
+in terms of @emph{this} protocol's methods; it is the inter-protocol
+analogue of a default method.  For example, @racket[Monad] derives its
+@racket[Functor] and @racket[Applicative] superprotocols from
+@racket[flatmap] and @racket[pure].
 The bodies are consumed only when an instance opts in with
-@racket[#:derive-superclasses] (see @racket[instance]).  A
+@racket[#:derive-supers] (see @racket[instance]).  A
 @racket[#:derive] table is available within the module that declares the
-class; it is not currently serialized across module boundaries, so a
-user-defined class's derivations apply only to instances written in the
+protocol; it is not currently serialized across module boundaries, so a
+user-defined protocol's derivations apply only to instances written in the
 same file (the built-in monad stack works everywhere).}
 
 @defform*[
           [(instance head method ...)
            (instance (qual ... => head) method ...)
-           (instance head #:derive-superclasses method ...)
-           (instance (qual ... => head) #:derive-superclasses method ...)]
+           (instance head #:derive-supers method ...)
+           (instance (qual ... => head) #:derive-supers method ...)]
           #:grammar
-          ([head    (ClassName type ...)]
-           [qual    (ClassName var ...)]
+          ([head    (ProtocolName type ...)]
+           [qual    (ProtocolName var ...)]
            [method  (define (name p ...) body)])]{
 
-Provides an implementation of @racket[ClassName] for the given
+Provides an implementation of @racket[ProtocolName] for the given
 type(s).  The optional context @racket[(qual ... => head)] introduces
 hypothesis constraints that become available to the body and that
 must be discharged at each use site.
 
-Omitted methods fall back to the class's default implementations.
+Omitted methods fall back to the protocol's default implementations.
 
 A method may be written in @deftech{point-free} form — @racket[(define
 method fn)], aliasing an existing function — instead of spelling out
@@ -255,26 +256,26 @@ instance.  (The sole exception is an arity-0 return-typed method such as
 @racket[mempty]: alias it to a self-contained value, or define the
 aliased binding before the instance.)
 
-With @racket[#:derive-superclasses], the instance bundles only the
+With @racket[#:derive-supers], the instance bundles only the
 irreducible primitives, and the compiler synthesizes the missing
-superclass instances from the class's @tech{cross-class derivation}
+superprotocol instances from the protocol's @tech{cross-protocol derivation}
 table.  Writing a @racket[Monad] instance this way, for example, requires
 only @racket[pure] and one of @racket[flatmap]/@racket[join] — the
 @racket[Functor] and @racket[Applicative] instances are generated
-(inheriting the same context).  A superclass that already has an instance
+(inheriting the same context).  A superprotocol that already has an instance
 — hand-written or imported — is left untouched.  Note that @racket[pure]
 cannot be derived from @racket[Monad] (none of @racket[fmap],
 @racket[flatmap], @racket[join] can manufacture an @racket[(f a)] from a
 bare @racket[a]), so it must always be supplied; omitting it is a
 compile-time error.
 
-Because @racket[#:derive-superclasses] auto-fills both a class's own
-defaulted methods and its synthesized superclass methods, the two can
+Because @racket[#:derive-supers] auto-fills both a protocol's own
+defaulted methods and its synthesized superprotocol methods, the two can
 form a loop that would only manifest as infinite recursion at runtime:
-the deriving class leaves a method to its default, that default calls a
-superclass method, and the superclass method is filled from the
-@tech{cross-class derivation} table in terms of the first.  The compiler
-detects such a cross-class default/derived cycle and rejects the
+the deriving protocol leaves a method to its default, that default calls a
+superprotocol method, and the superprotocol method is filled from the
+@tech{cross-protocol derivation} table in terms of the first.  The compiler
+detects such a cross-protocol default/derived cycle and rejects the
 instance, naming the methods involved; defining any one of them directly
 in the instance breaks the cycle.
 
@@ -297,7 +298,7 @@ nested inside a larger type — not merely the enclosing signature:
 over-applying a constructor (@racket[(List Integer Integer)] — "List
 has kind @racket[(-> * *)] but is applied to 2 arguments"), applying
 an ordinary type (@racket[(Integer Boolean)] — "Integer has kind
-@racket[*] and cannot be applied"), or giving a class an argument of
+@racket[*] and cannot be applied"), or giving a protocol an argument of
 the wrong kind (@racket[(Functor Integer)] — "Functor expects an
 argument of kind @racket[(-> * *)], but this one has kind
 @racket[*]", with the caret on the @racket[Integer] argument).
@@ -306,23 +307,23 @@ Kinds are @emph{inferred}; annotations are rarely needed.  A data
 type's kind comes from how its parameters are used in its
 constructors (so @racket[(data (StateT s m a) (MkStateT (-> s (m (Pair
 s a)))))] gives @racket[StateT] the kind @racket[(-> * (-> (-> * *)
-(-> * *)))], with @racket[m] inferred as @racket[(-> * *)]); a class
+(-> * *)))], with @racket[m] inferred as @racket[(-> * *)]); a protocol
 parameter's kind comes from its method signatures (a parameter used as
 @racket[(s a)] is @racket[(-> * *)]); and a higher-kinded type
-variable in any signature is inferred from its use.  A class parameter
+variable in any signature is inferred from its use.  A protocol parameter
 may still be annotated explicitly with @racket[(param :: kind)] in the
 @racket[protocol] head when desired.
 
 @subsection[#:tag "sf-equality-constraint"]{Type-equality constraints}
 
 The constraint @racket[(~ _τ _σ)] asserts that two types are
-@emph{equal}.  It occupies the same @racket[=>] position as a class
+@emph{equal}.  It occupies the same @racket[=>] position as a protocol
 constraint — in a method or function signature's qualified scheme, or
-in an @racket[instance] context — but it is not a type class: it has
+in an @racket[instance] context — but it is not a protocol: it has
 no instances and no dictionary.  It is discharged structurally, by
 @emph{unification} of its two arguments; for fully-resolved concrete
 types that simply means the two types are the same.  @racketidfont{~}
-is the one constraint head that is not a class name (class names must
+is the one constraint head that is not a protocol name (protocol names must
 begin with an uppercase letter).
 
 @bold{Explicitly}, a signature may demand that two of its type
@@ -748,7 +749,7 @@ Imports bindings from another Rackton or Racket module.  When the
 target is a @hash-lang[] @racketmodfont{rackton} module (or any
 module that emits a @racketmodfont{rackton-schemes} submodule), the
 type checker also recovers its schemes, data constructors, type
-constructors, classes, and instances.  Plain Racket modules are
+constructors, protocols, and instances.  Plain Racket modules are
 imported at runtime only; their bindings are invisible to the type
 checker.}
 

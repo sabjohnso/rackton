@@ -117,6 +117,6 @@ Run it (built-in sample, or a file):
 @item{@filepath{tests/} — every feature has a feature-named test file.
       These are the most precise specification of what works and how.}
 @item{@filepath{private/prelude.rkt} — the prelude is itself a Rackton
-      program, defining most of the class hierarchy and the standard
+      program, defining most of the protocol hierarchy and the standard
       ADTs.  Reading it is one of the fastest ways to internalise the
       idioms.}]

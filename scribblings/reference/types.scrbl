@@ -5,7 +5,8 @@
 @title[#:tag "types"]{Built-in types}
 This chapter enumerates every type constructor and every data
 constructor that the Rackton prelude makes available without any user
-declaration.  Type classes and their methods are documented in
+declaration.  Protocols (Haskell's @italic{type classes}) and their
+methods are documented in
 @secref["classes"]; the value bindings that operate on these types are
 in @secref["values"].
 
@@ -234,12 +235,12 @@ until a value is available.  See @racket[new-chan], @racket[send-chan],
 The handle returned by @racket[fork-io]: an opaque token identifying
 a running OS-level thread.  @racket[wait-thread] joins on the
 underlying thread.  See also @racket[Future] (a sibling abstraction
-used by the @racket[Concurrent] class).}
+used by the @racket[Concurrent] protocol).}
 
 @defidform[#:kind "type" Future]{
 
 The result of a concurrent computation spawned with @racket[fork-c].
-Read via the @racket[Concurrent] class's @racket[await-c] method.}
+Read via the @racket[Concurrent] protocol's @racket[await-c] method.}
 
 @section[#:tag "ref-stm"]{Software transactional memory}
 

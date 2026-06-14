@@ -120,7 +120,7 @@
 ;;                   each `[Super …]` clause in the body's `#:derive` list,
 ;;                   the canonical bodies that fill `Super`'s methods in
 ;;                   terms of this class's own methods.  Consumed when an
-;;                   instance opts into `#:derive-superclasses`.  Empty
+;;                   instance opts into `#:derive-supers`.  Empty
 ;;                   for classes that declare no derivations.  Not
 ;;                   serialized (like `defaults`), so a USER class's
 ;;                   derivations are available only within its defining

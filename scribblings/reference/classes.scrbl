@@ -2,11 +2,12 @@
 @require[scribble/manual
          (for-label rackton)]
 
-@title[#:tag "classes"]{Built-in type classes}
+@title[#:tag "classes"]{Built-in protocols}
 @declare-exporting[rackton]
 
-This chapter lists every type class shipped with the Rackton prelude
-along with the methods declared by each.  Method signatures are shown
+This chapter lists every protocol (Haskell's @italic{type class}) shipped
+with the Rackton prelude along with the methods declared by each.  Method
+signatures are shown
 in @racket[defproc] form for readability; in the underlying type system
 each method has the curried scheme @racket[(All (a ...) ((C a ...) => τ))]
 where @racket[τ] is the curried form of the listed signature.  All
@@ -14,7 +15,7 @@ methods are correspondingly callable as partial applications.
 
 @section{Equality and ordering}
 
-@defidform[#:kind "class" Eq]{
+@defidform[#:kind "protocol" Eq]{
 
 Decidable equality.
 
@@ -29,9 +30,9 @@ Built-in instances: @racket[Integer], @racket[Float], @racket[Rational],
 @racket[Complex], @racket[ComplexExact], @racket[Boolean],
 @racket[String], @racket[Char], @racket[Bytes].}
 
-@defidform[#:kind "class" Ord]{
+@defidform[#:kind "protocol" Ord]{
 
-Total ordering.  Superclass: @racket[Eq].
+Total ordering.  Superprotocol: @racket[Eq].
 
 @deftogether[(
   @defproc[(< [x a] [y a]) Boolean]
@@ -48,7 +49,7 @@ Built-in instances: @racket[Integer], @racket[Float], @racket[Rational],
 
 @section{Numeric hierarchy}
 
-@defidform[#:kind "class" Num]{
+@defidform[#:kind "protocol" Num]{
 
 Additive and multiplicative arithmetic.
 
@@ -64,9 +65,9 @@ The basic arithmetic operations.}
 Built-in instances: @racket[Integer], @racket[Float], @racket[Rational],
 @racket[Complex], @racket[ComplexExact].}
 
-@defidform[#:kind "class" Fractional]{
+@defidform[#:kind "protocol" Fractional]{
 
-Reals supporting division.  Superclass: @racket[Num].
+Reals supporting division.  Superprotocol: @racket[Num].
 
 @defproc[(float-div [x a] [y a]) a]{
 
@@ -74,9 +75,9 @@ Real division.}
 
 Built-in instances: @racket[Float], @racket[Rational], @racket[Complex].}
 
-@defidform[#:kind "class" Integral]{
+@defidform[#:kind "protocol" Integral]{
 
-Integer-style arithmetic.  Superclass: @racket[Num].
+Integer-style arithmetic.  Superprotocol: @racket[Num].
 
 @deftogether[(
   @defproc[(div  [x a] [y a]) a]
@@ -88,9 +89,9 @@ Integer division, modulus, truncating quotient, and remainder.}
 
 Built-in instance: @racket[Integer].}
 
-@defidform[#:kind "class" Real]{
+@defidform[#:kind "protocol" Real]{
 
-Reals (totally ordered numbers).  Superclasses: @racket[Num],
+Reals (totally ordered numbers).  Superprotocols: @racket[Num],
 @racket[Ord].
 
 @defproc[(to-rational [x a]) Rational]{
@@ -99,9 +100,9 @@ Lossless conversion to @racket[Rational] when possible.}
 
 Built-in instances: @racket[Integer], @racket[Float], @racket[Rational].}
 
-@defidform[#:kind "class" Floating]{
+@defidform[#:kind "protocol" Floating]{
 
-Reals with transcendental functions.  Superclass: @racket[Fractional].
+Reals with transcendental functions.  Superprotocol: @racket[Fractional].
 
 @deftogether[(
   @defthing[#:kind "method" pi a]
@@ -117,9 +118,9 @@ Reals with transcendental functions.  Superclass: @racket[Fractional].
 @racket[ann] if ambiguous).  Built-in instances: @racket[Float],
 @racket[Complex].}}
 
-@defidform[#:kind "class" RealFrac]{
+@defidform[#:kind "protocol" RealFrac]{
 
-Reals with integer-rounding operations.  Superclasses: @racket[Real],
+Reals with integer-rounding operations.  Superprotocols: @racket[Real],
 @racket[Fractional].
 
 @deftogether[(
@@ -132,9 +133,9 @@ Convert to @racket[Integer] in four different rounding modes.}
 
 Built-in instances: @racket[Float], @racket[Rational].}
 
-@defidform[#:kind "class" RealFloat]{
+@defidform[#:kind "protocol" RealFloat]{
 
-Floating-point reals.  Superclasses: @racket[RealFrac],
+Floating-point reals.  Superprotocols: @racket[RealFrac],
 @racket[Floating].
 
 @deftogether[(
@@ -148,7 +149,7 @@ Built-in instance: @racket[Float].}
 
 @section{Display}
 
-@defidform[#:kind "class" Show]{
+@defidform[#:kind "protocol" Show]{
 
 Conversion to a printable @racket[String].
 
@@ -163,7 +164,7 @@ is available on any @racket[data] via @racket[#:deriving Show].}
 
 @section{Functor hierarchy}
 
-@defidform[#:kind "class" Functor]{
+@defidform[#:kind "protocol" Functor]{
 
 Type constructors @racket[(f :: (-> * *))] supporting a map.
 
@@ -176,10 +177,10 @@ Built-in instances: @racket[Maybe], @racket[List], @racket[Either a],
 
 Lift a function under the functor.}
 
-@defidform[#:kind "class" Applicative]{
+@defidform[#:kind "protocol" Applicative]{
 
 Functors with a context-introducing @racket[pure] and a way to apply
-context-wrapped functions.  Superclass: @racket[Functor].
+context-wrapped functions.  Superprotocol: @racket[Functor].
 
 @deftogether[(
   @defproc[(pure    [a a])                                          (f a)]
@@ -197,9 +198,9 @@ two are derived.  Omitting all three is a compile-time error.}
 
 Built-in instances: all the @racket[Functor] instances above.}
 
-@defidform[#:kind "class" Monad]{
+@defidform[#:kind "protocol" Monad]{
 
-Computations that sequence with binding.  Superclass:
+Computations that sequence with binding.  Superprotocol:
 @racket[Applicative].
 
 @deftogether[(
@@ -221,7 +222,7 @@ under @racket[atomically].}
 
 @section{Folding and traversal}
 
-@defidform[#:kind "class" Foldable]{
+@defidform[#:kind "protocol" Foldable]{
 
 Type constructors that can be folded down to a summary.
 
@@ -236,7 +237,7 @@ Type constructors that can be folded down to a summary.
 Built-in instances: @racket[List], @racket[Maybe].  Derived via
 @racket[#:deriving Foldable] on @racket[data].}
 
-@defidform[#:kind "class" Traversable]{
+@defidform[#:kind "protocol" Traversable]{
 
 Containers that can be walked applicatively.
 
@@ -247,7 +248,7 @@ The @racket[f] in the result must satisfy @racket[Applicative].}
 Built-in instances: @racket[List], @racket[Maybe].  Derived via
 @racket[#:deriving Traversable].}
 
-@defidform[#:kind "class" Bifunctor]{
+@defidform[#:kind "protocol" Bifunctor]{
 
 Type constructors @racket[(p :: (-> * (-> * *)))] supporting a
 two-sided map.
@@ -283,13 +284,13 @@ Method names are non-infix and distinct from existing prelude names
 @racket[on-first]/@racket[on-second] rather than @racket[Bifunctor]'s
 @racket[first]/@racket[second]).  @racket[ident], @racket[arr],
 @racket[arrow-app], and the tensor introductions @racket[mk-prod] /
-@racket[inj-left] / @racket[inj-right] are return-typed (the class
+@racket[inj-left] / @racket[inj-right] are return-typed (the protocol
 parameter appears only in the result), so each call site resolves its
 instance from the expected type, like @racket[pure].  The @racket[proc]
 notation (see @secref["arrow-notation"]) desugars to these combinators
 and is therefore polymorphic in the arrow's tensors.
 
-@defidform[#:kind "class" Prod]{
+@defidform[#:kind "protocol" Prod]{
 
 A binary product tensor @racket[(p :: (-> * (-> * *)))] — introduction
 plus the two projections.  (Named @racket[Prod], not @tt{Product}, to
@@ -305,7 +306,7 @@ project the halves.  @racket[mk-prod] is return-typed.}
 
 Built-in instance: @racket[Pair] (the strict prelude product).}
 
-@defidform[#:kind "class" Coprod]{
+@defidform[#:kind "protocol" Coprod]{
 
 A binary coproduct tensor @racket[(s :: (-> * (-> * *)))] — two
 injections plus the eliminator, dual to @racket[Prod].
@@ -322,7 +323,7 @@ return-typed.}
 Built-in instance: @racket[Either] (@racket[Left] left, @racket[Right]
 right).}
 
-@defidform[#:kind "class" Category]{
+@defidform[#:kind "protocol" Category]{
 
 Type constructors @racket[(cat :: (-> * (-> * *)))] that compose like
 functions.
@@ -338,11 +339,11 @@ functions.
 Built-in instance: @racket[(->)] (functions, where @racket[ident] is the
 identity function and @racket[comp] is composition).}
 
-@defidform[#:kind "class" Arrow]{
+@defidform[#:kind "protocol" Arrow]{
 
 @racket[Category] arrows over a product @racket[p] (determined by
 @racket[cat]) that can lift a plain function and act on one component of
-a @racket[p].  Superclasses / obligations: @racket[(Category cat)] and
+a @racket[p].  Superprotocols / obligations: @racket[(Category cat)] and
 @racket[(Prod p)], with @racket[cat -> p].
 
 @deftogether[(
@@ -363,7 +364,7 @@ them against its concrete product.}
 
 Built-in instance: @racket[(Arrow (->) Pair)].}
 
-@defidform[#:kind "class" ArrowChoice]{
+@defidform[#:kind "protocol" ArrowChoice]{
 
 @racket[Arrow]s that route a coproduct @racket[s] through one of two
 arrows by branch (the left injection is the active branch).  Obligations:
@@ -384,7 +385,7 @@ coproduct.}
 
 Built-in instance: @racket[(ArrowChoice (->) Pair Either)].}
 
-@defidform[#:kind "class" ArrowApply]{
+@defidform[#:kind "protocol" ArrowApply]{
 
 @racket[Arrow]s in which an arrow can be fed in as data alongside its
 argument and run.  Obligation: @racket[(Arrow cat p)], with
@@ -397,7 +398,7 @@ second half.}
 
 Built-in instance: @racket[(ArrowApply (->) Pair)].}
 
-@defidform[#:kind "class" ArrowLoop]{
+@defidform[#:kind "protocol" ArrowLoop]{
 
 @racket[Arrow]s supporting value recursion — the @racket[c] half of the
 output is fed back as the @racket[c] half of the input.  Obligation:
@@ -417,7 +418,7 @@ define one — see @racket[LFun] / @racket[LPair] in
 
 @section{Semigroup and Monoid}
 
-@defidform[#:kind "class" Semigroup]{
+@defidform[#:kind "protocol" Semigroup]{
 
 Types with an associative combining operation.
 
@@ -429,9 +430,9 @@ Built-in instances: @racket[String] (concatenation), @racket[List]
 (append), @racket[Sum] (addition), @racket[Product] (multiplication).
 Derived via @racket[#:deriving Semigroup].}
 
-@defidform[#:kind "class" Monoid]{
+@defidform[#:kind "protocol" Monoid]{
 
-Semigroups with an identity.  Superclass: @racket[Semigroup].
+Semigroups with an identity.  Superprotocol: @racket[Semigroup].
 
 @defthing[#:kind "method" mempty a]{
 
@@ -441,21 +442,21 @@ ambiguous.}
 Built-in instances: @racket[String], @racket[List], @racket[Sum],
 @racket[Product].  Derived via @racket[#:deriving Monoid].}
 
-@section{MTL-style monadic classes}
+@section{MTL-style monadic protocols}
 
-These classes abstract over the state / reader / writer / error
+These protocols abstract over the state / reader / writer / error
 effects so a single function body can run against any transformer
 stack offering the effect.
 
-@margin-note{The classes themselves are in the prelude, but their
+@margin-note{The protocols themselves are in the prelude, but their
 @emph{instances} ship with the transformer modules under
 @tt{rackton/control/monad} — import the transformer you use
 (see @secref["stdlib"]).}
 
-@defidform[#:kind "class" MonadState]{
+@defidform[#:kind "protocol" MonadState]{
 
 @racket[(MonadState s m)]: monads supporting access to a single
-mutable state of type @racket[s].  Superclass: @racket[Monad m].
+mutable state of type @racket[s].  Superprotocol: @racket[Monad m].
 Functional dependency: @racket[m -> s].
 
 @deftogether[(
@@ -468,13 +469,13 @@ Functional dependency: @racket[m -> s].
 lifted @racket[StateT] instances through the other transformers.
 
 For working directly with the @racket[State] monad rather than
-polymorphically, see also the non-class helpers @racket[get-state],
+polymorphically, see also the non-method helpers @racket[get-state],
 @racket[put-state], and @racket[modify-state].}}
 
-@defidform[#:kind "class" MonadEnv]{
+@defidform[#:kind "protocol" MonadEnv]{
 
 @racket[(MonadEnv r m)]: monads supporting access to a read-only
-environment of type @racket[r].  Superclass: @racket[Monad m].
+environment of type @racket[r].  Superprotocol: @racket[Monad m].
 Functional dependency: @racket[m -> r].
 
 @deftogether[(
@@ -485,13 +486,13 @@ Functional dependency: @racket[m -> r].
 @racket[EnvT r m] for any @racket[Monad m], plus lifted instances
 through the other transformers.
 
-For working directly with the @racket[Env] monad, see the non-class
+For working directly with the @racket[Env] monad, see the non-method
 helpers @racket[ask] and @racket[local].}}
 
-@defidform[#:kind "class" MonadWriter]{
+@defidform[#:kind "protocol" MonadWriter]{
 
 @racket[(MonadWriter w m)]: monads supporting an append-only log of
-type @racket[w].  Superclasses: @racket[Monad m], @racket[Monoid w].
+type @racket[w].  Superprotocols: @racket[Monad m], @racket[Monoid w].
 Functional dependency: @racket[m -> w].
 
 @deftogether[(
@@ -502,12 +503,12 @@ Functional dependency: @racket[m -> w].
 Built-in instance: @racket[WriterT w m].
 
 For working directly with @racket[WriterT] rather than polymorphically,
-see the non-class helper @racket[tell].}}
+see the non-method helper @racket[tell].}}
 
-@defidform[#:kind "class" MonadError]{
+@defidform[#:kind "protocol" MonadError]{
 
 @racket[(MonadError e m)]: monads supporting typed short-circuiting
-errors of type @racket[e].  Superclass: @racket[Monad m].  Functional
+errors of type @racket[e].  Superprotocol: @racket[Monad m].  Functional
 dependency: @racket[m -> e].
 
 @deftogether[(
@@ -517,12 +518,12 @@ dependency: @racket[m -> e].
 Built-in instance: @racket[ExceptT e m].
 
 For working directly with @racket[ExceptT] rather than polymorphically,
-see the non-class helpers @racket[throw-error] and @racket[catch-error].}}
+see the non-method helpers @racket[throw-error] and @racket[catch-error].}}
 
-@defidform[#:kind "class" Concurrent]{
+@defidform[#:kind "protocol" Concurrent]{
 
 @racket[(Concurrent m)]: monads supporting forked async computations.
-Superclass: @racket[Monad m].
+Superprotocol: @racket[Monad m].
 
 @deftogether[(
   @defproc[(fork-c  [k (m a)])      (m (Future a))]
@@ -533,7 +534,7 @@ Superclass: @racket[Monad m].
 instances: @racket[IO] (real OS threads via @racket[fork-io]),
 @racket[Identity] (deterministic, single-threaded).}}
 
-@defidform[#:kind "class" MonadTrans]{
+@defidform[#:kind "protocol" MonadTrans]{
 
 @racket[(MonadTrans t)]: monad transformers — type constructors
 @racket[t] of kind @racket[(-> (-> * *) (-> * *))] that lift an inner
@@ -548,10 +549,10 @@ needs a surrounding annotation.  Built-in instances:
 @racket[Monoid w]), and @racket[ExceptT e].  Provided by
 @racketmodname[rackton/control/monad/trans].}}
 
-@defidform[#:kind "class" MonadIO]{
+@defidform[#:kind "protocol" MonadIO]{
 
 @racket[(MonadIO m)]: monads into which an @racket[IO] action can be
-embedded.  Superclass: @racket[Monad m].
+embedded.  Superprotocol: @racket[Monad m].
 
 @defproc[(lift-io [io (IO a)]) (m a)]{
 
@@ -562,10 +563,10 @@ itself (identity); each transformer lifts the inner monad's
 the way down.  Transformer instances are provided by
 @racketmodname[rackton/control/monad/trans].}}
 
-@defidform[#:kind "class" Storable]{
+@defidform[#:kind "protocol" Storable]{
 
 @racket[(Storable a)]: types that can be read from and written to raw
-memory through a @racket[Ptr] (Haskell's @tt{Storable}).  The class is in
+memory through a @racket[Ptr] (Haskell's @tt{Storable}).  The protocol is in
 the prelude because @racket[peek] is return-typed; the instances live in
 @racketmodname[rackton/foreign/ptr].
 

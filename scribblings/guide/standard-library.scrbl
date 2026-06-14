@@ -19,7 +19,7 @@
 
 @title[#:tag "stdlib-guide"]{The standard library}
 
-Rackton's auto-imported prelude is deliberately small — the class
+Rackton's auto-imported prelude is deliberately small — the protocol
 hierarchy (@racket[Eq], @racket[Ord], @racket[Functor], @racket[Monad],
 …), the core ADTs (@racket[Maybe], @racket[List], @racket[Pair],
 @racket[Either]), the numeric tower, and a handful of combinators.
@@ -107,7 +107,7 @@ module — @racketmodname[rackton/control/monad/state],
 @section{@tt{numeric} — beyond the tower}
 
 The numeric @emph{tower} (the @racket[Num] / @racket[Integral] /
-@racket[Floating] / … classes and their instances) is in the prelude;
+@racket[Floating] / … protocols and their instances) is in the prelude;
 the derived operations are in @tt{rackton/numeric}.
 @racketmodname[rackton/numeric/integer] has @racket[num-gcd] /
 @racket[num-lcm] / @racket[num-factorial], @racketmodname[rackton/numeric/real]

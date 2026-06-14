@@ -234,7 +234,7 @@
   (define sch (analysis-scheme-of a sym))
   (cond
     [sch (format "~s :: ~a" sym (scheme->datum sch))]
-    [(and env (env-ref-class env sym)) (format "~s — class" sym)]
+    [(and env (env-ref-class env sym)) (format "~s — protocol" sym)]
     [(and env (env-ref-tcon env sym))
      (format "~s — type constructor (arity ~a)"
              sym (tcon-info-arity (env-ref-tcon env sym)))]

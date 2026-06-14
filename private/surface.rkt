@@ -1249,7 +1249,7 @@
   (syntax-parse stx
     [(name:id arg ...+)
      #:fail-unless (constraint-head-id? (syntax->datum #'name))
-     "class name in a constraint must begin with an uppercase letter"
+     "protocol name in a constraint must begin with an uppercase letter"
      (constraint (syntax->datum #'name)
                  (for/list ([a (in-list (syntax->list #'(arg ...)))])
                    (parse-type a))
@@ -1470,19 +1470,19 @@
                 methods
                 stx)]
 
-    ;; Opt-in cross-class derivation.  `#:derive-superclasses` directly
+    ;; Opt-in cross-class derivation.  `#:derive-supers` directly
     ;; after the head bundles the irreducible primitives; the compiler
     ;; synthesizes the missing superclass instances.  These two clauses
     ;; must precede the plain instance clauses so the keyword is consumed
     ;; here rather than captured as the first body item.
-    [(instance (ctx ...+ => head) #:derive-superclasses body ...)
+    [(instance (ctx ...+ => head) #:derive-supers body ...)
      (top:derive-instance (for/list ([c (in-list (syntax->list #'(ctx ...)))])
                             (parse-constraint c))
                           (parse-constraint #'head)
                           (for/list ([m (in-list (syntax->list #'(body ...)))])
                             (parse-instance-method m))
                           stx)]
-    [(instance head #:derive-superclasses body ...)
+    [(instance head #:derive-supers body ...)
      (top:derive-instance '()
                           (parse-constraint #'head)
                           (for/list ([m (in-list (syntax->list #'(body ...)))])
@@ -1541,11 +1541,11 @@
   (syntax-parse stx
     [c:id
      #:fail-unless (uppercase-id? (syntax->datum #'c))
-     "superclass in a bound must begin with an uppercase letter (did you mean :: for a kind?)"
+     "superprotocol in a bound must begin with an uppercase letter (did you mean :: for a kind?)"
      (constraint (syntax->datum #'c) (list var) stx)]
     [(c:id arg ...+)
      #:fail-unless (uppercase-id? (syntax->datum #'c))
-     "superclass head in a bound must begin with an uppercase letter (did you mean :: for a kind?)"
+     "superprotocol head in a bound must begin with an uppercase letter (did you mean :: for a kind?)"
      (constraint (syntax->datum #'c)
                  (append (for/list ([a (in-list (syntax->list #'(arg ...)))])
                            (parse-type a))
@@ -1560,17 +1560,17 @@
     #:datum-literals (:: =>)
     [v:id
      #:fail-unless (lowercase-id? (syntax->datum #'v))
-     "class parameter must be a lowercase identifier"
+     "protocol parameter must be a lowercase identifier"
      (values (ty:var (syntax->datum #'v) #'v) '())]
     [(v:id :: k)
      #:fail-unless (lowercase-id? (syntax->datum #'v))
-     "class parameter must be a lowercase identifier"
+     "protocol parameter must be a lowercase identifier"
      (values (ty:var (syntax->datum #'v)
                      (syntax-property #'v 'rackton:kind (parse-kind-stx #'k)))
              '())]
     [(v:id => b ...+)
      #:fail-unless (lowercase-id? (syntax->datum #'v))
-     "class parameter must be a lowercase identifier"
+     "protocol parameter must be a lowercase identifier"
      (define var (ty:var (syntax->datum #'v) #'v))
      (values var
              (for/list ([b (in-list (syntax->list #'(b ...)))])
@@ -1583,7 +1583,7 @@
   (syntax-parse stx
     [(name:id binder ...+)
      #:fail-unless (uppercase-id? (syntax->datum #'name))
-     "class name must begin with an uppercase letter"
+     "protocol name must begin with an uppercase letter"
      (define-values (vars super-lists)
        (for/lists (vs ss)
                   ([b (in-list (syntax->list #'(binder ...)))])
@@ -1643,7 +1643,7 @@
   (syntax-parse stx
     [(super:id m ...+)
      #:fail-unless (uppercase-id? (syntax->datum #'super))
-     "superclass in #:derive must begin with an uppercase letter"
+     "superprotocol in #:derive must begin with an uppercase letter"
      (class-super-derive
       (syntax->datum #'super)
       (for/list ([md (in-list (syntax->list #'(m ...)))])

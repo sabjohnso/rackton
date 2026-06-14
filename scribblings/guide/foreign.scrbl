@@ -83,7 +83,7 @@ functions this way).
 @racketmodname[rackton/foreign/ptr] is the unsafe @tt{Foreign.Ptr} /
 @tt{Foreign.Marshal} core: an opaque @racket[(Ptr a)] (the @racket[a]
 is a phantom tag), allocation (@racket[malloc-bytes], @racket[free-ptr]),
-and reads/writes.  The prelude's @racket[Storable] class gives
+and reads/writes.  The prelude's @racket[Storable] protocol gives
 polymorphic @racket[peek] / @racket[poke]; its instances (for
 @racket[Integer] and @racket[Float]) live in that module.  @racket[peek]
 is return-typed, so the element type comes from the expected result —
@@ -113,5 +113,5 @@ you would C.
 Precise signatures are in the reference: @racket[foreign] and
 @racket[foreign-c] under
 @other-doc['(lib "rackton/scribblings/reference/rackton-reference.scrbl")]'s
-syntax forms, and the @racket[Storable] class under its classes
+syntax forms, and the @racket[Storable] protocol under its protocols
 section.

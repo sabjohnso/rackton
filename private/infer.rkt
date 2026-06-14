@@ -1940,7 +1940,7 @@
   env*)
 
 ;; Like `infer-program`, but also returns the post-expansion form list
-;; (with every `#:derive-superclasses` instance replaced by the plain
+;; (with every `#:derive-supers` instance replaced by the plain
 ;; instances it synthesized).  The elaborator drives codegen off THIS
 ;; list so the synthesized superclass instances are lowered too.
 ;; Run inference and also produce the codegen-plan: the tables codegen
@@ -1977,7 +1977,7 @@
     (run-phase-A env forms prior-declared))
   ;; ---- Cross-class derivation expansion ----
   ;; Now that every class (prelude, local, imported) is in env, rewrite
-  ;; each `#:derive-superclasses` instance into the plain instances it
+  ;; each `#:derive-supers` instance into the plain instances it
   ;; synthesizes.  Every later phase — and codegen — runs over `forms*`.
   (define forms* (expand-derive-instances forms env-after-A))
   ;; ---- Superclass existence ----
@@ -2027,7 +2027,7 @@
          #:unless (eq? (constraint-class s) '~))
     (unless (env-ref-class env (constraint-class s) #f)
       (raise-syntax-error 'infer
-        (format "class ~a: superclass ~a is not a defined class"
+        (format "protocol ~a: superprotocol ~a is not a defined protocol"
                 (constraint-class (top:class-head f))
                 (constraint-class s))
         (or (constraint-stx s) (top:class-stx f))))))
@@ -2064,7 +2064,7 @@
 
 ;; ----- cross-class derivation expansion ----------------------------
 ;;
-;; A `#:derive-superclasses` instance bundles only the irreducible
+;; A `#:derive-supers` instance bundles only the irreducible
 ;; primitives (e.g. `pure` + `flatmap`).  Rewrite it into plain
 ;; `top:instance` forms: one synthesized instance per MISSING superclass
 ;; (filling its methods from the deriving class's `#:derive` table and
@@ -2132,8 +2132,8 @@
   (define stx          (top:derive-instance-stx di))
   (define cinfo (env-ref-class env C #f))
   (unless cinfo
-    (raise-syntax-error 'derive-superclasses
-      (format "#:derive-superclasses on an instance of unknown class ~a" C)
+    (raise-syntax-error 'derive-supers
+      (format "#:derive-supers on an instance of unknown protocol ~a" C)
       stx))
   (define closure (superclass-name-closure env C))
   (define merged  (merged-derive-table env C closure))
@@ -3056,7 +3056,7 @@
 ;; takes the prior st and returns the next.
 (define (infer-program-step form env declared st)
   (cond
-    ;; A `#:derive-superclasses` instance expands into several plain
+    ;; A `#:derive-supers` instance expands into several plain
     ;; instances; register each so the REPL behaves like batch mode.
     [(top:derive-instance? form)
      (for/fold ([e env] [d declared] [st st] #:result (values e d st))
@@ -3421,7 +3421,7 @@
       (match a
         [(tvar n) n]
         [_ (raise-syntax-error 'infer
-              "class head arguments must be (kind-annotated) type variables"
+              "protocol head arguments must be (kind-annotated) type variables"
               stx)])))
   ;; A parameter with no explicit `::` kind may still be higher-kinded by
   ;; virtue of a superclass: wherever `name` appears as a direct argument
@@ -3538,7 +3538,7 @@
          (hash-set acc method-name 'return)]
         [else
          (raise-syntax-error 'infer
-           (format "class method ~s does not have any argument whose type mentions a class parameter — single dispatch cannot resolve it"
+           (format "protocol method ~s does not have any argument whose type mentions a protocol parameter — single dispatch cannot resolve it"
                    method-name)
            stx)])))
   ;; Compute per-method dict requirements — for each method, the list
@@ -4503,7 +4503,7 @@
        (string-join (map symbol->string cyc) " → "))
       stx)))
 
-;; Cross-class default/derived cycle check for a `#:derive-superclasses`
+;; Cross-class default/derived cycle check for a `#:derive-supers`
 ;; instance.  `check-instance-default-cycle` above is intra-class: it
 ;; only sees edges between methods of ONE class, so it cannot detect a
 ;; loop that runs between a deriving-class method (left to its class
@@ -4552,7 +4552,7 @@
       (format
        (string-append
         "instance ~s is incomplete: methods ~s form a cyclic "
-        "default/derived chain across classes (~a); define at least one "
+        "default/derived chain across protocols (~a); define at least one "
         "of them directly in the instance to break the cycle.")
        (pred->datum head-pred)
        cyc
@@ -4578,7 +4578,7 @@
   (define cinfo (env-ref-class env class-name))
   (unless cinfo
     (raise-syntax-error 'infer
-      (format "unknown class: ~s~a"
+      (format "unknown protocol: ~s~a"
               class-name (suggest-similar class-name env 'class))
       stx))
   ;; Reject duplicate instance registrations (heads
@@ -4619,7 +4619,7 @@
         [arg-count   (length inst-args-raw)])
     (unless (= arg-count param-count)
       (raise-syntax-error 'infer
-        (format "instance head for class ~s expects ~a type argument~a ~s, but got ~a: ~s"
+        (format "instance head for protocol ~s expects ~a type argument~a ~s, but got ~a: ~s"
                 class-name param-count (if (= param-count 1) "" "s")
                 (class-info-params cinfo) arg-count
                 (pretty-pred head-pred-raw))

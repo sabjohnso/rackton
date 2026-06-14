@@ -21,7 +21,7 @@ It speaks LSP over stdio and provides:
        does not parse — the normal mid-edit state — does not blind
        the analysis to the rest of the file.}
  @item{@bold{hover} — the type scheme of the name at point (or its
-       kind, for types and classes).}
+       kind, for types and protocols).}
  @item{@bold{completion} — session names, imported names, prelude
        names, and the surface keywords; while the buffer is broken
        mid-edit, candidates fall back to the last parse's definitions
