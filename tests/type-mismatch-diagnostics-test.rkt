@@ -137,3 +137,32 @@
             (variable-reference->namespace (#%variable-reference)))
       #f))
   (check-equal? blamed 'define))
+
+(test-case "a missing-instance error from a match clause blames the clause"
+  ;; The arm binds an existential (Show a) value but uses `<`, which
+  ;; needs (Ord a); that constraint is reduced against the pattern's
+  ;; existential hypotheses, so the error is blamed on the clause —
+  ;; and the skolem reads as the existential variable `a`.
+  (define-values (msg blamed)
+    (let ([captured #f])
+      (values
+       (with-handlers ([exn:fail?
+                        (lambda (e)
+                          (when (exn:fail:syntax? e)
+                            (set! captured
+                                  (and (pair? (exn:fail:syntax-exprs e))
+                                       (syntax->datum
+                                        (car (exn:fail:syntax-exprs e))))))
+                          (exn-message e))])
+         (eval #'(rackton
+                  (data ExistsShow (PackShow #:forall (a) #:where (Show a) a))
+                  (: bad (-> ExistsShow String))
+                  (define (bad e)
+                    (match e
+                      [(PackShow x) (if (< x x) "y" "n")])))
+               (variable-reference->namespace (#%variable-reference)))
+         (fail "expected a compile error but the program compiled"))
+       captured)))
+  (check-true  (regexp-match? #rx"no instance for \\(Ord a\\)" msg) msg)
+  (check-false (regexp-match? #rx"skolem" msg) msg)
+  (check-equal? (and (pair? blamed) (car blamed)) '(PackShow x)))
