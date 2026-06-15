@@ -936,13 +936,25 @@ A list guaranteed to have at least one element, so @racket[ne-head] and
 @defproc[(ne-map [f (-> a b)] [ne (NonEmpty a)]) (NonEmpty b)]{Maps @racket[f] over
   every element.}
 
-Beyond the accessors, @racket[NonEmpty] has @racket[Functor],
-@racket[FunctorApply], @racket[Comonad], and @racket[ComonadApply]
-instances (from @racketmodname[rackton/control/apply] and
+@defproc[(ne-flatmap [f (-> a (NonEmpty b))] [ne (NonEmpty a)]) (NonEmpty b)]{Maps
+  @racket[f] over every element and concatenates the resulting non-empty lists
+  (the cartesian concatMap), staying non-empty. The @racket[Applicative] and
+  @racket[Monad] instances both delegate here.}
+
+Beyond the accessors, @racket[NonEmpty] has @racket[Functor], the
+@bold{cartesian} @racket[Applicative]/@racket[Monad] (the nonempty analog
+of the @racket[List] monad — @racket[pure] is a singleton, @racket[flatmap]
+is concatMap staying nonempty), and @racket[FunctorApply],
+@racket[Comonad], and @racket[ComonadApply] instances (the latter from
+@racketmodname[rackton/control/apply] and
 @racketmodname[rackton/control/comonad]).  It is the canonical non-trivial
 comonad — @racket[extract] is the head and @racket[duplicate] the
-non-empty suffixes — and its @racket[FunctorApply] is @emph{zippy}
-(positionwise), unlike @racket[List]'s cartesian @racket[Applicative].
+non-empty suffixes.  The cartesian @racket[fapply] (@racket[<*>]) and the
+@emph{zippy} (positionwise) @racket[apply] (@racket[<@>]) coexist
+deliberately, exactly as Haskell separates @racket[Applicative] from
+@racket[ComonadApply]: the monad law forces @racket[<*>] cartesian, while
+the zippy @racket[apply] is what keeps @racket[ComonadApply] consistent
+with the comonad.
 
 @defproc[(ne-length [ne (NonEmpty a)]) Integer]{Returns the number of elements
   (always at least one).}
