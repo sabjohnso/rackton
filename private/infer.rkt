@@ -3410,6 +3410,51 @@
 
 ;; ----- class / instance elaboration --------------------------------
 
+;; Type-check one `#:laws` entry of a protocol.  A law must hold for an
+;; arbitrary instance, so each class parameter is skolemized to a rigid
+;; constant and the class head plus its superclasses are assumed as
+;; hypotheses; the quantifier binders are bound at their annotated types
+;; (parameters replaced by their skolems); and the body must type to
+;; `Boolean` using only constraints those hypotheses entail.  Raises a
+;; syntax error blaming the law when it does not — making the law a
+;; checked part of the protocol's contract rather than inert text.  This
+;; mirrors `handle-def-form`'s discipline (skolemize the declared
+;; context, infer the body, reduce residual constraints against it).
+(define (check-class-law law class-name class-params super-preds env)
+  (match-define (class-law law-name binders body law-stx) law)
+  (define skol
+    (for/fold ([s empty-subst]) ([p (in-list class-params)])
+      (subst-extend s p (tcon (gensym (format "$skolem.~a." p))))))
+  (define hyps
+    (cons (apply-subst skol (pred class-name (map tvar class-params)))
+          (for/list ([sp (in-list super-preds)]) (apply-subst skol sp))))
+  (define env+binders
+    (for/fold ([e env]) ([b (in-list binders)])
+      (kind-check-surface e (law-binder-type b))
+      (env-extend-var e (law-binder-name b)
+                      (scheme '() (apply-subst skol
+                                    (resolve-type (law-binder-type b) env))))))
+  (define-values (s t st1) (infer-expr body env+binders (make-infer-state)))
+  (define s-bool
+    (with-handlers
+     ([exn:fail:unify?
+       (lambda (_)
+         (raise-syntax-error 'infer
+           (format "law ~s of protocol ~s must be a Boolean equation, but its body has type ~a"
+                   law-name class-name (pretty-type (apply-subst s t)))
+           law-stx))])
+     (unify (apply-subst s t) t-bool)))
+  (define final (subst-compose s-bool s))
+  (define st2 (st:apply-subst-to-preds st1 final))
+  (define residual
+    (parameterize ([current-reduce-blame law-stx])
+      (reduce-context env hyps (st:preds st2))))
+  (unless (null? residual)
+    (raise-syntax-error 'infer
+      (format "law ~s of protocol ~s relies on constraints the protocol does not guarantee: ~a"
+              law-name class-name (string-join (map pretty-pred residual) ", "))
+      law-stx)))
+
 (define (handle-class-form supers head methods stx env declared)
   (define class-name (constraint-class head))
   ;; The head's args may be plain ty:var nodes or kind-annotated
@@ -3565,10 +3610,13 @@
         (for/fold ([h (hasheq)]) ([d (in-list (class-super-derive-methods m))])
           (hash-set h (method-default-name d) (method-default-expr d))))
       (hash-set acc (class-super-derive-super m) inner)))
+  ;; Named, quantified law declarations from the body's `#:laws` clause.
+  (define laws
+    (for/list ([m (in-list methods)] #:when (class-law? m)) m))
   (define info (class-info class-name class-params class-kinds
                            super-preds method-schemes defaults
                            dispatchpos fundeps dictreqs
-                           type-families super-derives))
+                           type-families super-derives laws))
   ;; When a class is redeclared, its previously-registered
   ;; instances belong to a now-superseded class.  Clear them out so
   ;; the new declaration starts fresh — without this the duplicate-
@@ -3579,7 +3627,13 @@
       [(env-ref-class env class-name #f)
        (env-clear-instances env class-name)]
       [else env]))
-  (values (env-extend-class env* class-name info) declared))
+  (define env-final (env-extend-class env* class-name info))
+  ;; Check the laws once the class (and thus its own methods) is in
+  ;; scope, so a law may use the class's methods and any superclass
+  ;; method it `#:requires`.
+  (for ([law (in-list laws)])
+    (check-class-law law class-name class-params super-preds env-final))
+  (values env-final declared))
 
 ;; Process a (require "file.rkt" …) form inside a rackton block.
 ;; For each spec, attempt to load the corresponding (submod spec

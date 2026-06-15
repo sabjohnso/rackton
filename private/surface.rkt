@@ -1853,7 +1853,48 @@
                                    (parse-constraint cs)))
                         supers)
                 methods)]
+         [(#:laws (clause ...+))
+          (loop (cdr items)
+                supers
+                (append (reverse (for/list ([c (in-list (syntax->list #'(clause ...)))])
+                                   (parse-class-law c)))
+                        methods))]
          [_ (loop (cdr items) supers (cons (parse-class-method item) methods))])])))
+
+;; Parse one `[law-name (All ([v : t] …) body)]` clause from a `#:laws`
+;; list into a `class-law`.  The quantifier may be written `All` or the
+;; mathematical `∀`; both bind per-binder–annotated variables over the
+;; law body, which must be a Boolean-typed equation (checked later in
+;; inference).
+(define (parse-class-law stx)
+  (syntax-parse stx
+    #:datum-literals (All ∀)
+    [(name:id (q (binder ...) body))
+     #:fail-unless (memq (syntax-e #'q) '(All ∀))
+     "a law must be quantified with `All` or `∀`"
+     #:fail-when (null? (syntax->list #'(binder ...)))
+     "a law must bind at least one variable"
+     (class-law (syntax->datum #'name)
+                (for/list ([b (in-list (syntax->list #'(binder ...)))])
+                  (parse-law-binder b))
+                (parse-expr #'body)
+                stx)]
+    [_ (raise-syntax-error
+        #f "a law must have the shape [name (All ([v : t] …) body)]" stx)]))
+
+;; Parse one quantifier binder `[v : t]` into a `law-binder`.  The
+;; annotation is mandatory: a law quantifies over an explicitly typed
+;; domain so the equation can be checked without inferring the binder's
+;; type from its uses.
+(define (parse-law-binder stx)
+  (syntax-parse stx
+    #:datum-literals (:)
+    [(v:id : t)
+     #:fail-unless (lowercase-id? (syntax->datum #'v))
+     "a law binder must be a lowercase identifier"
+     (law-binder (syntax->datum #'v) (parse-type #'t) stx)]
+    [_ (raise-syntax-error
+        #f "a law binder must be annotated as [variable : type]" stx)]))
 
 ;; Is `stx` the bare `#:derive` keyword?
 (define (derive-keyword? stx)

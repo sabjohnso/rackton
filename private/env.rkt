@@ -125,8 +125,15 @@
 ;;                   serialized (like `defaults`), so a USER class's
 ;;                   derivations are available only within its defining
 ;;                   module; the prelude monad stack works everywhere.
+;;   laws        : (Listof class-law) — the named quantified equations
+;;                   declared by the body's `#:laws` clause, type-checked
+;;                   at class elaboration.  Formal documentation of the
+;;                   invariants instances must satisfy; carries no runtime
+;;                   behaviour.  Not serialized (like `defaults`), so a
+;;                   class's laws are available only within its defining
+;;                   module.  Empty for classes that declare none.
 (struct class-info (name params kinds supers methods defaults dispatchpos
-                    fundeps dictreqs type-families super-derives)
+                    fundeps dictreqs type-families super-derives laws)
   #:transparent)
 
 ;; An instance's information.

@@ -28,7 +28,8 @@
                 '()
                 (hasheq)
                 '()
-                (hasheq)))
+                (hasheq)
+                '()))
 
   ;; A class env with:
   ;;   class Eq a

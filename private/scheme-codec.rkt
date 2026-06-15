@@ -166,7 +166,8 @@
                  (for/hasheq ([entry (in-list dictreqs-list)])
                    (values (car entry) (cadr entry)))
                  type-families-list
-                 (hasheq))]
+                 (hasheq)
+                 '())]
     [(list name params kinds-list supers-list methods-list dispatchpos-list
            fundeps-list dictreqs-list)
      (class-info name
@@ -184,7 +185,8 @@
                  (for/hasheq ([entry (in-list dictreqs-list)])
                    (values (car entry) (cadr entry)))
                  '()
-                 (hasheq))]
+                 (hasheq)
+                 '())]
     [(list name params kinds-list supers-list methods-list dispatchpos-list
            fundeps-list)
      (class-info name
@@ -201,7 +203,8 @@
                    (cons (car entry) (cadr entry)))
                  (hasheq)
                  '()
-                 (hasheq))]
+                 (hasheq)
+                 '())]
     [(list name params kinds-list supers-list methods-list dispatchpos-list)
      (class-info name
                  params
@@ -216,7 +219,8 @@
                  '()
                  (hasheq)
                  '()
-                 (hasheq))]))
+                 (hasheq)
+                 '())]))
 
 ;; Instance info is encoded with its owning class name as the first
 ;; element so we know where to install it on decode.  Method bodies

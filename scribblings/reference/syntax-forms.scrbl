@@ -173,7 +173,11 @@ field-lens family.}
                           (code:line (define (method-name p ...) body))
                           (code:line #:requires constraint ...)
                           (code:line #:fundep var ... -> var ...)
+                          (code:line #:laws (law ...))
                           (code:line #:derive (derivation ...))]
+           [law           (law-name (quantifier (binder ...) body))]
+           [quantifier    All ∀]
+           [binder        (var : type)]
            [derivation    (SuperProtocol (define …) ...)]
            [constraint    (ProtocolName type ...)])]{
 
@@ -215,6 +219,35 @@ superprotocol.  Kinds are written as @racket[*] for ordinary types or
 
 A protocol may declare one or more functional dependencies via
 @racket[#:fundep] clauses inside the body.
+
+A protocol may document the algebraic laws its instances must satisfy
+with a @racket[#:laws] clause: a list of named, quantified equations.
+Each law is @racket[(law-name (All (binder ...) body))] — the quantifier
+may be written @racket[All] or @racket[∀], every @racket[binder] carries
+an explicit type annotation @racket[(var : type)], and @racket[body] is
+an expression that must have type @racket[Boolean].  A law is checked
+when the protocol is declared: each protocol parameter is taken as an
+arbitrary type satisfying the protocol (and its superprotocols), the
+binders are brought into scope at their annotated types, and the body is
+type-checked against the protocol's own methods and any
+@racket[#:requires]'d superprotocol methods.  A law that does not
+type-check — a non-@racket[Boolean] body, an unbound variable, a method
+used at the wrong type, or a comparison the protocol does not justify —
+is a compile-time error.  For example, a @racket[Semigroup] over
+@racket[a] with an @racket[Eq] superprotocol can state associativity:
+
+@racketblock[
+(protocol (Semigroup a)
+  (#:requires (Eq a))
+  (: combine (-> a (-> a a)))
+  (#:laws
+    ([associativity (All ([x : a] [y : a] [z : a])
+                      (== (combine (combine x y) z)
+                          (combine x (combine y z))))])))
+]
+
+Laws are formal documentation: they carry no runtime behaviour and are
+not (currently) executed or serialized across module boundaries.
 
 A single @racket[#:derive] keyword introduces a list of
 @deftech{cross-protocol derivation}s, one bracketed

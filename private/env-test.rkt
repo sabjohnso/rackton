@@ -74,7 +74,8 @@
                 '()
                 (hasheq)
                 '()
-                (hasheq)))
+                (hasheq)
+                '()))
   (define eq-env (env-extend-class empty-env 'Eq eq-info))
 
   (check-equal? (env-ref-class eq-env 'Eq) eq-info)
