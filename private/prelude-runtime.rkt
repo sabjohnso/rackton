@@ -131,11 +131,15 @@
  mappend
  traverse
  mconcat
+ ;; Enum: succ/pred/enum->integer are value-dispatched; integer->enum is
+ ;; return-typed (no bare binding); the ranges are needs-dict free fns.
+ succ pred enum->integer
+ enum-from-to enum-from-then-to
 
  ;; Return-typed dispatch tables — shared so user-defined instances in
  ;; other modules register their pure / mempty / … here and call sites
  ;; look them up by result-type tag (Enabler A).
- $dispatch:pure $dispatch:mempty $dispatch:pi
+ $dispatch:pure $dispatch:mempty $dispatch:pi $dispatch:integer->enum
  $dispatch:get-st $dispatch:put-st $dispatch:modify-st
  $dispatch:ask-en $dispatch:tell-w $dispatch:throw-e
  $dispatch:await-c $dispatch:yield-c $dispatch:lift-io $dispatch:lift
@@ -146,6 +150,7 @@
  ;; (transformer $pure / $flatmap / mtl impls are regenerated in the
  ;; carved rackton/control/monad/* modules.)
  |$mempty:String| |$mempty:List|
+ |$integer->enum:Integer|
  |$ident:->| |$arr:->| |$arrow-app:->|
  |$mk-prod:Pair| |$inj-left:Either| |$inj-right:Either|
  ;; Runtime dispatchers for the positional class methods
@@ -174,6 +179,7 @@
  $dispatch:<  $dispatch:>  $dispatch:<= $dispatch:>=
  $dispatch:min $dispatch:max
  $dispatch:show
+ $dispatch:succ $dispatch:pred $dispatch:enum->integer
  $dispatch:fmap
  $dispatch:fapply
  $dispatch:liftA2
@@ -376,6 +382,12 @@
 (define $dispatch:<= (make-hasheq))  (define-class-method <= $dispatch:<= 0 2)
 (define $dispatch:>= (make-hasheq))  (define-class-method >= $dispatch:>= 0 2)
 (define $dispatch:show (make-hasheq))(define-class-method show $dispatch:show 0 1)
+;; Enum's succ / pred / enum->integer dispatch on their sole argument.
+;; (integer->enum is return-typed — its table is with pure/mempty below.)
+(define $dispatch:succ (make-hasheq))(define-class-method succ $dispatch:succ 0 1)
+(define $dispatch:pred (make-hasheq))(define-class-method pred $dispatch:pred 0 1)
+(define $dispatch:enum->integer (make-hasheq))
+(define-class-method enum->integer $dispatch:enum->integer 0 1)
 ;; Functor's fmap dispatches on the SECOND argument (the container).
 (define $dispatch:fmap (make-hasheq))(define-class-method fmap $dispatch:fmap 1 2)
 ;; Applicative's fapply dispatches on the FIRST argument (the f (a->b)).
@@ -560,6 +572,14 @@
 (register-instance-method! $dispatch:>= 'Integer (lambda (x y) (rkt:>= x y)))
 (register-instance-method! $dispatch:min 'Integer (lambda (x y) (rkt:min x y)))
 (register-instance-method! $dispatch:max 'Integer (lambda (x y) (rkt:max x y)))
+
+;; ----- Enum Integer ----------------------------------------------
+;; succ/pred are +1/-1; enum->integer is the identity.  (integer->enum
+;; is return-typed and registered with the other return-typed methods
+;; at the end of the file.)
+(register-instance-method! $dispatch:succ 'Integer (lambda (n) (rkt:+ n 1)))
+(register-instance-method! $dispatch:pred 'Integer (lambda (n) (rkt:- n 1)))
+(register-instance-method! $dispatch:enum->integer 'Integer (lambda (n) n))
 
 ;; Ord String (lex order).
 (register-instance-method! $dispatch:<  'String (lambda (x y) (string<? x y)))
@@ -807,6 +827,7 @@
 (define $dispatch:mk-prod   (make-hasheq))  ; Product.mk-prod    (return-typed)
 (define $dispatch:inj-left  (make-hasheq))  ; Coproduct.inj-left  (return-typed)
 (define $dispatch:inj-right (make-hasheq))  ; Coproduct.inj-right (return-typed)
+(define $dispatch:integer->enum (make-hasheq))  ; Enum.integer->enum (return-typed)
 
 (define (|$pure:Maybe|  x) (Some x))
 (define (|$pure:List|   x) (Cons x Nil))
@@ -828,6 +849,10 @@
 ;; Sum / Product moved to rackton/data/monoid (Phase 2 slim).
 (define |$mempty:String|  "")
 (define |$mempty:List|    Nil)
+
+;; ----- Enum integer->enum (return-typed) --------------------------
+;; For Integer the integer→value direction is the identity.
+(define (|$integer->enum:Integer| i) i)
 
 ;; ----- Category/Arrow ident & arr (return-typed) ------------------
 ;; For the function-arrow instance, the identity arrow is the identity
@@ -1906,6 +1931,32 @@
 (define/curried (mconcat mempty-impl xs)
   (foldr (lambda (x acc) (mappend x acc)) mempty-impl xs))
 
+;; ----- enum-from-to / enum-from-then-to (needs-dict free fns) ------
+;; Like mconcat: the elaborator prepends the resolved `integer->enum`
+;; for `a` as a leading argument; `enum->integer` stays generic and
+;; dispatches on the bound's tag.  Both build a strict `List`.
+(define/curried (enum-from-to integer->enum-impl lo hi)
+  (let ([end (enum->integer hi)])
+    (let loop ([i (enum->integer lo)])
+      (if (rkt:> i end)
+          Nil
+          (Cons (integer->enum-impl i) (loop (rkt:+ i 1)))))))
+
+(define/curried (enum-from-then-to integer->enum-impl lo nxt hi)
+  (let* ([start (enum->integer lo)]
+         [step  (rkt:- (enum->integer nxt) start)]
+         [end   (enum->integer hi)])
+    (cond
+      ;; a zero step would repeat forever in Haskell; in a strict List we
+      ;; return a single element instead of diverging.
+      [(rkt:= step 0) (Cons (integer->enum-impl start) Nil)]
+      [(rkt:> step 0)
+       (let loop ([i start])
+         (if (rkt:> i end) Nil (Cons (integer->enum-impl i) (loop (rkt:+ i step)))))]
+      [else
+       (let loop ([i start])
+         (if (rkt:< i end) Nil (Cons (integer->enum-impl i) (loop (rkt:+ i step)))))])))
+
 (for ([tag (in-list '($ctor:Nil $ctor:Cons $ctor:None $ctor:Some))])
   (register-instance-method! $dispatch:length  tag default-length)
   (register-instance-method! $dispatch:to-list tag default-to-list))
@@ -2162,6 +2213,8 @@
 (register-instance-method! $dispatch:mempty 'String  |$mempty:String|)
 (register-instance-method! $dispatch:mempty 'List    |$mempty:List|)
 ;; Sum / Product mempty register themselves from rackton/data/monoid.
+
+(register-instance-method! $dispatch:integer->enum 'Integer |$integer->enum:Integer|)
 
 ;; Other return-typed methods (Floating.pi, MonadState.get-st,
 ;; MonadEnv.ask-en, Concurrent.await-c/yield-c).  Only the base

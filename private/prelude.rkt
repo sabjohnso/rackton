@@ -637,6 +637,43 @@
     ;; yet rewrite user-written needs-dict bodies.
     (: mconcat ((Monoid a) => (-> (List a) a)))
 
+    ;; --- Enum ---------------------------------------------------
+    ;;
+    ;; A type whose values map to and from the integers, after Haskell's
+    ;; `Enum`.  `integer->enum` is the integer→value direction (Haskell
+    ;; `toEnum`) and is RETURN-TYPED (`a` appears only in the result, so
+    ;; it is resolved at the call site from the expected type, like
+    ;; `pure` / `mempty`); `enum->integer` is the value→integer direction
+    ;; (`fromEnum`).  `succ` / `pred` step by one and default through the
+    ;; two conversions, so a minimal instance supplies only the
+    ;; conversions.
+    (protocol (Enum a)
+      (: succ          (-> a a))
+      (: pred          (-> a a))
+      (: integer->enum (-> Integer a))
+      (: enum->integer (-> a Integer))
+      (define (succ x) (integer->enum (+ (enum->integer x) 1)))
+      (define (pred x) (integer->enum (- (enum->integer x) 1))))
+
+    ;; Integer is its own enumeration: both conversions are the identity,
+    ;; so `succ`/`pred` are +1/-1.  Like `Ord Integer` (which defines only
+    ;; `<`), the type side gives just the primitives; the runtime in
+    ;; prelude-runtime materializes every method.
+    (instance (Enum Integer)
+      (define (integer->enum i) (racket Integer (i) 0))
+      (define (enum->integer n) (racket Integer (n) 0)))
+
+    ;; Range builders — free functions with an `Enum`-constrained `a`,
+    ;; exactly like `mconcat` over `Monoid`.  The elaborator prepends the
+    ;; resolved `integer->enum` impl; `enum->integer` dispatches per call.
+    ;; Their runtime bodies live in prelude-runtime (Rackton can't yet
+    ;; rewrite a user-written needs-dict body).  Both produce strict
+    ;; `List`s, so — unlike Haskell's lazy `enumFrom` — there is no
+    ;; unbounded form, and a zero step in `enum-from-then-to` yields a
+    ;; single element rather than diverging.
+    (: enum-from-to      ((Enum a) => (-> a (-> a (List a)))))
+    (: enum-from-then-to ((Enum a) => (-> a (-> a (-> a (List a))))))
+
     ;; State monad -> rackton/control/monad/state and Env (Reader) monad
     ;; -> rackton/control/monad/reader (Phase 2 slim; pure Rackton, the
     ;; modules regenerate their runtime).  The MonadState/MonadEnv classes

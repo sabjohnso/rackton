@@ -13,7 +13,10 @@
 (require rackunit
          (for-syntax racket/base)
          "../private/types.rkt"
-         "../main.rkt")
+         ;; `pred` is the class-predicate struct from private/types.rkt;
+         ;; the prelude also exports an `Enum` method named `pred`, so drop
+         ;; the latter to keep importing both modules here.
+         (except-in "../main.rkt" pred))
 
 ;; The end-to-end cases below assert on WRAPPED type output, so the wrap
 ;; width must be fixed.  They provoke errors via top-level `eval`, where

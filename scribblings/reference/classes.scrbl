@@ -47,6 +47,39 @@ Comparison and selection.}
 Built-in instances: @racket[Integer], @racket[Float], @racket[Rational],
 @racket[String], @racket[Char].}
 
+@defidform[#:kind "protocol" Enum]{
+
+Types whose values map to and from the integers and can be stepped and
+ranged over, after Haskell's @tt{Enum}.
+
+@deftogether[(
+  @defproc[(succ [x a]) a]
+  @defproc[(pred [x a]) a]
+  @defproc[(integer->enum [i Integer]) a]
+  @defproc[(enum->integer [x a]) Integer])]{
+
+@racket[integer->enum] (Haskell's @tt{toEnum}) and @racket[enum->integer]
+(@tt{fromEnum}) are the integer↔value conversions; @racket[integer->enum]
+is return-typed, resolved from the expected type at the call site like
+@racket[pure] / @racket[mempty]. @racket[succ] and @racket[pred] step by
+one and default through the conversions, so a minimal instance supplies
+only the two conversions.}
+
+@deftogether[(
+  @defproc[(enum-from-to [lo a] [hi a]) (List a)]
+  @defproc[(enum-from-then-to [lo a] [nxt a] [hi a]) (List a)])]{
+
+Build a strict @racket[List] over a range. @racket[enum-from-to] is the
+inclusive range @racket[lo]…@racket[hi] (empty when @racket[lo] exceeds
+@racket[hi]); @racket[enum-from-then-to] steps by
+@racket[enum->integer]@racket[nxt] − @racket[enum->integer]@racket[lo],
+ascending or descending, stopping before it overshoots @racket[hi]. Since
+the result is strict there is no unbounded form, and a zero step yields a
+single element rather than diverging.}
+
+Built-in instance: @racket[Integer] (both conversions are the identity,
+so @racket[succ]/@racket[pred] are +1/−1).}
+
 @section{Numeric hierarchy}
 
 @defidform[#:kind "protocol" Num]{
