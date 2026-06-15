@@ -1844,6 +1844,14 @@
        (loop (cddr items)
              supers
              (append (reverse (parse-derive-list (cadr items))) methods))]
+      [(laws-keyword? (car items))
+       (when (null? (cdr items))
+         (raise-syntax-error
+          #f "#:laws must be followed by a list of [name (All …)] clauses"
+          (car items)))
+       (loop (cddr items)
+             supers
+             (append (reverse (parse-law-list (cadr items))) methods))]
       [else
        (define item (car items))
        (syntax-parse item
@@ -1853,34 +1861,63 @@
                                    (parse-constraint cs)))
                         supers)
                 methods)]
-         [(#:laws (clause ...+))
-          (loop (cdr items)
-                supers
-                (append (reverse (for/list ([c (in-list (syntax->list #'(clause ...)))])
-                                   (parse-class-law c)))
-                        methods))]
          [_ (loop (cdr items) supers (cons (parse-class-method item) methods))])])))
 
-;; Parse one `[law-name (All ([v : t] …) body)]` clause from a `#:laws`
-;; list into a `class-law`.  The quantifier may be written `All` or the
-;; mathematical `∀`; both bind per-binder–annotated variables over the
-;; law body, which must be a Boolean-typed equation (checked later in
-;; inference).
+;; Is `stx` the bare `#:laws` keyword?
+(define (laws-keyword? stx)
+  (eq? (syntax-e stx) '#:laws))
+
+;; Parse the parenthesized list following a bare `#:laws` keyword: one or
+;; more `[name (All …)]` clauses, each producing a `class-law`.
+(define (parse-law-list stx)
+  (syntax-parse stx
+    [(clause ...+)
+     (for/list ([c (in-list (syntax->list #'(clause ...)))])
+       (parse-class-law c))]
+    [_ (raise-syntax-error
+        #f "#:laws expects a non-empty list of [name (All …)] clauses" stx)]))
+
+;; Parse one law clause from a `#:laws` list into a `class-law`.  A law
+;; is `[law-name (All ([v : t] …) body)]`, optionally prefixed with a
+;; `=>` constraint context assumed only while checking the law:
+;; `[law-name ((Eq a) … => (All …))]`.  The context lets the equation
+;; compare results (via the assumed `Eq`) without that `Eq` becoming a
+;; superprotocol requirement on instances.
 (define (parse-class-law stx)
   (syntax-parse stx
+    #:datum-literals (=>)
+    [(name:id (ctx ...+ => quantified))
+     (parse-law-quantified (syntax->datum #'name)
+                           (for/list ([c (in-list (syntax->list #'(ctx ...)))])
+                             (parse-constraint c))
+                           #'quantified
+                           stx)]
+    [(name:id quantified)
+     (parse-law-quantified (syntax->datum #'name) '() #'quantified stx)]
+    [_ (raise-syntax-error
+        #f "a law must have the shape [name (All ([v : t] …) body)] or [name (ctx … => (All …))]"
+        stx)]))
+
+;; Parse the `(All ([v : t] …) body)` part of a law, given the already
+;; parsed name and `=>` context.  The quantifier may be written `All` or
+;; the mathematical `∀`; both bind per-binder–annotated variables over
+;; the Boolean-typed body (checked later in inference).
+(define (parse-law-quantified name context q-stx stx)
+  (syntax-parse q-stx
     #:datum-literals (All ∀)
-    [(name:id (q (binder ...) body))
+    [(q (binder ...) body)
      #:fail-unless (memq (syntax-e #'q) '(All ∀))
      "a law must be quantified with `All` or `∀`"
      #:fail-when (null? (syntax->list #'(binder ...)))
      "a law must bind at least one variable"
-     (class-law (syntax->datum #'name)
+     (class-law name
+                context
                 (for/list ([b (in-list (syntax->list #'(binder ...)))])
                   (parse-law-binder b))
                 (parse-expr #'body)
                 stx)]
     [_ (raise-syntax-error
-        #f "a law must have the shape [name (All ([v : t] …) body)]" stx)]))
+        #f "a law body must be quantified as (All ([v : t] …) body)" q-stx)]))
 
 ;; Parse one quantifier binder `[v : t]` into a `law-binder`.  The
 ;; annotation is mandatory: a law quantifies over an explicitly typed

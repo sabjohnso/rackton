@@ -175,7 +175,8 @@ field-lens family.}
                           (code:line #:fundep var ... -> var ...)
                           (code:line #:laws (law ...))
                           (code:line #:derive (derivation ...))]
-           [law           (law-name (quantifier (binder ...) body))]
+           [law           (law-name (quantifier (binder ...) body))
+                          (law-name (constraint ... => (quantifier (binder ...) body)))]
            [quantifier    All ∀]
            [binder        (var : type)]
            [derivation    (SuperProtocol (define …) ...)]
@@ -226,25 +227,42 @@ Each law is @racket[(law-name (All (binder ...) body))] — the quantifier
 may be written @racket[All] or @racket[∀], every @racket[binder] carries
 an explicit type annotation @racket[(var : type)], and @racket[body] is
 an expression that must have type @racket[Boolean].  A law is checked
-when the protocol is declared: each protocol parameter is taken as an
+after the program is elaborated: each protocol parameter is taken as an
 arbitrary type satisfying the protocol (and its superprotocols), the
 binders are brought into scope at their annotated types, and the body is
-type-checked against the protocol's own methods and any
-@racket[#:requires]'d superprotocol methods.  A law that does not
+type-checked against the protocol's own methods, its superprotocol
+methods, and the concrete instances in scope.  A law that does not
 type-check — a non-@racket[Boolean] body, an unbound variable, a method
 used at the wrong type, or a comparison the protocol does not justify —
-is a compile-time error.  For example, a @racket[Semigroup] over
-@racket[a] with an @racket[Eq] superprotocol can state associativity:
+is a compile-time error.
+
+Stating an equation needs equality, but most protocols do not require
+their element type to be an @racket[Eq].  A law may therefore carry its
+own @racket[=>] @deftech{law context}: constraints assumed only while
+that law is checked, without becoming superprotocol requirements on
+instances.  So @racket[Semigroup] keeps its single method yet states
+associativity by assuming @racket[(Eq a)] for the law alone:
 
 @racketblock[
 (protocol (Semigroup a)
-  (#:requires (Eq a))
-  (: combine (-> a (-> a a)))
-  (#:laws
-    ([associativity (All ([x : a] [y : a] [z : a])
-                      (== (combine (combine x y) z)
-                          (combine x (combine y z))))])))
+  (: mappend (-> a (-> a a)))
+  #:laws
+  ([associativity ((Eq a) =>
+     (All ([x : a] [y : a] [z : a])
+       (== (mappend (mappend x y) z)
+           (mappend x (mappend y z)))))]))
 ]
+
+For a higher-kinded protocol the law context names the equality at a
+concrete element type — e.g. @racket[(Eq (f Integer))] for a
+@racket[Functor] law — since no @racket[Eq] for an arbitrary
+@racket[(f a)] can be named.  A return-typed method appearing in result
+position (such as @racket[pure] or @racket[mempty]) is pinned to the
+law's instance with an @racket[(ann _expr (f Integer))] ascription.  The
+prelude's @racket[Eq], @racket[Ord], @racket[Num], @racket[Semigroup],
+@racket[Monoid], @racket[Functor], @racket[Applicative], @racket[Monad],
+@racket[Foldable], @racket[Traversable], and @racket[Enum] protocols all
+carry their laws this way.
 
 Laws are formal documentation: they carry no runtime behaviour and are
 not (currently) executed or serialized across module boundaries.

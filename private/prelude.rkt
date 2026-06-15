@@ -24,7 +24,15 @@
     (protocol (Eq a)
       (: == (-> a (-> a Boolean)))
       (: /= (-> a (-> a Boolean)))
-      (define (/= x y) (if (== x y) #f #t)))
+      (define (/= x y) (if (== x y) #f #t))
+      ;; `==` is an equivalence relation.  Each law is phrased as an
+      ;; implication (`if cond then … else #t`) so it stays Boolean
+      ;; without having to compare two Boolean results.
+      #:laws
+        ([reflexivity  (All ([x : a]) (== x x))]
+         [symmetry     (All ([x : a] [y : a]) (if (== x y) (== y x) #t))]
+         [transitivity (All ([x : a] [y : a] [z : a])
+                         (if (== x y) (if (== y z) (== x z) #t) #t))]))
 
     ;; --- Ord (Eq is a superclass) -------------------------------
 
@@ -41,7 +49,16 @@
       (define (<= x y) (if (<  x y) #t (== x y)))
       (define (>= x y) (if (>  x y) #t (== x y)))
       (define (min x y) (if (< x y) x y))
-      (define (max x y) (if (< x y) y x)))
+      (define (max x y) (if (< x y) y x))
+      ;; `<=` is a total order: reflexive, antisymmetric, transitive, and
+      ;; total.  Antisymmetry compares with `==` from the Eq superclass.
+      #:laws
+        ([reflexivity  (All ([x : a]) (<= x x))]
+         [antisymmetry (All ([x : a] [y : a])
+                         (if (<= x y) (if (<= y x) (== x y) #t) #t))]
+         [transitivity (All ([x : a] [y : a] [z : a])
+                         (if (<= x y) (if (<= y z) (<= x z) #t) #t))]
+         [totality     (All ([x : a] [y : a]) (if (<= x y) #t (<= y x)))]))
 
     ;; --- Num ----------------------------------------------------
 
@@ -52,7 +69,22 @@
       ;; Abs and negate as Num methods, polymorphic over
       ;; the numeric tower (Integer / Float / Rational / Complex).
       (: abs    (-> a a))
-      (: negate (-> a a)))
+      (: negate (-> a a))
+      ;; `+` and `*` form commutative monoids that distribute, and
+      ;; `negate` is the additive inverse witnessed by `-`.  Stating the
+      ;; equations needs equality, so the laws assume `(Eq a)` without
+      ;; making it a superclass of Num.
+      #:laws
+        ([add-commutative  ((Eq a) => (All ([x : a] [y : a]) (== (+ x y) (+ y x))))]
+         [add-associative  ((Eq a) => (All ([x : a] [y : a] [z : a])
+                             (== (+ (+ x y) z) (+ x (+ y z)))))]
+         [mul-commutative  ((Eq a) => (All ([x : a] [y : a]) (== (* x y) (* y x))))]
+         [mul-associative  ((Eq a) => (All ([x : a] [y : a] [z : a])
+                             (== (* (* x y) z) (* x (* y z)))))]
+         [distributive     ((Eq a) => (All ([x : a] [y : a] [z : a])
+                             (== (* x (+ y z)) (+ (* x y) (* x z)))))]
+         [subtract-negate  ((Eq a) => (All ([x : a] [y : a])
+                             (== (- x y) (+ x (negate y)))))]))
 
     ;; --- Show ---------------------------------------------------
 
@@ -211,7 +243,18 @@
     ;; private/codegen.rkt.
 
     (protocol (Functor (f :: (-> * *)))
-      (: fmap (-> (-> a b) (-> (f a) (f b)))))
+      (: fmap (-> (-> a b) (-> (f a) (f b))))
+      ;; `fmap` preserves identity and composition.  The laws are stated
+      ;; at the element type `Integer` so the container can be compared
+      ;; via an assumed `(Eq (f Integer))` — the bundle cannot name an
+      ;; `Eq` for an arbitrary `(f a)`.
+      #:laws
+        ([identity ((Eq (f Integer)) =>
+           (All ([xs : (f Integer)]) (== (fmap (lambda (x) x) xs) xs)))]
+         [composition ((Eq (f Integer)) =>
+           (All ([xs : (f Integer)])
+             (== (fmap (lambda (n) (* 2 (+ n 1))) xs)
+                 (fmap (lambda (n) (* 2 n)) (fmap (lambda (n) (+ n 1)) xs)))))]))
 
     ;; Applicative has three derivable methods — fapply, liftA2, product —
     ;; arranged in a default cycle so an instance can pick whichever
@@ -234,7 +277,23 @@
       ;; and `fapply`) gets `Functor` for free via `fmap f = pure f <*>`.
       #:derive
       ([Functor
-        (define (fmap f x) (fapply (pure f) x))]))
+        (define (fmap f x) (fapply (pure f) x))])
+      ;; The applicative laws at element type `Integer`.  `pure` is
+      ;; return-typed; where it appears in result position its container
+      ;; is pinned to the law's instance with an `(ann … (f Integer))`.
+      #:laws
+        ([identity ((Eq (f Integer)) =>
+           (All ([v : (f Integer)]) (== (fapply (pure (lambda (x) x)) v) v)))]
+         [homomorphism ((Eq (f Integer)) =>
+           (All ([n : Integer])
+             (== (fapply (pure (lambda (m) (+ m 1))) (pure n))
+                 (ann (pure (+ n 1)) (f Integer)))))]
+         [interchange ((Eq (f Integer)) =>
+           (All ([u : (f (-> Integer Integer))] [y : Integer])
+             (== (fapply u (ann (pure y) (f Integer)))
+                 (fapply (ann (pure (lambda (g) (g y)))
+                              (f (-> (-> Integer Integer) Integer)))
+                         u))))]))
 
     ;; Monad has two derivable methods — flatmap and join — with mutual
     ;; defaults.  An instance must define at least one.  flatmap takes
@@ -265,7 +324,25 @@
         ;; `product`'s default passes the raw 2-ary `Pair` constructor as
         ;; `g`, and a constructor cannot be partially applied.
         (define (liftA2 g x y)
-          (flatmap (lambda (a) (flatmap (lambda (b) (pure (g a b))) y)) x))]))
+          (flatmap (lambda (a) (flatmap (lambda (b) (pure (g a b))) y)) x))])
+      ;; The three monad laws at element type `Integer`.  A monadic value
+      ;; supplied by `pure` in a position the surrounding `flatmap` does
+      ;; not pin gets an `(ann … (m Integer))`.
+      #:laws
+        ([left-identity ((Eq (m Integer)) =>
+           (All ([n : Integer])
+             (== (flatmap (lambda (x) (pure (+ x 1))) (ann (pure n) (m Integer)))
+                 (ann (pure (+ n 1)) (m Integer)))))]
+         [right-identity ((Eq (m Integer)) =>
+           (All ([mx : (m Integer)]) (== (flatmap (lambda (x) (pure x)) mx) mx)))]
+         [associativity ((Eq (m Integer)) =>
+           (All ([mx : (m Integer)])
+             (== (flatmap (lambda (y) (pure (* y 2)))
+                          (flatmap (lambda (x) (pure (+ x 1))) mx))
+                 (flatmap (lambda (x)
+                            (flatmap (lambda (y) (pure (* y 2)))
+                                     (ann (pure (+ x 1)) (m Integer))))
+                          mx))))]))
 
     ;; Maybe
     (instance (Functor Maybe)
@@ -546,7 +623,16 @@
       (: length  (-> (t a) Integer))
       (: to-list (-> (t a) (List a)))
       (define (length  xs) (foldr (lambda (_x n)   (+ n 1))      0   xs))
-      (define (to-list xs) (foldr (lambda (x acc)  (Cons x acc))  Nil xs)))
+      (define (to-list xs) (foldr (lambda (x acc)  (Cons x acc))  Nil xs))
+      ;; `to-list` reconstructs the elements by folding with `Cons`/`Nil`,
+      ;; and `length` agrees with the length of that list.  Comparisons
+      ;; are at `Integer` and `(List Integer)`, whose instances exist.
+      #:laws
+        ([to-list-folds ((Eq (List Integer)) =>
+           (All ([xs : (t Integer)])
+             (== (to-list xs) (foldr (lambda (x acc) (Cons x acc)) Nil xs))))]
+         [length-counts (All ([xs : (t Integer)])
+             (== (length xs) (length (to-list xs))))]))
 
     (instance (Foldable List)
       (define (foldr f z xs)
@@ -574,7 +660,16 @@
 
     (protocol (Traversable (t :: (-> * *)))
       (: traverse ((Applicative f) =>
-                   (-> (-> a (f b)) (-> (t a) (f (t b)))))))
+                   (-> (-> a (f b)) (-> (t a) (f (t b))))))
+      ;; The identity law, specialised to the `Maybe` applicative whose
+      ;; `pure` is `Some`: traversing with `Some` wraps the whole
+      ;; container, i.e. `traverse Some == Some`.  Comparing the results
+      ;; needs `Eq (Maybe (t Integer))`, which follows from an assumed
+      ;; `(Eq (t Integer))`.
+      #:laws
+        ([identity-maybe ((Eq (t Integer)) =>
+           (All ([xs : (t Integer)])
+             (== (traverse (lambda (x) (Some x)) xs) (Some xs))))]))
 
     (instance (Traversable Maybe)
       (define (traverse f m)
@@ -597,10 +692,24 @@
     ;; @secref{Return-typed_dispatch} for the mechanism).
 
     (protocol (Semigroup a)
-      (: mappend (-> a (-> a a))))
+      (: mappend (-> a (-> a a)))
+      ;; `mappend` is associative.  Equality is needed only to state the
+      ;; law, so it is assumed via `(Eq a)` rather than required of every
+      ;; Semigroup instance.
+      #:laws
+        ([associativity ((Eq a) =>
+           (All ([x : a] [y : a] [z : a])
+             (== (mappend (mappend x y) z)
+                 (mappend x (mappend y z)))))]))
 
     (protocol (Monoid [a => Semigroup])
-      (: mempty a))
+      (: mempty a)
+      ;; `mempty` is a two-sided identity for `mappend`.  Its type is
+      ;; return-typed but pinned here by `mappend`'s argument, so the law
+      ;; resolves it to the law's own (skolem) instance.
+      #:laws
+        ([left-identity  ((Eq a) => (All ([x : a]) (== (mappend mempty x) x)))]
+         [right-identity ((Eq a) => (All ([x : a]) (== (mappend x mempty) x)))]))
 
     (instance (Semigroup String)
       ;; `string-append` is defined later in the prelude; use a host
@@ -653,7 +762,16 @@
       (: integer->enum (-> Integer a))
       (: enum->integer (-> a Integer))
       (define (succ x) (integer->enum (+ (enum->integer x) 1)))
-      (define (pred x) (integer->enum (- (enum->integer x) 1))))
+      (define (pred x) (integer->enum (- (enum->integer x) 1)))
+      ;; `succ`/`pred` move one position, witnessed on the integer
+      ;; index by `enum->integer`.  The comparison is between `Integer`s,
+      ;; whose `Eq`/`Num` instances are already in scope, so no law
+      ;; context is needed.
+      #:laws
+        ([succ-step (All ([x : a])
+                      (== (enum->integer (succ x)) (+ (enum->integer x) 1)))]
+         [pred-step (All ([x : a])
+                      (== (enum->integer (pred x)) (- (enum->integer x) 1)))]))
 
     ;; Integer is its own enumeration: both conversions are the identity,
     ;; so `succ`/`pred` are +1/-1.  Like `Ord Integer` (which defines only

@@ -34,8 +34,8 @@
      (compile-rackton
       (protocol (MyEq a)
         (: eqp (-> a (-> a Boolean)))
-        (#:laws
-          ([reflexivity (All ([x : a]) (eqp x x))])))))))
+        #:laws
+          ([reflexivity (All ([x : a]) (eqp x x))]))))))
 
 (test-case "∀ is a synonym for All"
   (check-not-exn
@@ -43,8 +43,8 @@
      (compile-rackton
       (protocol (MyEq a)
         (: eqp (-> a (-> a Boolean)))
-        (#:laws
-          ([reflexivity (∀ ([x : a]) (eqp x x))])))))))
+        #:laws
+          ([reflexivity (∀ ([x : a]) (eqp x x))]))))))
 
 (test-case "multiple laws in one clause, multiple binders each"
   (check-not-exn
@@ -52,9 +52,9 @@
      (compile-rackton
       (protocol (MyEq a)
         (: eqp (-> a (-> a Boolean)))
-        (#:laws
+        #:laws
           ([reflexivity (All ([x : a]) (eqp x x))]
-           [comparable  (All ([x : a] [y : a]) (eqp x y))])))))))
+           [comparable  (All ([x : a] [y : a]) (eqp x y))]))))))
 
 (test-case "a law may use a superclass method assumed via #:requires"
   (check-not-exn
@@ -63,38 +63,84 @@
       (protocol (MySemigroup a)
         (#:requires (Eq a))
         (: combine (-> a (-> a a)))
-        (#:laws
+        #:laws
           ([associativity
             (All ([x : a] [y : a] [z : a])
               (== (combine (combine x y) z)
-                  (combine x (combine y z))))])))))))
+                  (combine x (combine y z))))]))))))
+
+(test-case "a law-local => context puts Eq in scope without a superprotocol"
+  (check-not-exn
+   (lambda ()
+     (compile-rackton
+      (protocol (MySemigroup2 a)
+        (: combine (-> a (-> a a)))
+        #:laws
+          ([associativity ((Eq a) =>
+            (All ([x : a] [y : a] [z : a])
+              (== (combine (combine x y) z)
+                  (combine x (combine y z)))))]))))))
+
+(test-case "a higher-kinded law names the concrete-element Eq instance"
+  (check-not-exn
+   (lambda ()
+     (compile-rackton
+      (protocol (MyFunctor (f :: (-> * *)))
+        (: fmap2 (-> (-> a b) (-> (f a) (f b))))
+        #:laws
+          ([identity ((Eq (f Integer)) =>
+            (All ([xs : (f Integer)]) (== (fmap2 (lambda (x) x) xs) xs)))]))))))
+
+(test-case "a law may compare results at a concrete type whose instance is in scope"
+  ;; succ-step compares Integers and adds with `+`, relying on the
+  ;; prelude's (Eq Integer)/(Num Integer) — which exist only because
+  ;; laws are checked after instance registration, not during the class
+  ;; elaboration pass.
+  (check-not-exn
+   (lambda ()
+     (compile-rackton
+      (protocol (MyEnum a)
+        (: to-int (-> a Integer))
+        (: step (-> a a))
+        #:laws
+          ([step-increments
+            (All ([x : a]) (== (to-int (step x)) (+ (to-int x) 1)))]))))))
 
 ;; ----- ill-formed laws are rejected at compile time -----
+
+(test-case "comparing results without declaring Eq is rejected"
+  (check-rackton-compile-error
+   (protocol (MySemigroup3 a)
+     (: combine (-> a (-> a a)))
+     #:laws
+       ([associativity (All ([x : a] [y : a] [z : a])
+                         (== (combine (combine x y) z)
+                             (combine x (combine y z))))]))))
 
 (test-case "a law body that is not Boolean is rejected"
   (check-rackton-compile-error
    (protocol (MyEq a)
      (: eqp (-> a (-> a Boolean)))
-     (#:laws
-       ([bad (All ([x : a]) x)])))))
+     #:laws
+       ([bad (All ([x : a]) x)]))))
 
 (test-case "an unbound binder in a law body is rejected"
   (check-rackton-compile-error
    (protocol (MyEq a)
      (: eqp (-> a (-> a Boolean)))
-     (#:laws
-       ([bad (All ([x : a]) (eqp x y))])))))
+     #:laws
+       ([bad (All ([x : a]) (eqp x y))]))))
 
 (test-case "a method used at the wrong type is rejected"
   (check-rackton-compile-error
    (protocol (MyEq a)
      (: eqp (-> a (-> a Boolean)))
-     (#:laws
-       ([bad (All ([x : a] [n : Integer]) (eqp x n))])))))
+     #:laws
+       ([bad (All ([x : a] [n : Integer]) (eqp x n))]))))
 
 (test-case "an un-annotated binder is rejected"
   (check-rackton-compile-error
    (protocol (MyEq a)
      (: eqp (-> a (-> a Boolean)))
-     (#:laws
-       ([bad (All (x) (eqp x x))])))))
+     #:laws
+       ([bad (All (x) (eqp x x))]))))

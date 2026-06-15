@@ -1999,6 +1999,11 @@
   ;; is order-independent: a superclass instance may be declared after
   ;; the subclass instance that needs it.
   (check-superclass-obligations env-after-C forms*)
+  ;; ---- Protocol laws ----
+  ;; Type-check each protocol's `#:laws` now that every class AND
+  ;; instance is in env, so a law may compare results at concrete types
+  ;; (e.g. `(Num Integer)`) or rely on derived instances.
+  (check-class-laws env-after-C forms*)
   ;; ---- Phase D: SCC-based body inference for top:defs ----
   (define-values (env-after-D st3) (run-phase-D env-after-C declared def-tvars forms* st2))
   ;; Second value: the declared map to carry into the next REPL input —
@@ -2041,6 +2046,22 @@
 ;; a candidate instance's head variables, treating the target as ground,
 ;; so the obligation reads "for all the instance's variables, the
 ;; superclass holds" — exactly the coherence requirement.
+;; Type-check every protocol's `#:laws` against the fully-elaborated
+;; env.  Run after instance registration so a law may compare results at
+;; concrete element types — `(Num Integer)`, `(Eq (List Integer))` — and
+;; rely on derived instances.  The class's parameters and superclass
+;; predicates are read back from its registered `class-info`.
+(define (check-class-laws env forms)
+  (for ([f (in-list forms)] #:when (top:class? f))
+    (define cname (constraint-class (top:class-head f)))
+    (define cinfo (env-ref-class env cname #f))
+    (when cinfo
+      (for ([law (in-list (class-info-laws cinfo))])
+        (check-class-law law cname
+                         (class-info-params cinfo)
+                         (class-info-supers cinfo)
+                         env)))))
+
 (define (check-superclass-obligations env forms)
   (for ([f (in-list forms)] #:when (top:instance? f))
     (define head  (resolve-constraint (top:instance-head f) env))
@@ -3413,28 +3434,63 @@
 ;; Type-check one `#:laws` entry of a protocol.  A law must hold for an
 ;; arbitrary instance, so each class parameter is skolemized to a rigid
 ;; constant and the class head plus its superclasses are assumed as
-;; hypotheses; the quantifier binders are bound at their annotated types
-;; (parameters replaced by their skolems); and the body must type to
-;; `Boolean` using only constraints those hypotheses entail.  Raises a
-;; syntax error blaming the law when it does not — making the law a
-;; checked part of the protocol's contract rather than inert text.  This
-;; mirrors `handle-def-form`'s discipline (skolemize the declared
-;; context, infer the body, reduce residual constraints against it).
+;; hypotheses; the law's own `=>` context (e.g. `(Eq a)`) is assumed too,
+;; letting the equation compare results without that constraint becoming
+;; a superprotocol requirement.  The quantifier binders are bound at
+;; their annotated types (parameters replaced by their skolems), and the
+;; body must type to `Boolean` using only constraints those hypotheses
+;; entail.  Raises a syntax error blaming the law when it does not —
+;; making the law a checked part of the protocol's contract rather than
+;; inert text.  This mirrors `handle-def-form`'s discipline (skolemize
+;; the declared context, infer the body, reduce residual constraints).
+;; Rewrite every type annotation in a law body, replacing the
+;; class-parameter type variables named in `ty-sub` with their skolem
+;; type constructors.  Only `e:ann` carries a type; the rest of the walk
+;; just recurses through the expression forms a law body can contain.
+(define (relabel-law-ann-types e ty-sub)
+  (let R ([e e])
+    (match e
+      [(e:ann ex t stx)    (e:ann (R ex) (substitute-tyvars ty-sub t) stx)]
+      [(e:lam ps b stx)    (e:lam ps (R b) stx)]
+      [(e:app h as stx)    (e:app (R h) (map R as) stx)]
+      [(e:if a b c stx)    (e:if (R a) (R b) (R c) stx)]
+      [(e:let bs b stx)
+       (e:let (for/list ([p (in-list bs)]) (cons (car p) (R (cdr p)))) (R b) stx)]
+      [(e:letrec bs b stx)
+       (e:letrec (for/list ([p (in-list bs)]) (cons (car p) (R (cdr p)))) (R b) stx)]
+      [_ e])))
+
 (define (check-class-law law class-name class-params super-preds env)
-  (match-define (class-law law-name binders body law-stx) law)
+  (match-define (class-law law-name context binders body law-stx) law)
+  ;; One rigid skolem constant per class parameter, shared between the
+  ;; core substitution (for binder types and hypotheses) and the surface
+  ;; type-constructor used to relabel annotations in the body.
+  (define skol-names
+    (for/hasheq ([p (in-list class-params)])
+      (values p (gensym (format "$skolem.~a." p)))))
   (define skol
     (for/fold ([s empty-subst]) ([p (in-list class-params)])
-      (subst-extend s p (tcon (gensym (format "$skolem.~a." p))))))
+      (subst-extend s p (tcon (hash-ref skol-names p)))))
+  (define ty-sub
+    (for/hasheq ([p (in-list class-params)])
+      (values p (ty:con (hash-ref skol-names p) #f))))
+  (define law-preds
+    (for/list ([c (in-list context)]) (resolve-constraint c env)))
   (define hyps
-    (cons (apply-subst skol (pred class-name (map tvar class-params)))
-          (for/list ([sp (in-list super-preds)]) (apply-subst skol sp))))
+    (append (cons (apply-subst skol (pred class-name (map tvar class-params)))
+                  (for/list ([sp (in-list super-preds)]) (apply-subst skol sp)))
+            (for/list ([lp (in-list law-preds)]) (apply-subst skol lp))))
   (define env+binders
     (for/fold ([e env]) ([b (in-list binders)])
       (kind-check-surface e (law-binder-type b))
       (env-extend-var e (law-binder-name b)
                       (scheme '() (apply-subst skol
                                     (resolve-type (law-binder-type b) env))))))
-  (define-values (s t st1) (infer-expr body env+binders (make-infer-state)))
+  ;; Pin class parameters in body annotations to the skolems, so an
+  ;; `(ann (pure x) (f Integer))` resolves a return-typed method's
+  ;; container to the law's rigid skolem rather than a fresh variable.
+  (define body* (relabel-law-ann-types body ty-sub))
+  (define-values (s t st1) (infer-expr body* env+binders (make-infer-state)))
   (define s-bool
     (with-handlers
      ([exn:fail:unify?
@@ -3627,13 +3683,11 @@
       [(env-ref-class env class-name #f)
        (env-clear-instances env class-name)]
       [else env]))
-  (define env-final (env-extend-class env* class-name info))
-  ;; Check the laws once the class (and thus its own methods) is in
-  ;; scope, so a law may use the class's methods and any superclass
-  ;; method it `#:requires`.
-  (for ([law (in-list laws)])
-    (check-class-law law class-name class-params super-preds env-final))
-  (values env-final declared))
+  ;; Laws are collected here but checked later, in `check-class-laws`
+  ;; after instance registration (Phase C), so a law may reference
+  ;; concrete instances such as `(Num Integer)` or `(Eq (List Integer))`
+  ;; that do not yet exist while classes are being elaborated.
+  (values (env-extend-class env* class-name info) declared))
 
 ;; Process a (require "file.rkt" …) form inside a rackton block.
 ;; For each spec, attempt to load the corresponding (submod spec

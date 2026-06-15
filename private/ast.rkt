@@ -188,13 +188,16 @@
 ;; The family is a one-parameter type-level function whose argument
 ;; is the class's parameter; each instance supplies a concrete rhs.
 (struct class-type-fam  (name stx) #:transparent)
-;; One named law from a `#:laws ([name (All …)] …)` clause in a class
-;; body: a quantified equation documenting an invariant the class's
-;; instances must satisfy.  `name` is the law's identifier; `binders` is
-;; a list of `law-binder`; `body` is the (Boolean-typed) equation
-;; expression.  Laws are formal documentation — type-checked at class
-;; elaboration but not executed here.
-(struct class-law      (name binders body stx) #:transparent)
+;; One named law from a `#:laws ([name (ctx … => (All …))] …)` clause in
+;; a class body: a quantified equation documenting an invariant the
+;; class's instances must satisfy.  `name` is the law's identifier;
+;; `context` is a list of `constraint`s assumed only while type-checking
+;; this law — typically `(Eq a)` or `(Eq (f Integer))`, so the equation
+;; may compare results — without becoming a superclass requirement on
+;; instances; `binders` is a list of `law-binder`; `body` is the
+;; (Boolean-typed) equation expression.  Laws are formal documentation —
+;; type-checked at class elaboration but not executed here.
+(struct class-law      (name context binders body stx) #:transparent)
 ;; One `[var : type]` quantifier binder of a `class-law`.
 (struct law-binder     (name type stx) #:transparent)
 ;; A `#:type (FamilyName = Type)` clause inside an instance
