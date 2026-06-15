@@ -28,6 +28,7 @@
     rackton/data/complex rackton/data/either rackton/data/result
     rackton/data/foldable
     rackton/data/function rackton/data/functor rackton/data/lazy
+    rackton/data/nestream rackton/data/istream
     rackton/data/arrow-lazy
     rackton/data/lens rackton/data/list rackton/data/list/nonempty
     rackton/data/map rackton/data/maybe rackton/data/monoid

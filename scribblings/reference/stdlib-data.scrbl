@@ -1,6 +1,6 @@
 #lang scribble/manual
 @require[scribble/manual
-         (for-label (except-in rackton apply) rackton/data/bits rackton/data/bool rackton/data/char rackton/data/complex rackton/data/either rackton/data/result rackton/data/foldable rackton/data/function rackton/data/functor rackton/data/lazy rackton/data/arrow-lazy rackton/data/kleisli rackton/data/cokleisli rackton/data/lens rackton/data/list rackton/data/list/nonempty rackton/data/map rackton/data/maybe rackton/data/monoid rackton/data/ord rackton/data/ratio rackton/data/semigroup rackton/data/set rackton/data/traversable rackton/data/tuple rackton/control/apply rackton/control/comonad)
+         (for-label (except-in rackton apply) rackton/data/bits rackton/data/bool rackton/data/char rackton/data/complex rackton/data/either rackton/data/result rackton/data/foldable rackton/data/function rackton/data/functor rackton/data/lazy rackton/data/nestream rackton/data/istream rackton/data/arrow-lazy rackton/data/kleisli rackton/data/cokleisli rackton/data/lens rackton/data/list rackton/data/list/nonempty rackton/data/map rackton/data/maybe rackton/data/monoid rackton/data/ord rackton/data/ratio rackton/data/semigroup rackton/data/set rackton/data/traversable rackton/data/tuple rackton/control/apply rackton/control/comonad)
          "../rackton-eval.rkt"]
 @(define ev (make-rackton-eval))
 
@@ -410,6 +410,123 @@ repeated value.}
 
 @defproc[(list->stream [xs (List a)]) (Stream a)]{A finite stream built from a
 @racket[List].}
+
+
+@section{rackton/data/nestream}
+@defmodule[rackton/data/nestream]
+
+A @bold{nonempty} lazy stream: where @racket[Stream] may be empty (so
+@racket[stream-head] returns @racket[(Maybe a)]), an @racket[NEStream] is
+guaranteed to carry at least one element, so @racket[nestream-head] is total.
+The tail is an ordinary lazy @racket[Stream], so a nonempty stream may still be
+infinite — this is the nonempty analog of @racket[NonEmpty] for @racket[List].
+@racket[NEStream] is @racket[Functor], the @bold{cartesian}
+@racket[Applicative]/@racket[Monad] (every function meets every argument, like
+@racket[Stream]'s), and the canonical nonempty @racket[Comonad]
+(@racket[extract] = head, @racket[duplicate] = the nonempty stream of nonempty
+suffixes). It is thus both a monad and a comonad — the finite-nonempty
+counterpart to @racketmodname[rackton/data/istream]'s comonad-only infinite
+stream.
+
+@deftogether[(
+@defform[#:kind "type" #:link-target? #f #:id NEStream #:literals (data NECons Stream)
+         (data (NEStream a)
+           (NECons a (Stream a)))]
+@defidform[#:kind "type" NEStream]
+@defthing[#:kind "constructor" NECons (-> a (-> (Stream a) (NEStream a)))])]{A
+nonempty lazy stream of type @racket[(NEStream a)]: @racket[NECons] pairs a head
+element with a (possibly empty, possibly infinite) lazy @racket[Stream] tail.}
+
+@defproc[(nestream [h a] [t (Stream a)]) (NEStream a)]{Constructs an
+@racket[NEStream] from a head and a (possibly empty) lazy tail.}
+
+@defproc[(nestream-head [ne (NEStream a)]) a]{The head — always present, so
+this is total (no @racket[Maybe]).}
+
+@defproc[(nestream-tail [ne (NEStream a)]) (Stream a)]{Everything after the
+head, as a @racket[Stream] (which may be empty).}
+
+@defproc[(nestream-take [n Integer] [ne (NEStream a)]) (List a)]{The first
+@racket[n] elements as a strict @racket[List]; forces only what it takes.}
+
+@defproc[(nestream-cons [x a] [ne (NEStream a)]) (NEStream a)]{Prepend an
+element; the result is still nonempty.}
+
+@defproc[(nestream-map [f (-> a b)] [ne (NEStream a)]) (NEStream b)]{Map over
+every element, keeping the tail deferred and nonemptiness intact.}
+
+@defproc[(nestream-append [ne (NEStream a)] [s (Stream a)]) (NEStream a)]{Append
+a @racket[Stream] after a nonempty stream; the head keeps it nonempty.}
+
+@defproc[(nestream-append-stream [ne (NEStream a)] [rest (Lazy (Stream a))])
+         (NEStream a)]{Append a nonempty front onto a deferred @racket[Stream]
+rest — the lazy-right variant the @racket[Monad]'s @racket[flatmap] needs (cf.
+@racket[stream-append-lazy]).}
+
+@defproc[(nestream-flatmap [f (-> a (NEStream b))] [ne (NEStream a)]) (NEStream b)]{Map
+@racket[f] over the stream and concatenate the resulting nonempty streams; the
+head of the first keeps the whole result nonempty. The @racket[Monad] and
+@racket[Applicative] instances both delegate here.}
+
+@defproc[(nestream->stream [ne (NEStream a)]) (Stream a)]{Forget the guarantee:
+a plain @racket[Stream] with the same elements.}
+
+@defproc[(stream->nestream [s (Stream a)]) (Maybe (NEStream a))]{Recover the
+guarantee, if it holds — @racket[Some] for a nonempty stream, @racket[None] for
+the empty one (the partial direction).}
+
+
+@section{rackton/data/istream}
+@defmodule[rackton/data/istream]
+
+A @bold{guaranteed-infinite} stream: where @racket[Stream] has an empty case
+(@racket[SNil]), an @racket[IStream] has only a cons, so it never ends.
+Consequently @racket[istream-head] and @racket[istream-tail] are total, and
+@racket[istream-take] always returns exactly @racket[n] elements. @racket[IStream]
+is the canonical infinite @racket[Comonad] — the dual of the list-monad
+@racket[Stream]: @racket[extract] is the head, @racket[duplicate] is the
+infinite stream of all tails. Its @racket[FunctorApply] zips positionwise (and,
+both operands being infinite, never truncates), which is what makes
+@racket[ComonadApply] agree with the comonad. It is deliberately @emph{not} a
+cartesian @racket[Monad] (that would diverge, never productive) and has no
+@racket[filter] (filtering cannot promise an infinite result — route through
+@racket[istream->stream] then @racket[stream-filter]).
+
+@deftogether[(
+@defform[#:kind "type" #:link-target? #f #:id IStream #:literals (data ICons Lazy)
+         (data (IStream a)
+           (ICons a (Lazy (IStream a))))]
+@defidform[#:kind "type" IStream]
+@defthing[#:kind "constructor" ICons (-> a (-> (Lazy (IStream a)) (IStream a)))])]{An
+infinite stream of type @racket[(IStream a)]: @racket[ICons] pairs a head with a
+deferred infinite tail. There is no empty constructor, so the stream never ends.}
+
+@defproc[(istream-head [s (IStream a)]) a]{The head — always present, so total.}
+
+@defproc[(istream-tail [s (IStream a)]) (IStream a)]{Everything after the head
+— again an infinite stream, so total.}
+
+@defproc[(istream-take [n Integer] [s (IStream a)]) (List a)]{The first
+@racket[n] elements as a strict @racket[List]; for @racket[n >= 0] always
+exactly @racket[n], since the stream never runs out.}
+
+@defproc[(istream-map [f (-> a b)] [s (IStream a)]) (IStream b)]{Map over every
+element, keeping the tail deferred.}
+
+@defproc[(istream-zip-with [f (-> a (-> b c))] [xs (IStream a)] [ys (IStream b)])
+         (IStream c)]{Combine two infinite streams positionwise with a curried
+@racket[f].}
+
+@defproc[(istream-repeat [x a]) (IStream a)]{A single value, repeated forever.}
+
+@defproc[(istream-iterate [f (-> a a)] [x a]) (IStream a)]{The infinite stream
+@racket[x], @racket[(f x)], @racket[(f (f x))], ….}
+
+@defproc[(istream-from [n Integer]) (IStream Integer)]{The infinite stream
+@racket[n], @racket[n+1], @racket[n+2], ….}
+
+@defproc[(istream->stream [s (IStream a)]) (Stream a)]{Embed into the
+(possibly-empty) @racket[Stream] type — always an @racket[SCons].}
 
 
 @section{rackton/data/arrow-lazy}
