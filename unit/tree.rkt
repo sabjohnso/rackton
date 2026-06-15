@@ -30,6 +30,7 @@
          run-tests
          run-tests-quiet
          run-suite
+         run-suite-tree
          summary-passed
          summary-failed
          ;; Re-exports (single import path keeps instance coherence happy).
@@ -255,11 +256,28 @@
 (: run-tests-quiet (-> Test (IO Summary)))
 (define (run-tests-quiet t) (qrun-at "" t))
 
-(: run-suite (-> String (-> (List Test) (IO Unit))))
-(define (run-suite name tests)
-  (do [s <- (run-tests-quiet (group-of name tests))]
+;; The top-level name of a tree — used for the panic message.
+(: test-label (-> Test String))
+(define (test-label t)
+  (match t
+    [(TLeaf  name _) name]
+    [(TGroup name _) name]))
+
+;; Run a single Test tree quietly, then `panic` (so `raco test` reports a
+;; non-zero result) if any leaf failed.  This is the single-tree form of
+;; `run-suite`, for a file whose whole suite is one top-level `describe`:
+;; `(run-io (run-suite-tree (describe "…" …)))`.
+(: run-suite-tree (-> Test (IO Unit)))
+(define (run-suite-tree t)
+  (do [s <- (run-tests-quiet t)]
     (if (> (summary-failed s) 0)
-        (panic (string-append name
+        (panic (string-append (test-label t)
                  (string-append ": "
                    (string-append (integer->string (summary-failed s)) " failure(s)"))))
         (pure-io Unit))))
+
+;; `run-suite NAME tests` runs `tests` under a fresh top-level group named
+;; `NAME` — sugar for `run-suite-tree` applied to `(group-of NAME tests)`.
+(: run-suite (-> String (-> (List Test) (IO Unit))))
+(define (run-suite name tests)
+  (run-suite-tree (group-of name tests)))

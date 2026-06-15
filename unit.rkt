@@ -28,6 +28,7 @@
          run-tests
          run-tests-quiet
          run-suite
+         run-suite-tree
          summary-passed
          summary-failed
          (data-out Property)

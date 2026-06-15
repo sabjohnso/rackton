@@ -341,6 +341,12 @@ leaves, tagged with their group path, so a passing suite is silent.}
 quietly under a top-level group @racket[name], then @racket[panic] if any leaf failed (so
 @tt{raco test} reports a non-zero result).}
 
+@defproc[(run-suite-tree [t Test]) (IO Unit)]{The single-tree form of
+@racket[run-suite], for a file whose whole suite is one top-level
+@racket[describe]: run @racket[t] quietly and @racket[panic] (tagged with the
+tree's own top-level name) if any leaf failed. @racket[run-suite] is just this
+applied to @racket[(group-of name tests)].}
+
 @defproc[(summary-passed [s Summary]) Integer]{The number of passing leaves in a summary.}
 
 @defproc[(summary-failed [s Summary]) Integer]{The number of failing leaves in a summary.}
