@@ -28,7 +28,7 @@
     [(p:wild stx)
      (datum->syntax stx '_ stx)]
     [(p:var name stx)
-     (datum->syntax stx name stx)]
+     (emit-id name stx)]
     [(p:lit v stx)
      #:when (symbol? v)
      (datum->syntax stx (list 'quote v) stx)]

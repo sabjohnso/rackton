@@ -34,6 +34,7 @@
          parse-toplevel-list
 
          current-hygiene?
+         emit-id
          lowercase-id?)
 
 (require syntax/parse
@@ -211,8 +212,42 @@
   (cond
     [(current-hygiene?)
      (for/fold ([env (current-rename-env)]) ([id (in-list binder-id-stxs)])
-       (cons (cons id (gensym (syntax-e id))) env))]
+       (cons (cons id (make-hygiene-rename id)) env))]
     [else (current-rename-env)]))
+
+;; A hygiene α-rename: a fresh uninterned symbol standing in for a local
+;; binder of `id`.  Tagged with `hygiene-rename-prefix` so codegen
+;; (`emit-id`) can tell a rename apart from a parser-internal placeholder
+;; (`$arg`, `_delay`) — only the former is emitted scope-free.  The tag is
+;; internal and surfaces only in generated code, never in `,source` (which
+;; replays the original form) or in inferred types.
+(define hygiene-rename-prefix "hyg~")
+
+(define (make-hygiene-rename id)
+  (gensym (string-append hygiene-rename-prefix (symbol->string (syntax-e id)))))
+
+(define (hygiene-rename-symbol? name)
+  (and (symbol? name)
+       (not (symbol-interned? name))
+       (let ([s (symbol->string name)])
+         (and (>= (string-length s) (string-length hygiene-rename-prefix))
+              (string=? (substring s 0 (string-length hygiene-rename-prefix))
+                        hygiene-rename-prefix)))))
+
+;; Lower an identifier symbol to a syntax object for code generation,
+;; preserving `src`'s source location.  A hygiene α-rename (a local binder
+;; or one of its references, made by `make-hygiene-rename`) must carry its
+;; binding identity in the SYMBOL alone — so emit it scope-free (an empty
+;; lexical context).  Otherwise a binder and a reference, which draw their
+;; source syntax from different forms (the enclosing `let` vs. the use-site
+;; occurrence), keep different scope sets after macro expansion and stop
+;; being `bound-identifier=?`, leaving the binder unreachable.  Every other
+;; name — user identifiers, prelude references, constructor names that must
+;; resolve a match expander, and parser-internal placeholders (`$arg`,
+;; `_delay`) whose binder and references already share one context — keeps
+;; `src`'s context, so non-macro code generation is byte-for-byte unchanged.
+(define (emit-id name src)
+  (datum->syntax (if (hygiene-rename-symbol? name) #f src) name src))
 
 ;; The binder identifiers introduced by a pattern (lowercase, non-wildcard
 ;; variables), recurring through constructor patterns.  Used to extend the

@@ -42,7 +42,22 @@
   (define r-let% (let ([x 99]) (let% ([x (Some 2)]) (Some x))))
 
   (: r-let+ (Maybe Integer))
-  (define r-let+ (let ([x 99]) (let+ ([x (Some 2)]) x))))
+  (define r-let+ (let ([x 99]) (let+ ([x (Some 2)]) x)))
+
+  ;; A macro whose TEMPLATE introduces the binding form, wrapping use-site
+  ;; code passed as arguments.  Unlike every case above — where the user
+  ;; writes the binder directly and all identifiers share one context — here
+  ;; the `let` keyword carries the macro-introduction scope while the
+  ;; use-site binders `x`/`y` and their references do not.  Binder and
+  ;; reference are the same renamed gensym, but codegen must emit a renamed
+  ;; local scope-free; otherwise the binder (scoped by the `let` form) and
+  ;; the reference (scoped by the use-site identifier) disagree and the
+  ;; reference fails to bind.
+  (define-syntax-rule (eval-with body (binding ...))
+    (let (binding ...) body))
+
+  (: r-template-let Integer)
+  (define r-template-let (eval-with (+ x y) ([x 3] [y 4]))))
 
 (test-case "let* binder shadows hygienically"   (check-equal? r-let* 2))
 (test-case "letrec binder shadows hygienically" (check-equal? r-letrec 2))
@@ -52,3 +67,5 @@
 (test-case "let& binder shadows hygienically" (check-equal? r-let& (Some 2)))
 (test-case "let% binder shadows hygienically" (check-equal? r-let% (Some 2)))
 (test-case "let+ binder shadows hygienically" (check-equal? r-let+ (Some 2)))
+(test-case "macro-introduced binding form over use-site binders"
+  (check-equal? r-template-let 7))

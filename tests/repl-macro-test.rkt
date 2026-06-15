@@ -52,6 +52,18 @@
   (check-regexp-match #rx"8" (last outs))
   (check-regexp-match #rx"Integer" (last outs)))
 
+(test-case "REPL: macro-introduced binding form over use-site binders"
+  ;; The macro's template introduces the `let`; its binders and body come
+  ;; from the use site.  The `let` keyword carries the macro scope, the
+  ;; use-site binder/refs do not, so a renamed local must be emitted
+  ;; scope-free for the binder and reference to still agree.
+  (define-values (_ outs)
+    (drive-session
+     '((define-syntax-rule (eval-with body (binding ...)) (let (binding ...) body))
+       (eval-with (+ x y) ([x 3] [y 4])))))
+  (check-regexp-match #rx"7" (last outs))
+  (check-regexp-match #rx"Integer" (last outs)))
+
 (test-case "REPL: macro persists across a later unrelated input"
   (define-values (_ outs)
     (drive-session

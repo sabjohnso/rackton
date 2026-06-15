@@ -210,18 +210,18 @@
         [(and concrete-return? (or (not dict-impls) (null? dict-impls)))
          (compile-method-impl-ref resolved stx ctx)]
         [(and dict-impls (not (null? dict-impls)))
-         (with-syntax ([head (datum->syntax stx (or resolved name) stx)]
+         (with-syntax ([head (emit-id (or resolved name) stx)]
                        [(d ...) (for/list ([sym (in-list dict-impls)])
                                   (compile-dict-impl sym stx ctx))])
            (syntax/loc stx (head d ...)))]
-        [else (datum->syntax stx (or resolved name) stx)])
+        [else (emit-id (or resolved name) stx)])
       st)]
 
     [(e:lam params body stx)
      ;; A multi-parameter lambda compiles to a curried `case-lambda` covering
      ;; every prefix arity; 0/1-param lambdas pass through as `(lambda ...)`.
      (define param-stxs
-       (for/list ([n (in-list params)]) (datum->syntax stx n stx)))
+       (for/list ([n (in-list params)]) (emit-id n stx)))
      (let-values ([(bdy-stx st) (compile-expr body ctx st)])
        (values (build-curried-lambda param-stxs bdy-stx stx) st))]
 
@@ -244,7 +244,7 @@
        (values
         (with-syntax ([(binding ...)
                        (for/list ([b (in-list bindings)] [r (in-list rs)])
-                         (with-syntax ([x (datum->syntax stx (car b) stx)] [r r])
+                         (with-syntax ([x (emit-id (car b) stx)] [r r])
                            #'(x r)))]
                       [bdy bdy])
           (syntax/loc stx (let (binding ...) bdy)))
@@ -256,7 +256,7 @@
        (values
         (with-syntax ([(binding ...)
                        (for/list ([b (in-list bindings)] [r (in-list rs)])
-                         (with-syntax ([x (datum->syntax stx (car b) stx)] [r r])
+                         (with-syntax ([x (emit-id (car b) stx)] [r r])
                            #'(x r)))]
                       [bdy bdy])
           (syntax/loc stx (letrec (binding ...) bdy)))
@@ -424,9 +424,9 @@
        (let-values ([(cl-body st) (compile-expr (handle-clause-body cl) ctx st)])
          (define form
            (with-syntax ([op-sym (datum->syntax stx (handle-clause-op cl) stx)]
-                         [k-name (datum->syntax stx (handle-clause-k-name cl) stx)]
+                         [k-name (emit-id (handle-clause-k-name cl) stx)]
                          [(p ...) (for/list ([param (in-list compiled-params)])
-                                    (datum->syntax stx param stx))]
+                                    (emit-id param stx))]
                          [cl-body cl-body])
              #'[(list (quote op-sym) (list p ...) k-name)
                 cl-body]))
