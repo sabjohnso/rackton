@@ -37,6 +37,34 @@
   (check-regexp-match #rx"\\(Monad Maybe\\)" out)
   (check-regexp-match #rx"\\(Monad List\\)" out))
 
+(test-case ",info on a protocol lists its declared laws"
+  (define out (info-output 'Eq))
+  (check-regexp-match #rx"laws:" out)
+  (check-regexp-match #rx"reflexivity" out)
+  (check-regexp-match #rx"symmetry" out)
+  (check-regexp-match #rx"transitivity" out)
+  ;; the law body reads as written
+  (check-regexp-match #rx"\\(== x x\\)" out))
+
+(test-case ",info shows a higher-kinded law with its => context"
+  (define out (info-output 'Functor))
+  (check-regexp-match #rx"laws:" out)
+  (check-regexp-match #rx"identity" out)
+  (check-regexp-match #rx"\\(Eq \\(f Integer\\)\\) =>" out))
+
+(test-case ",info on a session-defined protocol shows its laws"
+  (define-values (_ outs)
+    (drive-session
+     '((protocol (Idempotent a)
+         (#:requires (Eq a))
+         (: op (-> a a))
+         #:laws
+         ([idempotence (All ([x : a]) (== (op (op x)) (op x)))]))
+       (unquote info Idempotent))))
+  (define out (last outs))
+  (check-regexp-match #rx"laws:" out)
+  (check-regexp-match #rx"idempotence" out))
+
 (test-case ",info on a type ctor lists arity and constructors with schemes"
   (define out (info-output 'List))
   (check-regexp-match #rx"type ctor" out)

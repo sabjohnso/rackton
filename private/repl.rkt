@@ -29,6 +29,7 @@
          racket/string
          (only-in racket/port with-output-to-string)
          (only-in racket/pretty pretty-format)
+         (only-in "ast.rkt" class-law-name class-law-stx)
          "surface.rkt"
          "infer.rkt"
          "codegen.rkt"
@@ -293,12 +294,14 @@
     [else (format "~s is unbound\n" name)]))
 
 ;; Render a class for ,info: parameters, superclasses, methods (each with
-;; its scheme), and the heads of its known instances.  Methods and
-;; instances live in hashes, so both are sorted for deterministic output.
+;; its scheme), the declared laws, and the heads of its known instances.
+;; Methods and instances live in hashes, so both are sorted for
+;; deterministic output; laws keep their declaration order.
 (define (format-class-info env name ci)
   (define supers (class-info-supers ci))
   (define methods
     (sort (hash->list (class-info-methods ci)) symbol<? #:key car))
+  (define laws (class-info-laws ci))
   (define insts
     (sort (for/list ([ii (in-list (env-instances env name))])
             (format "~s" (pred->datum (instance-info-head ii))))
@@ -319,6 +322,17 @@
               "  methods:\n"
               (for/list ([m (in-list methods)])
                 (format "    ~s :: ~a\n" (car m) (scheme->datum (cdr m))))))
+   (if (null? laws)
+       ""
+       (apply string-append
+              "  laws:\n"
+              (for/list ([law (in-list laws)])
+                ;; The originating clause datum is `(name quantified)`;
+                ;; print the `quantified` part beside the name we already
+                ;; have so the law reads as written.
+                (format "    ~s: ~s\n"
+                        (class-law-name law)
+                        (cadr (syntax->datum (class-law-stx law)))))))
    (if (null? insts)
        ""
        (format "  instances: ~a\n" (string-join insts " ")))))

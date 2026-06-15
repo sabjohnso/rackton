@@ -167,20 +167,24 @@ constructors under their bare names, functions as @racketresultfont{<lambda>}).
 @litchar{,info} @racket[_name] (or @litchar{,i} @racket[_name])
 prints what @racket[_name] is bound to in the current environment.  A
 value or data constructor prints its scheme on one line.  A protocol lists
-its parameters, superprotocols, methods (each with its scheme), and known
-instances; a type constructor lists its arity, its constructors, and the
-protocols it has instances of.  A type declared @racket[#:abstract] is
-marked @litchar{sealed}.
+its parameters, superprotocols, methods (each with its scheme), its
+declared @racket[#:laws] (each as written, with any @racket[=>] law
+context), and known instances; a type constructor lists its arity, its
+constructors, and the protocols it has instances of.  A type declared
+@racket[#:abstract] is marked @litchar{sealed}.
 
 @verbatim|{
-λ> ,info Monad
-Monad (protocol)
-  parameters:   m
-  superprotocols: (Applicative m)
+λ> ,info Eq
+Eq (protocol)
+  parameters:   a
   methods:
-    flatmap :: (All (m a b) ((Monad m) => (-> (-> a (m b)) (-> (m a) (m b)))))
-    join :: (All (m a) ((Monad m) => (-> (m (m a)) (m a))))
-  instances: (Monad (Either a)) (Monad IO) (Monad Identity) (Monad List) (Monad Maybe)
+    /= :: (All (a) ((Eq a) => (-> a (-> a Boolean))))
+    == :: (All (a) ((Eq a) => (-> a (-> a Boolean))))
+  laws:
+    reflexivity: (All ((x : a)) (== x x))
+    symmetry: (All ((x : a) (y : a)) (if (== x y) (== y x) #t))
+    transitivity: (All ((x : a) (y : a) (z : a)) (if (== x y) (if (== y z) (== x z) #t) #t))
+  instances: (Eq (Either a b)) (Eq (List a)) (Eq (Maybe a)) (Eq Boolean) (Eq Integer) (Eq String) ...
 }|}
 
 @deftogether[(@defidform[#:kind "REPL command" source]
