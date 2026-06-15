@@ -1,6 +1,6 @@
 #lang scribble/manual
 @require[scribble/manual
-         (for-label rackton rackton/control/applicative rackton/control/concurrent rackton/control/monad rackton/control/monad/except rackton/control/monad/reader rackton/control/monad/state rackton/control/monad/writer rackton/control/stm rackton/data/result)]
+         (for-label (except-in rackton apply) rackton/control/applicative rackton/control/apply rackton/control/comonad rackton/control/concurrent rackton/control/monad rackton/control/monad/except rackton/control/monad/reader rackton/control/monad/state rackton/control/monad/writer rackton/control/stm rackton/data/result rackton/data/list/nonempty rackton/data/tuple)]
 
 @title[#:tag "stdlib-control" #:style 'toc]{@tt{rackton/control} — applicative, monad, transformers}
 
@@ -14,8 +14,11 @@ prelude's protocols; the standard transformers —
 @racketmodname[rackton/control/monad/state],
 @racketmodname[rackton/control/monad/writer],
 @racketmodname[rackton/control/monad/except], and their
-@racketmodname[rackton/control/monad/trans] lifting protocol; and the
-concurrency and software-transactional-memory modules
+@racketmodname[rackton/control/monad/trans] lifting protocol; the
+@racketmodname[rackton/control/apply] and
+@racketmodname[rackton/control/comonad] protocols, which sit alongside
+(and dual to) the prelude's @racket[Applicative]/@racket[Monad]
+hierarchy; and the concurrency and software-transactional-memory modules
 @racketmodname[rackton/control/concurrent] and
 @racketmodname[rackton/control/stm].
 
@@ -31,6 +34,76 @@ module adds the higher-arity lift.
 @defproc[(lift-a3 [g (-> a (-> b (-> c d)))] [fa (f a)] [fb (f b)] [fc (f c)]) (f d)]{
 Applies a curried 3-ary function @racket[g] under an @racket[Applicative]
 @racket[f], for any @racket[(Applicative f)].}
+
+
+@section{rackton/control/apply}
+@defmodule[rackton/control/apply]
+
+Control.Apply.  @racket[FunctorApply] (Edward Kmett's @tt{Apply}) is a
+@racket[Functor] that supports application but carries no @racket[pure] —
+it is @racket[Applicative] minus the unit.  It sits @emph{parallel} to
+@racket[Applicative] rather than below it: its only superprotocol is
+@racket[Functor].  Keeping it standalone lets a type that is not a full
+@racket[Applicative] still support application — for instance the env
+comonad @racket[(Pair e)], which needs only @racket[(Semigroup e)] and
+cannot provide a lawful @racket[pure].
+
+@defidform[#:kind "protocol" FunctorApply]{
+
+Functors supporting application.  Superprotocol: @racket[Functor].
+
+@deftogether[(
+  @defproc[(apply  [fg (f (-> a b))] [fa (f a)])              (f b)]
+  @defproc[(liftF2 [g (-> a (-> b c))] [fa (f a)] [fb (f b)]) (f c)])]{
+
+@racket[apply] and @racket[liftF2] are arranged in a default cycle; an
+instance defines either one and the other derives.}
+
+Built-in instances: @racket[Maybe], @racket[List], @racket[Either a],
+@racket[Identity], @racket[NonEmpty] (zippy, positionwise), and
+@racket[(Pair e)] for @racket[(Semigroup e)].}
+
+
+@section{rackton/control/comonad}
+@defmodule[rackton/control/comonad]
+
+Control.Comonad.  A @racket[Comonad] is the categorical dual of a
+@racket[Monad]: where a monad puts a value into a context
+(@racket[pure]) and flattens nested contexts (@racket[join]), a comonad
+takes a value out of a context (@racket[extract]) and splits a context
+into a context-of-contexts (@racket[duplicate]).  @racket[ComonadApply]
+is the comonadic counterpart of @racket[FunctorApply].
+
+@defidform[#:kind "protocol" Comonad]{
+
+Co-monads.  Superprotocol: @racket[Functor].
+
+@deftogether[(
+  @defproc[(extract   [w (w a)])                  a]
+  @defproc[(duplicate [w (w a)])                  (w (w a))]
+  @defproc[(extend    [k (-> (w a) b)] [w (w a)]) (w b)])]{
+
+@racket[extract] is the sole irreducible primitive; @racket[duplicate]
+and @racket[extend] form a default cycle (dual to @racket[Monad]'s
+@racket[join]/@racket[flatmap]) — an instance defines either one.}
+
+Built-in instances: @racket[Identity]; @racket[NonEmpty]
+(@racket[extract] is the head, @racket[duplicate] the non-empty
+suffixes); and @racket[(Pair e)], the env comonad (@racket[extract] is
+the focus, @racket[duplicate] copies the environment inward).}
+
+@defidform[#:kind "protocol" ComonadApply]{
+
+A @racket[Comonad] that is also a @racket[FunctorApply], applying
+positionwise.  Superprotocols: @racket[Comonad], @racket[FunctorApply].
+
+@defproc[(coapply [wf (w (-> a b))] [wa (w a)]) (w b)]{
+
+Haskell's @tt["<@>"]; defaults to the @racket[FunctorApply]
+@racket[apply].}
+
+Built-in instances: @racket[Identity], @racket[NonEmpty], and
+@racket[(Pair e)] for @racket[(Semigroup e)].}
 
 
 @section{rackton/control/concurrent}

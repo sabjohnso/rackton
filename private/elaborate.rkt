@@ -605,6 +605,23 @@
   (define exported-impls (remove-duplicates exported-impls-from-cg))
   (for ([sym (in-list exported-impls)])
     (hash-set! export-vars sym sym))
+  ;; Force-export the per-method dispatch tables ($dispatch:<method>) of
+  ;; every protocol DEFINED in this module and named in its provide.
+  ;; codegen's compile-class makes one such table per method but leaves
+  ;; it module-private; exporting it lets an instance of this protocol
+  ;; declared in ANOTHER module register its impls into the same table
+  ;; (without it the cross-module instance fails with
+  ;; "$dispatch:<method>: unbound identifier").  Restricted to LOCAL
+  ;; classes — a re-exported protocol's tables live in, and are provided
+  ;; by, its origin module.  Prelude protocols are excluded: their tables
+  ;; live in prelude-runtime.rkt and are already in scope everywhere.
+  (for ([(local _external) (in-hash export-classes)]
+        #:when (hash-has-key? local-classes local)
+        #:unless (env-ref-class prelude-env local #f))
+    (define ci (env-ref-class env local))
+    (for ([(mname _sig) (in-hash (class-info-methods ci))])
+      (define sym (method-dispatch-symbol mname))
+      (hash-set! export-vars sym sym)))
   ;; Sidecar bindings — filtered by export-vars, with renames
   ;; reflected in the published name.
   (define export-bindings

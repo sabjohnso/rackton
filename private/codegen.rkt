@@ -25,7 +25,11 @@
          empty-cg-ctx
          ;; codegen state: the driver makes one, threads it across forms, and
          ;; reads the logs (inlined-sites, exported-impls) out of the final one.
-         make-cg-st cg-st-inlined-sites cg-st-exported-impls)
+         make-cg-st cg-st-inlined-sites cg-st-exported-impls
+         ;; The per-method dispatch-table symbol ($dispatch:<method>).
+         ;; The elaborator force-exports these for locally-defined
+         ;; protocols so instances declared in other modules can register.
+         method-dispatch-symbol)
 
 ;; The read-only codegen context, threaded explicitly through the lowering
 ;; pass (replacing the dynamically-scoped current-codegen-env + the plan-table

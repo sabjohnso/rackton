@@ -1,6 +1,6 @@
 #lang scribble/manual
 @require[scribble/manual
-         (for-label rackton rackton/data/bits rackton/data/bool rackton/data/char rackton/data/complex rackton/data/either rackton/data/result rackton/data/foldable rackton/data/function rackton/data/functor rackton/data/lazy rackton/data/arrow-lazy rackton/data/lens rackton/data/list rackton/data/list/nonempty rackton/data/map rackton/data/maybe rackton/data/monoid rackton/data/ord rackton/data/ratio rackton/data/semigroup rackton/data/set rackton/data/traversable rackton/data/tuple)
+         (for-label (except-in rackton apply) rackton/data/bits rackton/data/bool rackton/data/char rackton/data/complex rackton/data/either rackton/data/result rackton/data/foldable rackton/data/function rackton/data/functor rackton/data/lazy rackton/data/arrow-lazy rackton/data/kleisli rackton/data/cokleisli rackton/data/lens rackton/data/list rackton/data/list/nonempty rackton/data/map rackton/data/maybe rackton/data/monoid rackton/data/ord rackton/data/ratio rackton/data/semigroup rackton/data/set rackton/data/traversable rackton/data/tuple rackton/control/apply rackton/control/comonad)
          "../rackton-eval.rkt"]
 @(define ev (make-rackton-eval))
 
@@ -22,8 +22,11 @@ the protocols that abstract over containers
 @racketmodname[rackton/data/traversable],
 @racketmodname[rackton/data/ord]); scalar and combinator helpers (bits,
 booleans, characters, complex numbers, rationals, functions, and the two
-@racketmodname[rackton/data/lazy] evaluation modules); and the
-@racketmodname[rackton/data/lens] optics core.  None of these are in the
+@racketmodname[rackton/data/lazy] evaluation modules); the
+@racketmodname[rackton/data/lens] optics core; and the arrow wrappers
+@racketmodname[rackton/data/arrow-lazy],
+@racketmodname[rackton/data/kleisli], and
+@racketmodname[rackton/data/cokleisli].  None of these are in the
 auto-prelude — import the specific module you need.
 
 @local-table-of-contents[]
@@ -483,6 +486,69 @@ runnable example, the self-referential infinite stream of @racket[1]s:
 }}
 
 
+@section{rackton/data/kleisli}
+@defmodule[rackton/data/kleisli]
+
+The Kleisli category of a @racket[Monad].  @racket[(Kleisli m a b)]
+wraps a monadic function @racket[(-> a (m b))]; composing two such
+functions with @racket[flatmap] is Kleisli composition, so over any
+@racket[(Monad m)] the wrapper is a full arrow.  The instances supplied
+are @racket[Category], @racket[Arrow] (over @racket[Pair]),
+@racket[ArrowChoice] (over @racket[Either]), and @racket[ArrowApply].
+@racket[ArrowLoop] is intentionally absent: tying its feedback knot needs
+a @tt{MonadFix}, which the language does not provide.
+
+@deftogether[(
+@defform[#:kind "type & constructor" #:link-target? #f #:id Kleisli #:literals (data ->)
+         (data (Kleisli m a b)
+           (Kleisli (-> a (m b))))]
+@defthing[#:kind "type & constructor" Kleisli (-> (-> a (m b)) (Kleisli m a b))])]{
+The Kleisli arrow: @racket[(Kleisli (-> a (m b)))] wraps a monadic
+function.}
+
+@defproc[(run-kleisli [k (Kleisli m a b)] [x a]) (m b)]{Unwrap to the
+underlying monadic function and apply it.}
+
+@rackton-example[#:eval ev #:mode 'value]{
+(require rackton/data/kleisli)
+(let ([inc (Kleisli (lambda (x) (Some (+ x 1))))]
+      [dbl (Kleisli (lambda (x) (Some (* x 2))))])
+  (run-kleisli (comp dbl inc) 10))
+}
+
+
+@section{rackton/data/cokleisli}
+@defmodule[rackton/data/cokleisli]
+
+The co-Kleisli category of a @racket[Comonad].  @racket[(Cokleisli w a
+b)] wraps a context-consuming function @racket[(-> (w a) b)]; composing
+two such functions with @racket[extend] is co-Kleisli composition, so
+over any @racket[(Comonad w)] the wrapper is a @racket[Category] and an
+@racket[Arrow] (over @racket[Pair]).  @racket[ArrowChoice] and
+@racket[ArrowApply] are absent: there is no lawful way to route a
+coproduct down one branch of a general comonad, nor to apply a wrapped
+co-Kleisli arrow, so the lawful stack tops out at @racket[Arrow].
+
+@deftogether[(
+@defform[#:kind "type & constructor" #:link-target? #f #:id Cokleisli #:literals (data ->)
+         (data (Cokleisli w a b)
+           (Cokleisli (-> (w a) b)))]
+@defthing[#:kind "type & constructor" Cokleisli (-> (-> (w a) b) (Cokleisli w a b))])]{
+The co-Kleisli arrow: @racket[(Cokleisli (-> (w a) b))] wraps a
+context-consuming function.}
+
+@defproc[(run-cokleisli [k (Cokleisli w a b)] [w (w a)]) b]{Unwrap to the
+underlying context-consuming function and apply it.}
+
+@rackton-example[#:eval ev #:mode 'value]{
+(require rackton/data/cokleisli
+         rackton/control/comonad)
+(let ([inc (Cokleisli (lambda (w) (+ (extract w) 1)))]
+      [dbl (Cokleisli (lambda (w) (* (extract w) 2)))])
+  (run-cokleisli (comp dbl inc) (Identity 10)))
+}
+
+
 @section{rackton/data/lens}
 @defmodule[rackton/data/lens]
 
@@ -752,6 +818,14 @@ A list guaranteed to have at least one element, so @racket[ne-head] and
 
 @defproc[(ne-map [f (-> a b)] [ne (NonEmpty a)]) (NonEmpty b)]{Maps @racket[f] over
   every element.}
+
+Beyond the accessors, @racket[NonEmpty] has @racket[Functor],
+@racket[FunctorApply], @racket[Comonad], and @racket[ComonadApply]
+instances (from @racketmodname[rackton/control/apply] and
+@racketmodname[rackton/control/comonad]).  It is the canonical non-trivial
+comonad — @racket[extract] is the head and @racket[duplicate] the
+non-empty suffixes — and its @racket[FunctorApply] is @emph{zippy}
+(positionwise), unlike @racket[List]'s cartesian @racket[Applicative].
 
 @defproc[(ne-length [ne (NonEmpty a)]) Integer]{Returns the number of elements
   (always at least one).}
@@ -1117,5 +1191,15 @@ Data.Tuple utilities. @racket[fst] and @racket[snd] remain in the prelude; this 
 @defproc[(curry [f (-> (Pair a b) c)] [a a] [b b]) c]{Turns a function on a @racket[Pair] into a two-argument function.}
 
 @defproc[(uncurry [f (-> a (-> b c))] [p (Pair a b)]) c]{Turns a two-argument function into one taking a @racket[Pair].}
+
+This module also makes @racket[(Pair e)] the @deftech{env comonad}: it
+supplies @racket[Functor] and @racket[Comonad] instances acting on the
+second component (the focus), where @racket[extract] reads the focus and
+@racket[duplicate] copies the environment @racket[e] into the new outer
+layer.  With @racket[(Semigroup e)] it is additionally a
+@racket[FunctorApply] and @racket[ComonadApply], combining the two
+environments with @racket[mappend].  (These need
+@racketmodname[rackton/control/apply] and
+@racketmodname[rackton/control/comonad].)
 
 
