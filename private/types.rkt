@@ -70,6 +70,9 @@
          current-type-columns
          type->pretty-datum
          pred->pretty-datum
+         scheme->pretty-datum
+         datum->doc
+         group-parts
          format-pretty-datum
          format-types
          format-type
@@ -422,6 +425,13 @@
   (match p
     [(pred c args) `(,c ,@(map type->pretty-datum args))]))
 
+;; Like `scheme->datum`, but in the human-facing n-ary arrow form — the
+;; counterpart of `scheme->datum` for diagnostics and REPL display.
+(define (scheme->pretty-datum sch)
+  (match sch
+    [(scheme '() body) (type->pretty-datum body)]
+    [(scheme vs body)  `(All ,vs ,(type->pretty-datum body))]))
+
 ;; The width budget for rendered types/predicates — the columns available
 ;; *after* the diagnostic's label (`"  expected: "` is 12 chars), so 66
 ;; here keeps a wrapped line inside a standard 79-column terminal.
@@ -444,7 +454,14 @@
     [else (doc-text (format "~s" x))]))
 
 (define (datum-list->doc xs)
-  (define parts (map datum->doc xs))
+  (group-parts (map datum->doc xs)))
+
+;; Lay out a parenthesized form from already-built part docs: the whole
+;; sits on one line when it fits, otherwise breaks one part per line with
+;; the tail indented two under the head.  Callers that render values
+;; (where leaf atoms want `print` form) build their own part docs and
+;; reuse this layout; `datum-list->doc` feeds it `write`-formatted atoms.
+(define (group-parts parts)
   (cond
     [(null? (cdr parts))
      (doc-cat (doc-text "(") (car parts) (doc-text ")"))]

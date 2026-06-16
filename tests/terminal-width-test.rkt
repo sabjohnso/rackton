@@ -22,8 +22,19 @@
 ;; terminal? : is the REPL input actually a terminal?
 ;; stty-line : the raw `stty size` output ("rows cols") or #f
 
-(test-case "COLUMNS, when a positive integer, wins"
-  (check-equal? (compute-display-columns "100" #t "24 80") 100))
+(test-case "on a terminal the live stty size wins over a frozen COLUMNS"
+  ;; COLUMNS is captured at process spawn and never tracks a resize; the
+  ;; `stty size` probe is live, so it must win whenever there is a real
+  ;; terminal to probe.
+  (check-equal? (compute-display-columns "100" #t "24 80") 80))
+
+(test-case "off a terminal, an exported COLUMNS is used"
+  ;; A piped or comint REPL has no terminal to probe but may export
+  ;; COLUMNS; trust it there.
+  (check-equal? (compute-display-columns "100" #f #f) 100))
+
+(test-case "on a terminal, a failed stty probe falls back to COLUMNS"
+  (check-equal? (compute-display-columns "100" #t #f) 100))
 
 (test-case "falls back to stty size when COLUMNS is unset, on a terminal"
   (check-equal? (compute-display-columns #f #t "24 80") 80))

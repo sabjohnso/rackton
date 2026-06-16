@@ -46,17 +46,22 @@
 (define (columns->type-budget cols)
   (max min-type-columns (- cols label-width)))
 
-;; Resolve a column count from the available signals, preferring an
-;; explicit `COLUMNS` over an `stty size` probe.  `env-col` is the raw
-;; `COLUMNS` string (or #f); `stty-line` is the raw "rows cols" line (or
-;; #f) and is consulted only on a real terminal.  #f means "no reliable
-;; width — keep the default".
+;; Resolve a column count from the available signals.  On a real
+;; terminal the live `stty size` probe wins: `COLUMNS` is captured at
+;; process spawn and never tracks a window resize, so honoring it there
+;; would freeze the width for the whole session.  `COLUMNS` is the
+;; fallback — when there is no terminal to probe (a piped or comint REPL
+;; that exports it) or the probe fails.  `env-col` is the raw `COLUMNS`
+;; string (or #f); `stty-line` is the raw "rows cols" line (or #f) and is
+;; consulted only on a real terminal.  #f means "no reliable width —
+;; keep the default".
 (define (compute-display-columns env-col terminal? stty-line)
   (define from-env (and env-col (string->number (string-trim env-col))))
+  (define env-cols (and (exact-integer? from-env) (positive? from-env) from-env))
+  (define stty-cols (and stty-line (parse-stty-cols stty-line)))
   (cond
-    [(and (exact-integer? from-env) (positive? from-env)) from-env]
-    [(and terminal? stty-line) (parse-stty-cols stty-line)]
-    [else #f]))
+    [terminal? (or stty-cols env-cols)]
+    [else env-cols]))
 
 ;; "24 80" → 80; anything that isn't two positive integers → #f.
 (define (parse-stty-cols line)

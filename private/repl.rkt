@@ -30,6 +30,9 @@
          (only-in racket/port with-output-to-string)
          (only-in racket/pretty pretty-format)
          (only-in "ast.rkt" class-law-name class-law-stx)
+         (only-in "diagnostic.rkt"
+                  doc-cat doc-group doc-nest doc-line doc-text render-doc
+                  labeled-block)
          "surface.rkt"
          "infer.rkt"
          "codegen.rkt"
@@ -223,7 +226,7 @@
    ;; type, rendered the same way a bare expression result is.
    (for ([c (in-list compiled)]) (eval-in state c))
    (define value (eval-in state (datum->syntax #f name)))
-   (format "~a :: ~a\n" (format-value value) (scheme->datum sch))))
+   (render-typed (value->doc value) (scheme->pretty-datum sch))))
 
 ;; Hoogle-style search over everything in scope: by whole signature
 ;; (modulo unification and argument order), by result type, or — for
@@ -241,7 +244,7 @@
      [hits
       (apply string-append
              (for/list ([h (in-list hits)])
-               (format "~s :: ~a\n" (car h) (scheme->datum (cdr h)))))])))
+               (render-typed (name-doc (car h)) (scheme->pretty-datum (cdr h)))))])))
 
 ;; List the functions (and data constructors) in scope that accept an
 ;; argument of the queried type.  Bare-type-variable argument
@@ -259,7 +262,7 @@
      [matches
       (apply string-append
              (for/list ([m (in-list matches)])
-               (format "~s :: ~a\n" (car m) (scheme->datum (cdr m)))))])))
+               (render-typed (name-doc (car m)) (scheme->pretty-datum (cdr m)))))])))
 
 ;; Play back the input form(s) that bound `name`: the definition first,
 ;; then — for a class — the live instances the session has seen.
@@ -283,10 +286,11 @@
   (define env (rackton-repl-state-env state))
   (cond
     [(env-ref-var env name)
-     => (lambda (sch) (format "~s :: ~a\n" name (scheme->datum sch)))]
+     => (lambda (sch) (render-typed (name-doc name) (scheme->pretty-datum sch)))]
     [(env-ref-data env name)
-     => (lambda (di) (format "~s :: ~a (data ctor)\n"
-                             name (scheme->datum (data-info-scheme di))))]
+     => (lambda (di) (render-typed (name-doc name)
+                                   (scheme->pretty-datum (data-info-scheme di))
+                                   #:suffix " (data ctor)"))]
     [(env-ref-tcon env name)
      => (lambda (ti) (format-tcon-info env name ti))]
     [(env-ref-class env name)
@@ -321,7 +325,7 @@
        (apply string-append
               "  methods:\n"
               (for/list ([m (in-list methods)])
-                (format "    ~s :: ~a\n" (car m) (scheme->datum (cdr m))))))
+                (render-typed-line 4 (car m) (scheme->pretty-datum (cdr m))))))
    (if (null? laws)
        ""
        (apply string-append
@@ -330,12 +334,13 @@
                 ;; The originating clause datum is `(name quantified)`;
                 ;; print the `quantified` part beside the name we already
                 ;; have so the law reads as written.
-                (format "    ~s: ~s\n"
-                        (class-law-name law)
-                        (cadr (syntax->datum (class-law-stx law)))))))
+                (render-labeled-datum
+                 4
+                 (format "~s" (class-law-name law))
+                 (cadr (syntax->datum (class-law-stx law)))))))
    (if (null? insts)
        ""
-       (format "  instances: ~a\n" (string-join insts " ")))))
+       (render-labeled-list "  instances:" insts))))
 
 ;; Render a type constructor for ,info: arity (and a `sealed` marker for
 ;; #:abstract types), the constructors visible in the env with their
@@ -347,8 +352,7 @@
   (define ctor-lines
     (for/list ([c (in-list (tcon-info-ctors ti))]
                #:when (env-ref-data env c))
-      (format "    ~s :: ~a\n"
-              c (scheme->datum (data-info-scheme (env-ref-data env c))))))
+      (render-typed-line 4 c (scheme->pretty-datum (data-info-scheme (env-ref-data env c))))))
   (define impls
     (sort (remove-duplicates
            (for*/list ([(_cls insts) (in-hash (env-instance-table env))]
@@ -521,7 +525,7 @@
 (define (echo-definition name post-env)
   (define sch (env-ref-var post-env name))
   (cond
-    [sch (format "~s :: ~a\n" name (scheme->datum sch))]
+    [sch (render-typed (name-doc name) (scheme->pretty-datum sch))]
     [else ""]))
 
 ;; ----- expression input -------------------------------------------
@@ -550,9 +554,7 @@
    (define value (eval-in state* (datum->syntax #f name)))
    (define sch (env-ref-var env* name))
    (values state*
-           (format "~a :: ~a\n"
-                   (format-value value)
-                   (scheme->datum sch)))))
+           (render-typed (value->doc value) (scheme->pretty-datum sch)))))
 
 ;; ----- elaboration + eval -----------------------------------------
 
@@ -763,25 +765,102 @@
 
 ;; ----- value rendering --------------------------------------------
 
-;; Render a Rackton value the way the user wrote it.  Data
-;; constructors are transparent structs named `$ctor:<Name>`; print
-;; them under the bare `<Name>` (a nullary ctor with no parens, an
-;; n-ary one as `(Name field …)`, recursively).  Functions print as
-;; `<lambda>` rather than Racket's `#<procedure:…>`; the type, printed
-;; alongside, carries the real information.  Everything else (numbers,
-;; strings, symbols, Maps, …) falls back to `~v`.
-(define (format-value v)
+;; Render a Rackton value the way the user wrote it, as a document the
+;; engine can lay out across lines.  Data constructors are transparent
+;; structs named `$ctor:<Name>`; print them under the bare `<Name>` (a
+;; nullary ctor with no parens, an n-ary one as `(Name field …)`,
+;; recursively).  A Cons/Nil chain collapses to the `(list …)` surface
+;; form.  Functions read as `<lambda>` rather than Racket's
+;; `#<procedure:…>`; the type, printed alongside, carries the real
+;; information.  Everything else (numbers, strings, symbols, Maps, …)
+;; falls back to `print` form — so a Symbol value reads as `'x`, not the
+;; bare `x` that a constructor head uses.
+(define (value->doc v)
   (cond
+    [(rackton-list-elements v)
+     => (lambda (elems)
+          (group-parts (cons (doc-text "list") (map value->doc elems))))]
     [(data-ctor-value? v)
      (define-values (name fields) (data-ctor-name+fields v))
      (if (null? fields)
-         name
-         (format "(~a~a)" name
-                 (apply string-append
-                        (for/list ([f (in-list fields)])
-                          (string-append " " (format-value f))))))]
-    [(procedure? v) "<lambda>"]
-    [else (~v v)]))
+         (doc-text name)
+         (group-parts (cons (doc-text name) (map value->doc fields))))]
+    [(procedure? v) (doc-text "<lambda>")]
+    [else (doc-text (format "~v" v))]))
+
+;; The element values of a Cons/Nil list, in order, or #f if `v` is not
+;; one.  Matched structurally by constructor name *and* arity so an
+;; unrelated user type that reuses the names is not taken for a list.
+(define (rackton-list-elements v)
+  (let loop ([v v] [acc '()])
+    (cond
+      [(data-ctor-named? v "Nil" 0) (reverse acc)]
+      [(data-ctor-named? v "Cons" 2)
+       (define-values (_ fields) (data-ctor-name+fields v))
+       (loop (cadr fields) (cons (car fields) acc))]
+      [else #f])))
+
+;; Is `v` a data-ctor value built by the named constructor of the given
+;; field count?
+(define (data-ctor-named? v name arity)
+  (and (data-ctor-value? v)
+       (let-values ([(n fields) (data-ctor-name+fields v)])
+         (and (string=? n name) (= (length fields) arity)))))
+
+;; ----- typed-output layout ----------------------------------------
+
+;; A document for `<head> :: <type>` that lays out on one line when it
+;; fits the current width and otherwise breaks the type onto its own
+;; hanging `:: …` line; `head` and the type each wrap internally.
+(define (typed-doc head type-datum)
+  (doc-group
+   (doc-cat head
+            (doc-nest 3
+                      (doc-cat doc-line (doc-text ":: ")
+                               (datum->doc type-datum))))))
+
+;; Render `<head> :: <type>` to a line (terminated with a newline),
+;; wrapping at the REPL width.  The width reuses `current-type-columns`
+;; — the same terminal-derived budget the type-error diagnostics use,
+;; refreshed each prompt — so a wide value or signature folds to fit.
+(define (render-typed head type-datum #:suffix [suffix ""])
+  (string-append
+   (render-doc (typed-doc head type-datum) (current-type-columns))
+   suffix "\n"))
+
+(define (name-doc name) (doc-text (format "~s" name)))
+
+;; An indented `<spaces><name> :: <type>` line for ,info listings,
+;; wrapping the signature under a hanging indent so a long type stays
+;; readable beneath its name.
+(define (render-typed-line indent name type-datum)
+  (string-append
+   (render-doc
+    (doc-nest indent
+              (doc-cat (doc-text (make-string indent #\space))
+                       (typed-doc (name-doc name) type-datum)))
+    (current-type-columns))
+   "\n"))
+
+;; An indented `<spaces><label>: <datum>` line for ,info listings (a
+;; protocol law), wrapping the datum under a hanging indent when it is
+;; too wide to sit beside its label.
+(define (render-labeled-datum indent label datum)
+  (string-append
+   (render-doc
+    (doc-nest indent
+              (doc-cat (doc-text (string-append (make-string indent #\space) label ": "))
+                       (doc-group (datum->doc datum))))
+    (current-type-columns))
+   "\n"))
+
+;; A `<header> a b c` line that breaks to one item per line, indented,
+;; when the items don't all fit — for ,info's instance list.  `header`
+;; carries its own leading indent and trailing colon.
+(define (render-labeled-list header items)
+  (string-append
+   (render-doc (labeled-block header items) (current-type-columns))
+   "\n"))
 
 ;; A data-ctor value is a struct whose type name starts with `$ctor:`.
 (define (data-ctor-value? v)
