@@ -135,6 +135,14 @@
   (define out (info-output 'Monad))
   (check-regexp-match #px"\n    \\(Monad Maybe\\)" out))
 
+(test-case ",info breaks after a law label before breaking the law body"
+  ;; A law too wide to sit on one line moves its whole body to the next
+  ;; line, indented under the label, rather than starting beside the
+  ;; label and wrapping the body internally.
+  (define out (info-output 'Monad))
+  (check-regexp-match #px"\n    right-identity:\n      \\(\\(Eq" out)
+  (check-false (regexp-match #px"right-identity: \\(\\(Eq" out)))
+
 ;; ----- regression: existing one-line outputs stay -------------------
 
 (test-case ",info on a var prints its scheme"

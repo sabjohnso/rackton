@@ -860,14 +860,19 @@
    "\n"))
 
 ;; An indented `<spaces><label>: <datum>` line for ,info listings (a
-;; protocol law), wrapping the datum under a hanging indent when it is
-;; too wide to sit beside its label.
+;; protocol law).  The whole thing sits on one line when it fits;
+;; otherwise the break after the label fires first, dropping the datum to
+;; its own line indented under the label, and the datum wraps internally
+;; only if it still does not fit there.  The `doc-line` between label and
+;; datum is what gives the after-label break priority over the datum's
+;; own group breaks.
 (define (render-labeled-datum indent label datum)
   (string-append
    (render-doc
-    (doc-nest indent
-              (doc-cat (doc-text (string-append (make-string indent #\space) label ": "))
-                       (doc-group (datum->doc datum))))
+    (doc-group
+     (doc-cat (doc-text (string-append (make-string indent #\space) label ":"))
+              (doc-nest (+ indent 2)
+                        (doc-cat doc-line (datum->doc datum)))))
     (current-type-columns))
    "\n"))
 
