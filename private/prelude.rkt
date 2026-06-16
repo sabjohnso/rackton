@@ -244,17 +244,18 @@
 
     (protocol (Functor (f :: (-> * *)))
       (: fmap (-> (-> a b) (-> (f a) (f b))))
-      ;; `fmap` preserves identity and composition.  The laws are stated
-      ;; at the element type `Integer` so the container can be compared
-      ;; via an assumed `(Eq (f Integer))` — the bundle cannot name an
-      ;; `Eq` for an arbitrary `(f a)`.
+      ;; `fmap` preserves identity and composition.  The laws are
+      ;; universally quantified over the element types: each variable
+      ;; that is not a class parameter (`a`, `b`, `c`) is skolemized, and
+      ;; the container is compared via an assumed `(Eq (f a))` / `(Eq (f
+      ;; c))` rather than pinning the element to a concrete type.
       #:laws
-        ([identity ((Eq (f Integer)) =>
-           (All ([xs : (f Integer)]) (== (fmap (lambda (x) x) xs) xs)))]
-         [composition ((Eq (f Integer)) =>
-           (All ([xs : (f Integer)])
-             (== (fmap (lambda (n) (* 2 (+ n 1))) xs)
-                 (fmap (lambda (n) (* 2 n)) (fmap (lambda (n) (+ n 1)) xs)))))]))
+        ([identity ((Eq (f a)) =>
+           (All ([xs : (f a)]) (== (fmap (lambda (x) x) xs) xs)))]
+         [composition ((Eq (f c)) =>
+           (All ([g : (-> b c)] [h : (-> a b)] [xs : (f a)])
+             (== (fmap (lambda (x) (g (h x))) xs)
+                 (fmap g (fmap h xs)))))]))
 
     ;; Applicative has three derivable methods — fapply, liftA2, product —
     ;; arranged in a default cycle so an instance can pick whichever
@@ -278,21 +279,22 @@
       #:derive
       ([Functor
         (define (fmap f x) (fapply (pure f) x))])
-      ;; The applicative laws at element type `Integer`.  `pure` is
-      ;; return-typed; where it appears in result position its container
-      ;; is pinned to the law's instance with an `(ann … (f Integer))`.
+      ;; The applicative laws, universally quantified over the element
+      ;; types.  `pure` is return-typed; where it appears in result
+      ;; position the surrounding `fapply` does not pin, its container is
+      ;; fixed to the law's instance with an `(ann … (f …))`.
       #:laws
-        ([identity ((Eq (f Integer)) =>
-           (All ([v : (f Integer)]) (== (fapply (pure (lambda (x) x)) v) v)))]
-         [homomorphism ((Eq (f Integer)) =>
-           (All ([n : Integer])
-             (== (fapply (pure (lambda (m) (+ m 1))) (pure n))
-                 (ann (pure (+ n 1)) (f Integer)))))]
-         [interchange ((Eq (f Integer)) =>
-           (All ([u : (f (-> Integer Integer))] [y : Integer])
-             (== (fapply u (ann (pure y) (f Integer)))
+        ([identity ((Eq (f a)) =>
+           (All ([v : (f a)]) (== (fapply (pure (lambda (x) x)) v) v)))]
+         [homomorphism ((Eq (f b)) =>
+           (All ([g : (-> a b)] [x : a])
+             (== (fapply (pure g) (pure x))
+                 (ann (pure (g x)) (f b)))))]
+         [interchange ((Eq (f b)) =>
+           (All ([u : (f (-> a b))] [y : a])
+             (== (fapply u (ann (pure y) (f a)))
                  (fapply (ann (pure (lambda (g) (g y)))
-                              (f (-> (-> Integer Integer) Integer)))
+                              (f (-> (-> a b) b)))
                          u))))]))
 
     ;; Monad has two derivable methods — flatmap and join — with mutual
@@ -325,24 +327,21 @@
         ;; `g`, and a constructor cannot be partially applied.
         (define (liftA2 g x y)
           (flatmap (lambda (a) (flatmap (lambda (b) (pure (g a b))) y)) x))])
-      ;; The three monad laws at element type `Integer`.  A monadic value
-      ;; supplied by `pure` in a position the surrounding `flatmap` does
-      ;; not pin gets an `(ann … (m Integer))`.
+      ;; The three monad laws, universally quantified over the element
+      ;; types and their Kleisli arrows.  Left-identity is now the true
+      ;; `pure x >>= k = k x` rather than a `(+1)` specialization.  A
+      ;; monadic value supplied by `pure` in a position the surrounding
+      ;; `flatmap` does not pin gets an `(ann … (m a))`.
       #:laws
-        ([left-identity ((Eq (m Integer)) =>
-           (All ([n : Integer])
-             (== (flatmap (lambda (x) (pure (+ x 1))) (ann (pure n) (m Integer)))
-                 (ann (pure (+ n 1)) (m Integer)))))]
-         [right-identity ((Eq (m Integer)) =>
-           (All ([mx : (m Integer)]) (== (flatmap (lambda (x) (pure x)) mx) mx)))]
-         [associativity ((Eq (m Integer)) =>
-           (All ([mx : (m Integer)])
-             (== (flatmap (lambda (y) (pure (* y 2)))
-                          (flatmap (lambda (x) (pure (+ x 1))) mx))
-                 (flatmap (lambda (x)
-                            (flatmap (lambda (y) (pure (* y 2)))
-                                     (ann (pure (+ x 1)) (m Integer))))
-                          mx))))]))
+        ([left-identity ((Eq (m b)) =>
+           (All ([k : (-> a (m b))] [x : a])
+             (== (flatmap k (ann (pure x) (m a))) (k x))))]
+         [right-identity ((Eq (m a)) =>
+           (All ([mx : (m a)]) (== (flatmap (lambda (x) (pure x)) mx) mx)))]
+         [associativity ((Eq (m c)) =>
+           (All ([j : (-> a (m b))] [k : (-> b (m c))] [mx : (m a)])
+             (== (flatmap k (flatmap j mx))
+                 (flatmap (lambda (x) (flatmap k (j x))) mx))))]))
 
     ;; Maybe
     (instance (Functor Maybe)
@@ -625,13 +624,14 @@
       (define (length  xs) (foldr (lambda (_x n)   (+ n 1))      0   xs))
       (define (to-list xs) (foldr (lambda (x acc)  (Cons x acc))  Nil xs))
       ;; `to-list` reconstructs the elements by folding with `Cons`/`Nil`,
-      ;; and `length` agrees with the length of that list.  Comparisons
-      ;; are at `Integer` and `(List Integer)`, whose instances exist.
+      ;; and `length` agrees with the length of that list.  Quantified
+      ;; over the element type `a`: the list comparison is via an assumed
+      ;; `(Eq (List a))`, the count via the prelude's `(Eq Integer)`.
       #:laws
-        ([to-list-folds ((Eq (List Integer)) =>
-           (All ([xs : (t Integer)])
+        ([to-list-folds ((Eq (List a)) =>
+           (All ([xs : (t a)])
              (== (to-list xs) (foldr (lambda (x acc) (Cons x acc)) Nil xs))))]
-         [length-counts (All ([xs : (t Integer)])
+         [length-counts (All ([xs : (t a)])
              (== (length xs) (length (to-list xs))))]))
 
     (instance (Foldable List)
@@ -661,14 +661,16 @@
     (protocol (Traversable (t :: (-> * *)))
       (: traverse ((Applicative f) =>
                    (-> (-> a (f b)) (-> (t a) (f (t b))))))
-      ;; The identity law, specialised to the `Maybe` applicative whose
+      ;; The identity law, witnessed by the `Maybe` applicative whose
       ;; `pure` is `Some`: traversing with `Some` wraps the whole
-      ;; container, i.e. `traverse Some == Some`.  Comparing the results
-      ;; needs `Eq (Maybe (t Integer))`, which follows from an assumed
-      ;; `(Eq (t Integer))`.
+      ;; container, i.e. `traverse Some == Some`.  Quantified over the
+      ;; element type `a`; comparing the results needs `Eq (Maybe (t
+      ;; a))`, which follows from an assumed `(Eq (t a))`.  (`Maybe`
+      ;; stands in as the applicative because the prelude has no
+      ;; `Identity` functor.)
       #:laws
-        ([identity-maybe ((Eq (t Integer)) =>
-           (All ([xs : (t Integer)])
+        ([identity-maybe ((Eq (t a)) =>
+           (All ([xs : (t a)])
              (== (traverse (lambda (x) (Some x)) xs) (Some xs))))]))
 
     (instance (Traversable Maybe)

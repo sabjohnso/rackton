@@ -91,6 +91,49 @@
           ([identity ((Eq (f Integer)) =>
             (All ([xs : (f Integer)]) (== (fmap2 (lambda (x) x) xs) xs)))]))))))
 
+(test-case "a higher-kinded law is generic over its element types"
+  ;; The element type need not be concrete: a law may universally
+  ;; quantify over element variables that are not class parameters and
+  ;; assume an `Eq` for the container at those variables.  Each such
+  ;; variable is skolemized, so the unifier cannot re-orient it and the
+  ;; equation's goal stays in step with the assumed `(Eq (f a))`.
+  (check-not-exn
+   (lambda ()
+     (compile-rackton
+      (protocol (MyFunctor2 (f :: (-> * *)))
+        (: fmap2 (-> (-> a b) (-> (f a) (f b))))
+        #:laws
+          ([identity ((Eq (f a)) =>
+            (All ([xs : (f a)]) (== (fmap2 (lambda (x) x) xs) xs)))]))))))
+
+(test-case "a generic higher-kinded law with a composed function on one side"
+  ;; The composition law applies a quantified `(-> a b)` binder inside a
+  ;; lambda on one side of the equation — `(lambda (x) (g (h x)))` — and
+  ;; the plain `fmap g . fmap h` on the other.  This is the case the free
+  ;; element variable broke: the lambda's result type must stay pinned to
+  ;; the law's `c`, matching the `(Eq (f c))` hypothesis.
+  (check-not-exn
+   (lambda ()
+     (compile-rackton
+      (protocol (MyFunctor3 (f :: (-> * *)))
+        (: fmap2 (-> (-> a b) (-> (f a) (f b))))
+        #:laws
+          ([composition ((Eq (f c)) =>
+            (All ([g : (-> b c)] [h : (-> a b)] [xs : (f a)])
+              (== (fmap2 (lambda (x) (g (h x))) xs)
+                  (fmap2 g (fmap2 h xs)))))]))))))
+
+(test-case "a generic higher-kinded law still needs its Eq in the context"
+  ;; Skolemizing the element variable does not conjure an `Eq`: a generic
+  ;; law that compares `(f a)` values without assuming `(Eq (f a))` is
+  ;; still rejected, exactly as the concrete-element case is.
+  (check-rackton-compile-error
+   (protocol (MyFunctor4 (f :: (-> * *)))
+     (: fmap2 (-> (-> a b) (-> (f a) (f b))))
+     #:laws
+       ([identity
+         (All ([xs : (f a)]) (== (fmap2 (lambda (x) x) xs) xs))]))))
+
 (test-case "a law may compare results at a concrete type whose instance is in scope"
   ;; succ-step compares Integers and adds with `+`, relying on the
   ;; prelude's (Eq Integer)/(Num Integer) — which exist only because

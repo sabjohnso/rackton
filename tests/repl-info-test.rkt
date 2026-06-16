@@ -50,9 +50,11 @@
   (define out (info-output 'Functor))
   (check-regexp-match #rx"laws:" out)
   (check-regexp-match #rx"identity" out)
-  ;; the law's `=>` context is present; pretty-printing may wrap the
-  ;; constraint and the arrow onto separate lines, so allow whitespace.
-  (check-regexp-match #px"\\(Eq \\(f Integer\\)\\)\\s*=>" out))
+  ;; the law's `=>` context is present; the law is generic over its
+  ;; element type, so the container's `Eq` is at the element variable
+  ;; `a`.  Pretty-printing may wrap the constraint and the arrow onto
+  ;; separate lines, so allow whitespace.
+  (check-regexp-match #px"\\(Eq \\(f a\\)\\)\\s*=>" out))
 
 (test-case ",info on a session-defined protocol shows its laws"
   (define-values (_ outs)

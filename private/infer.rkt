@@ -32,6 +32,12 @@
          ;; are never registered as data, so consumers need this to know
          ;; Integer / Boolean / String / Float are real types
          primitive-type?
+         ;; the aligned "expected: …/got: …" diagnostic block, wrapping
+         ;; each type at `current-type-columns` and indenting continuation
+         ;; lines under the value column.  Exported so the pretty-printer
+         ;; test can pin the width and assert the layout deterministically,
+         ;; without depending on the ambient terminal.
+         expected/got-block
          ;; threaded inference state — the REPL persists one across inputs
          make-infer-state st-table
          current-dict-skolems
@@ -3471,19 +3477,48 @@
        (e:letrec (for/list ([p (in-list bs)]) (cons (car p) (R (cdr p)))) (R b) stx)]
       [_ e])))
 
+;; Collect, in order of first appearance, the names of every free
+;; surface type variable in a law's binder types and `=>` context
+;; constraints.  Used to find a law's element type variables — those not
+;; already bound as class parameters.
+(define (law-surface-type-vars ty [bound '()])
+  (match ty
+    [(ty:var n _)        (if (memq n bound) '() (list n))]
+    [(ty:con _ _)        '()]
+    [(ty:app h args _)   (append (law-surface-type-vars h bound)
+                                 (append-map (lambda (a) (law-surface-type-vars a bound)) args))]
+    [(ty:forall vs b _)  (law-surface-type-vars b (append vs bound))]
+    [(ty:qual cs b _)    (append (append-map (lambda (c) (law-constraint-type-vars c bound)) cs)
+                                 (law-surface-type-vars b bound))]
+    [_ '()]))
+(define (law-constraint-type-vars c [bound '()])
+  (append-map (lambda (a) (law-surface-type-vars a bound)) (constraint-args c)))
+
 (define (check-class-law law class-name class-params super-preds env)
   (match-define (class-law law-name context binders body law-stx) law)
+  ;; A law is universally quantified over its element type variables —
+  ;; every free type variable in the `=>` context and binder annotations
+  ;; that is not a class parameter.  Skolemize those alongside the class
+  ;; parameters so the unifier cannot re-orient them during body
+  ;; inference (which would desynchronize the equation's goal from the
+  ;; pre-computed hypotheses) and so the law states a genuine `forall`.
+  (define extra-vars
+    (remove-duplicates
+     (filter (lambda (n) (not (memq n class-params)))
+             (append (append-map law-constraint-type-vars context)
+                     (append-map (lambda (b) (law-surface-type-vars (law-binder-type b))) binders)))))
+  (define skol-params (append class-params extra-vars))
   ;; One rigid skolem constant per class parameter, shared between the
   ;; core substitution (for binder types and hypotheses) and the surface
   ;; type-constructor used to relabel annotations in the body.
   (define skol-names
-    (for/hasheq ([p (in-list class-params)])
+    (for/hasheq ([p (in-list skol-params)])
       (values p (gensym (format "$skolem.~a." p)))))
   (define skol
-    (for/fold ([s empty-subst]) ([p (in-list class-params)])
+    (for/fold ([s empty-subst]) ([p (in-list skol-params)])
       (subst-extend s p (tcon (hash-ref skol-names p)))))
   (define ty-sub
-    (for/hasheq ([p (in-list class-params)])
+    (for/hasheq ([p (in-list skol-params)])
       (values p (ty:con (hash-ref skol-names p) #f))))
   (define law-preds
     (for/list ([c (in-list context)]) (resolve-constraint c env)))

@@ -13,19 +13,21 @@
 (require rackunit
          (for-syntax racket/base)
          "../private/types.rkt"
+         ;; the aligned expected/got diagnostic block, exercised directly
+         ;; (under a pinned width) for the wrap-and-align case below.
+         (only-in "../private/infer.rkt" expected/got-block)
          ;; `pred` is the class-predicate struct from private/types.rkt;
          ;; the prelude also exports an `Enum` method named `pred`, so drop
          ;; the latter to keep importing both modules here.
          (except-in "../main.rkt" pred))
 
-;; The end-to-end cases below assert on WRAPPED type output, so the wrap
-;; width must be fixed.  They provoke errors via top-level `eval`, where
-;; the `rackton` expander auto-detects the terminal width — and under
-;; `raco test` in a terminal the test process has a real tty.  Pinning
-;; COLUMNS (which detection prefers) makes the budget a deterministic 66
-;; regardless of how the suite is launched.
-(putenv "COLUMNS" "79")
-
+;; The end-to-end cases below assert only on type-message CONTENT (n-ary
+;; arrow flattening, nice variable names, the "wrong type" headline) —
+;; never on line wrapping — so they are independent of the ambient
+;; terminal width.  The one case that does check wrapping and alignment
+;; ("wide types wrap …") pins `current-type-columns` and exercises the
+;; diagnostic block directly, rather than provoking the error through the
+;; width-detecting elaborator.
 (define-syntax-rule (rackton-error form ...)
   (with-handlers ([exn:fail? exn-message])
     (eval #'(rackton form ...)
@@ -116,12 +118,25 @@
   (check-regexp-match #rx"\n  got: +" msg))
 
 (test-case "wide types wrap with aligned continuation lines"
-  (define msg
-    (rackton-error
-     (define g (ann (lambda (x) x)
-                    (-> (Pair String Integer)
-                        (List (Maybe Integer))
-                        (Either String Integer)
-                        Boolean)))))
-  ;; A continuation line indented to align under the value column.
-  (check-regexp-match #px"\n {12}" msg))
+  ;; A type too wide for the budget wraps, and the expected/got block
+  ;; indents continuation lines under the value column (12).  This pins
+  ;; `current-type-columns` directly rather than provoking the error
+  ;; through the elaborator: the live REPL refreshes the width from the
+  ;; terminal, so an end-to-end check would wrap or not depending on the
+  ;; frame the suite runs in (e.g. a wide Emacs compilation buffer).
+  (define wide
+    (make-arrow
+     (make-tapp (tcon 'Pair) (list (tcon 'String) t-int))
+     (make-arrow
+      (make-tapp (tcon 'List) (list (make-tapp (tcon 'Maybe) (list t-int))))
+      (make-arrow
+       (make-tapp (tcon 'Either) (list (tcon 'String) t-int))
+       t-bool))))
+  (define block
+    (parameterize ([current-type-columns 66])
+      (expected/got-block wide (make-arrow a a))))
+  ;; The block carries both labels...
+  (check-regexp-match #rx"  expected: " block)
+  (check-regexp-match #rx"\n  got:      " block)
+  ;; ...and a continuation line indented to align under the value column.
+  (check-regexp-match #px"\n {12}" block))
