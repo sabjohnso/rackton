@@ -117,6 +117,24 @@
   (check-regexp-match #rx"greet" out)
   (check-regexp-match #rx"String" out))
 
+;; ----- labeled lists indent their items under the label -------------
+
+(test-case ",info indents a primitive type's implements list under the label"
+  ;; The instance heads break to one per line, each indented two columns
+  ;; past the `implements:` label (which itself sits at column 2).
+  (define out (info-output 'Integer))
+  (check-regexp-match #px"\n  implements:\n" out)
+  (check-regexp-match #px"\n    \\(Num Integer\\)" out)
+  (check-false (regexp-match #px"\n  \\(Num Integer\\)" out)))
+
+(test-case ",info indents a type ctor's implements list under the label"
+  (define out (info-output 'List))
+  (check-regexp-match #px"\n    \\(Functor List\\)" out))
+
+(test-case ",info indents a protocol's instances list under the label"
+  (define out (info-output 'Monad))
+  (check-regexp-match #px"\n    \\(Monad Maybe\\)" out))
+
 ;; ----- regression: existing one-line outputs stay -------------------
 
 (test-case ",info on a var prints its scheme"

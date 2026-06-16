@@ -157,14 +157,25 @@
 ;; A header followed by a list of pre-rendered item strings, grouped so
 ;; the whole thing sits on one line when it fits the width
 ;;   "header: a b c"
-;; and otherwise breaks to one item per line, indented:
-;;   "header:
+;; and otherwise breaks to one item per line, indented `indent` columns
+;; past the header's own leading whitespace so the items sit *under* the
+;; label rather than level with it:
+;;   "  header:
 ;;      a
 ;;      b"
-;; (`header` already includes any trailing punctuation.)
+;; (`header` already includes any leading indent and trailing
+;; punctuation.)
 (define (labeled-block header items #:indent [indent 2])
   (doc-cat (doc-text header)
            (doc-group
-            (doc-nest indent
+            (doc-nest (+ (leading-space-count header) indent)
                       (apply doc-cat
                              (map (lambda (s) (doc-cat doc-line (doc-text s))) items))))))
+
+;; The number of leading space characters in `s` — the header's own
+;; indentation, which item lines are measured against.
+(define (leading-space-count s)
+  (let loop ([i 0])
+    (if (and (< i (string-length s)) (char=? (string-ref s i) #\space))
+        (loop (add1 i))
+        i)))
