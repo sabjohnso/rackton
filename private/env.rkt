@@ -22,6 +22,8 @@
          env-ref-data
          env-extend-tcon
          env-ref-tcon
+         env-extend-promoted-ctor
+         env-ref-promoted-ctor
          env-extend-class
          env-clear-instances
          env-ref-class
@@ -55,8 +57,13 @@
 ;; `effects` maps an effect's name to its ordered list of operation
 ;; names.  Consumed by inference and codegen for `(handle ...)` so
 ;; each op is dispatched on the correct prompt-tag.
+;; `promoted-ctors` maps a DataKinds-promoted type-level constructor's
+;; name to its promoted kind (e.g. SPush ↦ Ty -> Stack -> Stack).  It is
+;; a separate table from `tcons` so promotion only adds type-level
+;; identities and never perturbs value-level data, codegen, or
+;; exhaustiveness, which read `data-ctors`/`tcons` alone.
 (struct env (vars data-ctors tcons classes instance-table method-owners aliases
-             struct-fields effects)
+             struct-fields effects promoted-ctors)
   #:transparent)
 
 ;; A data-constructor's typing information.  `scheme` is the polymorphic
@@ -155,7 +162,7 @@
 ;; prelude-instances-table; set intrinsically at construction.
 (struct instance-info (head context methods type-family-bindings origin prelude?) #:transparent)
 
-(define empty-env (env (hasheq) (hasheq) (hasheq) (hasheq) (hasheq) (hasheq) (hasheq) (hasheq) (hasheq)))
+(define empty-env (env (hasheq) (hasheq) (hasheq) (hasheq) (hasheq) (hasheq) (hasheq) (hasheq) (hasheq) (hasheq)))
 
 ;; ----- basic accessors ----------------------------------------------
 
@@ -176,6 +183,13 @@
 
 (define (env-ref-tcon e name [default #f])
   (hash-ref (env-tcons e) name default))
+
+(define (env-extend-promoted-ctor e name kind)
+  (struct-copy env e
+               [promoted-ctors (hash-set (env-promoted-ctors e) name kind)]))
+
+(define (env-ref-promoted-ctor e name [default #f])
+  (hash-ref (env-promoted-ctors e) name default))
 
 ;; ----- classes & instances ------------------------------------------
 

@@ -123,6 +123,67 @@ has type @racket[(List a)] for every @racket[a]:
     [(AnyTag)  0]))   ;; a is unconstrained here
 }
 
+The refinement reaches the @emph{whole} clause, not just the matched
+value: any other binding in scope whose type mentions the same parameter
+is refined too.  That is what lets a refinement flow into a second
+argument — for example a continuation whose type is indexed by the same
+parameter:
+
+@rackton-example[#:eval ev #:mode 'defs #:context? #t]{
+(data (Held a) (Hold a))
+
+;; Matching `term` refines a; the in-scope `box : (Held a)` refines
+;; with it, so its contents are usable at the refined type.
+(: combine (-> (Term a) (Held a) a))
+(define (combine term box)
+  (match term
+    [(IntLit  n) (match box [(Hold x) (+ x n)])]   ;; a == Integer
+    [(BoolLit b) (match box [(Hold x) x])]         ;; a == Boolean
+    [_           (match box [(Hold x) x])]))
+}
+
+@section[#:tag "promoted-data"]{Promoted data (DataKinds)}
+
+A @emph{monomorphic} datatype — one with no type parameters — is
+promoted to the kind level: its name becomes a kind, and each of its
+constructors becomes a type-level constructor of that kind.  Promotion
+adds type-level identities only; the value-level datatype is unchanged.
+
+This lets a type be @emph{indexed} by structured type-level data, with
+the index @emph{kind-checked}.  The standard example is a typed stack
+machine whose instructions are indexed by the shape of the operand
+stack.  First the tags and the stack shape, as ordinary datatypes:
+
+@rackton-example[#:eval ev #:mode 'defs #:context? #t]{
+(data Ty TInt TBool)                  ;; promoted to a kind Ty
+(data Stack SEmpty (SPush Ty Stack))  ;; promoted to a kind Stack
+}
+
+Now @racket[Code] is indexed by two promoted stack shapes (the stack
+before and after running it).  Its kind, @racket[(-> Stack Stack *)], is
+@emph{inferred} from the constructors' use of the promoted
+@racket[SPush] and @racket[TInt] — no kind annotation is written:
+
+@rackton-example[#:eval ev #:mode 'defs #:context? #t]{
+(data (Code s t)
+  (HALT  : (Code s s))
+  (PUSHI : (-> Integer (Code (SPush TInt s) t) (Code s t)))
+  (IADD  : (-> (Code (SPush TInt s) t)
+               (Code (SPush TInt (SPush TInt s)) t))))
+}
+
+Because the indices are kind-checked, an ill-kinded stack shape is a
+compile-time error: @racket[(SPush Integer s)] is rejected because
+@racket[Integer] has kind @racket[*], not @racket[Ty], and
+@racket[(SPush TInt TInt)] is rejected because @racket[SPush]'s tail must
+itself have kind @racket[Stack].  A phantom encoding over kind
+@racket[*] could not catch either mistake.
+
+Promotion is deliberately limited (matching Rackton's Haskell-98-style
+kind system): only parameter-free datatypes are promoted, and a
+constructor whose name already denotes a type is left value-only, so
+promotion never reinterprets an existing type.
+
 @section{Type aliases}
 
 @rackton-example[#:eval ev #:mode 'defs]{

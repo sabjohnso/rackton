@@ -478,6 +478,31 @@
                (apply-skolem-subst skol-s body))]
        [else t])]))
 
+;; Lift a skolem-subst over a scheme's body.  Skolems are tcons, never
+;; bound by the scheme's quantifier list, so the body is refined
+;; regardless of `vs`.
+(define (apply-skolem-subst/scheme skol-s sch)
+  (match sch
+    [(scheme vs body) (scheme vs (apply-skolem-subst skol-s body))]))
+
+;; Push a GADT pattern match's local refinement into the types of every
+;; in-scope binding for the matched arm.  The refinement (skol-s) maps
+;; the function-scheme skolem learned from the constructor to a concrete
+;; index type; applying it to the arm's environment is what lets a later
+;; use of an in-scope binding (e.g. a continuation argument whose type
+;; mentions the same index) see the refined type.  Scoped to one arm:
+;; callers pass the arm-local env, never the shared outer env, so no
+;; refinement leaks to sibling arms.  No-op (and skips the walk) when
+;; the refinement is empty, which is the common, non-GADT case.
+(define (apply-skolem-subst/env skol-s e)
+  (cond
+    [(hash-empty? skol-s) e]
+    [else
+     (struct-copy env e
+                  [vars
+                   (for/hasheq ([(k sch) (in-hash (env-vars e))])
+                     (values k (apply-skolem-subst/scheme skol-s sch)))])]))
+
 (define (skolemize sch)
   (match sch
     [(scheme '() body)
@@ -1564,11 +1589,17 @@
                 (clause-stx cl)))])
           (gadt-unify pat-type scrut-type)))])
      (values (unify pat-type scrut-type) (hash))))
+  ;; Refine the whole arm-local env by the GADT skolem-subst: both the
+  ;; pre-existing in-scope bindings and this pattern's own bindings get
+  ;; the learned index equality.  Scoped to this arm only (env* is built
+  ;; fresh from the outer env), so later arms are unaffected.
   (define env*
-    (for/fold ([e (apply-subst/env s-pat env)])
-              ([b (in-list bindings)])
-      (env-extend-var e (car b)
-                      (scheme '() (apply-subst s-pat (cdr b))))))
+    (apply-skolem-subst/env
+     arm-skolem-subst
+     (for/fold ([e (apply-subst/env s-pat env)])
+               ([b (in-list bindings)])
+       (env-extend-var e (car b)
+                       (scheme '() (apply-subst s-pat (cdr b)))))))
   ;; A pattern guard, when present, is typechecked under the pattern bindings
   ;; and must produce a Boolean; thread its substitution into the running
   ;; chain so any tvars it pins are visible to the body and reduction.
@@ -2260,11 +2291,16 @@
     (for/fold ([e env-A3]) ([f (in-list forms)] #:when (top:struct-fields? f))
       (env-extend-struct-fields e (top:struct-fields-struct-name f)
                                 (top:struct-fields-field-names f))))
+  ;; A4.4: DataKinds promotion.  Lift eligible monomorphic datatypes to
+  ;; the kind level so the next pass can infer the kinds of types indexed
+  ;; by them (e.g. a stack-machine `Code` indexed by promoted stack
+  ;; shapes).  Runs after tcon shells (A2) so datatype arities are known.
+  (define env-A4.4 (promote-data env-A4 forms))
   ;; A4.5: infer each data type's kind from its constructor field types
   ;; (replacing the arity-placeholder kinds on the shells).  Runs after
   ;; aliases (A3) — field types may use them — and before any kind-
   ;; checked resolution of a type that mentions these constructors.
-  (define env-A4.5 (infer-data-kinds env-A4 forms))
+  (define env-A4.5 (infer-data-kinds env-A4.4 forms))
   ;; A5: effects (resolve op types against the tcon-complete env).
   (define env-A5
     (for/fold ([e env-A4.5]) ([f (in-list forms)] #:when (top:effect? f))
@@ -2355,6 +2391,10 @@
 (define (tcon-kind-of env batch-kinds name)
   (or (hash-ref batch-kinds name #f)
       (let ([ti (env-ref-tcon env name #f)]) (and ti (tcon-info-kind ti)))
+      ;; A DataKinds-promoted type-level constructor (TInt, SPush, …).
+      ;; Checked after real tcons so an ordinary type of the same name
+      ;; always wins — promotion never reinterprets an existing type.
+      (env-ref-promoted-ctor env name #f)
       (hash-ref primitive-kind-table name #f)))
 
 ;; Infer the kind of a resolved core type.  `tvar-kinds` is a mutable
@@ -2571,6 +2611,55 @@
 (define (kind-check-constraint-surface env c)
   (unless (eq? (current-kind-check) 'off)
     (kc-constraint env c (make-hasheq))))
+
+;; ----- kinds: DataKinds-style promotion (Phase A4.4) -----------------
+
+;; Promote each eligible *monomorphic* datatype to the kind level.  A
+;; datatype T with zero type parameters whose every constructor field is
+;; a bare reference to another monomorphic datatype is promoted: T names
+;; a kind `(kind-con T)`, and each ordinary constructor C with field
+;; types F1..Fn becomes a TYPE-LEVEL constructor of kind
+;; `(kind-con F1) -> … -> (kind-con Fn) -> (kind-con T)`, recorded in the
+;; env's promoted-ctors table.  Promotion only *adds* type-level
+;; identities; value-level data is untouched.  A constructor whose name
+;; already denotes a type, alias, or primitive is left value-only, so
+;; promotion never reinterprets an existing type name.  Out of scope
+;; (Haskell-98-style, matching the rest of Rackton's kind system): no
+;; promotion of parameterised datatypes (that needs kind polymorphism)
+;; and no GADT-syntax constructors among the promoted set.
+(define (promote-data env forms)
+  (define (mono-datatype? name)
+    (define ti (env-ref-tcon env name #f))
+    (and ti (= (tcon-info-arity ti) 0)))
+  ;; The promoted kind of a constructor field's surface type, or #f when
+  ;; the field is not a bare monomorphic-datatype reference.
+  (define (field-kind ft)
+    (match ft
+      [(ty:con n _) (and (mono-datatype? n) (kind-con n))]
+      [_            #f]))
+  (define (name-taken? env name)
+    (or (env-ref-tcon env name #f)
+        (env-ref-alias env name #f)
+        (hash-has-key? primitive-kind-table name)))
+  (for/fold ([env env]) ([f (in-list forms)] #:when (top:data? f))
+    (match-define (top:data tname tparams ctors _ _ _) f)
+    (cond
+      [(not (null? tparams)) env]               ; monomorphic datatypes only
+      [else
+       (define result-kind (kind-con tname))
+       (for/fold ([env env]) ([c (in-list ctors)])
+         (define cname (data-ctor-name c))
+         (define fks (map field-kind (data-ctor-field-types c)))
+         (cond
+           ;; A GADT-result ctor, an unpromotable field, or a name already
+           ;; bound as a type leaves this constructor value-only.
+           [(or (data-ctor-result-type c)
+                (memq #f fks)
+                (name-taken? env cname))
+            env]
+           [else
+            (env-extend-promoted-ctor env cname
+                                      (kind-arrow* fks result-kind))]))])))
 
 ;; ----- kinds: data-type kind inference (Phase A2.5) ------------------
 

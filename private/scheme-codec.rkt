@@ -113,13 +113,16 @@
 (define (encode-kind k)
   (match k
     [(kind-star)     '*]
-    [(kind-arr a b)  `(-> ,(encode-kind a) ,(encode-kind b))]))
+    [(kind-arr a b)  `(-> ,(encode-kind a) ,(encode-kind b))]
+    [(kind-con n)    `(con ,n)]))
 
 (define (decode-kind datum)
   (cond
     [(eq? datum '*) (kind-star)]
     [(and (list? datum) (eq? (car datum) '->))
      (kind-arr (decode-kind (cadr datum)) (decode-kind (caddr datum)))]
+    [(and (list? datum) (eq? (car datum) 'con))
+     (kind-con (cadr datum))]
     [else (error 'decode-kind "bad kind: ~v" datum)]))
 
 (define (pred->sexp p) (pred->datum p))

@@ -25,6 +25,7 @@
          (struct-out pred)
          (struct-out kind-star)
          (struct-out kind-arr)
+         (struct-out kind-con)
          kstar
          k->
          kind-arrow*
@@ -120,6 +121,11 @@
 
 (struct kind-star ()        #:transparent)
 (struct kind-arr  (dom cod) #:transparent)
+;; `(kind-con name)` is a promoted-datatype kind (DataKinds): the kind
+;; that classifies the type-level constructors lifted from a monomorphic
+;; datatype `name`.  Two kind-cons are equal iff their names match; a
+;; kind-con accepts no arguments (kind-arity 0).
+(struct kind-con  (name)    #:transparent)
 
 (define kstar (kind-star))
 (define (k-> a b) (kind-arr a b))
@@ -143,6 +149,7 @@
   (match k
     [(kind-star)      '*]
     [(kind-arr a b)   `(-> ,(kind->datum a) ,(kind->datum b))]
+    [(kind-con n)     n]
     [(kvar _)         '?]))
 
 ;; ----- Kind unification ----------------------------------------------
@@ -161,6 +168,7 @@
      (match k
        [(kvar n)       (hash-ref s n k)]
        [(kind-star)    k]
+       [(kind-con _)   k]
        [(kind-arr d c) (kind-arr (apply-ksubst s d) (apply-ksubst s c))])]))
 
 ;; Compose: (ksubst-compose s2 s1) applies s1 then s2.
@@ -176,6 +184,7 @@
   (match k
     [(kvar n)       (seteq n)]
     [(kind-star)    (seteq)]
+    [(kind-con _)   (seteq)]
     [(kind-arr d c) (set-union (kind-vars d) (kind-vars c))]))
 
 ;; The number of arguments a kind accepts (its leading arrow count).
@@ -189,6 +198,7 @@
   (match k
     [(kvar _)       kstar]
     [(kind-star)    k]
+    [(kind-con _)   k]
     [(kind-arr d c) (kind-arr (default-kind d) (default-kind c))]))
 
 (struct exn:fail:kind-unify exn:fail (left right) #:transparent)
@@ -206,6 +216,7 @@
     [((kvar a) _)            (bind-kvar a k2 k1 k2)]
     [(_ (kvar a))            (bind-kvar a k1 k1 k2)]
     [((kind-star) (kind-star)) empty-ksubst]
+    [((kind-con a) (kind-con b)) #:when (eq? a b) empty-ksubst]
     [((kind-arr d1 c1) (kind-arr d2 c2))
      (define sd (unify-kind d1 d2))
      (define sc (unify-kind (apply-ksubst sd c1) (apply-ksubst sd c2)))
