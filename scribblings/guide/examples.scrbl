@@ -10,7 +10,7 @@
 
 @title[#:tag "examples"]{Worked examples}
 
-Three complete programs live in @filepath{examples/}.  All are written
+Four complete programs live in @filepath{examples/}.  All are written
 in idiomatic Rackton and exercise most of the features covered in
 this guide.
 
@@ -109,6 +109,65 @@ Run it (built-in sample, or a file):
     2  dog
     1  end
     1  sleeps
+}|
+
+@section{expr-compiler.rkt — a type-safe compiler}
+
+@filepath{examples/expr-compiler.rkt} compiles a small integer
+expression language (@racket[Add], @racket[Sub], @racket[Mul]) to a
+stack machine whose instructions are typed by the shape of the operand
+stack — so the compiler can only emit stack-balanced code.  It is the
+worked version of the @seclink["promoted-data"]{promoted data} and GADT
+sections of @secref["advanced-types"].
+
+@itemlist[
+@item{@bold{GADTs}: @racket[Code] is indexed by an input and an output
+      stack shape; each instruction constructor pins how it moves the
+      stack.}
+@item{@bold{Promoted data (DataKinds)}: the stack shape is a type-level
+      list built from the promoted datatypes @racket[Ty] and
+      @racket[Stack], so an ill-formed shape is a kind error.}
+@item{@bold{Kind inference}: @racket[Code]'s kind
+      (@racket[(-> Stack Stack *)]) is inferred from the constructors —
+      no kind annotation is written.}
+@item{@bold{Defunctionalised continuations}: each instruction threads
+      the rest of the program, so @racket[compile] is a direct
+      continuation-passing translation.}
+@item{@bold{Polymorphic recursion}: @racket[compile] calls itself at
+      different stack shapes, admitted because its type is declared.}]
+
+Run it:
+
+@commandline{racket examples/expr-compiler.rkt}
+
+It prints each result followed by the compiled instruction listing:
+
+@codeblock|{
+compiling expressions to a typed stack machine:
+(2 + 3) * 4     = 20
+    push 2
+    push 3
+    add
+    push 4
+    mul
+
+10 - (2 * 3)    = 4
+    push 10
+    push 2
+    push 3
+    mul
+    sub
+
+(7 - 2)*(1 + 4) = 25
+    push 7
+    push 2
+    sub
+    push 1
+    push 4
+    add
+    mul
+
+done.
 }|
 
 @section{Other source to learn from}
