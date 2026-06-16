@@ -81,6 +81,19 @@
   (check-regexp-match #rx"\\(Functor List\\)" out)
   (check-regexp-match #rx"\\(Monad List\\)" out))
 
+(test-case ",info on a primitive scalar type lists the protocols it implements"
+  ;; Integer / Boolean / String / Float are never registered as data, so
+  ;; ,info must still recognize them rather than report them unbound.
+  (define out (info-output 'Integer))
+  (check-false (regexp-match #rx"unbound" out))
+  (check-regexp-match #rx"primitive type" out)
+  (check-regexp-match #rx"\\(Num Integer\\)" out)
+  (check-regexp-match #rx"\\(Eq Integer\\)" out))
+
+(test-case ",info recognizes the other primitive types"
+  (for ([name '(Boolean String Float)])
+    (check-false (regexp-match #rx"unbound" (info-output name)))))
+
 (test-case ",info marks a sealed type but keeps locally visible ctors"
   ;; #:abstract hides constructors across module boundaries only; inside
   ;; the defining session they are visible, so ,info lists them and adds

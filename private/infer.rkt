@@ -28,6 +28,10 @@
          generalize
          ;; surface ty-AST → scheme, under an env's aliases (REPL ,accepts)
          resolve-scheme
+         ;; primitive scalar type recognizer (REPL ,info) — these tcons
+         ;; are never registered as data, so consumers need this to know
+         ;; Integer / Boolean / String / Float are real types
+         primitive-type?
          ;; threaded inference state — the REPL persists one across inputs
          make-infer-state st-table
          current-dict-skolems
@@ -2330,6 +2334,13 @@
 (define primitive-kind-table
   (hasheq 'Integer kstar 'Boolean kstar 'String kstar 'Float kstar
           '-> (kind-arrow* (list kstar kstar) kstar)))
+
+;; Is `name` a primitive scalar type constructor (Integer, Boolean,
+;; String, Float)?  The function arrow `->` shares the kind table but is
+;; not a scalar a user would inspect, so it is excluded.
+(define (primitive-type? name)
+  (and (hash-has-key? primitive-kind-table name)
+       (not (eq? name '->))))
 
 ;; The kind of type constructor `name`: a batch seed (during
 ;; data-kind inference) wins, then the env's stored kind, then the

@@ -295,6 +295,7 @@
      => (lambda (ti) (format-tcon-info env name ti))]
     [(env-ref-class env name)
      => (lambda (ci) (format-class-info env name ci))]
+    [(primitive-type? name) (format-primitive-info env name)]
     [else (format "~s is unbound\n" name)]))
 
 ;; Render a class for ,info: parameters, superclasses, methods (each with
@@ -353,13 +354,7 @@
     (for/list ([c (in-list (tcon-info-ctors ti))]
                #:when (env-ref-data env c))
       (render-typed-line 4 c (scheme->pretty-datum (data-info-scheme (env-ref-data env c))))))
-  (define impls
-    (sort (remove-duplicates
-           (for*/list ([(_cls insts) (in-hash (env-instance-table env))]
-                       [ii (in-list insts)]
-                       #:when (pred-mentions-tcon? (instance-info-head ii) name))
-             (format "~s" (pred->datum (instance-info-head ii)))))
-          string<?))
+  (define impls (tcon-implements env name))
   (string-append
    (format "~s (type ctor, arity ~a~a)\n"
            name (tcon-info-arity ti)
@@ -369,7 +364,29 @@
        (apply string-append "  constructors:\n" ctor-lines))
    (if (null? impls)
        ""
-       (format "  implements: ~a\n" (string-join impls " ")))))
+       (render-labeled-list "  implements:" impls))))
+
+;; Render a primitive scalar type (Integer, Boolean, String, Float) for
+;; ,info.  These are never registered as data — they have no
+;; user-visible constructors — so show only the protocols they
+;; implement.
+(define (format-primitive-info env name)
+  (define impls (tcon-implements env name))
+  (string-append
+   (format "~s (primitive type)\n" name)
+   (if (null? impls)
+       ""
+       (render-labeled-list "  implements:" impls))))
+
+;; The instance heads in the env that mention type constructor `name` —
+;; the protocols the type "implements" — sorted for deterministic output.
+(define (tcon-implements env name)
+  (sort (remove-duplicates
+         (for*/list ([(_cls insts) (in-hash (env-instance-table env))]
+                     [ii (in-list insts)]
+                     #:when (pred-mentions-tcon? (instance-info-head ii) name))
+           (format "~s" (pred->datum (instance-info-head ii)))))
+        string<?))
 
 (define (pred-mentions-tcon? p name)
   (ormap (lambda (t) (type-mentions-tcon? t name)) (pred-args p)))
