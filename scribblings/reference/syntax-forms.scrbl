@@ -698,6 +698,32 @@ List-literal sugar.  Desugars to a @racket[Cons]/@racket[Nil] chain, so
 @racket[(list)] is @racket[Nil].  The result is an ordinary
 @racket[(List a)]; all elements must share one type.}
 
+@defform[(tuple elem ...)]{
+
+Constructs a tuple — a heterogeneous, fixed-arity product — of
+type @racket[(Tuple τ ...)] where each @racket[τ] is the type of the
+corresponding @racket[elem].  There is no arity limit.  The two-element
+case is a @racket[Pair]: @racket[(tuple a b)] and @racket[(Pair a b)]
+build the same value and have the same type @racket[(Pair a b)] ≡
+@racket[(Tuple a b)].  Tuples have @racket[Eq], @racket[Ord], and
+@racket[Show] whenever every element type does.
+
+@racketblock[
+(tuple 1 "a" #t)   (code:comment "(Tuple Integer String Boolean)")
+(tuple 7 8)        (code:comment "(Pair Integer Integer)")]}
+
+@defform[(tref tuple-expr index)
+         #:contracts ([index "a non-negative integer literal"])]{
+
+Reads the element of @racket[tuple-expr] at position @racket[index].
+@racket[index] must be a literal, and it is checked against the tuple's
+arity at compile time — an out-of-bounds reference is a type error, not
+a runtime fault.  The result has the type of that element.
+
+@racketblock[
+(tref (tuple 1 "a" #t) 1)   (code:comment "\"a\" : String")
+(tref (tuple 1 2) 5)        (code:comment "compile error: out of bounds")]}
+
 @defform[(delay expr)]{
 
 Defer @racket[expr] as a @racket[Lazy], evaluated at most once and cached
@@ -787,7 +813,11 @@ bindings — is one of:
       built with @racket[Ctor].}
 @item{@racket[(Ctor sub-pat ...)] — n-ary constructor pattern; matches
       only values built with @racket[Ctor] whose corresponding fields
-      match the sub-patterns.}]
+      match the sub-patterns.}
+@item{@racket[(tuple sub-pat ...)] — tuple pattern; matches a
+      @racket[(Tuple τ ...)] of the same arity, binding each element to
+      its sub-pattern.  Irrefutable (a tuple always matches its one
+      shape).  The two-element @racket[(Pair a b)] pattern is the same.}]
 
 @section{Module forms}
 

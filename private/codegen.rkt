@@ -293,6 +293,20 @@
                  (syntax/loc stx (match* (sc ...) cl ...)))
                st))]
 
+    [(e:tuple elems stx)
+     ;; Build through the representation helper rather than a raw vector
+     ;; op, so the tuple's layout stays hidden in prelude-runtime.
+     (let-values ([(es st) (compile-exprs elems ctx st)])
+       (values (with-syntax ([(e ...) es])
+                 (syntax/loc stx (rackton-tuple-make e ...)))
+               st))]
+
+    [(e:tref tup idx stx)
+     (let-values ([(t st) (compile-expr tup ctx st)])
+       (values (with-syntax ([t t] [i idx])
+                 (syntax/loc stx (rackton-tuple-ref t i)))
+               st))]
+
     [(e:handle expr clauses ret stx)
      ;; Lower (handle EXPR clauses... return) using Racket continuation
      ;; prompts as a deep handler: the prompt is re-installed each time the
@@ -1332,6 +1346,10 @@
     ;; dispatches as the `->` tycon (see dispatch-tag), so a `->`-headed
     ;; instance registers under that tag.
     [(eq? head-tcon '->)      '(->)]
+    ;; `Pair` is the binary tuple: its values are vectors that
+    ;; dispatch under the `Tuple` tag, so a `Pair`-headed instance
+    ;; (e.g. Bifunctor / Prod) registers there, not under `$ctor:Pair`.
+    [(eq? head-tcon 'Pair)    '(Tuple)]
     [else
      (define ti (env-ref-tcon env head-tcon))
      (unless ti

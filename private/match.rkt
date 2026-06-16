@@ -37,4 +37,12 @@
     [(p:ctor name args stx)
      (define name-stx (datum->syntax stx name stx))
      (define arg-stxs (map compile-pattern args))
-     (datum->syntax stx (cons name-stx arg-stxs) stx)]))
+     (datum->syntax stx (cons name-stx arg-stxs) stx)]
+    ;; A tuple pattern matches the tuple's hidden representation.  The
+    ;; representation (a vector — see prelude-runtime's rackton-tuple-make
+    ;; / rackton-tuple-ref) is matched through racket/match's own `vector`
+    ;; pattern, emitted in THIS module's context so it resolves regardless
+    ;; of the user module's bindings.
+    [(p:tuple args _)
+     (with-syntax ([(a ...) (map compile-pattern args)])
+       #'(vector a ...))]))

@@ -82,16 +82,7 @@
    (lambda (s) (Cons (view l s) Nil))
    (lambda (f) (lambda (s) (over l f s)))))
 
-;; --- Flat tuple focus types for multi-field prisms -----------
-;;
 ;; `#:deriving Prism` on a constructor with N fields focuses a flat
-;; N-tuple: arity 2 reuses the prelude's `Pair`, arity 3..7 use these
-;; `TupleK` types.  Defined here (rather than rackton/data/tuple) so a
-;; module that already requires rackton/data/lens for prisms gets the
-;; focus types with no extra import and no instance-coherence diamond.
-
-(data (Tuple3 a b c)         (Tuple3 a b c)         #:deriving Eq Ord Show)
-(data (Tuple4 a b c d)       (Tuple4 a b c d)       #:deriving Eq Ord Show)
-(data (Tuple5 a b c d e)     (Tuple5 a b c d e)     #:deriving Eq Ord Show)
-(data (Tuple6 a b c d e f)   (Tuple6 a b c d e f)   #:deriving Eq Ord Show)
-(data (Tuple7 a b c d e f g) (Tuple7 a b c d e f g) #:deriving Eq Ord Show)
+;; N-tuple `(tuple x0 … xn)` — a variadic built-in tuple (the binary
+;; case is a `Pair`), so there is no arity limit and no dedicated
+;; `TupleK` focus types are needed.

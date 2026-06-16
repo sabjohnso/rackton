@@ -62,7 +62,8 @@
         (list (check-equal? show-int  "42")
               (check-equal? show-bool "True")
               (check-equal? show-list "[1 2 3]")
-              (check-equal? show-pair "[1 . 2]"))))
+              ;; Pair is the binary tuple now, so it shows in tuple form.
+              (check-equal? show-pair "(1, 2)"))))
    (it "prelude Maybe is auto-available"
        (all-checks
         (list (check-equal? (from-maybe 0 None) 0)

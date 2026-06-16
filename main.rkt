@@ -119,6 +119,9 @@
                      ;; internal IO-action constructor (used by
                      ;; private/ffi-runtime); never user-facing
                      $io
+                     ;; tuple representation interface (emitted by
+                     ;; codegen / match.rkt); never user-facing
+                     rackton-tuple-make rackton-tuple-ref
                      ;; rackton/control/stm
                      new-tvar read-tvar write-tvar retry or-else atomically
                      stm-fmap stm-pure stm-ap stm-bind

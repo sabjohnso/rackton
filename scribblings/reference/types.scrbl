@@ -142,10 +142,30 @@ Instances: @racket[Functor], @racket[Applicative], @racket[Monad],
            (Pair a b))]
 @defthing[#:kind "type & constructor" Pair (-> a (-> b (Pair a b)))])]{
 
-Two-element product type; the type and its constructor share the name.  Use
-@racket[fst] / @racket[snd] / @racket[swap] to project.
+The binary tuple: a two-element product whose type and constructor share
+the name.  @racket[(Pair a b)] is definitionally the two-element
+@racket[Tuple] — @racket[(Pair a b)] ≡ @racket[(Tuple a b)] and
+@racket[(Pair x y)] ≡ @racket[(tuple x y)] — so @racket[tref], the tuple
+@racket[Eq] / @racket[Ord] / @racket[Show], and the projections
+@racket[fst] / @racket[snd] / @racket[swap] all apply.  Unlike the
+variadic @racket[Tuple], @racket[Pair] is also a binary type constructor,
+which is what lets it carry higher-kinded instances.
 
-Instances: @racket[Bifunctor].}
+Instances: @racket[Bifunctor], @racket[Prod] (and the tuple
+@racket[Eq] / @racket[Ord] / @racket[Show]).}
+
+@defidform[#:kind "type" Tuple]{
+
+The variadic, heterogeneous, fixed-arity product type: @racket[(Tuple τ
+...)] for any number of element types.  Build one with @racket[(tuple
+elem ...)] and read an element with @racket[(tref t n)] (the index
+@racket[n] is a literal, bounds-checked at compile time).  A
+@racket[(Tuple a b)] of arity two is a @racket[Pair].  There is no arity
+limit, so @racket[Tuple] supersedes the old fixed @tt{Tuple3}…@tt{Tuple7}
+focus types for multi-field @racket[#:deriving Prism].
+
+@racket[(Tuple τ ...)] has @racket[Eq], @racket[Ord], and @racket[Show]
+whenever every element type @racket[τ] does.}
 
 @deftogether[(
 @defform[#:kind "type" #:link-target? #f #:id Either #:literals (data Left Right)

@@ -27,7 +27,7 @@ inside an @racket[s].  Add @racket[#:deriving Lens] to a
 
 (define p (Point 3 4))
 
-(Tuple3
+(tuple
   (view Point-x-lens p)
   (set  Point-x-lens 99 p)
   (over Point-x-lens (lambda (n) (+ n 1)) p))
@@ -90,7 +90,7 @@ named @racketidfont{T}@racketidfont{-}@racket[_Ctor]@racketidfont{-prism}:
   (Present Integer)
   #:deriving Prism Show)
 
-(Tuple3
+(tuple
   (preview Opt-Present-prism (Present 7))
   (preview Opt-Present-prism Absent)
   (review  Opt-Present-prism 42))
@@ -103,11 +103,9 @@ The focus type follows the constructor's payload: a nullary
 constructor focuses @racket[Unit], a single-field constructor focuses
 the field's type, and a multi-field constructor focuses the flat
 @emph{tuple} of its fields — @racket[(C a b)] gives @racket[(Prism s
-(Pair a b))] and @racket[(C a b c)] gives @racket[(Prism s (Tuple3 a b
-c))].  @racket[Pair] is the 2-tuple; @racket[Tuple3] through
-@racket[Tuple7] (defined in @racketmodname[rackton/data/lens], so no
-extra import) cover arities 3–7.  A constructor with more than seven
-fields is a compile error.
+(Pair a b))] and @racket[(C a b c)] gives @racket[(Prism s (Tuple a b
+c))].  @racket[Pair] is the binary tuple; wider constructors focus the
+variadic @racket[Tuple], so there is no arity limit.
 
 @rackton-example[#:eval ev #:mode 'value]{
 (require rackton/data/lens)
@@ -118,11 +116,11 @@ fields is a compile error.
   (Tri    Integer Integer Integer)
   #:deriving Prism Show)
 
-(Tuple4
+(tuple
   (preview Shape-Rect-prism (Rect 3 4))
   (review  Shape-Rect-prism (Pair 7 8))
   (preview Shape-Tri-prism  (Tri 1 2 3))
-  (review  Shape-Tri-prism  (Tuple3 4 5 6)))
+  (review  Shape-Tri-prism  (tuple 4 5 6)))
 }
 
 (Prism deriving is unavailable on @racket[struct] — a

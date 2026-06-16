@@ -1366,11 +1366,8 @@
                         [(Nil)        #f]
                         [(Cons h2 t2) (if (== h h2) (== t t2) #f)])])))
 
-    (instance ((Eq a) (Eq b) => (Eq (Pair a b)))
-      (define (== p1 p2)
-        (match p1
-          [(Pair x1 y1)
-           (match p2 [(Pair x2 y2) (if (== x1 x2) (== y1 y2) #f)])])))
+    ;; (Eq/Ord/Show for Pair are provided structurally by the variadic
+    ;;  Tuple instances — Pair is the binary tuple.)
 
     (instance ((Eq a) (Eq b) => (Eq (Either a b)))
       (define (== r1 r2)
@@ -1399,14 +1396,6 @@
                                           #t
                                           (if (== h h2) (< t t2) #f))])])))
 
-    (instance ((Ord a) (Ord b) => (Ord (Pair a b)))
-      (define (< p1 p2)
-        (match p1
-          [(Pair x1 y1)
-           (match p2
-             [(Pair x2 y2)
-              (if (< x1 x2) #t (if (== x1 x2) (< y1 y2) #f))])])))
-
     ;; Show: human-readable renderings; used in check-equal? failure
     ;; messages and `show`.
     (instance ((Show a) => (Show (Maybe a)))
@@ -1425,13 +1414,6 @@
                                              (show h)
                                              (string-append " " (elems t)))]))])
           (string-append "[" (string-append (elems xs) "]")))))
-
-    (instance ((Show a) (Show b) => (Show (Pair a b)))
-      (define (show p)
-        (match p
-          [(Pair x y)
-           (string-append "[" (string-append (show x)
-                            (string-append " . " (string-append (show y) "]"))))])))
 
     (instance ((Show a) (Show b) => (Show (Either a b)))
       (define (show r)

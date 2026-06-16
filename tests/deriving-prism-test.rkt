@@ -68,13 +68,13 @@
 (define prev-one-on-one (preview Tri-One-prism (One 7)))
 
 ;; ----- multi-field ctors: flat-tuple-focused prisms --------
-;; A 2-field ctor focuses (Pair a b); a 3-field ctor focuses the flat
-;; (Tuple3 a b c); arity 4..7 use Tuple4..Tuple7.
+;; A 2-field ctor focuses (Pair a b); an N-field ctor focuses the flat
+;; variadic (Tuple …) — no arity limit.
 
 (data Shape
   (Circle Integer)                      ; arity 1 → Integer
   (Rect   Integer Integer)              ; arity 2 → (Pair Integer Integer)
-  (Tri3   Integer Integer Integer)      ; arity 3 → (Tuple3 Integer Integer Integer)
+  (Tri3   Integer Integer Integer)      ; arity 3 → (Tuple Integer Integer Integer)
   #:deriving Prism Eq Show)
 
 (: prev-rect (Maybe (Pair Integer Integer)))
@@ -84,10 +84,10 @@
 (: rev-rect Shape)
 (define rev-rect (review Shape-Rect-prism (Pair 7 8)))
 
-(: prev-tri3 (Maybe (Tuple3 Integer Integer Integer)))
+(: prev-tri3 (Maybe (Tuple Integer Integer Integer)))
 (define prev-tri3 (preview Shape-Tri3-prism (Tri3 1 2 3)))
 (: rev-tri3 Shape)
-(define rev-tri3 (review Shape-Tri3-prism (Tuple3 1 2 3)))
+(define rev-tri3 (review Shape-Tri3-prism (tuple 1 2 3)))
 
 (: suite (List Test))
 (define suite
@@ -116,9 +116,9 @@
         (list (check-equal? prev-rect      (Some (Pair 3 4)))
               (check-equal? prev-rect-miss None)
               (check-equal? rev-rect       (Rect 7 8)))))
-   (it "3-field ctor focuses a flat Tuple3"
+   (it "3-field ctor focuses a flat variadic Tuple"
        (all-checks
-        (list (check-equal? prev-tri3 (Some (Tuple3 1 2 3)))
+        (list (check-equal? prev-tri3 (Some (tuple 1 2 3)))
               (check-equal? rev-tri3  (Tri3 1 2 3)))))))
 
 (: _ran Unit)

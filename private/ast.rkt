@@ -28,6 +28,14 @@
 ;; value of `value-expr` and all other fields preserved.  The result
 ;; type equals the type of `record-expr`.
 (struct e:update  (record updates stx) #:transparent)
+;; A variadic tuple constructor: `(tuple e …)` builds a heterogeneous,
+;; fixed-arity product of type `(Tuple T …)`.  `elems` is the list of
+;; element expressions, in order.
+(struct e:tuple   (elems stx) #:transparent)
+;; Indexed tuple access: `(tref t n)`.  `index` is a non-negative
+;; integer LITERAL (the parser rejects anything else), so the reference
+;; is bounds-checked against the tuple's arity at inference time.
+(struct e:tref    (tuple-expr index stx) #:transparent)
 (struct e:let     (bindings body stx) #:transparent)
 (struct e:if      (test then else stx) #:transparent)
 (struct e:ann     (expr type stx) #:transparent)
@@ -74,6 +82,10 @@
 (struct p:var     (name stx) #:transparent)
 (struct p:lit     (value stx) #:transparent)
 (struct p:ctor    (name args stx) #:transparent)
+;; A tuple pattern `(tuple p …)`: matches a tuple of exactly `(length
+;; elems)` elements, destructuring each.  Structurally irrefutable —
+;; the tuple's arity is fixed by its type.
+(struct p:tuple   (elems stx) #:transparent)
 
 (struct top:def      (name expr stx) #:transparent)
 (struct top:dec      (name type stx) #:transparent)
@@ -165,10 +177,13 @@
                           (and (clause*-guard c) (R (clause*-guard c)))
                           (R (clause*-body c)) new-stx))
                irr? new-stx)]
+    [(e:tuple es _)      (e:tuple (map R es) new-stx)]
+    [(e:tref t i _)      (e:tref (R t) i new-stx)]
     [(p:wild _)          (p:wild new-stx)]
     [(p:var n _)         (p:var n new-stx)]
     [(p:lit v _)         (p:lit v new-stx)]
     [(p:ctor n args _)   (p:ctor n (map R args) new-stx)]
+    [(p:tuple ps _)      (p:tuple (map R ps) new-stx)]
     [(ty:var n _)        (ty:var n new-stx)]
     [(ty:con n _)        (ty:con n new-stx)]
     [(ty:app h args _)   (ty:app (R h) (map R args) new-stx)]

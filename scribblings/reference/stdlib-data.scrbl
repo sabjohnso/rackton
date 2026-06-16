@@ -736,32 +736,10 @@ require this module too.
 @defproc[(lens-as-traversal [l (Lens s a)]) (Traversal s a)]{
   Promotes a lens to a traversal with a single focus.}
 
-@deftogether[(
-@defform[#:kind "type & constructor" #:link-target? #f #:id Tuple3 #:literals (data)
-         (data (Tuple3 a b c)
-           (Tuple3 a b c))]
-@defthing[#:kind "type & constructor" Tuple3 (-> a (-> b (-> c (Tuple3 a b c))))]
-@defform[#:kind "type & constructor" #:link-target? #f #:id Tuple4 #:literals (data)
-         (data (Tuple4 a b c d)
-           (Tuple4 a b c d))]
-@defthing[#:kind "type & constructor" Tuple4 (-> a (-> b (-> c (-> d (Tuple4 a b c d)))))]
-@defform[#:kind "type & constructor" #:link-target? #f #:id Tuple5 #:literals (data)
-         (data (Tuple5 a b c d e)
-           (Tuple5 a b c d e))]
-@defthing[#:kind "type & constructor" Tuple5 (-> a (-> b (-> c (-> d (-> e (Tuple5 a b c d e))))))]
-@defform[#:kind "type & constructor" #:link-target? #f #:id Tuple6 #:literals (data)
-         (data (Tuple6 a b c d e f)
-           (Tuple6 a b c d e f))]
-@defthing[#:kind "type & constructor" Tuple6 (-> a (-> b (-> c (-> d (-> e (-> f (Tuple6 a b c d e f)))))))]
-@defform[#:kind "type & constructor" #:link-target? #f #:id Tuple7 #:literals (data)
-         (data (Tuple7 a b c d e f g)
-           (Tuple7 a b c d e f g))]
-@defthing[#:kind "type & constructor" Tuple7 (-> a (-> b (-> c (-> d (-> e (-> f (-> g (Tuple7 a b c d e f g))))))))]
-)]{
-  Flat tuple focus types (arity 3 through 7) used as the focus of a
-  multi-field @racket[#:deriving Prism]; arity 2 reuses the prelude's
-  @racket[Pair]. Each derives @racket[Eq], @racket[Ord], and
-  @racket[Show].}
+A multi-field @racket[#:deriving Prism] focuses the flat variadic
+@racket[Tuple] of the constructor's fields (the binary case is a
+@racket[Pair]), so there is no arity limit and no dedicated
+@racketidfont{TupleK} focus types.
 
 
 @section{rackton/data/list}

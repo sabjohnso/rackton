@@ -60,6 +60,8 @@
 (define-rackton-form handle "effect handler")
 (define-rackton-form proc "arrow (point-free) notation")
 (define-rackton-form delay "deferred (call-by-need) computation")
+(define-rackton-form tuple "tuple constructor")
+(define-rackton-form tref "tuple element access")
 
 ;; Type-level keywords (appear inside type signatures).
 (define-rackton-form All "universal quantifier")
@@ -98,6 +100,9 @@
   IO Ref MVar Chan ThreadId Future TVar STM
   ;; Containers
   Map Set
+  ;; Variadic tuple (the binary case is `Pair`, which has its own
+  ;; same-named ctor binding; `Tuple` has no ctor, so it needs a stub).
+  Tuple
   ;; Raw memory (rackton/foreign/ptr)
   Ptr)
 

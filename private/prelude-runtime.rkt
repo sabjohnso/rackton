@@ -94,6 +94,9 @@
  set-rackton-inlined-log-snapshot!
  rackton-inlined-sites
 
+ ;; Tuple representation interface (emitted by codegen / match.rkt).
+ rackton-tuple-make rackton-tuple-ref
+
  ;; ADTs (constructors usable as expressions and as match patterns)
  None Some Nil Cons Pair Left Right Unit
  ;; IO-action constructor — exposed so sibling runtime modules (e.g.
@@ -334,6 +337,16 @@
 (define (rackton-inlined-sites)
   rackton-inlined-log-snapshot-value)
 
+;; ----- tuples -----------------------------------------------------
+;; The representation interface for variadic tuples.  Codegen emits
+;; `rackton-tuple-make` / `rackton-tuple-ref`, and match.rkt destructures
+;; the same shape; the backing layout (currently a Racket vector) lives
+;; HERE and nowhere else, so it can be swapped without touching codegen.
+
+(define (rackton-tuple-make . elems) (list->vector elems))
+(define (rackton-tuple-ref t i) (vector-ref t i))
+(define (rackton-tuple-length t) (vector-length t))
+
 ;; ----- ADTs -------------------------------------------------------
 
 (define-data-ctor None 0)
@@ -342,7 +355,9 @@
 (define-data-ctor Nil  0)
 (define-data-ctor Cons 2)
 
-(define-data-ctor Pair 2)
+;; `Pair` is the binary tuple: built and matched as a 2-element tuple
+;; (a `Tuple`-tagged vector), interchangeable with `(tuple a b)`.
+(define-tuple-ctor Pair 2 rackton-tuple-make)
 
 (define-data-ctor Left  1)
 (define-data-ctor Right 1)
@@ -1827,11 +1842,13 @@
   (lambda (f g p)
     (match p
       [(Pair x y) (Pair (f x) (g y))])))
-(register-instance-method! $dispatch:bimap '$ctor:Pair pair-bimap)
+;; Pair values are Tuple-tagged vectors now, so the value-dispatched
+;; Pair methods register under 'Tuple (not '$ctor:Pair).
+(register-instance-method! $dispatch:bimap 'Tuple pair-bimap)
 (define pair-first  (lambda (f p) (pair-bimap f id      p)))
 (define pair-second (lambda (g p) (pair-bimap id     g  p)))
-(register-instance-method! $dispatch:first  '$ctor:Pair pair-first)
-(register-instance-method! $dispatch:second '$ctor:Pair pair-second)
+(register-instance-method! $dispatch:first  'Tuple pair-first)
+(register-instance-method! $dispatch:second 'Tuple pair-second)
 
 (define either-bimap
   (lambda (f g r)
@@ -1885,9 +1902,11 @@
 (define (|$mk-prod:Pair| a b) (Pair a b))
 (define pair-prod-fst (lambda (q) (match q [(Pair a _) a])))
 (define pair-prod-snd (lambda (q) (match q [(Pair _ b) b])))
-(register-instance-method! $dispatch:mk-prod  'Pair       |$mk-prod:Pair|)
-(register-instance-method! $dispatch:prod-fst '$ctor:Pair pair-prod-fst)
-(register-instance-method! $dispatch:prod-snd '$ctor:Pair pair-prod-snd)
+;; mk-prod is return-typed (keyed by the result type's tcon, 'Pair);
+;; prod-fst / prod-snd dispatch on the Pair value, now a Tuple vector.
+(register-instance-method! $dispatch:mk-prod  'Pair  |$mk-prod:Pair|)
+(register-instance-method! $dispatch:prod-fst 'Tuple pair-prod-fst)
+(register-instance-method! $dispatch:prod-snd 'Tuple pair-prod-snd)
 (define (|$inj-left:Either|  a) (Left  a))
 (define (|$inj-right:Either| b) (Right b))
 (define either-co-elim (lambda (f g s) (match s [(Left a) (f a)] [(Right b) (g b)])))
@@ -1989,11 +2008,8 @@
 (register-instance-method! $dispatch:== '$ctor:Nil  list-eq)
 (register-instance-method! $dispatch:== '$ctor:Cons list-eq)
 
-(define (pair-eq p1 p2)
-  (match p1
-    [(Pair x1 y1)
-     (match p2 [(Pair x2 y2) (if (== x1 x2) (== y1 y2) #f)])]))
-(register-instance-method! $dispatch:== '$ctor:Pair pair-eq)
+;; (Pair Eq/Ord/Show come from the variadic Tuple instances registered
+;;  under the 'Tuple tag — a Pair is a Tuple-tagged vector.)
 
 (define (either-eq r1 r2)
   (match r1
@@ -2006,7 +2022,7 @@
 (register-instance-method! $dispatch:== '$ctor:Unit unit-eq)
 
 (for ([tag (in-list '($ctor:None $ctor:Some $ctor:Nil $ctor:Cons
-                      $ctor:Pair $ctor:Left $ctor:Right $ctor:Unit))])
+                      $ctor:Left $ctor:Right $ctor:Unit))])
   (register-instance-method! $dispatch:/= tag (lambda (x y) (rkt:not (== x y)))))
 
 ;; -- Ord (< is primitive; the rest derive from generic < and ==) --
@@ -2024,13 +2040,6 @@
                                     #t
                                     (if (== h h2) (list-lt t t2) #f))])]))
 
-(define (pair-lt p1 p2)
-  (match p1
-    [(Pair x1 y1)
-     (match p2
-       [(Pair x2 y2)
-        (if (< x1 x2) #t (if (== x1 x2) (< y1 y2) #f))])]))
-
 (define (register-ord-derived! tag)
   (register-instance-method! $dispatch:>  tag (lambda (x y) (< y x)))
   (register-instance-method! $dispatch:<= tag (lambda (x y) (if (< x y) #t (== x y))))
@@ -2042,8 +2051,7 @@
 (register-instance-method! $dispatch:< '$ctor:Some   maybe-lt)
 (register-instance-method! $dispatch:< '$ctor:Nil    list-lt)
 (register-instance-method! $dispatch:< '$ctor:Cons   list-lt)
-(register-instance-method! $dispatch:< '$ctor:Pair pair-lt)
-(for ([tag (in-list '($ctor:None $ctor:Some $ctor:Nil $ctor:Cons $ctor:Pair))])
+(for ([tag (in-list '($ctor:None $ctor:Some $ctor:Nil $ctor:Cons))])
   (register-ord-derived! tag))
 
 ;; -- Show --
@@ -2064,13 +2072,6 @@
 (register-instance-method! $dispatch:show '$ctor:Nil  list-show)
 (register-instance-method! $dispatch:show '$ctor:Cons list-show)
 
-(define (pair-show p)
-  (match p
-    [(Pair x y)
-     (string-append "[" (string-append (show x)
-                      (string-append " . " (string-append (show y) "]"))))]))
-(register-instance-method! $dispatch:show '$ctor:Pair pair-show)
-
 (define (either-show r)
   (match r
     [(Left x)  (string-append "(Left "  (string-append (show x) ")"))]
@@ -2080,6 +2081,45 @@
 
 (define (unit-show _u) "Unit")
 (register-instance-method! $dispatch:show '$ctor:Unit unit-show)
+
+;; -- Tuple Eq / Ord / Show (variadic, structural; dispatched on the
+;; single `Tuple` tag for the vector representation).  Each recurses
+;; element-wise through the generic method, so nested tuples and mixed
+;; element types work.  The type checker (entail.rkt) guarantees every
+;; element has the needed instance and that compared tuples share arity. --
+(define (tuple-eq t1 t2)
+  (define n (rackton-tuple-length t1))
+  (and (rkt:= n (rackton-tuple-length t2))
+       (let loop ([i 0])
+         (cond
+           [(rkt:= i n) #t]
+           [(== (rackton-tuple-ref t1 i) (rackton-tuple-ref t2 i)) (loop (rkt:+ i 1))]
+           [else #f]))))
+(register-instance-method! $dispatch:== 'Tuple tuple-eq)
+(register-instance-method! $dispatch:/= 'Tuple (lambda (x y) (rkt:not (== x y))))
+
+(define (tuple-lt t1 t2)
+  ;; Lexicographic; equal arity is guaranteed by the type.
+  (define n (rackton-tuple-length t1))
+  (let loop ([i 0])
+    (cond
+      [(rkt:= i n) #f]
+      [else
+       (define a (rackton-tuple-ref t1 i))
+       (define b (rackton-tuple-ref t2 i))
+       (cond [(< a b) #t] [(== a b) (loop (rkt:+ i 1))] [else #f])])))
+(register-instance-method! $dispatch:< 'Tuple tuple-lt)
+(register-ord-derived! 'Tuple)
+
+(define (tuple-show t)
+  (define n (rackton-tuple-length t))
+  (let loop ([i 0] [acc ""])
+    (cond
+      [(rkt:= i n) (rkt:string-append "(" acc ")")]
+      [else
+       (define s (show (rackton-tuple-ref t i)))
+       (loop (rkt:+ i 1) (if (rkt:= i 0) s (rkt:string-append acc ", " s)))])))
+(register-instance-method! $dispatch:show 'Tuple tuple-show)
 
 ;; WriterT w m runtime moved to rackton/control/monad/writer (pure
 ;; Rackton — value-dispatched fmap/fapply/flatmap combine logs via

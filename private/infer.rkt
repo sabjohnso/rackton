@@ -791,7 +791,9 @@
     [(e:ann _ _ s)      s]
     [(e:match _ _ _ s)  s]
     [(e:match* _ _ _ s) s]
-    [(e:escape _ _ _ s) s]))
+    [(e:escape _ _ _ s) s]
+    [(e:tuple _ s)      s]
+    [(e:tref _ _ s)     s]))
 
 ;; -------- "did you mean?" suggestions ------------------------------
 
@@ -891,7 +893,11 @@
          [(hash-ref aliases n #f) => (lambda (info) (expand-alias/m n info args stx))]
          [else
           (let/ctx ([rargs (ctx-sequence (map resolve-type/m args))])
-            (ctx-return (make-tapp (tcon n) rargs)))]))]
+            ;; A 2-element `(Tuple a b)` canonicalizes to `(Pair a b)`:
+            ;; `Pair` is the binary tuple's head, so it can be used
+            ;; unapplied as a higher-kinded constructor (Bifunctor/Prod)
+            ;; while staying interchangeable with the 2-tuple.
+            (ctx-return (make-tapp (tcon (tuple-head-name n rargs)) rargs)))]))]
     [(ty:app h args _)
      (let/ctx ([rh    (resolve-type/m h)]
                [rargs (ctx-sequence (map resolve-type/m args))])
@@ -1043,6 +1049,8 @@
     [(e:ann expr ty-ast stx)         (infer-ann/m expr ty-ast stx env)]
     [(e:escape ty-ast vars _ stx)    (infer-escape/m ty-ast vars stx env)]
     [(e:update record updates stx)   (infer-update/m record updates stx env)]
+    [(e:tuple elems stx)             (infer-tuple/m elems stx env)]
+    [(e:tref te idx stx)             (infer-tref/m te idx stx env)]
     [(e:handle expr clauses ret stx) (infer-handle/m expr clauses ret stx env)]
     [(e:match scrut clauses irrefutable? stx)
      (infer-match/m scrut clauses irrefutable? stx env)]
@@ -1433,6 +1441,71 @@
                             (loop (cdr updates) (subst-compose s-u s-now))))]))])
         (infer-return (cons s-acc (apply-subst s-acc t-rec*)))))))
 
+;; ----- tuples -------------------------------------------------------
+;; A tuple type is `(tapp (tcon 'Tuple) (list τ …))`: the built-in
+;; `Tuple` constructor is variadic (its arity is the element count),
+;; so ordinary tapp unification already gives elementwise, arity-checked
+;; structural equality for free.
+
+;; The head constructor name for a tuple of the given element count:
+;; the binary tuple is `Pair` (so it doubles as a higher-kinded
+;; constructor), every other arity is the variadic `Tuple`.  Used to
+;; canonicalize so `(tapp (tcon 'Tuple) (list a b))` is never built —
+;; `(Pair a b)` and the 2-`Tuple` are then literally the same type.
+(define (tuple-head-for n) (if (= n 2) 'Pair 'Tuple))
+
+;; Canonicalize a surface application head `n` applied to `args`: a
+;; 2-arg `Tuple` becomes `Pair`; everything else is unchanged.
+(define (tuple-head-name n args)
+  (if (and (eq? n 'Tuple) (= (length args) 2)) 'Pair n))
+
+;; Assemble the tuple type for the given element types.
+(define (tuple-type-of elem-types)
+  (make-tapp (tcon (tuple-head-for (length elem-types))) elem-types))
+
+;; The element types of a concrete tuple type, or #f if `t` is not one.
+;; Both heads denote tuples: `Tuple` (any arity) and `Pair` (arity 2).
+(define (tuple-type-elems t)
+  (match t
+    [(tapp (tcon 'Tuple) elems)         elems]
+    [(tapp (tcon 'Pair) (and es (list _ _))) es]
+    [_ #f]))
+
+;; Infer `(tuple e …)`: type each element left-to-right, threading the
+;; running substitution through the env, and assemble the product type.
+(define (infer-tuple/m elems stx env)
+  (let loop ([elems elems] [s empty-subst] [tys-rev '()] [env env])
+    (cond
+      [(null? elems)
+       (infer-return
+        (cons s (apply-subst s (tuple-type-of (reverse tys-rev)))))]
+      [else
+       (let/infer ([r (infer-expr/m (car elems) env)])
+         (let* ([s-e (car r)] [t-e (cdr r)]
+                [s-now (subst-compose s-e s)])
+           (loop (cdr elems) s-now (cons t-e tys-rev)
+                 (apply-subst/env s-e env))))])))
+
+;; Infer `(tref t n)`: the target must resolve to a concrete tuple type
+;; (its arity must be known), and the literal `n` must be in bounds.
+;; The result is the n-th element type.
+(define (infer-tref/m te idx stx env)
+  (let/infer ([r (infer-expr/m te env)])
+    (let* ([s (car r)] [t (apply-subst s (cdr r))]
+           [elems (tuple-type-elems t)])
+      (cond
+        [(not elems)
+         (raise-syntax-error 'infer
+           (format "tref target must have a concrete tuple type, got ~a"
+                   (pretty-type t))
+           stx)]
+        [(>= idx (length elems))
+         (raise-syntax-error 'infer
+           (format "tref index ~a is out of bounds for a ~a-element tuple"
+                   idx (length elems))
+           stx)]
+        [else (infer-return (cons s (list-ref elems idx)))]))))
+
 ;; Extract the head tcon name from a record type like
 ;; `(tcon Point)` or `(tapp (tcon Box) [args])`.
 (define (update-type-head t)
@@ -1747,6 +1820,31 @@
     [(p:lit v _) (infer-return (list '() (literal-type v) '()))]
     [(p:var x _)
      (let/infer ([α (m:fresh-tvar)]) (infer-return (list (list (cons x α)) α '())))]
+    [(p:tuple args stx)
+     ;; A tuple pattern is structural: infer each sub-pattern, thread the
+     ;; substitution, and assemble the `(Tuple …)` type.  No ctor lookup
+     ;; or arity table — the arity is the sub-pattern count, unified with
+     ;; the scrutinee's tuple type by the caller.
+     (let/infer ([acc (let loop ([args args] [bindings '()] [tys-rev '()]
+                                 [s empty-subst] [hyps '()])
+                        (cond
+                          [(null? args)
+                           (infer-return (list bindings (reverse tys-rev) s hyps))]
+                          [else
+                           (let/infer ([rp (infer-pattern/m (car args) env)])
+                             (let* ([bs (car rp)] [t (cadr rp)] [inner-hyps (caddr rp)])
+                               (loop (cdr args)
+                                     (append bindings bs)
+                                     (cons t tys-rev)
+                                     s
+                                     (append hyps inner-hyps))))]))])
+       (let* ([all-bindings (car acc)] [elem-tys (cadr acc)]
+              [s-acc (caddr acc)] [all-hyps (cadddr acc)])
+         (infer-return
+          (list (for/list ([b (in-list all-bindings)])
+                  (cons (car b) (apply-subst s-acc (cdr b))))
+                (apply-subst s-acc (tuple-type-of elem-tys))
+                all-hyps))))]
     [(p:ctor name args stx)
      (define info (env-ref-data env name))
      (cond
@@ -1838,6 +1936,16 @@
 ;;     scrutinees whose type is still polymorphic, a catchall is required.
 ;; Returns Infer void: the reachability probes draw fresh tvars, so it threads
 ;; `st` through ctor-reachable-at?/m.  Every non-probing branch is infer-return.
+;; A pattern that matches every value of its type: a wildcard, a
+;; variable, or a tuple of irrefutable sub-patterns (a tuple type has a
+;; single fixed-arity shape, so destructuring it can never fail).
+(define (irrefutable-pat? p)
+  (match p
+    [(p:wild _)     #t]
+    [(p:var _ _)    #t]
+    [(p:tuple ps _) (andmap irrefutable-pat? ps)]
+    [_              #f]))
+
 (define (check-exhaustive!/m scrut-type clauses stx env)
   (define head
     (let loop ([t scrut-type])
@@ -1850,8 +1958,7 @@
     ;; guard may fail — even a wildcard pattern under #:when is not a
     ;; catch-all.
     (and (not (clause-guard c))
-         (or (p:wild? (clause-pattern c))
-             (p:var?  (clause-pattern c)))))
+         (irrefutable-pat? (clause-pattern c))))
   (define has-catchall? (for/or ([c (in-list clauses)]) (catchall? c)))
   (cond
     [has-catchall? (infer-return (void))]
@@ -2510,6 +2617,18 @@
      (cond
        [(and (ty:con? h) (env-ref-alias env (ty:con-name h) #f))
         (elab-alias t env batch-kinds tvar-kinds s)]
+       ;; `Tuple` is variadic: it accepts any number of `*`-kinded
+       ;; arguments and yields `*`.  A fixed arrow kind can't express
+       ;; "any arity", so demand each element be `*` directly rather
+       ;; than unifying the head against a built arrow.
+       [(and (ty:con? h) (eq? (ty:con-name h) 'Tuple))
+        (define s*
+          (for/fold ([s s]) ([a (in-list args)])
+            (define-values (ka s1) (elab-surface a env batch-kinds tvar-kinds s))
+            (with-handlers ([exn:fail:kind-unify?
+                             (lambda (e) (kind-fail! (ty-ast->stx a) (exn-message e)) s1)])
+              (ksubst-compose (unify-kind (apply-ksubst s1 ka) kstar) s1))))
+        (values kstar s*)]
        [else
         (define-values (kh s1) (elab-surface h env batch-kinds tvar-kinds s))
         (define-values (kargs s2)
@@ -2885,6 +3004,9 @@
       [(e:update record updates _)
        (walk record shadowed)
        (for ([u (in-list updates)]) (walk (cdr u) shadowed))]
+      [(e:tuple elems _)
+       (for ([el (in-list elems)]) (walk el shadowed))]
+      [(e:tref t _ _) (walk t shadowed)]
       [(e:handle expr clauses ret _)
        (walk expr shadowed)
        (when ret (walk ret shadowed))
@@ -2902,6 +3024,9 @@
   (match p
     [(p:var n _) (seteq n)]
     [(p:ctor _ args _)
+     (for/fold ([s (seteq)]) ([a (in-list args)])
+       (set-union s (pattern-bound-names a)))]
+    [(p:tuple args _)
      (for/fold ([s (seteq)]) ([a (in-list args)])
        (set-union s (pattern-bound-names a)))]
     [_ (seteq)]))
@@ -4160,6 +4285,9 @@
          [(e:update record updates _)
           (for/fold ([st (walk record shadowed? st)]) ([u (in-list updates)])
             (walk (cdr u) shadowed? st))]
+         [(e:tuple elems _)
+          (for/fold ([st st]) ([el (in-list elems)]) (walk el shadowed? st))]
+         [(e:tref t _ _) (walk t shadowed? st)]
          [(e:handle expr clauses ret _)
           (define st-e (walk expr shadowed? st))
           (define st-r (if ret (walk ret shadowed? st-e) st-e))
@@ -4175,6 +4303,8 @@
   (match p
     [(p:var n _) (eq? n name)]
     [(p:ctor _ args _)
+     (for/or ([a (in-list args)]) (pattern-binds-name? a name))]
+    [(p:tuple args _)
      (for/or ([a (in-list args)]) (pattern-binds-name? a name))]
     [_ #f]))
 

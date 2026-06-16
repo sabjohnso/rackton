@@ -288,7 +288,7 @@
 
 (define (parse-expr stx)
   (syntax-parse stx
-    #:datum-literals (lambda λ case-lambda case-λ let let& let% let+ letrec let* if cond else ann match racket do proc delay <- update handle return describe context list -> quote quasiquote unquote unquote-splicing)
+    #:datum-literals (lambda λ case-lambda case-λ let let& let% let+ letrec let* if cond else ann match racket do proc delay <- update handle return describe context list tuple tref -> quote quasiquote unquote unquote-splicing)
     [n:number  (e:literal (syntax->datum #'n) stx)]
     [b:boolean (e:literal (syntax->datum #'b) stx)]
     [s:string  (e:literal (syntax->datum #'s) stx)]
@@ -431,6 +431,20 @@
     [(list elem ...)
      (build-list-ast
       (map parse-expr (syntax->list #'(elem ...))) stx)]
+
+    ;; (tuple e ...) — variadic heterogeneous product constructor.
+    [(tuple elem ...)
+     (e:tuple (map parse-expr (syntax->list #'(elem ...))) stx)]
+
+    ;; (tref t n) — indexed tuple access.  `n` MUST be a non-negative
+    ;; integer literal so the index is known (and bounds-checkable)
+    ;; statically; a non-literal index is rejected here, before
+    ;; inference, with a located error.
+    [(tref t idx:nat)
+     (e:tref (parse-expr #'t) (syntax->datum #'idx) stx)]
+    [(tref _ _)
+     (raise-syntax-error 'rackton
+       "tref index must be a non-negative integer literal" stx)]
 
     ;; (describe NAME child ...) / (context NAME child ...) — the test
     ;; framework's grouping forms, made variadic so children need no
@@ -1305,10 +1319,13 @@
 
 (define (parse-pattern stx)
   (syntax-parse stx
-    #:datum-literals (quote quasiquote unquote unquote-splicing list)
+    #:datum-literals (quote quasiquote unquote unquote-splicing list tuple)
     [n:number  (p:lit (syntax->datum #'n) stx)]
     [b:boolean (p:lit (syntax->datum #'b) stx)]
     [s:string  (p:lit (syntax->datum #'s) stx)]
+    ;; `(tuple p …)` — destructure a tuple of matching arity.
+    [(tuple elem ...)
+     (p:tuple (map parse-pattern (syntax->list #'(elem ...))) stx)]
     ;; Quotation builds list patterns (see `quote->pattern`): `'foo` is the
     ;; Symbol 'foo, `'(1 2 3)` matches that literal list, and quasiquote
     ;; adds `,sub` escapes.  An unquote outside a quasiquote is an error.

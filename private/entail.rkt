@@ -136,7 +136,31 @@
      (define hyp-closure (super-closure env hypotheses))
      (cond
        [(for/or ([h (in-list hyp-closure)]) (equal? h target)) #t]
+       ;; A structural-over-products class on a tuple type entails iff
+       ;; the class holds of every element (an exact hypothesis above
+       ;; wins first, so a given `(Eq (Tuple a b))` is not decomposed).
+       [(tuple-structural-subgoals target)
+        => (lambda (subgoals)
+             (for/and ([g (in-list subgoals)]) (entail? env hypotheses g)))]
        [else (entail-by-inst? env hypotheses target)])]))
+
+;; The classes whose single method is structural over a product, so a
+;; variadic `(Tuple t …)` satisfies them iff each element does.  A
+;; fixed-arity instance can't express this (the arity varies), so the
+;; reduction is built in here rather than declared in the prelude.
+(define structural-tuple-classes (seteq 'Eq 'Ord 'Show))
+
+;; If `p` is `(C (Tuple t1 … tn))` for a structural class C, return the
+;; element subgoals `(C t1) … (C tn)`; otherwise #f.
+(define (tuple-structural-subgoals p)
+  (and (set-member? structural-tuple-classes (pred-class p))
+       (match (pred-args p)
+         ;; Both tuple heads: `Tuple` (any arity) and `Pair` (arity 2).
+         [(list (tapp (tcon 'Tuple) elems))
+          (for/list ([e (in-list elems)]) (pred (pred-class p) (list e)))]
+         [(list (tapp (tcon 'Pair) (and elems (list _ _))))
+          (for/list ([e (in-list elems)]) (pred (pred-class p) (list e)))]
+         [_ #f])))
 
 ;; A `~` predicate has class-name `'~` and exactly two args.
 (define (equality-pred? p)
@@ -276,6 +300,14 @@
                 (raise-constraint-error
                  (format "type-equality fails: ~a ≠ ~a" l r))]
                [else (loop (cdr ps) (cons p acc))])])]
+         [(and (not (member p (super-closure env hypotheses)))
+               (tuple-structural-subgoals p))
+          ;; A tuple's structural constraint reduces to one constraint
+          ;; per element; splice those into the worklist so each is then
+          ;; discharged (concrete element) or kept residual (tvar
+          ;; element) in head-normal form.  Skip when an exact hypothesis
+          ;; already covers `p` (handled by the in-hnf?/entail? arms).
+          => (lambda (subgoals) (loop (append subgoals (cdr ps)) acc))]
          [(in-hnf? p)
           ;; Still keep unless redundant against hypotheses.
           (cond

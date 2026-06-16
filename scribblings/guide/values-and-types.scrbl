@@ -63,6 +63,45 @@ For each type's full set of instances, its literal syntax, and the
 operations that build and consume it, see
 @secref["ref-primitive-types" #:doc '(lib "rackton/scribblings/reference/rackton-reference.scrbl")].
 
+@section[#:tag "guide-tuples"]{Tuples}
+
+A @deftech{tuple} is a heterogeneous, fixed-arity product.  Build one
+with @racket[tuple] and it takes the type @racket[(Tuple τ ...)], where
+each @racket[τ] is the type of the corresponding element.  There is no
+arity limit.
+
+@rackton-example[#:eval ev #:mode 'defs]{
+(: triple (Tuple Integer String Boolean))
+(define triple (tuple 1 "a" #t))
+}
+
+Read an element with @racket[tref].  The index is a literal and is
+checked against the tuple's arity @italic{at compile time}, so each
+@racket[tref] recovers the precise element type and an out-of-bounds
+index is a type error rather than a runtime fault:
+
+@rackton-example[#:eval ev #:mode 'value]{
+(tref (tuple 1 "a" #t) 1)
+}
+
+The two-element tuple is exactly @racket[Pair]: @racket[(tuple a b)] and
+@racket[(Pair a b)] build the same value and share the type
+@racket[(Pair a b)] ≡ @racket[(Tuple a b)], so @racket[fst], @racket[snd],
+and @racket[tref] are interchangeable on it.
+
+@rackton-example[#:eval ev #:mode 'value]{
+(== (tuple 1 2) (Pair 1 2))
+}
+
+A tuple also destructures with a @racket[(tuple p ...)] pattern, and
+gains @racket[Eq], @racket[Ord], and @racket[Show] whenever every element
+type does:
+
+@rackton-example[#:eval ev #:mode 'value]{
+(match (tuple 3 4)
+  [(tuple a b) (show (tuple b a))])
+}
+
 @section[#:tag "quoted-list-literals"]{Quoted list literals}
 
 A quoted identifier is a @racket[Symbol] (@racket['foo]).  Quoting a

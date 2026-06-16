@@ -802,6 +802,13 @@
      (if (null? fields)
          (doc-text name)
          (group-parts (cons (doc-text name) (map value->doc fields))))]
+    ;; Tuples are vectors (see prelude-runtime's rackton-tuple-make).  A
+    ;; 2-tuple is a `Pair`; any other arity prints with the `tuple` head.
+    ;; Both forms are valid surface syntax, so the output round-trips.
+    [(vector? v)
+     (define elems (vector->list v))
+     (define head (if (= (length elems) 2) "Pair" "tuple"))
+     (group-parts (cons (doc-text head) (map value->doc elems)))]
     [(procedure? v) (doc-text "<lambda>")]
     [else (doc-text (format "~v" v))]))
 

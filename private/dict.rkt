@@ -48,6 +48,10 @@
     [(char? v)          'Char]
     [(bytes? v)         'Bytes]
     [(symbol? v)        'Symbol]
+    ;; A tuple's hidden representation (see prelude-runtime's
+    ;; rackton-tuple-make) is a Racket vector; it dispatches under the
+    ;; single tag `Tuple` for the variadic Eq/Ord/Show instances.
+    [(vector? v)        'Tuple]
     ;; Functions are the canonical Arrow/Category instance: a procedure
     ;; value dispatches as the function-arrow tycon `->`, matching the
     ;; `(register-instance-method! … '-> …)` registrations for `then`,

@@ -28,7 +28,9 @@
     (check-equal? (dispatch-tag (TBox 5)) '$ctor:TBox))
 
   (test-case "dispatch-tag errors on an untaggable value"
-    (check-exn exn:fail? (lambda () (dispatch-tag (vector 1 2)))))
+    ;; A vector is no longer untaggable — it is the tuple representation
+    ;; (tag 'Tuple).  A box has no Rackton type, so it stays untaggable.
+    (check-exn exn:fail? (lambda () (dispatch-tag (box 1)))))
 
   ;; ----- generic method: register + dispatch -------------------------
 
