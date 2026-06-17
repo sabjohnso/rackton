@@ -37,6 +37,28 @@
   (define out (last-output '((Cons (Pair 1 1) (Cons (Pair 2 4) Nil)))))
   (check-regexp-match #rx"\\(list \\(Pair 1 1\\) \\(Pair 2 4\\)\\)" out))
 
+;; ----- tuples and arrays evaluate and render in the REPL ----------
+;; Regression: the codegen-emitted tuple/array runtime helpers must be
+;; reachable in the REPL's top-level eval (they are excluded from the
+;; user-facing re-export), and array values must print through the
+;; `array` head, not as their internal representation struct.
+
+(test-case "a tuple evaluates and renders with the tuple head"
+  (define out (last-output '((tuple 1 "a" #t))))
+  (check-regexp-match #rx"\\(tuple 1 \"a\" #t\\)" out)
+  (check-false (regexp-match #rx"undefined" out)))
+
+(test-case "an array evaluates and renders with the array head"
+  (define out (last-output '((array 10 20 30))))
+  (check-regexp-match #rx"\\(array 10 20 30\\)" out)
+  ;; the internal representation never leaks
+  (check-false (regexp-match #rx"rkt-array" out)))
+
+(test-case "flatten-major reduces the computed size in the shown type"
+  (define out (last-output '((flatten-major (array (array 1 2 3) (array 4 5 6))))))
+  (check-regexp-match #rx"\\(array 1 2 3 4 5 6\\)" out)
+  (check-regexp-match #rx"Array 6 Integer" out))   ; (* 2 3) reduced to 6
+
 ;; ----- wrapping ----------------------------------------------------
 
 (test-case "a value too wide for the budget breaks across lines"

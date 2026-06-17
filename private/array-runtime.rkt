@@ -17,16 +17,26 @@
 ;;   rackton-array-ref       : (Array n a) nat   -> a            ; element read
 ;;   rackton-array-length    : (Array n a)       -> nat          ; element count
 
-(provide rackton-array-from-list
+(provide rackton-array?
+         rackton-array-from-list
          rackton-array-make
          rackton-array-ref
          rackton-array-length
          flatten-major
          flatten-minor)
 
-;; The opaque handle.  `vec` is the current backing store; it is an
-;; implementation detail and must not escape this module.
-(struct rkt-array (vec) #:transparent)
+;; The handle.  `vec` is the current backing store; it is an
+;; implementation detail and must not escape this module.  Prefab (not a
+;; plain transparent struct) so its type has a single global identity:
+;; an array built in one module instantiation — e.g. the REPL's eval
+;; namespace — is still recognized by `rackton-array?` / the accessors
+;; in another (the REPL's own instance), which a per-instantiation
+;; transparent struct would not be.
+(struct rkt-array (vec) #:prefab)
+
+;; A predicate on the opaque handle (for display / dispatch), without
+;; exposing the constructor or accessor.
+(define (rackton-array? v) (rkt-array? v))
 
 (define (rackton-array-from-list elems)
   (rkt-array (list->vector elems)))

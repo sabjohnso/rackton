@@ -40,6 +40,9 @@
          "prelude.rkt"
          "env.rkt"
          "types.rkt"
+         (only-in "nat-solve.rkt" deep-normalize-nats)
+         (only-in "array-runtime.rkt"
+                  rackton-array? rackton-array-length rackton-array-ref)
          "term.rkt"
          "repl-input.rkt"
          "repl-term.rkt"
@@ -75,7 +78,17 @@
   (define ns (make-base-namespace))
   (parameterize ([current-namespace ns])
     (namespace-require 'racket/base)
-    (namespace-require 'rackton))
+    (namespace-require 'rackton)
+    ;; Codegen emits references to internal runtime helpers (the tuple /
+    ;; array representation interfaces) that `rackton` intentionally does
+    ;; NOT re-export to users.  In a compiled module those resolve via
+    ;; codegen's for-template imports, but the REPL evaluates at top level
+    ;; where they must be namespace bindings — so require them directly.
+    (namespace-require '(only rackton/private/prelude-runtime
+                              rackton-tuple-make rackton-tuple-ref))
+    (namespace-require '(only rackton/private/array-runtime
+                              rackton-array-from-list rackton-array-make
+                              rackton-array-ref rackton-array-length)))
   (rackton-repl-state prelude-env
                       (hasheq)
                       (hasheq)
@@ -226,7 +239,7 @@
    ;; type, rendered the same way a bare expression result is.
    (for ([c (in-list compiled)]) (eval-in state c))
    (define value (eval-in state (datum->syntax #f name)))
-   (render-typed (value->doc value) (scheme->pretty-datum sch))))
+   (render-typed (value->doc value) (scheme->display-datum sch))))
 
 ;; Hoogle-style search over everything in scope: by whole signature
 ;; (modulo unification and argument order), by result type, or — for
@@ -571,7 +584,7 @@
    (define value (eval-in state* (datum->syntax #f name)))
    (define sch (env-ref-var env* name))
    (values state*
-           (render-typed (value->doc value) (scheme->pretty-datum sch)))))
+           (render-typed (value->doc value) (scheme->display-datum sch)))))
 
 ;; ----- elaboration + eval -----------------------------------------
 
@@ -792,6 +805,13 @@
 ;; information.  Everything else (numbers, strings, symbols, Maps, …)
 ;; falls back to `print` form — so a Symbol value reads as `'x`, not the
 ;; bare `x` that a constructor head uses.
+;; Pretty datum for a scheme shown beside a VALUE result: reduce ground
+;; Nat arithmetic in the type first, so a computed size like `(* 2 2)`
+;; from `flatten-major` shows as `4` rather than the raw expression.
+(define (scheme->display-datum sch)
+  (match sch
+    [(scheme vs body) (scheme->pretty-datum (scheme vs (deep-normalize-nats body)))]))
+
 (define (value->doc v)
   (cond
     [(rackton-list-elements v)
@@ -809,6 +829,13 @@
      (define elems (vector->list v))
      (define head (if (= (length elems) 2) "Pair" "tuple"))
      (group-parts (cons (doc-text head) (map value->doc elems)))]
+    ;; A fixed-size array (the opaque handle from array-runtime) prints
+    ;; with the `array` head — its hidden layout never shows.
+    [(rackton-array? v)
+     (group-parts
+      (cons (doc-text "array")
+            (for/list ([i (in-range (rackton-array-length v))])
+              (value->doc (rackton-array-ref v i)))))]
     [(procedure? v) (doc-text "<lambda>")]
     [else (doc-text (format "~v" v))]))
 

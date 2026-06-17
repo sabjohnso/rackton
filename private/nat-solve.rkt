@@ -29,7 +29,8 @@
 
 (provide solve-nat-equation
          nat-expr?
-         normalize-nat-type)
+         normalize-nat-type
+         deep-normalize-nats)
 
 (require racket/match
          racket/list
@@ -137,6 +138,21 @@
 (define (normalize-nat-type t)
   (define lf (nat->linform t))
   (if lf (linform->type lf) t))
+
+;; Reduce every maximal Nat subterm of a type to normal form (so e.g.
+;; `(Array (* 2 2) a)` displays as `(Array 4 a)`).  Used for display.
+(define (deep-normalize-nats t)
+  (cond
+    [(nat-expr? t) (normalize-nat-type t)]
+    [else
+     (match t
+       [(tapp h args)
+        (make-tapp (deep-normalize-nats h) (map deep-normalize-nats args))]
+       [(qual cs body)
+        (mqual (map deep-normalize-nats cs) (deep-normalize-nats body))]
+       [(pred c args) (pred c (map deep-normalize-nats args))]
+       [(tforall vs body) (tforall vs (deep-normalize-nats body))]
+       [_ t])]))
 
 ;; Solve σ = τ.  Returns a substitution (possibly empty) on success, or
 ;; #f when the equation is unsatisfiable or stuck.
