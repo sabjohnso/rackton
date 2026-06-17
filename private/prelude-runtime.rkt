@@ -82,7 +82,8 @@
          (only-in racket/port port->string)
          racket/async-channel
          "adt.rkt"
-         "dict.rkt")
+         "dict.rkt"
+         "array-runtime.rkt")
 
 (provide
  ;; Monomorphization log accessors — exported so the
@@ -96,6 +97,9 @@
 
  ;; Tuple representation interface (emitted by codegen / match.rkt).
  rackton-tuple-make rackton-tuple-ref
+ ;; Array flattening (user-facing prelude builtins; type declared in
+ ;; prelude.rkt, impl from array-runtime.rkt).
+ flatten-major flatten-minor
 
  ;; ADTs (constructors usable as expressions and as match patterns)
  None Some Nil Cons Pair Left Right Unit

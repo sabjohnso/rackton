@@ -102,6 +102,45 @@ type does:
   [(tuple a b) (show (tuple b a))])
 }
 
+@section[#:tag "guide-arrays"]{Arrays}
+
+An @deftech{array} is a homogeneous, fixed-size sequence whose length is
+carried in its type: @racket[(Array n a)] holds exactly @racket[n]
+elements of type @racket[a].  Build one by listing its elements with
+@racket[array], or from its indices with @racket[build-array]:
+
+@rackton-example[#:eval ev #:mode 'defs]{
+(: tens (Array 3 Integer))
+(define tens (array 10 20 30))
+
+(: squares (Array 4 Integer))
+(define squares (build-array 4 (lambda (i) (* i i))))
+}
+
+Read an element with @racket[aref].  The index is a literal, and when
+the size is known it is bounds-checked @italic{at compile time}, so an
+out-of-bounds read is a type error rather than a runtime fault:
+
+@rackton-example[#:eval ev #:mode 'value]{
+(aref (array 10 20 30) 2)
+}
+
+Multidimensional arrays are simply nested — @racket[(Array n (Array m
+a))] is an @racket[n]×@racket[m] grid — so a 2-D read is a nested
+@racket[aref], and the size arithmetic is tracked in the type.
+@racket[flatten-major] and @racket[flatten-minor] collapse one level of
+nesting into a flat @racket[(Array (* n m) a)], differing only in element
+order (row-major vs column-major):
+
+@rackton-example[#:eval ev #:mode 'value]{
+(aref (flatten-major (array (array 1 2 3)
+                            (array 4 5 6)))
+      3)
+}
+
+The element layout is hidden behind the array operations; only the size
+and element type are observable.
+
 @section[#:tag "quoted-list-literals"]{Quoted list literals}
 
 A quoted identifier is a @racket[Symbol] (@racket['foo]).  Quoting a

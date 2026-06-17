@@ -724,6 +724,39 @@ a runtime fault.  The result has the type of that element.
 (tref (tuple 1 "a" #t) 1)   (code:comment "\"a\" : String")
 (tref (tuple 1 2) 5)        (code:comment "compile error: out of bounds")]}
 
+@defform[(array elem ...)]{
+
+Constructs a fixed-size @racket[Array] of type @racket[(Array n a)],
+where @racket[n] is the number of elements and @racket[a] is their
+common type (all elements must share one type).  The size lives in the
+type as a type-level @racket[Nat].
+
+@racketblock[
+(array 10 20 30)   (code:comment "(Array 3 Integer)")]}
+
+@defform[(build-array n proc)
+         #:contracts ([n "a non-negative integer literal"]
+                      [proc (-> Integer a)])]{
+
+Builds an @racket[(Array n a)] by applying @racket[proc] to each index
+@racket[0]…@racket[n-1].  @racket[n] must be a literal so it fixes the
+type-level size.
+
+@racketblock[
+(build-array 4 (lambda (i) (* i i)))   (code:comment "(Array 4 Integer): 0 1 4 9")]}
+
+@defform[(aref arr index)
+         #:contracts ([index "a non-negative integer literal"])]{
+
+Reads the element of @racket[arr] at position @racket[index].
+@racket[index] is a literal; when the array's size is a concrete
+@racket[Nat] it is bounds-checked at compile time (an out-of-bounds
+index is a type error).  Multidimensional arrays are nested, so a 2-D
+read is a nested @racket[aref]:
+
+@racketblock[
+(aref (aref grid 1) 2)   (code:comment "row 1, column 2")]}
+
 @defform[(delay expr)]{
 
 Defer @racket[expr] as a @racket[Lazy], evaluated at most once and cached

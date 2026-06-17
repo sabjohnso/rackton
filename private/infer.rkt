@@ -52,6 +52,7 @@
          "diagnostic.rkt"
          "env.rkt"
          "unify.rkt"
+         (only-in "nat-solve.rkt" normalize-nat-type)
          "surface.rkt"
          "entail.rkt"
          "impl-symbols.rkt"
@@ -1567,11 +1568,14 @@
     (let* ([s (car r)] [t (apply-subst s (cdr r))])
       (match t
         [(tapp (tcon 'Array) (list size elem))
+         ;; Reduce a computed size like `(* 2 3)` to a literal so it stays
+         ;; bounds-checkable; a variable size stays symbolic (no check).
+         (define size* (normalize-nat-type size))
          (cond
-           [(and (tnat? size) (>= idx (tnat-value size)))
+           [(and (tnat? size*) (>= idx (tnat-value size*)))
             (raise-syntax-error 'infer
               (format "aref index ~a is out of bounds for an array of size ~a"
-                      idx (tnat-value size))
+                      idx (tnat-value size*))
               stx)]
            [else (infer-return (cons s elem))])]
         [_

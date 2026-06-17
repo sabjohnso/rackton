@@ -167,6 +167,18 @@ focus types for multi-field @racket[#:deriving Prism].
 @racket[(Tuple τ ...)] has @racket[Eq], @racket[Ord], and @racket[Show]
 whenever every element type @racket[τ] does.}
 
+@defidform[#:kind "type" Array]{
+
+A fixed-size array: @racket[(Array n a)] holds exactly @racket[n]
+elements of type @racket[a], with the size @racket[n] carried in the
+type as a type-level @racket[Nat] (so it is checked at compile time).
+Build one with @racket[array] or @racket[build-array]; read an element
+with @racket[aref].  Multidimensional arrays are nested —
+@racket[(Array n (Array m a))] is an @racket[n]×@racket[m] grid — and
+@racket[flatten-major] / @racket[flatten-minor] collapse one level into a
+flat @racket[(Array (* n m) a)].  The element layout is hidden; only the
+size and element type are observable.}
+
 @deftogether[(
 @defform[#:kind "type" #:link-target? #f #:id Either #:literals (data Left Right)
          (data (Either a b)

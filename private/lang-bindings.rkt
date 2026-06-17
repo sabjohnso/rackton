@@ -62,6 +62,9 @@
 (define-rackton-form delay "deferred (call-by-need) computation")
 (define-rackton-form tuple "tuple constructor")
 (define-rackton-form tref "tuple element access")
+(define-rackton-form array "fixed-size array constructor")
+(define-rackton-form build-array "sized array builder")
+(define-rackton-form aref "array element access")
 
 ;; Type-level keywords (appear inside type signatures).
 (define-rackton-form All "universal quantifier")
@@ -103,6 +106,8 @@
   ;; Variadic tuple (the binary case is `Pair`, which has its own
   ;; same-named ctor binding; `Tuple` has no ctor, so it needs a stub).
   Tuple
+  ;; Fixed-size array
+  Array
   ;; Raw memory (rackton/foreign/ptr)
   Ptr)
 

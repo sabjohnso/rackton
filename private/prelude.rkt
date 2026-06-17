@@ -748,6 +748,18 @@
     ;; yet rewrite user-written needs-dict bodies.
     (: mconcat ((Monoid a) => (-> (List a) a)))
 
+    ;; --- Array flattening ---------------------------------------
+    ;;
+    ;; Collapse a nested `(Array n (Array m a))` into a flat
+    ;; `(Array (* n m) a)`.  Both have the same type and differ only in
+    ;; element order: `flatten-major` is row-major (outer index slowest),
+    ;; `flatten-minor` is column-major (outer index fastest).  Runtime
+    ;; impls live in private/array-runtime.rkt (re-provided by
+    ;; prelude-runtime); the sizes n and m are recovered from the array
+    ;; lengths at runtime.
+    (: flatten-major (-> (Array n (Array m a)) (Array (* n m) a)))
+    (: flatten-minor (-> (Array n (Array m a)) (Array (* n m) a)))
+
     ;; --- Enum ---------------------------------------------------
     ;;
     ;; A type whose values map to and from the integers, after Haskell's

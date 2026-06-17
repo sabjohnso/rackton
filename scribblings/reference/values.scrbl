@@ -225,6 +225,24 @@ scans, set-like operations, and the rest — live in
 @para{@racket[swap] and the rest of the tuple operations live in
 @racketmodname[rackton/data/tuple]; see @secref["stdlib-data"].}
 
+@section[#:tag "arrays"]{Arrays}
+
+@para{Fixed-size arrays are built with @racket[array] / @racket[build-array]
+and read with @racket[aref] (see @secref["sf-exprs"]); the @racket[Array]
+type is described with the other types.  Multidimensional arrays are
+nested, and these two operations flatten one level of nesting.}
+
+@deftogether[(
+@defproc[(flatten-major [arr (Array n (Array m a))]) (Array (* n m) a)]
+@defproc[(flatten-minor [arr (Array n (Array m a))]) (Array (* n m) a)]
+)]{
+
+Collapse a nested @racket[(Array n (Array m a))] into a flat
+@racket[(Array (* n m) a)].  Both have the same type and differ only in
+the order elements are laid out: @racket[flatten-major] is row-major (the
+outer index varies slowest, so each inner array is emitted in turn) and
+@racket[flatten-minor] is column-major (the outer index varies fastest).}
+
 @section[#:tag "maps"]{Immutable Map and Set}
 
 @para{Immutable maps live in @racketmodname[rackton/data/map] and sets
