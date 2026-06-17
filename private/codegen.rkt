@@ -883,8 +883,15 @@
   ;; monad), not the first arg `s` (which is fundep-determined and may be
   ;; a bare tvar).  Drop determined params so tags-for-instance-head sees
   ;; the dispatchable arg.  (Single-param classes: no fundeps, unchanged.)
+  ;; A class with no value-level methods (only an associated type, e.g. a
+  ;; per-address Γ table) registers nothing at runtime, so the dispatch
+  ;; tags are unused — and its head may be a non-tcon literal like
+  ;; `(CodeAt 0)`, which `tags-for-instance-head` cannot tag.  Skip it.
   (define tags
-    (tags-for-instance-head (drop-fundep-determined cinfo head-arg-types) env))
+    (cond
+      [(hash-empty? (class-info-methods cinfo)) '()]
+      [else
+       (tags-for-instance-head (drop-fundep-determined cinfo head-arg-types) env)]))
   (define user-impls
     (for/fold ([acc '()]) ([m (in-list methods)])
       (match m
@@ -1353,6 +1360,7 @@
   (match ast
     [(ty:var n _) (tvar n)]
     [(ty:con n _) (tcon n)]
+    [(ty:nat v _) (tnat v)]
     [(ty:app h args _)
      (make-tapp (ty-ast->type h)
                 (for/list ([a (in-list args)]) (ty-ast->type a)))]

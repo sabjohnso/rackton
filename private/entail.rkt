@@ -23,7 +23,8 @@
          current-reduce-blame
          by-super
          match-pred
-         normalize-type)
+         normalize-type
+         normalize-type/guarded)
 
 (require racket/match
          racket/list
@@ -73,6 +74,11 @@
   (match* (src dst)
     [((tvar α) t)          (subst-singleton α t)]
     [((tcon c) (tcon c2))  (if (eq? c c2) empty-subst #f)]
+    ;; Type-level Nat literals: a literal-keyed instance head (e.g.
+    ;; `(CodeAt 5)`) matches a target only when the literals coincide.
+    ;; A symbolic `(CodeAt n)` (dst a tvar) does NOT match a literal head,
+    ;; so a ground type-level lookup reduces only on a known literal.
+    [((tnat c1) (tnat c2)) (if (= c1 c2) empty-subst #f)]
     [((tapp h1 args1) (tapp h2 args2))
      (cond
        [(= (length args1) (length args2))
@@ -421,6 +427,43 @@
     [(pred c args)
      (pred c (for/list ([a (in-list args)]) (normalize-type env a)))]
     [_ t]))
+
+;; ----- guarded normalization (hot-path) -----------------------------
+;; `normalize-type` walks and rebuilds a type and scans the class env per
+;; head — too costly to run at every unify site unconditionally.  This
+;; wrapper does it only when (a) the env actually declares some associated
+;; type family, and (b) the type mentions a family name.  When no families
+;; exist (the common case — the prelude declares none) it is a near-no-op.
+
+;; The set of all associated-type-family names in `env`, memoized on the
+;; identity of the (immutable, threaded) classes hash so repeated calls
+;; during one inference don't re-scan the class table.
+(define family-name-cache (make-weak-hasheq))
+(define (env-type-family-names env)
+  (hash-ref! family-name-cache (env-classes env)
+             (lambda ()
+               (for*/seteq ([(_ ci) (in-hash (env-classes env))]
+                            [f (in-list (class-info-type-families ci))])
+                 f))))
+
+;; Does `t` apply any of `names` at a tcon head?
+(define (type-mentions-family? names t)
+  (let loop ([t t])
+    (match t
+      [(tapp h args)
+       (or (and (tcon? h) (set-member? names (tcon-name h)))
+           (loop h)
+           (for/or ([a (in-list args)]) (loop a)))]
+      [(qual cs body) (or (for/or ([c (in-list cs)]) (loop c)) (loop body))]
+      [(pred _ args)  (for/or ([a (in-list args)]) (loop a))]
+      [_ #f])))
+
+(define (normalize-type/guarded env t)
+  (define names (env-type-family-names env))
+  (cond
+    [(set-empty? names) t]
+    [(type-mentions-family? names t) (normalize-type env t)]
+    [else t]))
 
 ;; If `name` is the associated-type name of some class C, and `args`
 ;; matches an instance head of C, return that instance's rhs with the

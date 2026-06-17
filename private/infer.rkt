@@ -1212,7 +1212,8 @@
                                        [else
                                         (raise-type-mismatch! (expr-stx head)
                                           expected-arrow head-ty-now)]))])
-                                 (unify head-ty-now expected-arrow))])
+                                 (unify (normalize-type/guarded env head-ty-now)
+                                        (normalize-type/guarded env expected-arrow)))])
                       (loop (cdr args)
                             (subst-compose s-u s-now)
                             (apply-subst s-u β)
@@ -1302,7 +1303,8 @@
                        (lambda (_)
                          (raise-type-mismatch! (expr-stx e)
                            (apply-subst s3 t-then) (apply-subst s3 t-else)))])
-                     (unify (apply-subst s3 t-then) (apply-subst s3 t-else)))]
+                     (unify (normalize-type/guarded env (apply-subst s3 t-then))
+                            (normalize-type/guarded env (apply-subst s3 t-else))))]
                    [s-final (subst-compose s-branches s3)])
               (infer-return (cons s-final (apply-subst s-final t-then))))))))))
 
@@ -1315,7 +1317,8 @@
                  ([exn:fail:unify?
                    (lambda (_)
                      (raise-type-mismatch! (expr-stx expr) declared (apply-subst s-e t-e)))])
-                 (unify (apply-subst s-e t-e) declared))])
+                 (unify (normalize-type/guarded env (apply-subst s-e t-e))
+                        (normalize-type/guarded env declared)))])
       (infer-return (cons (subst-compose s-u s-e) (apply-subst s-u declared))))))
 
 (define (infer-escape/m ty-ast vars stx env)
@@ -1759,6 +1762,11 @@
    (let ()
    (define-values (bindings pat-type ex-hyps)
     (values (car rp) (cadr rp) (caddr rp)))
+  ;; Reduce any ground type-level family application (e.g. a per-address
+  ;; `(ShapeAt 0)` exposed by an earlier index refinement) on both sides
+  ;; before matching, so the pattern unifies against the reduced shape.
+  (define pat-type*   (normalize-type/guarded env pat-type))
+  (define scrut-type* (normalize-type/guarded env scrut-type))
   ;; Try standard unify first; on a hard mismatch (a
   ;; refinable function-scheme skolem on one side and a concrete
   ;; type on the other), fall back to gadt-unify which returns
@@ -1775,10 +1783,10 @@
             (lambda (e2)
               (raise-syntax-error 'infer
                 (format "pattern type ~a does not match scrutinee type ~a"
-                        (pretty-type pat-type) (pretty-type scrut-type))
+                        (pretty-type pat-type*) (pretty-type scrut-type*))
                 (clause-stx cl)))])
-          (gadt-unify pat-type scrut-type)))])
-     (values (unify pat-type scrut-type) (hash))))
+          (gadt-unify pat-type* scrut-type*)))])
+     (values (unify pat-type* scrut-type*) (hash))))
   ;; Refine the whole arm-local env by the GADT skolem-subst: both the
   ;; pre-existing in-scope bindings and this pattern's own bindings get
   ;; the learned index equality.  Scoped to this arm only (env* is built
@@ -3297,7 +3305,7 @@
                    (expected/got-lines (format-scheme decl-scheme)
                                        (pretty-type (apply-subst s t))))
            stx))])
-     (unify (normalize-type env (apply-subst s t)) decl-ty)))
+     (unify (normalize-type/guarded env (apply-subst s t)) decl-ty)))
   (define final-subst0 (subst-compose s-u s))
   (define st2 (st:apply-subst-to-preds st1 final-subst0))
   ;; Run functional-dependency improvement before reducing, exactly as the
@@ -3572,7 +3580,7 @@
                          (expected/got-lines (format-scheme decl-scheme)
                                              (pretty-type (apply-subst s t))))
                  stx))])
-           (unify (normalize-type env (apply-subst s t)) decl-ty)))
+           (unify (normalize-type/guarded env (apply-subst s t)) decl-ty)))
         ;; Discharge any constraints raised inside the body against the
         ;; declaration's preds (hypotheses).
         (define final-subst (subst-compose s-u s))
@@ -5406,7 +5414,7 @@
   ;; references (e.g. `(Index (List a))`) to their concrete rhs
   ;; for this instance before unify.
   (define expected-type/flex
-    (normalize-type env-with-inst
+    (normalize-type/guarded env-with-inst
       (apply-subst method-sk-subst (qual-body-deep inst-method-qual))))
   ;; Skolemize every type variable still free in the expected method
   ;; type.  These are the class method's own universally-quantified

@@ -457,7 +457,21 @@ family resolves to for that instance head.
 (instance (Container (List a))
   (#:type (Elem = a))
   (define (empty? xs) (match xs [(Nil) #t] [(Cons _ _) #f]))
-  (define (head   xs) (match xs [(Nil) None] [(Cons h _) (Some h)])))]}
+  (define (head   xs) (match xs [(Nil) None] [(Cons h _) (Some h)])))]
+
+An instance head may be keyed on a type-level @racket[Nat] literal, and a
+protocol may declare only a family (no methods).  Together these give a
+finite, ground-keyed type-level lookup: an application @racket[(Family
+k)] for a literal @racket[k] reduces to that instance's bound type during
+unification, at every site (pattern matches included), while a symbolic
+@racket[(Family n)] stays unreduced.  This is how a per-address shape
+table @racket[Γ] is encoded for a non-looping typed-assembly machine —
+one method-less instance per literal address.
+
+@racketblock[
+(protocol (CodeAt (n :: Nat)) (#:type ShapeAt))
+(instance (CodeAt 0) (#:type (ShapeAt = Integer)))
+(instance (CodeAt 1) (#:type (ShapeAt = Boolean)))]}
 
 @section[#:tag "sf-exprs"]{Expressions}
 
