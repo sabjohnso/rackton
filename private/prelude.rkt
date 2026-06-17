@@ -760,6 +760,11 @@
     (: flatten-major (-> (Array n (Array m a)) (Array (* n m) a)))
     (: flatten-minor (-> (Array n (Array m a)) (Array (* n m) a)))
 
+    ;; Size-preserving map and a strict left fold over an array of any
+    ;; (including polymorphic) size.  Runtime impls in array-runtime.
+    (: array-map  (-> (-> a b) (-> (Array n a) (Array n b))))
+    (: array-fold (-> (-> b (-> a b)) (-> b (-> (Array n a) b))))
+
     ;; --- Enum ---------------------------------------------------
     ;;
     ;; A type whose values map to and from the integers, after Haskell's

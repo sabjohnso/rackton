@@ -288,7 +288,7 @@
 
 (define (parse-expr stx)
   (syntax-parse stx
-    #:datum-literals (lambda λ case-lambda case-λ let let& let% let+ letrec let* if cond else ann match racket do proc delay <- update handle return describe context list tuple tref array build-array aref -> quote quasiquote unquote unquote-splicing)
+    #:datum-literals (lambda λ case-lambda case-λ let let& let% let+ letrec let* if cond else ann match racket do proc delay <- update handle return describe context list tuple tref array build-array aref array-take array-drop array-split-at -> quote quasiquote unquote unquote-splicing)
     [n:number  (e:literal (syntax->datum #'n) stx)]
     [b:boolean (e:literal (syntax->datum #'b) stx)]
     [s:string  (e:literal (syntax->datum #'s) stx)]
@@ -465,6 +465,15 @@
     [(aref _ _)
      (raise-syntax-error 'rackton
        "aref index must be a non-negative integer literal" stx)]
+
+    ;; (array-take k arr) / (array-drop k arr) / (array-split-at k arr)
+    ;; — concrete-size slices; `k` MUST be a non-negative integer literal.
+    [(array-take k:nat arr)      (e:array-slice 'take  (syntax->datum #'k) (parse-expr #'arr) stx)]
+    [(array-drop k:nat arr)      (e:array-slice 'drop  (syntax->datum #'k) (parse-expr #'arr) stx)]
+    [(array-split-at k:nat arr)  (e:array-slice 'split (syntax->datum #'k) (parse-expr #'arr) stx)]
+    [((~or array-take array-drop array-split-at) _ _)
+     (raise-syntax-error 'rackton
+       "array-take / array-drop / array-split-at point must be a non-negative integer literal" stx)]
 
     ;; (describe NAME child ...) / (context NAME child ...) — the test
     ;; framework's grouping forms, made variadic so children need no

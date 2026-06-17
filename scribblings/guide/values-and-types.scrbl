@@ -138,6 +138,15 @@ order (row-major vs column-major):
       3)
 }
 
+@racket[array-map] (size-preserving) and @racket[array-fold] work at any
+size, while @racket[array-take] / @racket[array-drop] /
+@racket[array-split-at] slice at a literal point and so need a concrete
+size (the result size is computed and the point bounds-checked):
+
+@rackton-example[#:eval ev #:mode 'value]{
+(aref (array-take 2 (array-map (lambda (x) (* x 10)) (array 1 2 3))) 1)
+}
+
 The element layout is hidden behind the array operations; only the size
 and element type are observable.
 

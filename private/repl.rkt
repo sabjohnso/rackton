@@ -88,7 +88,8 @@
                               rackton-tuple-make rackton-tuple-ref))
     (namespace-require '(only rackton/private/array-runtime
                               rackton-array-from-list rackton-array-make
-                              rackton-array-ref rackton-array-length)))
+                              rackton-array-ref rackton-array-length
+                              rackton-array-take rackton-array-drop)))
   (rackton-repl-state prelude-env
                       (hasheq)
                       (hasheq)

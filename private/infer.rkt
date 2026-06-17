@@ -797,7 +797,8 @@
     [(e:tref _ _ s)     s]
     [(e:array _ s)      s]
     [(e:build-array _ _ s) s]
-    [(e:aref _ _ s)     s]))
+    [(e:aref _ _ s)     s]
+    [(e:array-slice _ _ _ s) s]))
 
 ;; -------- "did you mean?" suggestions ------------------------------
 
@@ -1060,6 +1061,7 @@
     [(e:array elems stx)            (infer-array/m elems stx env)]
     [(e:build-array n proc stx)     (infer-build-array/m n proc stx env)]
     [(e:aref ae idx stx)            (infer-aref/m ae idx stx env)]
+    [(e:array-slice op k ae stx)    (infer-array-slice/m op k ae stx env)]
     [(e:handle expr clauses ret stx) (infer-handle/m expr clauses ret stx env)]
     [(e:match scrut clauses irrefutable? stx)
      (infer-match/m scrut clauses irrefutable? stx env)]
@@ -1582,6 +1584,43 @@
          (raise-syntax-error 'infer
            (format "aref target must have a concrete array type, got ~a"
                    (pretty-type t))
+           stx)]))))
+
+;; `(array-take k arr)` / `(array-drop k arr)` / `(array-split-at k arr)`
+;; — the target must resolve to a CONCRETE-size array `(Array n elem)`;
+;; the split point `k` is bounds-checked (0 ≤ k ≤ n) and the result
+;; size(s) are computed.  take → (Array k elem); drop → (Array (n-k)
+;; elem); split → (Pair (Array k elem) (Array (n-k) elem)).
+(define (infer-array-slice/m op k ae stx env)
+  (let/infer ([r (infer-expr/m ae env)])
+    (let* ([s (car r)] [t (apply-subst s (cdr r))])
+      (match t
+        [(tapp (tcon 'Array) (list size elem))
+         (define size* (normalize-nat-type size))
+         (cond
+           [(not (tnat? size*))
+            (raise-syntax-error 'infer
+              (format "array-~a needs an array of concrete size, got ~a"
+                      op (pretty-type t))
+              stx)]
+           [(> k (tnat-value size*))
+            (raise-syntax-error 'infer
+              (format "array-~a point ~a exceeds array size ~a"
+                      op k (tnat-value size*))
+              stx)]
+           [else
+            (define n (tnat-value size*))
+            (define (arr sz) (make-tapp (tcon 'Array) (list (tnat sz) elem)))
+            (define result
+              (case op
+                [(take)  (arr k)]
+                [(drop)  (arr (- n k))]
+                [(split) (make-tapp (tcon 'Pair) (list (arr k) (arr (- n k))))]))
+            (infer-return (cons s result))])]
+        [_
+         (raise-syntax-error 'infer
+           (format "array-~a target must have a concrete array type, got ~a"
+                   op (pretty-type t))
            stx)]))))
 
 ;; Extract the head tcon name from a record type like
@@ -3098,6 +3137,7 @@
        (for ([el (in-list elems)]) (walk el shadowed))]
       [(e:build-array _ p _) (walk p shadowed)]
       [(e:aref a _ _) (walk a shadowed)]
+      [(e:array-slice _ _ a _) (walk a shadowed)]
       [(e:handle expr clauses ret _)
        (walk expr shadowed)
        (when ret (walk ret shadowed))
@@ -4384,6 +4424,7 @@
           (for/fold ([st st]) ([el (in-list elems)]) (walk el shadowed? st))]
          [(e:build-array _ p _) (walk p shadowed? st)]
          [(e:aref a _ _) (walk a shadowed? st)]
+         [(e:array-slice _ _ a _) (walk a shadowed? st)]
          [(e:handle expr clauses ret _)
           (define st-e (walk expr shadowed? st))
           (define st-r (if ret (walk ret shadowed? st-e) st-e))

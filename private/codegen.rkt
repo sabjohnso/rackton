@@ -326,6 +326,20 @@
                  (syntax/loc stx (rackton-array-ref a i)))
                st))]
 
+    [(e:array-slice op idx ae stx)
+     ;; take / drop lower to the array runtime; split is the Pair (a
+     ;; 2-tuple) of a take and a drop, built with the tuple constructor.
+     (let-values ([(a st) (compile-expr ae ctx st)])
+       (values
+        (with-syntax ([a a] [k idx])
+          (case op
+            [(take)  (syntax/loc stx (rackton-array-take a k))]
+            [(drop)  (syntax/loc stx (rackton-array-drop a k))]
+            [(split) (syntax/loc stx
+                       (rackton-tuple-make (rackton-array-take a k)
+                                           (rackton-array-drop a k)))]))
+        st))]
+
     [(e:handle expr clauses ret stx)
      ;; Lower (handle EXPR clauses... return) using Racket continuation
      ;; prompts as a deep handler: the prompt is re-installed each time the

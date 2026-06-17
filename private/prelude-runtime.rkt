@@ -97,9 +97,12 @@
 
  ;; Tuple representation interface (emitted by codegen / match.rkt).
  rackton-tuple-make rackton-tuple-ref
- ;; Array flattening (user-facing prelude builtins; type declared in
- ;; prelude.rkt, impl from array-runtime.rkt).
- flatten-major flatten-minor
+ ;; Array operations.  flatten / map / fold are user-facing prelude
+ ;; builtins (type declared in prelude.rkt); take / drop are emitted by
+ ;; codegen for the array-take/-drop/-split-at forms (internal — excluded
+ ;; from main.rkt's user re-export).  Impls from array-runtime.rkt.
+ flatten-major flatten-minor array-map array-fold
+ rackton-array-take rackton-array-drop
 
  ;; ADTs (constructors usable as expressions and as match patterns)
  None Some Nil Cons Pair Left Right Unit

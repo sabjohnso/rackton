@@ -757,6 +757,30 @@ read is a nested @racket[aref]:
 @racketblock[
 (aref (aref grid 1) 2)   (code:comment "row 1, column 2")]}
 
+@deftogether[(
+@defform[(array-take k arr)]
+@defform[(array-drop k arr)]
+@defform[(array-split-at k arr)
+         #:contracts ([k "a non-negative integer literal"])]
+)]{
+
+Concrete-size slices at a literal point @racket[k].  The array's size
+must be a known @racket[Nat] (so the result size is computed and
+@racket[k] is bounds-checked, @math{0 ≤ k ≤ n}, at compile time).  On an
+@racket[(Array n a)]: @racket[array-take] yields the prefix
+@racket[(Array k a)]; @racket[array-drop] the suffix of length
+@racket[n-k]; @racket[array-split-at] the pair
+@racket[(Pair (Array k a) (Array m a))] with @racket[k + m = n].
+
+@racketblock[
+(array-take 2 (array 10 20 30 40))     (code:comment "(Array 2 Integer): 10 20")
+(array-drop 2 (array 10 20 30 40))     (code:comment "(Array 2 Integer): 30 40")
+(array-split-at 1 (array 10 20 30))    (code:comment "(Pair (Array 1 …) (Array 2 …))")]
+
+A size-polymorphic slice would need type-level subtraction / symbolic
+solving, which Rackton does not yet have — hence the concrete-size
+restriction.}
+
 @defform[(delay expr)]{
 
 Defer @racket[expr] as a @racket[Lazy], evaluated at most once and cached

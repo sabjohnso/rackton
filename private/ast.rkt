@@ -99,6 +99,11 @@
 ;; `(aref arr n)` — indexed element read; `index` is a non-negative
 ;; integer literal, bounds-checked against a concrete size at inference.
 (struct e:aref   (array-expr index stx) #:transparent)
+;; A concrete-size slice: `op` is 'take / 'drop / 'split, `index` a
+;; non-negative integer literal (the split point), `array-expr` the
+;; array.  Requires a concrete array size so the result size is computed
+;; and the point is bounds-checked at inference.
+(struct e:array-slice (op index array-expr stx) #:transparent)
 
 (struct top:def      (name expr stx) #:transparent)
 (struct top:dec      (name type stx) #:transparent)
@@ -195,6 +200,7 @@
     [(e:array es _)      (e:array (map R es) new-stx)]
     [(e:build-array n p _) (e:build-array n (R p) new-stx)]
     [(e:aref a i _)      (e:aref (R a) i new-stx)]
+    [(e:array-slice op i a _) (e:array-slice op i (R a) new-stx)]
     [(p:wild _)          (p:wild new-stx)]
     [(p:var n _)         (p:var n new-stx)]
     [(p:lit v _)         (p:lit v new-stx)]

@@ -22,8 +22,12 @@
          rackton-array-make
          rackton-array-ref
          rackton-array-length
+         rackton-array-take
+         rackton-array-drop
          flatten-major
-         flatten-minor)
+         flatten-minor
+         array-map
+         array-fold)
 
 ;; The handle.  `vec` is the current backing store; it is an
 ;; implementation detail and must not escape this module.  Prefab (not a
@@ -65,6 +69,42 @@
    (for*/list ([i (in-range n)]
                [j (in-range (rackton-array-length (rackton-array-ref arr i)))])
      (rackton-array-ref (rackton-array-ref arr i) j))))
+
+;; Slicing: `take` keeps the first k elements, `drop` keeps the rest
+;; from index k.  The inference layer guarantees 0 ≤ k ≤ length, so these
+;; need no bounds guard.  (`split-at` is built at the codegen site as the
+;; Pair of a take and a drop, so the tuple constructor stays in
+;; prelude-runtime and this module needn't depend on it.)
+(define (rackton-array-take a k)
+  (rackton-array-from-list
+   (for/list ([i (in-range k)]) (rackton-array-ref a i))))
+
+(define (rackton-array-drop a k)
+  (rackton-array-from-list
+   (for/list ([i (in-range k (rackton-array-length a))]) (rackton-array-ref a i))))
+
+;; Size-preserving map and a strict left fold.  Both recover the length
+;; from the array, so they work at any (including polymorphic) size.
+;; These are user-facing prelude functions with CURRIED types, so — like
+;; a compiled Rackton lambda — they accept every prefix arity (full or
+;; partial application, or being passed as a value).  `f` is itself
+;; curried, so it is applied one argument at a time.
+(define (array-map* f a)
+  (rackton-array-from-list
+   (for/list ([i (in-range (rackton-array-length a))]) (f (rackton-array-ref a i)))))
+(define array-map
+  (case-lambda
+    [(f a) (array-map* f a)]
+    [(f)   (lambda (a) (array-map* f a))]))
+
+(define (array-fold* f z a)
+  (for/fold ([acc z]) ([i (in-range (rackton-array-length a))])
+    ((f acc) (rackton-array-ref a i))))
+(define array-fold
+  (case-lambda
+    [(f z a) (array-fold* f z a)]
+    [(f z)   (lambda (a) (array-fold* f z a))]
+    [(f)     (lambda (z) (lambda (a) (array-fold* f z a)))]))
 
 (define (flatten-minor arr)
   (define n (rackton-array-length arr))

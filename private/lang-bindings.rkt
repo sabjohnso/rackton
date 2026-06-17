@@ -65,6 +65,9 @@
 (define-rackton-form array "fixed-size array constructor")
 (define-rackton-form build-array "sized array builder")
 (define-rackton-form aref "array element access")
+(define-rackton-form array-take "concrete-size array prefix")
+(define-rackton-form array-drop "concrete-size array suffix")
+(define-rackton-form array-split-at "concrete-size array split")
 
 ;; Type-level keywords (appear inside type signatures).
 (define-rackton-form All "universal quantifier")

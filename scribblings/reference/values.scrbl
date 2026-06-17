@@ -243,6 +243,17 @@ the order elements are laid out: @racket[flatten-major] is row-major (the
 outer index varies slowest, so each inner array is emitted in turn) and
 @racket[flatten-minor] is column-major (the outer index varies fastest).}
 
+@deftogether[(
+@defproc[(array-map  [f (-> a b)] [arr (Array n a)]) (Array n b)]
+@defproc[(array-fold [f (-> b (-> a b))] [z b] [arr (Array n a)]) b]
+)]{
+
+@racket[array-map] applies @racket[f] to every element, preserving the
+size; @racket[array-fold] is a strict left fold (@racket[f] applied to
+the accumulator then each element in turn).  Both work at any size,
+including a polymorphic @racket[n] — unlike the concrete-size slices
+@racket[array-take] / @racket[array-drop] / @racket[array-split-at].}
+
 @section[#:tag "maps"]{Immutable Map and Set}
 
 @para{Immutable maps live in @racketmodname[rackton/data/map] and sets
