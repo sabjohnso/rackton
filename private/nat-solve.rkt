@@ -20,12 +20,22 @@
 ;;   - D empty with a nonzero constant → unsatisfiable (#f);
 ;;   - D is `c·v + k` for a single VARIABLE atom v → solve v = -k/c when
 ;;     that is a non-negative integer, else #f;
-;;   - otherwise (multi-unknown or nonlinear) → stuck (#f).
+;;   - D has ≥ 2 atoms → eliminate a UNIT-coefficient variable, binding it
+;;     to an expression in the rest, when that expression is a valid Nat
+;;     (non-negative) and does not reintroduce the variable.  This is the
+;;     arithmetic analogue of peeling `(S x) ~ (S y)`, so the built-in Nat
+;;     can index GADTs (a depth-indexed Vec/stack) the way unary `S` does.
+;;   - otherwise → stuck (#f).
+;;
+;; A rigid SKOLEM (a `tcon` standing for a universally-quantified Nat from
+;; a declared signature or a GADT match) is an opaque atom — it carries
+;; through but cannot be solved for.
 ;;
 ;; Out of scope here (see PLAN.org): user-facing `-` (truncated nat
-;; subtraction is non-linear), deferred residual constraints, and
-;; two-unknown linear solving.  The solver does subtract over ℤ
-;; internally; only the SOLVED value is required to be a valid Nat.
+;; subtraction is non-linear — the non-negativity gate keeps it out),
+;; deferred residual constraints, and multi-variable solving with NO unit
+;; coefficient (e.g. `2n ~ m+1`).  The solver subtracts over ℤ internally;
+;; only the SOLVED value is required to be a valid Nat.
 
 (provide solve-nat-equation
          nat-expr?
@@ -34,6 +44,7 @@
 
 (require racket/match
          racket/list
+         racket/set
          "types.rkt")
 
 ;; ----- linear form ---------------------------------------------------
@@ -79,6 +90,13 @@
   (match t
     [(tnat c) (lf-const c)]
     [(tvar _) (linform 0 (hash t 1))]
+    ;; A skolem (a rigid `tcon` standing for a universally-quantified Nat
+    ;; from a declared signature or a GADT match) is an opaque atom — it
+    ;; cannot be solved FOR, but it must carry through, so that e.g.
+    ;; `(+ n* 1) ~ (+ n* 1)` reduces to 0 and `(+ m 1) ~ (+ n* 1)` solves
+    ;; `m := n*`.  Only skolems are atomized; an ordinary tcon (Integer,
+    ;; …) in a Nat position stays #f, so a genuine kind clash still fails.
+    [(tcon n) #:when (skolem-tcon-name? n) (linform 0 (hash t 1))]
     [(tapp (tcon '+) (list a b))
      (define la (nat->linform a))
      (define lb (nat->linform b))
@@ -168,9 +186,44 @@
      (cond
        [(hash-empty? atoms) (and (zero? c) empty-subst)]
        [(and (= (hash-count atoms) 1) (tvar? (car (hash-keys atoms))))
+        ;; Single unknown, ANY coefficient: solve to a literal by exact
+        ;; division.  coeff·v + c = 0 → v = -c / coeff, a non-negative
+        ;; integer.  (Non-unit coefficients are fine here — e.g. 2·n = 6
+        ;; gives n := 3 — because the remainder is just the constant.)
         (define v (tvar-name (car (hash-keys atoms))))
         (define coeff (car (hash-values atoms)))
-        ;; coeff·v + c = 0  →  v = -c / coeff, a non-negative integer.
         (define-values (q r) (quotient/remainder (- c) coeff))
         (and (zero? r) (>= q 0) (subst-singleton v (tnat q)))]
-       [else #f])]))
+       ;; Two or more atoms: eliminate a UNIT-coefficient variable by
+       ;; binding it to an expression in the rest — the arithmetic
+       ;; analogue of peeling `(S x) ~ (S y)`.
+       [else (solve-by-unit-elim D)])]))
+
+;; True when every coefficient and the constant of a linform are ≥ 0, so
+;; the form denotes a manifestly non-negative Nat for all Nat atoms.
+(define (lf-nonneg? lf)
+  (and (>= (linform-const lf) 0)
+       (for/and ([(_ coeff) (in-hash (linform-atoms lf))]) (>= coeff 0))))
+
+;; Search the difference `D` for a variable atom with unit coefficient
+;; whose elimination yields a well-formed binding, and return the first
+;; such substitution (or #f).  For a chosen `v` with coefficient ±1,
+;; `Rest = D − cᵥ·v` and `v = (-1/cᵥ)·Rest = (- cᵥ)·Rest` (since cᵥ = ±1).
+;; Two soundness gates, both load-bearing:
+;;   - occurs: the candidate must not mention `v` — dropping `v`'s linear
+;;     term does NOT remove `v` from a nonlinear product atom like
+;;     `(* v m)`, and binding `v := (* v m)` is an infinite type;
+;;   - non-negativity: the candidate must be a valid Nat (no truncated
+;;     subtraction such as `v := a − 1`).
+(define (solve-by-unit-elim D)
+  (define atoms (linform-atoms D))
+  (for/or ([(atom coeff) (in-hash atoms)])
+    (and (tvar? atom)
+         (or (= coeff 1) (= coeff -1))
+         (let* ([v       (tvar-name atom)]
+                [rest    (linform (linform-const D) (hash-remove atoms atom))]
+                [cand-lf (lf-scale (- coeff) rest)])
+           (and (lf-nonneg? cand-lf)
+                (let ([cand (linform->type cand-lf)])
+                  (and (not (set-member? (type-vars cand) v))
+                       (subst-singleton v cand))))))))

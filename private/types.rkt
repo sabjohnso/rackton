@@ -93,7 +93,8 @@
          arrow?
          arrow-dom
          arrow-cod
-         make-tapp)
+         make-tapp
+         skolem-tcon-name?)
 
 (require racket/set
          racket/match

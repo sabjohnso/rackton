@@ -15,7 +15,8 @@
 (require rackunit
          (for-syntax racket/base)
          (only-in "../private/types.rkt"
-                  tnat tvar tcon make-tapp tapp empty-subst subst-singleton)
+                  tnat tvar tcon make-tapp tapp empty-subst subst-singleton
+                  apply-subst)
          (only-in "../private/unify.rkt" unify exn:fail:unify?)
          (only-in "../private/nat-solve.rkt" normalize-nat-type)
          "../main.rkt")
@@ -67,6 +68,43 @@
   (check-exn exn:fail:unify? (lambda () (unify (n* (V 'n) (V 'm)) (N 5))))
   ;; two distinct unknowns in a sum — only one unknown is solved.
   (check-exn exn:fail:unify? (lambda () (unify (n+ (V 'n) (V 'm)) (N 7)))))
+
+;; ----- unit-coefficient variable elimination -----------------------
+;; A two-unknown equation whose difference has a unit-coefficient
+;; variable is solved by binding that variable to an expression in the
+;; rest — the arithmetic analogue of peeling `(S x) ~ (S y)`.
+
+(test-case "a unit-coefficient variable is eliminated to an expression"
+  ;; (+ n 1) ~ (+ a 2)  ⟹  n := (+ a 1)
+  (check-equal? (unify (n+ (V 'n) (N 1)) (n+ (V 'a) (N 2)))
+                (subst-singleton 'n (n+ (V 'a) (N 1)))))
+
+(test-case "equal increments unify the two depths"
+  ;; (+ a 1) ~ (+ c 1)  ⟹  a ≡ c (whichever variable survives)
+  (define s (unify (n+ (V 'a) (N 1)) (n+ (V 'c) (N 1))))
+  (check-equal? (apply-subst s (V 'a)) (apply-subst s (V 'c))))
+
+(test-case "the search tries both unit variables (one gates, one doesn't)"
+  ;; eliminating `a` would give a := n-1 (negative); must pick `n`.
+  (check-equal? (unify (n+ (N 2) (V 'a)) (n+ (V 'n) (N 1)))
+                (subst-singleton 'n (n+ (V 'a) (N 1)))))
+
+;; ----- the existing non-unit single-unknown case is preserved ------
+
+(test-case "REGRESSION: a non-unit single unknown still solves by division"
+  (check-equal? (unify (n* (N 2) (V 'n)) (N 6)) (subst-singleton 'n (N 3))))
+
+;; ----- still-stuck and unsound cases -------------------------------
+
+(test-case "a binding that would need subtraction stays stuck"
+  ;; (* 2 n) ~ (+ m 1): m := 2n-1 is gated out; n is non-unit.
+  (check-exn exn:fail:unify?
+             (lambda () (unify (n* (N 2) (V 'n)) (n+ (V 'm) (N 1))))))
+
+(test-case "a binding that would reintroduce the variable is rejected (occurs)"
+  ;; (+ (* v m) 1) ~ (+ v 1) would bind v := (* v m), an infinite type.
+  (check-exn exn:fail:unify?
+             (lambda () (unify (n+ (n* (V 'v) (V 'm)) (N 1)) (n+ (V 'v) (N 1))))))
 
 ;; ----- nat expressions unify inside a larger type ------------------
 
