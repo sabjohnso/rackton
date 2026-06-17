@@ -72,6 +72,9 @@
 
 (struct ty:var    (name stx) #:transparent)
 (struct ty:con    (name stx) #:transparent)
+;; A type-level natural-number literal in type position, e.g. the `3`
+;; in the type `(Array 3 a)`.  `value` is a non-negative integer.
+(struct ty:nat    (value stx) #:transparent)
 (struct ty:app    (head args stx) #:transparent)
 (struct ty:forall (vars body stx) #:transparent)
 (struct ty:qual   (constraints body stx) #:transparent)
@@ -86,6 +89,16 @@
 ;; elems)` elements, destructuring each.  Structurally irrefutable —
 ;; the tuple's arity is fixed by its type.
 (struct p:tuple   (elems stx) #:transparent)
+
+;; Fixed-size arrays (see private/array-runtime.rkt).
+;; `(array e …)` — listing constructor; size is the element count.
+(struct e:array  (elems stx) #:transparent)
+;; `(build-array n f)` — sized builder; `size` is a non-negative integer
+;; LITERAL (so it fixes the type-level size), `proc` an `(-> Integer a)`.
+(struct e:build-array (size proc stx) #:transparent)
+;; `(aref arr n)` — indexed element read; `index` is a non-negative
+;; integer literal, bounds-checked against a concrete size at inference.
+(struct e:aref   (array-expr index stx) #:transparent)
 
 (struct top:def      (name expr stx) #:transparent)
 (struct top:dec      (name type stx) #:transparent)
@@ -179,6 +192,9 @@
                irr? new-stx)]
     [(e:tuple es _)      (e:tuple (map R es) new-stx)]
     [(e:tref t i _)      (e:tref (R t) i new-stx)]
+    [(e:array es _)      (e:array (map R es) new-stx)]
+    [(e:build-array n p _) (e:build-array n (R p) new-stx)]
+    [(e:aref a i _)      (e:aref (R a) i new-stx)]
     [(p:wild _)          (p:wild new-stx)]
     [(p:var n _)         (p:var n new-stx)]
     [(p:lit v _)         (p:lit v new-stx)]
@@ -186,6 +202,7 @@
     [(p:tuple ps _)      (p:tuple (map R ps) new-stx)]
     [(ty:var n _)        (ty:var n new-stx)]
     [(ty:con n _)        (ty:con n new-stx)]
+    [(ty:nat v _)        (ty:nat v new-stx)]
     [(ty:app h args _)   (ty:app (R h) (map R args) new-stx)]
     [(ty:forall vs b _)  (ty:forall vs (R b) new-stx)]
     [(ty:qual cs b _)
@@ -275,6 +292,8 @@
 ;; Kinds at the surface level — used to annotate class parameters.
 (struct k:star ()        #:transparent)
 (struct k:arr  (dom cod) #:transparent)
+;; The surface `Nat` kind.
+(struct k:nat  ()        #:transparent)
 
 ;; fresh-stx creates a new syntax object sharing `base`'s
 ;; lexical context but distinct as a struct.  Synthesizers that emit

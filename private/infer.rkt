@@ -793,7 +793,10 @@
     [(e:match* _ _ _ s) s]
     [(e:escape _ _ _ s) s]
     [(e:tuple _ s)      s]
-    [(e:tref _ _ s)     s]))
+    [(e:tref _ _ s)     s]
+    [(e:array _ s)      s]
+    [(e:build-array _ _ s) s]
+    [(e:aref _ _ s)     s]))
 
 ;; -------- "did you mean?" suggestions ------------------------------
 
@@ -882,6 +885,7 @@
 (define (resolve-type/m ty-ast)
   (match ty-ast
     [(ty:var n _) (ctx-return (tvar n))]
+    [(ty:nat v _) (ctx-return (tnat v))]
     [(ty:con n stx)
      (let/ctx ([aliases (asks resolve-ctx-aliases)])
        (cond
@@ -944,6 +948,7 @@
     [(ty:var n _)
      (hash-ref sub n ty-ast)]
     [(ty:con _ _) ty-ast]
+    [(ty:nat _ _) ty-ast]
     [(ty:app h args stx)
      (ty:app (substitute-tyvars sub h)
              (for/list ([a (in-list args)]) (substitute-tyvars sub a))
@@ -1051,6 +1056,9 @@
     [(e:update record updates stx)   (infer-update/m record updates stx env)]
     [(e:tuple elems stx)             (infer-tuple/m elems stx env)]
     [(e:tref te idx stx)             (infer-tref/m te idx stx env)]
+    [(e:array elems stx)            (infer-array/m elems stx env)]
+    [(e:build-array n proc stx)     (infer-build-array/m n proc stx env)]
+    [(e:aref ae idx stx)            (infer-aref/m ae idx stx env)]
     [(e:handle expr clauses ret stx) (infer-handle/m expr clauses ret stx env)]
     [(e:match scrut clauses irrefutable? stx)
      (infer-match/m scrut clauses irrefutable? stx env)]
@@ -1505,6 +1513,72 @@
                    idx (length elems))
            stx)]
         [else (infer-return (cons s (list-ref elems idx)))]))))
+
+;; ----- fixed-size arrays --------------------------------------------
+;; An array type is `(tapp (tcon 'Array) (list size elem))` where `size`
+;; is a type-level Nat.  Construction and access mirror the tuple forms,
+;; but arrays are homogeneous (one element type) and size-indexed.
+
+;; `(array e …)` — every element unifies to one type; the size is the count.
+(define (infer-array/m elems stx env)
+  (define count (length elems))
+  (let/infer ([β (m:fresh-tvar)])
+    (let loop ([elems elems] [s empty-subst])
+      (cond
+        [(null? elems)
+         (infer-return
+          (cons s (apply-subst s (make-tapp (tcon 'Array) (list (tnat count) β)))))]
+        [else
+         (let/infer ([r (infer-expr/m (car elems) (apply-subst/env s env))])
+           (let* ([s-e (car r)] [t-e (cdr r)]
+                  [s-now (subst-compose s-e s)]
+                  [s-u (with-handlers
+                        ([exn:fail:unify?
+                          (lambda (_)
+                            (raise-type-mismatch! (expr-stx (car elems))
+                              (apply-subst s-now β) (apply-subst s-now t-e)))])
+                        (unify (apply-subst s-now t-e) (apply-subst s-now β)))])
+             (loop (cdr elems) (subst-compose s-u s-now))))]))))
+
+;; `(build-array n f)` — `n` literal; `f : (-> Integer a)` fills each slot.
+(define (infer-build-array/m n proc stx env)
+  (let/infer ([r (infer-expr/m proc env)])
+    (let* ([s (car r)] [t-proc (cdr r)])
+      (let/infer ([β (m:fresh-tvar)])
+        (let* ([expected (make-arrow t-int β)]
+               [s-u (with-handlers
+                     ([exn:fail:unify?
+                       (lambda (_)
+                         (raise-type-mismatch! (expr-stx proc)
+                           (apply-subst s expected) (apply-subst s t-proc)))])
+                     (unify (apply-subst s t-proc) (apply-subst s expected)))]
+               [s-final (subst-compose s-u s)])
+          (infer-return
+           (cons s-final
+                 (apply-subst s-final
+                              (make-tapp (tcon 'Array) (list (tnat n) β))))))))))
+
+;; `(aref arr n)` — the target must resolve to a concrete array type; when
+;; the size is a concrete Nat the literal index is bounds-checked (with a
+;; variable size the runtime element read is the safety net).  Yields the
+;; element type.
+(define (infer-aref/m ae idx stx env)
+  (let/infer ([r (infer-expr/m ae env)])
+    (let* ([s (car r)] [t (apply-subst s (cdr r))])
+      (match t
+        [(tapp (tcon 'Array) (list size elem))
+         (cond
+           [(and (tnat? size) (>= idx (tnat-value size)))
+            (raise-syntax-error 'infer
+              (format "aref index ~a is out of bounds for an array of size ~a"
+                      idx (tnat-value size))
+              stx)]
+           [else (infer-return (cons s elem))])]
+        [_
+         (raise-syntax-error 'infer
+           (format "aref target must have a concrete array type, got ~a"
+                   (pretty-type t))
+           stx)]))))
 
 ;; Extract the head tcon name from a record type like
 ;; `(tcon Point)` or `(tapp (tcon Box) [args])`.
@@ -2482,14 +2556,19 @@
 ;; other constructors carry their kind in tcon-info.
 (define primitive-kind-table
   (hasheq 'Integer kstar 'Boolean kstar 'String kstar 'Float kstar
-          '-> (kind-arrow* (list kstar kstar) kstar)))
+          '-> (kind-arrow* (list kstar kstar) kstar)
+          ;; Type-level Nat arithmetic operators: Nat -> Nat -> Nat.
+          '+ (kind-arrow* (list (kind-nat) (kind-nat)) (kind-nat))
+          '* (kind-arrow* (list (kind-nat) (kind-nat)) (kind-nat))
+          ;; Fixed-size array: size (Nat) then element type (*).
+          'Array (kind-arrow* (list (kind-nat) kstar) kstar)))
 
 ;; Is `name` a primitive scalar type constructor (Integer, Boolean,
 ;; String, Float)?  The function arrow `->` shares the kind table but is
 ;; not a scalar a user would inspect, so it is excluded.
 (define (primitive-type? name)
   (and (hash-has-key? primitive-kind-table name)
-       (not (eq? name '->))))
+       (not (memq name '(-> + *)))))
 
 ;; The kind of type constructor `name`: a batch seed (during
 ;; data-kind inference) wins, then the env's stored kind, then the
@@ -2570,6 +2649,7 @@
   (match t
     [(ty:var _ stx)      stx]
     [(ty:con _ stx)      stx]
+    [(ty:nat _ stx)      stx]
     [(ty:app _ _ stx)    stx]
     [(ty:forall _ _ stx) stx]
     [(ty:qual _ _ stx)   stx]
@@ -2609,6 +2689,9 @@
   (match t
     [(ty:var n _)
      (values (hash-ref! tvar-kinds n (lambda () (kvar (gensym 'k)))) s)]
+    [(ty:nat _ _)
+     ;; A type-level natural literal has kind `Nat`.
+     (values (kind-nat) s)]
     [(ty:con n stx)
      (if (env-ref-alias env n #f)
          (elab-alias t env batch-kinds tvar-kinds s)
@@ -3007,6 +3090,10 @@
       [(e:tuple elems _)
        (for ([el (in-list elems)]) (walk el shadowed))]
       [(e:tref t _ _) (walk t shadowed)]
+      [(e:array elems _)
+       (for ([el (in-list elems)]) (walk el shadowed))]
+      [(e:build-array _ p _) (walk p shadowed)]
+      [(e:aref a _ _) (walk a shadowed)]
       [(e:handle expr clauses ret _)
        (walk expr shadowed)
        (when ret (walk ret shadowed))
@@ -4055,6 +4142,7 @@
 (define (surface-kind->core k)
   (match k
     [(k:star)      (kind-star)]
+    [(k:nat)       (kind-nat)]
     [(k:arr d c)   (kind-arr (surface-kind->core d) (surface-kind->core c))]
     [_             (kind-star)]))
 
@@ -4288,6 +4376,10 @@
          [(e:tuple elems _)
           (for/fold ([st st]) ([el (in-list elems)]) (walk el shadowed? st))]
          [(e:tref t _ _) (walk t shadowed? st)]
+         [(e:array elems _)
+          (for/fold ([st st]) ([el (in-list elems)]) (walk el shadowed? st))]
+         [(e:build-array _ p _) (walk p shadowed? st)]
+         [(e:aref a _ _) (walk a shadowed? st)]
          [(e:handle expr clauses ret _)
           (define st-e (walk expr shadowed? st))
           (define st-r (if ret (walk ret shadowed? st-e) st-e))

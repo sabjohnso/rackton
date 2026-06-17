@@ -21,7 +21,8 @@
 (require racket/match
          racket/set
          racket/list
-         "types.rkt")
+         "types.rkt"
+         "nat-solve.rkt")
 
 (struct exn:fail:unify exn:fail (reason left right) #:transparent)
 
@@ -52,6 +53,13 @@
   (match* (σ τ)
     [((tvar α) _)            (bind-var α τ σ τ)]
     [(_ (tvar α))            (bind-var α σ σ τ)]
+    ;; Type-level naturals: reduce both sides to linear normal form and
+    ;; solve.  Routed before the structural tcon/tapp cases because a
+    ;; nat expression like `(+ n 3)` is a tapp that must NOT be unified
+    ;; structurally.  A bare tvar is handled above, so by here a nat
+    ;; equation has a literal or a `+`/`*` application on at least one side.
+    [(_ _) #:when (or (nat-expr? σ) (nat-expr? τ))
+     (or (solve-nat-equation σ τ) (raise-unify! 'nat σ τ))]
     [((tcon c) (tcon c))     empty-subst]
     [((tapp h1 args1) (tapp h2 args2))
      (unify-tapp h1 args1 h2 args2 σ τ)]

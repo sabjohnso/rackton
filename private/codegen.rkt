@@ -104,7 +104,8 @@
                        (except-in racket/match ==)
                        "adt.rkt"
                        "dict.rkt"
-                       "prelude-runtime.rkt")
+                       "prelude-runtime.rkt"
+                       "array-runtime.rkt")
          "types.rkt"
          "env.rkt"
          "surface.rkt"
@@ -305,6 +306,24 @@
      (let-values ([(t st) (compile-expr tup ctx st)])
        (values (with-syntax ([t t] [i idx])
                  (syntax/loc stx (rackton-tuple-ref t i)))
+               st))]
+
+    [(e:array elems stx)
+     (let-values ([(es st) (compile-exprs elems ctx st)])
+       (values (with-syntax ([(e ...) es])
+                 (syntax/loc stx (rackton-array-from-list (list e ...))))
+               st))]
+
+    [(e:build-array n proc stx)
+     (let-values ([(p st) (compile-expr proc ctx st)])
+       (values (with-syntax ([n n] [p p])
+                 (syntax/loc stx (rackton-array-make n p)))
+               st))]
+
+    [(e:aref ae idx stx)
+     (let-values ([(a st) (compile-expr ae ctx st)])
+       (values (with-syntax ([a a] [i idx])
+                 (syntax/loc stx (rackton-array-ref a i)))
                st))]
 
     [(e:handle expr clauses ret stx)

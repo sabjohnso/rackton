@@ -40,6 +40,8 @@
 
 (define (sexp->type datum)
   (cond
+    ;; A bare non-negative integer is a type-level natural literal.
+    [(exact-nonnegative-integer? datum) (tnat datum)]
     [(symbol? datum)
      (if (lowercase-id? datum) (tvar datum) (tcon datum))]
     [(and (list? datum) (memq '=> datum))
@@ -114,11 +116,13 @@
   (match k
     [(kind-star)     '*]
     [(kind-arr a b)  `(-> ,(encode-kind a) ,(encode-kind b))]
-    [(kind-con n)    `(con ,n)]))
+    [(kind-con n)    `(con ,n)]
+    [(kind-nat)      'Nat]))
 
 (define (decode-kind datum)
   (cond
     [(eq? datum '*) (kind-star)]
+    [(eq? datum 'Nat) (kind-nat)]
     [(and (list? datum) (eq? (car datum) '->))
      (kind-arr (decode-kind (cadr datum)) (decode-kind (caddr datum)))]
     [(and (list? datum) (eq? (car datum) 'con))

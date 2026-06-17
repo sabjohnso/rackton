@@ -288,7 +288,7 @@
 
 (define (parse-expr stx)
   (syntax-parse stx
-    #:datum-literals (lambda λ case-lambda case-λ let let& let% let+ letrec let* if cond else ann match racket do proc delay <- update handle return describe context list tuple tref -> quote quasiquote unquote unquote-splicing)
+    #:datum-literals (lambda λ case-lambda case-λ let let& let% let+ letrec let* if cond else ann match racket do proc delay <- update handle return describe context list tuple tref array build-array aref -> quote quasiquote unquote unquote-splicing)
     [n:number  (e:literal (syntax->datum #'n) stx)]
     [b:boolean (e:literal (syntax->datum #'b) stx)]
     [s:string  (e:literal (syntax->datum #'s) stx)]
@@ -445,6 +445,26 @@
     [(tref _ _)
      (raise-syntax-error 'rackton
        "tref index must be a non-negative integer literal" stx)]
+
+    ;; (array e ...) — fixed-size array listing; size = element count.
+    [(array elem ...)
+     (e:array (map parse-expr (syntax->list #'(elem ...))) stx)]
+
+    ;; (build-array n f) — sized builder.  `n` MUST be a non-negative
+    ;; integer literal so it fixes the type-level size; `f` is applied to
+    ;; each index 0..n-1.
+    [(build-array n:nat f)
+     (e:build-array (syntax->datum #'n) (parse-expr #'f) stx)]
+    [(build-array _ _)
+     (raise-syntax-error 'rackton
+       "build-array size must be a non-negative integer literal" stx)]
+
+    ;; (aref arr n) — indexed element read; `n` MUST be a literal.
+    [(aref arr idx:nat)
+     (e:aref (parse-expr #'arr) (syntax->datum #'idx) stx)]
+    [(aref _ _)
+     (raise-syntax-error 'rackton
+       "aref index must be a non-negative integer literal" stx)]
 
     ;; (describe NAME child ...) / (context NAME child ...) — the test
     ;; framework's grouping forms, made variadic so children need no
@@ -1435,6 +1455,9 @@
 (define (parse-type stx)
   (syntax-parse stx
     #:datum-literals (All => ->)
+    ;; A non-negative integer literal in type position is a type-level
+    ;; natural (kind `Nat`) — e.g. the `3` in `(Array 3 a)`.
+    [n:nat (ty:nat (syntax->datum #'n) stx)]
     [(All (v:id ...) body)
      (ty:forall (map syntax->datum (syntax->list #'(v ...)))
                 (parse-type #'body)
@@ -1510,8 +1533,9 @@
 ;; binary `k:arr` nodes in the core kind AST.
 (define (parse-kind-stx stx)
   (syntax-parse stx
-    #:datum-literals (* ->)
+    #:datum-literals (* -> Nat)
     [* (k:star)]
+    [Nat (k:nat)]
     [(-> k1 k2 ks ...)
      (build-arrow-kind (cons #'k1 (cons #'k2 (syntax->list #'(ks ...)))))]))
 

@@ -19,6 +19,7 @@
 (provide (struct-out tvar)
          (struct-out tcon)
          (struct-out tapp)
+         (struct-out tnat)
          (struct-out tforall)
          (struct-out scheme)
          (struct-out qual)
@@ -26,6 +27,7 @@
          (struct-out kind-star)
          (struct-out kind-arr)
          (struct-out kind-con)
+         (struct-out kind-nat)
          kstar
          k->
          kind-arrow*
@@ -103,6 +105,9 @@
 (struct tvar   (name)       #:transparent)
 (struct tcon   (name)       #:transparent)
 (struct tapp   (head args)  #:transparent)
+;; A type-level natural-number literal, e.g. the `3` in `(Array 3 a)`.
+;; `value` is a non-negative integer.  Its kind is `Nat` (kind-nat).
+(struct tnat   (value)      #:transparent)
 (struct scheme (vars body)  #:transparent)
 ;; A polymorphic type embedded inside a larger type.
 ;; `(tforall vars body)` reads "∀vars. body" and may appear in any
@@ -126,6 +131,9 @@
 ;; datatype `name`.  Two kind-cons are equal iff their names match; a
 ;; kind-con accepts no arguments (kind-arity 0).
 (struct kind-con  (name)    #:transparent)
+;; `(kind-nat)` is the kind of type-level natural numbers (the kind of
+;; every `tnat`).  Atomic and nullary, like `kind-con`.
+(struct kind-nat  ()        #:transparent)
 
 (define kstar (kind-star))
 (define (k-> a b) (kind-arr a b))
@@ -150,6 +158,7 @@
     [(kind-star)      '*]
     [(kind-arr a b)   `(-> ,(kind->datum a) ,(kind->datum b))]
     [(kind-con n)     n]
+    [(kind-nat)       'Nat]
     [(kvar _)         '?]))
 
 ;; ----- Kind unification ----------------------------------------------
@@ -169,6 +178,7 @@
        [(kvar n)       (hash-ref s n k)]
        [(kind-star)    k]
        [(kind-con _)   k]
+       [(kind-nat)     k]
        [(kind-arr d c) (kind-arr (apply-ksubst s d) (apply-ksubst s c))])]))
 
 ;; Compose: (ksubst-compose s2 s1) applies s1 then s2.
@@ -185,6 +195,7 @@
     [(kvar n)       (seteq n)]
     [(kind-star)    (seteq)]
     [(kind-con _)   (seteq)]
+    [(kind-nat)     (seteq)]
     [(kind-arr d c) (set-union (kind-vars d) (kind-vars c))]))
 
 ;; The number of arguments a kind accepts (its leading arrow count).
@@ -199,6 +210,7 @@
     [(kvar _)       kstar]
     [(kind-star)    k]
     [(kind-con _)   k]
+    [(kind-nat)     k]
     [(kind-arr d c) (kind-arr (default-kind d) (default-kind c))]))
 
 (struct exn:fail:kind-unify exn:fail (left right) #:transparent)
@@ -217,6 +229,7 @@
     [(_ (kvar a))            (bind-kvar a k1 k1 k2)]
     [((kind-star) (kind-star)) empty-ksubst]
     [((kind-con a) (kind-con b)) #:when (eq? a b) empty-ksubst]
+    [((kind-nat) (kind-nat)) empty-ksubst]
     [((kind-arr d1 c1) (kind-arr d2 c2))
      (define sd (unify-kind d1 d2))
      (define sc (unify-kind (apply-ksubst sd c1) (apply-ksubst sd c2)))
@@ -234,7 +247,7 @@
 (struct qual   (constraints body) #:transparent)
 
 (define (type? v)
-  (or (tvar? v) (tcon? v) (tapp? v) (tforall? v)))
+  (or (tvar? v) (tcon? v) (tapp? v) (tnat? v) (tforall? v)))
 
 (define (mqual constraints body)
   (cond
@@ -293,6 +306,7 @@
   (match t
     [(tvar a)        (seteq a)]
     [(tcon _)        (seteq)]
+    [(tnat _)        (seteq)]
     [(tapp h args)   (for/fold ([acc (type-vars h)]) ([a (in-list args)])
                        (set-union acc (type-vars a)))]
     [(pred _ args)   (for/fold ([acc (seteq)]) ([a (in-list args)])
@@ -342,6 +356,7 @@
      (match t
        [(tvar a)      (hash-ref s a t)]
        [(tcon _)      t]
+       [(tnat _)      t]
        [(tapp h args) (make-tapp (apply-subst s h)
                                  (for/list ([a (in-list args)])
                                    (apply-subst s a)))]
@@ -386,6 +401,7 @@
   (match t
     [(tvar a) a]
     [(tcon n) n]
+    [(tnat n) n]
     [(tapp (tcon '->) (list d c))
      `(-> ,(type->datum d) ,(type->datum c))]
     [(tapp h args)
@@ -419,6 +435,7 @@
   (match t
     [(tvar a) a]
     [(tcon n) n]
+    [(tnat n) n]
     [(tapp (tcon '->) (list d c))
      (let loop ([acc (list (type->pretty-datum d))] [rest c])
        (match rest
@@ -518,6 +535,7 @@
          (hash-set! seen a #t)
          (set! out (cons a out)))]
       [(tcon _) (void)]
+      [(tnat _) (void)]
       [(tapp h args) (walk h) (for-each walk args)]
       [(qual cs body) (for-each walk cs) (walk body)]
       [(tforall _ body) (walk body)]
@@ -563,6 +581,7 @@
     (match t
       [(tvar a) (when (set-member? freeset a) (note! a))]
       [(tcon n) (when (skolem-tcon-name? n) (note! n))]
+      [(tnat _) (void)]
       [(tapp h args) (walk h) (for-each walk args)]
       [(qual cs body) (for-each walk cs) (walk body)]
       [(tforall _ body) (walk body)]
@@ -577,6 +596,7 @@
     (match t
       [(tvar a) a]
       [(tcon n) (hash-ref skmap n n)]
+      [(tnat n) n]
       [(tapp (tcon '->) (list d c))
        (let loop ([acc (list (recur d))] [rest c])
          (match rest
