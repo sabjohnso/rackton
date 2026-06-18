@@ -34,6 +34,8 @@
          defs-sidecar-datum
          ;; the workspace index
          (struct-out index-entry)
+         module-sidecar-tables
+         entries-from-tables
          module-index-entries
          index-modules
          rackton-collection-entries)
@@ -256,22 +258,37 @@
 ;; srcloc: from the sidecar defs table; #f for sidecars predating it.
 (struct index-entry (name kind scheme module srcloc) #:transparent)
 
-;; The searchable entries a compiled module's sidecar publishes.
-;; A module without a sidecar (not Rackton, not compiled) contributes
-;; nothing.
-(define (module-index-entries mod-path)
+;; A module's sidecar tables, as the serializable s-expressions the
+;; sidecar publishes — keyed by symbol so the set is fixed and the
+;; index cache can store and replay them verbatim.  Loading the
+;; sidecar instantiates the module; each lookup is guarded so a module
+;; that is not Rackton, not compiled, or that errors on instantiation
+;; simply yields the empty tables.
+(define (module-sidecar-tables mod-path)
   (define submod `(submod ,mod-path rackton-schemes))
   (define (table key)
     (with-handlers ([exn:fail? (lambda (_) '())])
       (dynamic-require submod key)))
-  (define bindings (table 'rackton-bindings))
+  (hasheq 'bindings   (table 'rackton-bindings)
+          'data-ctors (table 'rackton-data-ctors)
+          'tcons      (table 'rackton-tcons)
+          'classes    (table 'rackton-classes)
+          'defs       (table 'rackton-defs)))
+
+;; Decode the sidecar tables into index entries, attributed to
+;; `mod-path`.  Pure: no module loading, so the index cache can rebuild
+;; entries from cached tables without re-reading the module.  Empty
+;; tables (the non-Rackton case) contribute nothing.
+(define (entries-from-tables tables mod-path)
+  (define (tbl key) (hash-ref tables key '()))
+  (define bindings (tbl 'bindings))
   (cond
     [(and (null? bindings)
-          (null? (table 'rackton-tcons))
-          (null? (table 'rackton-classes)))
+          (null? (tbl 'tcons))
+          (null? (tbl 'classes)))
      '()]
     [else
-     (define defs (decode-defs-datum (table 'rackton-defs) mod-path))
+     (define defs (decode-defs-datum (tbl 'defs) mod-path))
      (define (loc-of name) (let ([d (hash-ref defs name #f)])
                              (and d (defsite-srcloc d))))
      (define (kind-of name fallback)
@@ -281,14 +298,20 @@
       (for/list ([b (in-list bindings)])
         (index-entry (car b) (kind-of (car b) 'value)
                      (sexp->scheme (cdr b)) mod-path (loc-of (car b))))
-      (for/list ([c (in-list (table 'rackton-data-ctors))])
+      (for/list ([c (in-list (tbl 'data-ctors))])
         (index-entry (car c) 'constructor
                      (data-info-scheme (decode-data-info (cdr c)))
                      mod-path (loc-of (car c))))
-      (for/list ([t (in-list (table 'rackton-tcons))])
+      (for/list ([t (in-list (tbl 'tcons))])
         (index-entry (car t) 'type #f mod-path (loc-of (car t))))
-      (for/list ([c (in-list (table 'rackton-classes))])
+      (for/list ([c (in-list (tbl 'classes))])
         (index-entry (car c) 'class #f mod-path (loc-of (car c)))))]))
+
+;; The searchable entries a compiled module's sidecar publishes.
+;; A module without a sidecar (not Rackton, not compiled) contributes
+;; nothing.
+(define (module-index-entries mod-path)
+  (entries-from-tables (module-sidecar-tables mod-path) mod-path))
 
 (define (index-modules paths)
   (append-map module-index-entries paths))

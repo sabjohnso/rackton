@@ -47,7 +47,9 @@
          "repl-input.rkt"
          "repl-term.rkt"
          "repl-source.rkt"
-         "repl-search.rkt")
+         "repl-search.rkt"
+         (only-in "installed-scan.rkt" rackton-workspace-entries)
+         (only-in "analyze.rkt" index-entry-name index-entry-scheme))
 
 ;; ----- session state ----------------------------------------------
 
@@ -242,9 +244,44 @@
    (define value (eval-in state (datum->syntax #f name)))
    (render-typed (value->doc value) (scheme->display-datum sch))))
 
-;; Hoogle-style search over everything in scope: by whole signature
-;; (modulo unification and argument order), by result type, or — for
-;; a string query — by name.  See repl-search.rkt for the rules.
+;; The workspace index (curated stdlib + installed user modules) as
+;; (name . scheme) search candidates, computed once per process — the
+;; scan reads every module's sidecar, so it is memoized.  Only entries
+;; carrying a type scheme are searchable; a broken scan contributes
+;; nothing rather than breaking search.
+(define workspace-search-pairs
+  (let ([cached #f])
+    (lambda ()
+      (unless cached
+        (set! cached
+              (with-handlers ([exn:fail? (lambda (_) '())])
+                (for/list ([e (in-list (rackton-workspace-entries))]
+                           #:when (index-entry-scheme e))
+                  (cons (index-entry-name e) (index-entry-scheme e))))))
+      cached)))
+
+;; Append the workspace-index hits the session has not already shown.
+;; Session hits keep their order (and rank) and win on name collisions,
+;; since the live binding is the one the user is working with.
+(define (merge-search-hits session index)
+  (define seen (for/hasheq ([h (in-list session)]) (values (car h) #t)))
+  (append session
+          (filter (lambda (h) (not (hash-ref seen (car h) #f))) index)))
+
+;; Search the workspace index under `kind`, judging constraints against
+;; the session env: a candidate whose constraints the session can refute
+;; (e.g. `show` for a type with no `Show` instance) is dropped, so a
+;; session-local type does not spuriously match every constrained-
+;; variable function.  (The CLI, with no session, passes #f and skips
+;; this filter.)
+(define (index-search-hits env query kind)
+  (define hits (search-entries (workspace-search-pairs) query #:kind kind #:env env))
+  (if (symbol? hits) '() hits))   ; 'bare-query never reaches here
+
+;; Hoogle-style search over everything in scope and across every
+;; installed module: by whole signature (modulo unification and
+;; argument order), by result type, or — for a string query — by name.
+;; See repl-search.rkt for the rules.
 (define (show-search state query kind)
   (with-handlers
    ([exn:fail?
@@ -254,11 +291,14 @@
                           #:kind kind #:env env)
      ['bare-query
       (format "~s is a bare type variable — everything matches\n" query)]
-     ['() (format "no matches for ~s\n" query)]
-     [hits
-      (apply string-append
-             (for/list ([h (in-list hits)])
-               (render-typed (name-doc (car h)) (scheme->pretty-datum (cdr h)))))])))
+     [session-hits
+      (define hits (merge-search-hits session-hits (index-search-hits env query kind)))
+      (cond
+        [(null? hits) (format "no matches for ~s\n" query)]
+        [else
+         (apply string-append
+                (for/list ([h (in-list hits)])
+                  (render-typed (name-doc (car h)) (scheme->pretty-datum (cdr h)))))])])))
 
 ;; List the functions (and data constructors) in scope that accept an
 ;; argument of the queried type.  Bare-type-variable argument
@@ -271,12 +311,17 @@
      ['bare-query
       (format "~s is a bare type variable — every function accepts it\n"
               type-datum)]
-     ['()
-      (format "no functions accept ~s\n" type-datum)]
-     [matches
-      (apply string-append
-             (for/list ([m (in-list matches)])
-               (render-typed (name-doc (car m)) (scheme->pretty-datum (cdr m)))))])))
+     [session-matches
+      (define matches
+        (merge-search-hits session-matches
+                           (index-search-hits (rackton-repl-state-env state)
+                                              type-datum 'accepts)))
+      (cond
+        [(null? matches) (format "no functions accept ~s\n" type-datum)]
+        [else
+         (apply string-append
+                (for/list ([m (in-list matches)])
+                  (render-typed (name-doc (car m)) (scheme->pretty-datum (cdr m)))))])])))
 
 ;; Play back the input form(s) that bound `name`: the definition first,
 ;; then — for a class — the live instances the session has seen.
