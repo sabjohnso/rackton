@@ -295,11 +295,14 @@
 ;; value when the body finishes without performing an op.
 (struct handle-return  (var body stx) #:transparent)
 
-;; Kinds at the surface level — used to annotate class parameters.
+;; Kinds at the surface level — used to annotate class and data parameters.
 (struct k:star ()        #:transparent)
 (struct k:arr  (dom cod) #:transparent)
 ;; The surface `Nat` kind.
 (struct k:nat  ()        #:transparent)
+;; A DataKinds-promoted datatype used as a kind, e.g. `Stack` in
+;; `(g :: Stack)`.  `name` is the promoted type's name (a symbol).
+(struct k:con  (name)    #:transparent)
 
 ;; fresh-stx creates a new syntax object sharing `base`'s
 ;; lexical context but distinct as a struct.  Synthesizers that emit

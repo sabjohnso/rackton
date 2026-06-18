@@ -2932,16 +2932,31 @@
 ;; to kind `*`; then default residual param kvars to `*` and write the
 ;; concrete kind into the tcon shell.  `env` must already carry the
 ;; tcon shells (Phase A2) and aliases (A3) — field types may use both.
+;; The explicitly-declared kind of data parameter `pname` in form `f`,
+;; or #f when it was written without an annotation.  The parser stashes
+;; the annotations as an `(name . surface-kind)` alist on the form's stx
+;; under 'rackton:data-param-kinds (the channel `protocol` uses for
+;; 'rackton:kind).
+(define (data-param-declared-kind f pname)
+  (define s (top:data-stx f))
+  (define alist (and (syntax? s) (syntax-property s 'rackton:data-param-kinds)))
+  (define entry (and alist (assq pname alist)))
+  (and entry (surface-kind->core (cdr entry))))
+
 (define (infer-data-kinds env forms)
   (define datas (filter top:data? forms))
   (cond
     [(null? datas) env]
     [else
-     ;; 1. Seed.
+     ;; 1. Seed.  A parameter written `(g :: k)` seeds its DECLARED kind
+     ;; (so constructor usage is checked against the annotation); an
+     ;; unannotated parameter seeds a fresh kvar, as before.
      (define seeds
        (for/list ([f (in-list datas)])
          (match-define (top:data _ tparams _ _ _ _) f)
-         (define pkvars (for/list ([_ (in-list tparams)]) (kvar (gensym 'k))))
+         (define pkvars
+           (for/list ([p (in-list tparams)])
+             (or (data-param-declared-kind f p) (kvar (gensym 'k)))))
          (list f (map cons tparams pkvars) (kind-arrow* pkvars kstar))))
      (define batch-kinds
        (for/fold ([h (hasheq)]) ([sd (in-list seeds)])
@@ -4214,6 +4229,7 @@
   (match k
     [(k:star)      (kind-star)]
     [(k:nat)       (kind-nat)]
+    [(k:con n)     (kind-con n)]
     [(k:arr d c)   (kind-arr (surface-kind->core d) (surface-kind->core c))]
     [_             (kind-star)]))
 

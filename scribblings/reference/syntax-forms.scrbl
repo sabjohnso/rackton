@@ -98,16 +98,35 @@ that is not generalised at the surrounding @racket[define].
 (define (apply-twice f) (lambda (x) (f (f x))))]}
 
 @defform[
-         (data (Name a ...) ctor-spec ... maybe-deriving)
+         (data (Name param ...) ctor-spec ... maybe-deriving)
          #:grammar
-         [(ctor-spec       bare-ctor (Ctor type ...))
+         [(param           a (a :: kind))
+          (kind            * Nat (-> kind ...+) PromotedType)
+          (ctor-spec       bare-ctor (Ctor type ...))
           (bare-ctor       id)
           (maybe-deriving  code:blank (code:line #:deriving protocol ...))]]{
 
 Declares an algebraic data type @racket[Name] parameterised by
-@racket[a ...], with one or more constructors.  Each constructor is
+@racket[param ...], with one or more constructors.  Each constructor is
 either a bare identifier (nullary) or a parenthesised form naming the
 constructor and its field types.
+
+A parameter is normally a bare lowercase identifier whose kind is
+inferred from how the constructors use it.  It may instead be written
+@racket[(a :: kind)] to STATE the kind directly — mirroring a
+@racket[protocol] parameter.  A @racket[kind] is @racket[*], @racket[Nat],
+an arrow @racket[(-> kind ...)], or a DataKinds-promoted datatype name
+(e.g. @racket[Stack]).  An explicit kind is checked against the
+constructors, and — crucially — pins a @emph{phantom} parameter (one no
+constructor mentions) to the stated kind instead of letting it default
+to @racket[*]:
+
+@racketblock[
+(data Stack SEmpty (SCons Stack))
+(code:comment "without the annotation `a` would default to *")
+(data (Phantom (a :: Stack)) (MkPhantom Integer))
+(code:comment "(Phantom SEmpty) is well-kinded; (Phantom Integer) is a kind error")
+]
 
 The optional @racket[#:deriving] clause synthesises instances of the
 named protocols; see @racket[Eq], @racket[Ord], @racket[Show],

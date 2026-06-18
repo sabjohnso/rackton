@@ -1546,7 +1546,12 @@
     [* (k:star)]
     [Nat (k:nat)]
     [(-> k1 k2 ks ...)
-     (build-arrow-kind (cons #'k1 (cons #'k2 (syntax->list #'(ks ...)))))]))
+     (build-arrow-kind (cons #'k1 (cons #'k2 (syntax->list #'(ks ...)))))]
+    ;; A DataKinds-promoted datatype name used as a kind, e.g. `Stack`.
+    [k:id
+     #:fail-unless (uppercase-id? (syntax->datum #'k))
+     "a kind is `*`, `Nat`, an arrow `(-> k …)`, or a promoted datatype name (uppercase)"
+     (k:con (syntax->datum #'k))]))
 
 ;; Right-fold a variadic `->` kind form into binary `k:arr` nodes.  Expects
 ;; at least two kind syntax objects (enforced by the caller's pattern).
@@ -1665,14 +1670,17 @@
     [(define x:id e)
      (top:def (syntax->datum #'x) (parse-expr #'e) stx)]
 
-    [(data (tname:id tparam:id ...) item ...)
+    [(data (tname:id binder ...) item ...)
      #:fail-unless (not (lowercase-id? (syntax->datum #'tname)))
      "data type name must be a non-lowercase identifier"
+     (define-values (tparams param-kinds)
+       (parse-data-params (syntax->list #'(binder ...))))
      (parse-data-form (syntax->datum #'tname)
-                      (map syntax->datum (syntax->list #'(tparam ...)))
+                      tparams
                       (syntax->list #'(item ...))
                       stx
-                      #'tname)]
+                      #'tname
+                      param-kinds)]
     [(data tname:id item ...)
      #:fail-unless (not (lowercase-id? (syntax->datum #'tname)))
      "data type name must be a non-lowercase identifier"
@@ -1689,18 +1697,21 @@
     ;; the wrapper is a plain ADT — the "zero-cost" of a newtype is
     ;; documentary, not a perf optimization.  A trailing
     ;; `#:deriving Cls ...` flows through to parse-data-form.
-    [(newtype (tname:id tparam:id ...) (ctor:id ftype) rest ...)
+    [(newtype (tname:id binder ...) (ctor:id ftype) rest ...)
      #:fail-unless (not (lowercase-id? (syntax->datum #'tname)))
      "newtype name must be a non-lowercase identifier"
      #:fail-unless (not (lowercase-id? (syntax->datum #'ctor)))
      "newtype constructor name must be a non-lowercase identifier"
      #:fail-unless (newtype-rest-ok? #'(rest ...))
      "newtype must declare exactly one constructor with one field — for multiple ctors or multiple fields use data"
+     (define-values (tparams param-kinds)
+       (parse-data-params (syntax->list #'(binder ...))))
      (parse-data-form (syntax->datum #'tname)
-                      (map syntax->datum (syntax->list #'(tparam ...)))
+                      tparams
                       (cons #'(ctor ftype) (syntax->list #'(rest ...)))
                       stx
-                      #'tname)]
+                      #'tname
+                      param-kinds)]
     [(newtype tname:id (ctor:id ftype) rest ...)
      #:fail-unless (not (lowercase-id? (syntax->datum #'tname)))
      "newtype name must be a non-lowercase identifier"
@@ -2078,7 +2089,30 @@
 ;; scope set as anything else the user wrote.  Using the whole-form's
 ;; syntax instead leaves the synthesised identifiers missing scopes
 ;; that show up only on individual identifier-leaf syntax objects.
-(define (parse-data-form tname tparams items stx [tname-stx #f])
+;; Parse one `data` / `newtype` head parameter.  Returns (values name
+;; surface-kind-or-#f): a bare `v` leaves the kind to inference, while
+;; `(v :: k)` states it explicitly (mirroring `protocol`'s `[v :: k]`).
+(define (parse-data-param stx)
+  (syntax-parse stx
+    #:datum-literals (::)
+    [v:id (values (syntax->datum #'v) #f)]
+    [(v:id :: k)
+     #:fail-unless (lowercase-id? (syntax->datum #'v))
+     "a data type parameter must be a lowercase identifier"
+     (values (syntax->datum #'v) (parse-kind-stx #'k))]))
+
+;; Parse a head's parameter binders into (values names kinds-alist),
+;; where `kinds-alist` carries only the explicitly-annotated params
+;; (name . surface-kind) — empty when none are annotated.
+(define (parse-data-params binder-stxs)
+  (define-values (names kinds)
+    (for/lists (ns ks) ([b (in-list binder-stxs)]) (parse-data-param b)))
+  (values names
+          (for/list ([n (in-list names)] [k (in-list kinds)] #:when k)
+            (cons n k))))
+
+(define (parse-data-form tname tparams items stx
+                         [tname-stx #f] [param-kinds '()])
   ;; Peel off the `#:abstract` flag (it may appear
   ;; alongside `#:deriving` in any order before the ctor list ends).
   (define-values (items-1 abstract?) (split-abstract items))
@@ -2087,7 +2121,14 @@
     (split-deriving items-2))
   (define ctors
     (for/list ([c (in-list ctor-stxs)]) (parse-data-ctor c)))
-  (define data-form (top:data tname tparams ctors stx abstract? runtime-tag))
+  ;; Stash any explicit param-kind annotations on the form's stx (the
+  ;; same channel `protocol` uses for `'rackton:kind`); the kind checker
+  ;; reads them to seed the declared kinds.
+  (define stx*
+    (if (null? param-kinds)
+        stx
+        (syntax-property stx 'rackton:data-param-kinds param-kinds)))
+  (define data-form (top:data tname tparams ctors stx* abstract? runtime-tag))
   (cond
     [(null? deriving-classes) data-form]
     [else
