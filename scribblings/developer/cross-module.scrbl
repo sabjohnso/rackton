@@ -37,7 +37,15 @@ s-expressions:
       across the boundary.  The @racket[#:derive] cross-class bodies
       (@racket[super-derives]) are still not carried.}
 @item{@racket[instances] — full instance table (always — instances
-      ignore @racket[provide]).}]
+      ignore @racket[provide]).}
+@item{@racket[promoted] — DataKinds-promoted constructor → kind, for the
+      promoted constructors of exported data types (gated like
+      @racket[data-ctors]).  Promotion is computed once, in the defining
+      module's @racket[promote-data]; transporting the result lets an
+      importer's kind checker enforce a promoted index (e.g. reject
+      @racket[(Mem TInt g)] when @racket[Mem]'s first parameter has kind
+      @racket[Stack] but @racket[TInt] has kind @racket[Ty]) rather than
+      treat it as a fresh, anything-goes kind.}]
 
 @section{The codec}
 

@@ -255,7 +255,7 @@
 ;; Shared elaboration helper: returns
 ;;   (values compiled-syntax-list provide-stx
 ;;           bindings-data data-ctors-data tcons-data classes-data instances-data
-;;           mono-log inline-log)
+;;           impls macros defs promoted-data mono-log inline-log)
 ;; `provide-stx` is a syntax object for a single Racket-level
 ;; `(provide ...)` form (or #f when nothing is exported).
 (define-for-syntax (rackton-elaborate forms-stx)
@@ -320,10 +320,10 @@
     (define inline-log (cg-st-inlined-sites final-cgst))
     ;; Pass the logs + the generated exported-impl names (from the final cg-st)
     ;; alongside the compiled forms.
-    (define-values (final-compiled prov-stx bs dcs tcs cls insts impls macs defs)
+    (define-values (final-compiled prov-stx bs dcs tcs cls insts impls macs defs prom)
       (elaborate-finish parsed* env compiled (unbox macros-box)
                         (cg-st-exported-impls final-cgst)))
-    (values final-compiled prov-stx bs dcs tcs cls insts impls macs defs
+    (values final-compiled prov-stx bs dcs tcs cls insts impls macs defs prom
             mono-log inline-log)))
 
 ;; ----- export resolution ----------------------------------------------
@@ -692,10 +692,28 @@
                                 (hash->list export-data-ctors)
                                 (hash->list export-tcons)
                                 (hash->list export-classes))))
+  ;; DataKinds-promoted constructors (TInt, SCons, …) of the exported
+  ;; data types, as name → kind.  Promotion is computed once, in the
+  ;; defining module's `promote-data`; transporting the result lets an
+  ;; importing module's kind checker enforce a promoted index instead of
+  ;; treating it as a fresh (anything-goes) kind.  Gated exactly like the
+  ;; value-level data-ctors above — a promoted ctor crosses iff its value
+  ;; constructor does (owning type exported and non-abstract).
+  (define export-promoted-encoded
+    (for/list ([(local external) (in-hash export-data-ctors)]
+               #:when (env-ref-promoted-ctor env local #f)
+               #:when (env-ref-data env local #f)
+               #:unless (env-ref-data prelude-env local #f)
+               #:unless
+               (let ([di (env-ref-data env local)])
+                 (let ([ti (env-ref-tcon env (data-info-type-name di))])
+                   (and ti (tcon-info-abstract? ti)))))
+      (cons external (encode-kind (env-ref-promoted-ctor env local)))))
   (values compiled prov-stx
           export-bindings export-data-ctors-encoded
           export-tcons-encoded export-classes-encoded export-instances
-          exported-impls export-macros-encoded export-defs-encoded))
+          exported-impls export-macros-encoded export-defs-encoded
+          export-promoted-encoded))
 
 ;; `(rackton form ...)` — embeddable form.  Splices the compiled forms
 ;; but does NOT emit a sidecar schemes submodule, so multiple
@@ -703,7 +721,7 @@
 (define-syntax (rackton stx)
   (syntax-parse stx
     [(_ form ...)
-     (define-values (compiled prov-stx _b _d _t _c _i _impls _macs _defs
+     (define-values (compiled prov-stx _b _d _t _c _i _impls _macs _defs _prom
                               mono-log inline-log)
        (rackton-elaborate #'(form ...)))
      (define out-forms
@@ -723,7 +741,7 @@
 (define-syntax (rackton/main stx)
   (syntax-parse stx
     [(_ form ...)
-     (define-values (compiled prov-stx bs dcs tcs cls insts impls macs defs
+     (define-values (compiled prov-stx bs dcs tcs cls insts impls macs defs prom
                               _mono _inline)
        (rackton-elaborate #'(form ...)))
      (define at-module-level?
@@ -739,7 +757,8 @@
                    [instances    (datum->syntax stx insts)]
                    [impls        (datum->syntax stx impls)]
                    [macros       (datum->syntax stx macs)]
-                   [defs-table   (datum->syntax stx defs)])
+                   [defs-table   (datum->syntax stx defs)]
+                   [promoted     (datum->syntax stx prom)])
        (cond
          [at-module-level?
           (syntax/loc stx
@@ -753,7 +772,8 @@
                          rackton-instances
                          rackton-exported-impls
                          rackton-macros
-                         rackton-defs)
+                         rackton-defs
+                         rackton-promoted)
                 (define rackton-bindings        'bindings)
                 (define rackton-data-ctors      'data-ctors)
                 (define rackton-tcons           'tcons)
@@ -761,6 +781,7 @@
                 (define rackton-instances       'instances)
                 (define rackton-exported-impls  'impls)
                 (define rackton-macros          'macros)
-                (define rackton-defs            'defs-table))))]
+                (define rackton-defs            'defs-table)
+                (define rackton-promoted        'promoted))))]
          [else
           (syntax/loc stx (begin out ...))]))]))

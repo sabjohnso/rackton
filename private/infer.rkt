@@ -4135,6 +4135,13 @@
            (define instances
              (with-handlers ([exn:fail? (lambda (_) '())])
                (dynamic-require submod-spec 'rackton-instances)))
+           ;; DataKinds-promoted constructors of the imported data types
+           ;; (name → kind).  Absent in legacy sidecars → empty.  Folded
+           ;; below so the importer's kind checker enforces a promoted
+           ;; index instead of treating it as a fresh, anything-goes kind.
+           (define promoted
+             (with-handlers ([exn:fail? (lambda (_) '())])
+               (dynamic-require submod-spec 'rackton-promoted)))
            (define e1
              (for/fold ([acc e]) ([entry (in-list bindings)])
                (env-extend-var acc (car entry)
@@ -4151,7 +4158,11 @@
              (for/fold ([acc e3]) ([entry (in-list classes)])
                (env-extend-class acc (car entry)
                                  (decode-class-info (cdr entry)))))
-           (for/fold ([acc e4]) ([entry (in-list instances)])
+           (define e5
+             (for/fold ([acc e4]) ([entry (in-list promoted)])
+               (env-extend-promoted-ctor acc (car entry)
+                                         (decode-kind (cdr entry)))))
+           (for/fold ([acc e5]) ([entry (in-list instances)])
              (define decoded (decode-instance-info entry))
              (define class-name (car decoded))
              (define new-inst (cdr decoded))
