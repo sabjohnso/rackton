@@ -101,7 +101,7 @@
  ;; builtins (type declared in prelude.rkt); take / drop are emitted by
  ;; codegen for the array-take/-drop/-split-at forms (internal — excluded
  ;; from main.rkt's user re-export).  Impls from array-runtime.rkt.
- flatten-major flatten-minor array-map array-fold
+ flatten-major flatten-minor array-map array-fold array-foldr array-traverse
  rackton-array-take rackton-array-drop
 
  ;; ADTs (constructors usable as expressions and as match patterns)
@@ -1956,6 +1956,25 @@
 ;; generic.
 (define/curried (mconcat mempty-impl xs)
   (foldr (lambda (x acc) (mappend x acc)) mempty-impl xs))
+
+;; ----- array-traverse (mapM/traverse-style, needs-dict) -----------
+;; The elaborator prepends the resolved Applicative `pure` for `f`
+;; (`pure-impl`); `fmap` / `liftA2` stay generic and dispatch on the
+;; effect value.  A right fold in the applicative collects the results,
+;; then they are rebuilt into an array of the SAME length as the input —
+;; sound by construction, exactly like array-map.  Different `liftA2`
+;; instances invoke the combiner curried or n-ary, so `array-cons`
+;; accepts both shapes.
+(define array-cons
+  (case-lambda
+    [(x xs) (cons x xs)]
+    [(x)    (lambda (xs) (cons x xs))]))
+(define/curried (array-traverse pure-impl f arr)
+  (let loop ([i (sub1 (rackton-array-length arr))] [acc (pure-impl '())])
+    (cond
+      [(< i 0) (fmap (lambda (lst) (rackton-array-from-list lst)) acc)]
+      [else (loop (sub1 i)
+                  (liftA2 array-cons (f (rackton-array-ref arr i)) acc))])))
 
 ;; ----- enum-from-to / enum-from-then-to (needs-dict free fns) ------
 ;; Like mconcat: the elaborator prepends the resolved `integer->enum`

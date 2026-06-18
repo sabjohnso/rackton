@@ -244,15 +244,25 @@ outer index varies slowest, so each inner array is emitted in turn) and
 @racket[flatten-minor] is column-major (the outer index varies fastest).}
 
 @deftogether[(
-@defproc[(array-map  [f (-> a b)] [arr (Array n a)]) (Array n b)]
-@defproc[(array-fold [f (-> b (-> a b))] [z b] [arr (Array n a)]) b]
+@defproc[(array-map   [f (-> a b)] [arr (Array n a)]) (Array n b)]
+@defproc[(array-fold  [f (-> b (-> a b))] [z b] [arr (Array n a)]) b]
+@defproc[(array-foldr [f (-> a (-> b b))] [z b] [arr (Array n a)]) b]
 )]{
 
 @racket[array-map] applies @racket[f] to every element, preserving the
 size; @racket[array-fold] is a strict left fold (@racket[f] applied to
-the accumulator then each element in turn).  Both work at any size,
-including a polymorphic @racket[n] — unlike the concrete-size slices
-@racket[array-take] / @racket[array-drop] / @racket[array-split-at].}
+the accumulator then each element) and @racket[array-foldr] the
+corresponding right fold (@racket[f x0 (f x1 (… (f xⁿ⁻¹ z)))]).  All work
+at any size, including a polymorphic @racket[n] — unlike the concrete-size
+slices @racket[array-take] / @racket[array-drop] / @racket[array-split-at].}
+
+@defproc[(array-traverse [f (-> a (f b))] [arr (Array n a)]) (f (Array n b))]{
+
+The @tt{mapM} / @racket[traverse]-style helper: apply an
+@racket[Applicative]-effectful @racket[f] to each element and rebuild the
+array of the same size inside that applicative (so effects run
+left-to-right and, e.g. with @racket[Maybe], short-circuit to
+@racket[None] on the first failure).  Requires @racket[(Applicative f)].}
 
 @section[#:tag "maps"]{Immutable Map and Set}
 

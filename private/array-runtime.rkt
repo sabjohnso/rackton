@@ -27,7 +27,8 @@
          flatten-major
          flatten-minor
          array-map
-         array-fold)
+         array-fold
+         array-foldr)
 
 ;; The handle.  `vec` is the current backing store; it is an
 ;; implementation detail and must not escape this module.  Prefab (not a
@@ -105,6 +106,19 @@
     [(f z a) (array-fold* f z a)]
     [(f z)   (lambda (a) (array-fold* f z a))]
     [(f)     (lambda (z) (lambda (a) (array-fold* f z a)))]))
+
+;; Right fold: `f x0 (f x1 (… (f x_{n-1} z)))`.  `f` is curried
+;; (`(-> a (-> b b))`), so it is applied one argument at a time.
+(define (array-foldr* f z a)
+  (let loop ([i (sub1 (rackton-array-length a))] [acc z])
+    (cond
+      [(< i 0) acc]
+      [else (loop (sub1 i) ((f (rackton-array-ref a i)) acc))])))
+(define array-foldr
+  (case-lambda
+    [(f z a) (array-foldr* f z a)]
+    [(f z)   (lambda (a) (array-foldr* f z a))]
+    [(f)     (lambda (z) (lambda (a) (array-foldr* f z a)))]))
 
 (define (flatten-minor arr)
   (define n (rackton-array-length arr))

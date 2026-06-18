@@ -83,6 +83,38 @@
 (test-case "array-fold reduces left-to-right"
   (check-equal? total 10))
 
+;; ----- foldr (right fold) ------------------------------------------
+
+(rackton
+  ;; right fold: 1 - (2 - (3 - 0)) = 2  (distinguishes it from the left fold)
+  (: rf Integer)
+  (define rf (array-foldr (lambda (x acc) (- x acc)) 0 (array 1 2 3))))
+
+(test-case "array-foldr folds from the right"
+  (check-equal? rf 2))
+
+;; ----- traverse (mapM-style, applicative) --------------------------
+
+(rackton
+  (: checkpos (-> Integer (Maybe Integer)))
+  (define (checkpos x) (if (> x 0) (Some x) None))
+
+  ;; all elements pass → Some of the whole array
+  (: ok (Maybe (Array 3 Integer)))
+  (define ok (array-traverse checkpos (array 1 2 3)))
+  (: ok2 Integer)
+  (define ok2 (match ok [(Some a) (aref a 2)] [(None) -1]))
+
+  ;; one element fails → None (effects short-circuit)
+  (: bad (Maybe (Array 3 Integer)))
+  (define bad (array-traverse checkpos (array 1 -2 3)))
+  (: bad? Boolean)
+  (define bad? (match bad [(Some _) #f] [(None) #t])))
+
+(test-case "array-traverse threads an applicative effect, preserving size"
+  (check-equal? ok2 3)      ; (Some (array 1 2 3)) → element 2 is 3
+  (check-equal? bad? #t))   ; a failing element collapses to None
+
 ;; ----- compile-time checks ----------------------------------------
 
 (test-case "taking more than the array holds is a compile error"

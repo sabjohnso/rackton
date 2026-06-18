@@ -760,10 +760,17 @@
     (: flatten-major (-> (Array n (Array m a)) (Array (* n m) a)))
     (: flatten-minor (-> (Array n (Array m a)) (Array (* n m) a)))
 
-    ;; Size-preserving map and a strict left fold over an array of any
-    ;; (including polymorphic) size.  Runtime impls in array-runtime.
-    (: array-map  (-> (-> a b) (-> (Array n a) (Array n b))))
-    (: array-fold (-> (-> b (-> a b)) (-> b (-> (Array n a) b))))
+    ;; Size-preserving map, strict left/right folds, and an applicative
+    ;; traverse over an array of any (including polymorphic) size.
+    ;; Runtime impls in array-runtime / prelude-runtime.
+    (: array-map   (-> (-> a b) (-> (Array n a) (Array n b))))
+    (: array-fold  (-> (-> b (-> a b)) (-> b (-> (Array n a) b))))
+    (: array-foldr (-> (-> a (-> b b)) (-> b (-> (Array n a) b))))
+    ;; mapM/traverse-style: apply an effectful function to each element
+    ;; and rebuild the array inside the applicative (pure is resolved and
+    ;; prepended at each call site, like mconcat's mempty).
+    (: array-traverse ((Applicative f) =>
+                       (-> (-> a (f b)) (-> (Array n a) (f (Array n b))))))
 
     ;; --- Enum ---------------------------------------------------
     ;;
