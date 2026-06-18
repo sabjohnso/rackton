@@ -101,7 +101,7 @@ that is not generalised at the surrounding @racket[define].
          (data (Name param ...) ctor-spec ... maybe-deriving)
          #:grammar
          [(param           a (a :: kind))
-          (kind            * Nat (-> kind ...+) PromotedType)
+          (kind            * Nat (-> kind ...+) PromotedType (PromotedType kind ...))
           (ctor-spec       bare-ctor (Ctor type ...))
           (bare-ctor       id)
           (maybe-deriving  code:blank (code:line #:deriving protocol ...))]]{
@@ -115,15 +115,17 @@ A parameter is normally a bare lowercase identifier whose kind is
 inferred from how the constructors use it.  It may instead be written
 @racket[(a :: kind)] to STATE the kind directly — mirroring a
 @racket[protocol] parameter.  A @racket[kind] is @racket[*], @racket[Nat],
-an arrow @racket[(-> kind ...)], or a DataKinds-promoted datatype name
-(e.g. @racket[Stack]).  An explicit kind is checked against the
-constructors, and — crucially — pins a @emph{phantom} parameter (one no
-constructor mentions) to the stated kind instead of letting it default
-to @racket[*]:
+an arrow @racket[(-> kind ...)], a DataKinds-promoted datatype name
+(e.g. @racket[Stack]), or an applied promoted constructor
+(e.g. @racket[(List Ty)], from a @seclink["polymorphic-data-kinds"]{promoted
+parameterised datatype}).  An unconstrained @emph{phantom} parameter (one
+no constructor mentions) otherwise @emph{generalises} — it becomes
+kind-polymorphic rather than @racket[*] — so an explicit annotation is
+how you pin one to a specific kind:
 
 @racketblock[
 (data Stack SEmpty (SCons Stack))
-(code:comment "without the annotation `a` would default to *")
+(code:comment "without the annotation `a` would generalise (kind-polymorphic)")
 (data (Phantom (a :: Stack)) (MkPhantom Integer))
 (code:comment "(Phantom SEmpty) is well-kinded; (Phantom Integer) is a kind error")
 ]
@@ -383,6 +385,13 @@ parameter's kind comes from its method signatures (a parameter used as
 variable in any signature is inferred from its use.  A protocol parameter
 may still be annotated explicitly with @racket[(param :: kind)] in the
 @racket[protocol] head when desired.
+
+A parameter whose kind is left unconstrained is @emph{generalised}
+(kind polymorphism): an unused phantom parameter becomes usable at any
+kind rather than being pinned to @racket[*].  Promotion is correspondingly
+kind-polymorphic — a @seclink["polymorphic-data-kinds"]{promoted
+parameterised datatype} such as @racket[List] yields a reusable kind
+@racket[(List _k)] for any element kind @racket[_k].
 
 @subsection[#:tag "sf-equality-constraint"]{Type-equality constraints}
 

@@ -88,9 +88,10 @@
 ;; returns).  When set, an instance's positional methods register under
 ;; this tag instead of T's (nonexistent) constructor tags, so dispatch
 ;; on those opaque values resolves.  #f for ordinary types.
-;; `kind` is the type constructor's kind (e.g. `* -> *` for `List`),
-;; inferred at the data declaration; `(arity->star-kind arity)` is the
-;; placeholder/fallback (e.g. for legacy sidecars).
+;; `kind` is the type constructor's kind SCHEME (e.g. `* -> *` for
+;; `List`, or `∀k. k -> *` for a phantom-parameter type), inferred and
+;; generalised at the data declaration; `(kscheme-mono (arity->star-kind
+;; arity))` is the placeholder/fallback (e.g. for legacy sidecars).
 (struct tcon-info (name arity kind ctors abstract? runtime-tag) #:transparent)
 
 ;; A class's static information.

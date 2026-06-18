@@ -31,13 +31,14 @@
                 "a nullary data type has kind *")
 
   ;; ----- higher-kinded parameter: the discriminating case --------------
-  ;; A `* -> *` parameter applied to another parameter. Arity alone
-  ;; (the old placeholder) would give `* -> * -> *`; real inference must
-  ;; give `(* -> *) -> * -> *`.
+  ;; A parameter `f` applied to another parameter `a`.  Arity alone (the
+  ;; old placeholder) would give `* -> * -> *`.  `a`'s kind is
+  ;; unconstrained, so it GENERALISES: `Fix : forall k. (k -> *) -> k -> *`
+  ;; — exactly GHC's PolyKinds result for `data Fix f a = MkFix (f a)`.
 
   (check-equal? (kind-of '((data (Fix f a) (MkFix (f a)))) 'Fix)
-                '(-> (-> * *) (-> * *))
-                "f is used applied, so f : * -> *")
+                '(forall (a) (-> (-> a *) (-> a *)))
+                "f is used applied to a; a's kind generalises")
 
   ;; A StateT-shaped type: `(-> s (m (Pair s a)))`. m must be `* -> *`.
   (check-equal? (kind-of '((data (Pair a b) (MkPair a b))
@@ -70,8 +71,11 @@
                          'Expr)
                 '(-> * *))
 
-  ;; ----- phantom parameter defaults to * -------------------------------
+  ;; ----- phantom parameter GENERALISES (kind polymorphism) -------------
+  ;; `a` appears in no field, so its kind is unconstrained and quantified:
+  ;; `Tagged : forall k. k -> *`.  Under the old Haskell-98 defaulting it
+  ;; was pinned to `* -> *`; generalise-by-default lifts that limit.
 
   (check-equal? (kind-of '((data (Tagged a) (MkTagged Integer))) 'Tagged)
-                '(-> * *)
-                "a parameter unused in any field defaults to kind *"))
+                '(forall (a) (-> a *))
+                "an unused parameter generalises to forall k. k -> *"))

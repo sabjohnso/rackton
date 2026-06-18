@@ -1547,10 +1547,17 @@
     [Nat (k:nat)]
     [(-> k1 k2 ks ...)
      (build-arrow-kind (cons #'k1 (cons #'k2 (syntax->list #'(ks ...)))))]
+    ;; An applied promoted kind constructor, e.g. `(List Ty)` — a
+    ;; parameterised datatype promoted to the kind level (PolyKinds).
+    [(head:id a0 a ...)
+     #:fail-unless (uppercase-id? (syntax->datum #'head))
+     "a promoted kind constructor must begin with an uppercase letter"
+     (k:app (syntax->datum #'head)
+            (map parse-kind-stx (syntax->list #'(a0 a ...))))]
     ;; A DataKinds-promoted datatype name used as a kind, e.g. `Stack`.
     [k:id
      #:fail-unless (uppercase-id? (syntax->datum #'k))
-     "a kind is `*`, `Nat`, an arrow `(-> k …)`, or a promoted datatype name (uppercase)"
+     "a kind is `*`, `Nat`, an arrow `(-> k …)`, a promoted datatype name (uppercase), or `(K k …)`"
      (k:con (syntax->datum #'k))]))
 
 ;; Right-fold a variadic `->` kind form into binary `k:arr` nodes.  Expects

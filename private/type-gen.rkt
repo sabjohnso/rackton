@@ -28,6 +28,7 @@
            gen:qual-type
            gen:scheme
            gen:kind
+           gen:kind-scheme
            gen:subst)
 
   (define gen:tvar-name
@@ -81,15 +82,24 @@
               [body (gen:qual-type depth)])
       (scheme vars body)))
 
-  ;; A kind: `*` or an arrow of kinds.
+  ;; A kind: `*`, a kvar (so generalisation has something to quantify),
+  ;; or an arrow of kinds.
   (define (gen:kind depth)
     (cond
-      [(<= depth 0) (gen:const (kind-star))]
+      [(<= depth 0) (gen:choice (gen:const (kind-star))
+                                (gen:const (kvar 'ka))
+                                (gen:const (kvar 'kb)))]
       [else (gen:choice
              (gen:const (kind-star))
+             (gen:const (kvar 'ka))
              (gen:let ([a (gen:kind (sub1 depth))]
                        [b (gen:kind (sub1 depth))])
                (kind-arr a b)))]))
+
+  ;; A kind scheme: a generated kind with its free kvars quantified.
+  (define (gen:kind-scheme depth)
+    (gen:let ([k (gen:kind depth)])
+      (generalize-kind k)))
 
   ;; A substitution built from up to four (tvar ↦ type) bindings.
   (define (gen:subst depth)

@@ -25,6 +25,8 @@
          decode-tcon-info
          encode-kind
          decode-kind
+         encode-kind-scheme
+         decode-kind-scheme
          encode-class-info
          decode-class-info
          encode-instance-info
@@ -96,20 +98,20 @@
         ;; Opaque runtime dispatch tag (or #f); lets an importer that
         ;; defines a new instance for the type register it correctly.
         (tcon-info-runtime-tag ti)
-        ;; The inferred kind.  Newest field; legacy sidecars without it
-        ;; fall back to the all-`*` arity kind on decode.
-        (encode-kind (tcon-info-kind ti))))
+        ;; The inferred kind SCHEME.  Newest field; legacy sidecars
+        ;; without it fall back to the all-`*` arity kind on decode.
+        (encode-kind-scheme (tcon-info-kind ti))))
 
 (define (decode-tcon-info datum)
   (match datum
     [(list name arity ctors abstract? runtime-tag kind)
-     (tcon-info name arity (decode-kind kind) ctors abstract? runtime-tag)]
+     (tcon-info name arity (decode-kind-scheme kind) ctors abstract? runtime-tag)]
     [(list name arity ctors abstract? runtime-tag)
-     (tcon-info name arity (arity->star-kind arity) ctors abstract? runtime-tag)]
+     (tcon-info name arity (kscheme-mono (arity->star-kind arity)) ctors abstract? runtime-tag)]
     [(list name arity ctors abstract?)
-     (tcon-info name arity (arity->star-kind arity) ctors abstract? #f)]
+     (tcon-info name arity (kscheme-mono (arity->star-kind arity)) ctors abstract? #f)]
     [(list name arity ctors)
-     (tcon-info name arity (arity->star-kind arity) ctors #f #f)]))
+     (tcon-info name arity (kscheme-mono (arity->star-kind arity)) ctors #f #f)]))
 
 ;; ----- kinds, classes, instances ------------------------------
 
@@ -118,7 +120,11 @@
     [(kind-star)     '*]
     [(kind-arr a b)  `(-> ,(encode-kind a) ,(encode-kind b))]
     [(kind-con n)    `(con ,n)]
-    [(kind-nat)      'Nat]))
+    [(kind-nat)      'Nat]
+    ;; A quantified kvar inside a kind scheme's body.
+    [(kvar n)        `(var ,n)]
+    ;; An applied promoted kind constructor, e.g. `(List Ty)`.
+    [(kapp h args)   `(app ,(encode-kind h) ,@(map encode-kind args))]))
 
 (define (decode-kind datum)
   (cond
@@ -128,7 +134,24 @@
      (kind-arr (decode-kind (cadr datum)) (decode-kind (caddr datum)))]
     [(and (list? datum) (eq? (car datum) 'con))
      (kind-con (cadr datum))]
+    [(and (list? datum) (eq? (car datum) 'var))
+     (kvar (cadr datum))]
+    [(and (list? datum) (eq? (car datum) 'app))
+     (kapp (decode-kind (cadr datum)) (map decode-kind (cddr datum)))]
     [else (error 'decode-kind "bad kind: ~v" datum)]))
+
+;; A kind scheme round-trips as `(scheme (κ …) body)`.  Legacy sidecars
+;; stored a bare kind datum in this slot; those decode as a monomorphic
+;; scheme so old compiled `.zo`s remain readable.
+(define (encode-kind-scheme ks)
+  (match ks
+    [(kind-scheme vs body) `(scheme ,vs ,(encode-kind body))]))
+
+(define (decode-kind-scheme datum)
+  (cond
+    [(and (pair? datum) (eq? (car datum) 'scheme))
+     (kind-scheme (cadr datum) (decode-kind (caddr datum)))]
+    [else (kscheme-mono (decode-kind datum))]))
 
 (define (pred->sexp p) (pred->datum p))
 

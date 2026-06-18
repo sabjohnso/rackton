@@ -28,6 +28,7 @@
          (struct-out kind-arr)
          (struct-out kind-con)
          (struct-out kind-nat)
+         (struct-out kapp)
          kstar
          k->
          kind-arrow*
@@ -42,6 +43,10 @@
          kind-vars
          kind-arity
          default-kind
+         (struct-out kind-scheme)
+         kscheme-mono
+         generalize-kind
+         instantiate-kind
          unify-kind
          (struct-out exn:fail:kind-unify)
 
@@ -135,6 +140,14 @@
 ;; `(kind-nat)` is the kind of type-level natural numbers (the kind of
 ;; every `tnat`).  Atomic and nullary, like `kind-con`.
 (struct kind-nat  ()        #:transparent)
+;; `(kapp head args)` is an applied kind constructor — the kind analogue
+;; of `tapp`.  Promoting a PARAMETERISED datatype `(data (List a) …)`
+;; makes `(List κ)` a kind: `(kapp (kind-con 'List) (list κ))`.  This is
+;; what lets one promoted `List`/`Nat`/`Vec` be reused at any element kind
+;; (PolyKinds).  Under the pragmatic `* : *` discipline a kind constructor
+;; is not separately classified; `kapp` is checked structurally by the
+;; unifier (no kind-level reduction, so the checker stays terminating).
+(struct kapp      (head args) #:transparent)
 
 (define kstar (kind-star))
 (define (k-> a b) (kind-arr a b))
@@ -150,17 +163,48 @@
 (define (arity->star-kind n)
   (kind-arrow* (make-list n kstar) kstar))
 
-;; A kind variable, for kind inference.  Residual kvars are defaulted
-;; to `*` (Haskell-98 style; no kind polymorphism).
+;; A kind variable, for kind inference.
 (struct kvar (name) #:transparent)
 
+;; A kind scheme `∀κ⃗. K` — the kind analogue of `scheme`.  A type
+;; constructor's stored kind is a kind-scheme: residual parameter kinds
+;; are GENERALISED (quantified) rather than defaulted to `*`, so the same
+;; constructor kind-checks at different kinds in different places.  An
+;; empty `vars` list is an ordinary monomorphic kind.
+(struct kind-scheme (vars body) #:transparent)
+
+;; Wrap a bare kind as a (trivially monomorphic) scheme.
+(define (kscheme-mono k) (kind-scheme '() k))
+
+;; Render a kind (or kind-scheme) as a datum for diagnostics and tests.
+;; A scheme's bound kvars are renamed to nice single letters; residual
+;; (un-quantified) kvars show as `?`.
 (define (kind->datum k)
+  (cond
+    [(kind-scheme? k)
+     (define vs (kind-scheme-vars k))
+     (define names (nice-kind-names (length vs)))
+     (define rename
+       (for/hasheq ([v (in-list vs)] [n (in-list names)]) (values v n)))
+     (define d (kind->datum/rename (kind-scheme-body k) rename))
+     (if (null? vs) d `(forall ,names ,d))]
+    [else (kind->datum/rename k (hasheq))]))
+
+(define (kind->datum/rename k rename)
   (match k
     [(kind-star)      '*]
-    [(kind-arr a b)   `(-> ,(kind->datum a) ,(kind->datum b))]
+    [(kind-arr a b)   `(-> ,(kind->datum/rename a rename)
+                           ,(kind->datum/rename b rename))]
     [(kind-con n)     n]
     [(kind-nat)       'Nat]
-    [(kvar _)         '?]))
+    [(kvar n)         (hash-ref rename n '?)]
+    [(kapp h args)    `(,(kind->datum/rename h rename)
+                        ,@(map (lambda (a) (kind->datum/rename a rename)) args))]))
+
+;; a, b, c, … for the first 26 quantified kinds (more than enough).
+(define (nice-kind-names n)
+  (for/list ([i (in-range n)])
+    (string->symbol (string (integer->char (+ 97 i))))))
 
 ;; ----- Kind unification ----------------------------------------------
 ;; The kind analogue of the type unifier (unify.rkt), but far simpler:
@@ -180,7 +224,9 @@
        [(kind-star)    k]
        [(kind-con _)   k]
        [(kind-nat)     k]
-       [(kind-arr d c) (kind-arr (apply-ksubst s d) (apply-ksubst s c))])]))
+       [(kind-arr d c) (kind-arr (apply-ksubst s d) (apply-ksubst s c))]
+       [(kapp h args)  (kapp (apply-ksubst s h)
+                             (map (lambda (a) (apply-ksubst s a)) args))])]))
 
 ;; Compose: (ksubst-compose s2 s1) applies s1 then s2.
 (define (ksubst-compose s2 s1)
@@ -197,7 +243,9 @@
     [(kind-star)    (seteq)]
     [(kind-con _)   (seteq)]
     [(kind-nat)     (seteq)]
-    [(kind-arr d c) (set-union (kind-vars d) (kind-vars c))]))
+    [(kind-arr d c) (set-union (kind-vars d) (kind-vars c))]
+    [(kapp h args)  (for/fold ([acc (kind-vars h)]) ([a (in-list args)])
+                      (set-union acc (kind-vars a)))]))
 
 ;; The number of arguments a kind accepts (its leading arrow count).
 (define (kind-arity k)
@@ -212,7 +260,32 @@
     [(kind-star)    k]
     [(kind-con _)   k]
     [(kind-nat)     k]
-    [(kind-arr d c) (kind-arr (default-kind d) (default-kind c))]))
+    [(kind-arr d c) (kind-arr (default-kind d) (default-kind c))]
+    [(kapp h args)  (kapp (default-kind h) (map default-kind args))]))
+
+;; Generalise a bare kind into a kind-scheme by quantifying its free
+;; kvars.  Data-kind inference owns all the seed kvars it introduces, so
+;; there is no ambient kind environment to subtract — every free kvar is
+;; quantified.  This replaces defaulting-to-`*`: an unconstrained
+;; parameter kind becomes `∀k. … k …` instead of being pinned to `*`.
+(define (generalize-kind k)
+  (kind-scheme (sort (set->list (kind-vars k)) symbol<?) k))
+
+;; Instantiate a kind-scheme with fresh kvars (one per bound variable),
+;; mirroring type instantiation.  A bare kind passes through unchanged,
+;; so callers may apply this uniformly to scheme and non-scheme sources.
+(define (instantiate-kind k)
+  (cond
+    [(kind-scheme? k)
+     (define vs (kind-scheme-vars k))
+     (cond
+       [(null? vs) (kind-scheme-body k)]
+       [else
+        (define s
+          (for/fold ([s empty-ksubst]) ([v (in-list vs)])
+            (ksubst-extend s v (kvar (gensym v)))))
+        (apply-ksubst s (kind-scheme-body k))])]
+    [else k]))
 
 (struct exn:fail:kind-unify exn:fail (left right) #:transparent)
 
@@ -235,6 +308,14 @@
      (define sd (unify-kind d1 d2))
      (define sc (unify-kind (apply-ksubst sd c1) (apply-ksubst sd c2)))
      (ksubst-compose sc sd)]
+    ;; Applied kind constructors unify structurally: same head, same
+    ;; arity, pairwise-unifiable arguments.  No reduction (`* : *` with no
+    ;; kind families), so this terminates.
+    [((kapp h1 a1) (kapp h2 a2))
+     #:when (= (length a1) (length a2))
+     (for/fold ([s (unify-kind h1 h2)])
+               ([x (in-list a1)] [y (in-list a2)])
+       (ksubst-compose (unify-kind (apply-ksubst s x) (apply-ksubst s y)) s))]
     [(_ _) (raise-kind-unify! k1 k2)]))
 
 (define (bind-kvar a k orig-l orig-r)

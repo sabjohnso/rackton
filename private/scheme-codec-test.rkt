@@ -26,10 +26,11 @@
   (define gen:tcon-info
     (gen:let ([name      gen:tcon-name]
               [arity     (gen:integer-in 0 4)]
+              [kind      (gen:kind-scheme 3)]
               [ctors     (gen:list gen:tcon-name #:max-length 3)]
               [abstract? gen:boolean]
               [rtag      (gen:choice (gen:const #f) gen:tcon-name)])
-      (tcon-info name arity (arity->star-kind arity) ctors abstract? rtag)))
+      (tcon-info name arity kind ctors abstract? rtag)))
 
   (define gen:data-info
     (gen:let ([tname    gen:tcon-name]
@@ -52,6 +53,13 @@
   (check-property
    (property kind-roundtrips ([k (gen:kind 4)])
      (equal? (decode-kind (encode-kind k)) k)))
+
+  ;; A kind SCHEME — quantified kvars over a kind body — round-trips
+  ;; through a tcon-info (the only carrier of kind schemes in a sidecar).
+  (check-property
+   (property kind-scheme-roundtrips ([k (gen:kind-scheme 4)])
+     (let ([ti (tcon-info 'T 0 k '() #f #f)])
+       (equal? (tcon-info-kind (decode-tcon-info (encode-tcon-info ti))) k))))
 
   ;; The headline: a scheme — quantified vars over a possibly-qualified
   ;; body — survives scheme->sexp then sexp->scheme unchanged.

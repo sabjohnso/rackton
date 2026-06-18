@@ -708,7 +708,7 @@
                (let ([di (env-ref-data env local)])
                  (let ([ti (env-ref-tcon env (data-info-type-name di))])
                    (and ti (tcon-info-abstract? ti)))))
-      (cons external (encode-kind (env-ref-promoted-ctor env local)))))
+      (cons external (encode-kind-scheme (env-ref-promoted-ctor env local)))))
   (values compiled prov-stx
           export-bindings export-data-ctors-encoded
           export-tcons-encoded export-classes-encoded export-instances

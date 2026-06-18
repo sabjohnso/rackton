@@ -30,7 +30,7 @@
 
   ;; ----- type-constructor env ---------------------------------------
 
-  (define maybe-info (tcon-info 'Maybe 1 (arity->star-kind 1) '(None Some) #f #f))
+  (define maybe-info (tcon-info 'Maybe 1 (kscheme-mono (arity->star-kind 1)) '(None Some) #f #f))
   (define e2 (env-extend-tcon e1 'Maybe maybe-info))
   (check-equal? (env-ref-tcon e2 'Maybe) maybe-info)
 

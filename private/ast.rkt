@@ -303,6 +303,10 @@
 ;; A DataKinds-promoted datatype used as a kind, e.g. `Stack` in
 ;; `(g :: Stack)`.  `name` is the promoted type's name (a symbol).
 (struct k:con  (name)    #:transparent)
+;; An applied promoted kind constructor, e.g. `(List Ty)` in
+;; `(s :: (List Ty))`.  `head` is the promoted type name; `args` the
+;; kind arguments.
+(struct k:app  (head args) #:transparent)
 
 ;; fresh-stx creates a new syntax object sharing `base`'s
 ;; lexical context but distinct as a struct.  Synthesizers that emit

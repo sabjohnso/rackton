@@ -105,11 +105,11 @@
   (check-equal? (decode-data-info (encode-data-info di)) di))
 
 (test-case "tcon-info round-trips"
-  (define ti (tcon-info 'Maybe 1 (arity->star-kind 1) '(None Some) #f #f))
+  (define ti (tcon-info 'Maybe 1 (kscheme-mono (arity->star-kind 1)) '(None Some) #f #f))
   (check-equal? (decode-tcon-info (encode-tcon-info ti)) ti))
 
 (test-case "abstract tcon-info round-trips"
-  (define ti (tcon-info 'Counter 0 (arity->star-kind 0) '(MkCounter) #t #f))
+  (define ti (tcon-info 'Counter 0 (kscheme-mono (arity->star-kind 0)) '(MkCounter) #t #f))
   (check-equal? (decode-tcon-info (encode-tcon-info ti)) ti))
 
 ;; ----- class-info / instance-info --------------------------------

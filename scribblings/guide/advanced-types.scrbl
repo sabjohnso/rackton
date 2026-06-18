@@ -144,10 +144,11 @@ parameter:
 
 @section[#:tag "promoted-data"]{Promoted data (DataKinds)}
 
-A @emph{monomorphic} datatype — one with no type parameters — is
-promoted to the kind level: its name becomes a kind, and each of its
-constructors becomes a type-level constructor of that kind.  Promotion
-adds type-level identities only; the value-level datatype is unchanged.
+A datatype is @emph{promoted} to the kind level: its name becomes a
+kind, and each of its constructors becomes a type-level constructor of
+that kind.  Promotion adds type-level identities only; the value-level
+datatype is unchanged.  We start with a parameter-free datatype here; a
+@seclink["polymorphic-data-kinds"]{parameterised one} promotes too.
 
 This lets a type be @emph{indexed} by structured type-level data, with
 the index @emph{kind-checked}.  The standard example is a typed stack
@@ -179,10 +180,47 @@ compile-time error: @racket[(SPush Integer s)] is rejected because
 itself have kind @racket[Stack].  A phantom encoding over kind
 @racket[*] could not catch either mistake.
 
-Promotion is deliberately limited (matching Rackton's Haskell-98-style
-kind system): only parameter-free datatypes are promoted, and a
-constructor whose name already denotes a type is left value-only, so
+A constructor whose name already denotes a type is left value-only, so
 promotion never reinterprets an existing type.
+
+@subsection[#:tag "polymorphic-data-kinds"]{Polymorphic data kinds}
+
+Promotion is not limited to parameter-free datatypes.  A
+@emph{parameterised} datatype is promoted as well, and its parameters'
+kinds are @emph{generalised}: one promoted structure is reusable at any
+element kind (kind polymorphism, the kind-level analogue of ordinary
+polymorphism).  Promoting @racket[(data (TList a) …)] makes
+@racket[(TList k)] a kind for @emph{any} kind @racket[k]: the promoted
+@racket[TNil] is an empty @racket[(TList k)] at any @racket[k], and the
+promoted @racket[TCons] takes a @racket[k] and a @racket[(TList k)] and
+yields a @racket[(TList k)].
+
+@rackton-example[#:eval ev #:mode 'defs #:context? #t]{
+(data (TList a) TNil (TCons a (TList a)))   ;; kind (TList k)
+(data (Phantom a) MkPhantom)                ;; kind-polymorphic: k -> * for any k
+}
+
+The same promoted @racket[TList] now kind-checks at element kind
+@racket[Ty] @emph{and} at element kind @racket[Nat] — @racket[(TCons
+TInt TNil)] has kind @racket[(TList Ty)], while @racket[(TCons 5 TNil)]
+has kind @racket[(TList Nat)]:
+
+@rackton-example[#:eval ev #:mode 'defs #:context? #t]{
+(: at-ty  (Phantom (TCons TInt TNil)))
+(define at-ty MkPhantom)
+(: at-nat (Phantom (TCons 5 TNil)))
+(define at-nat MkPhantom)
+}
+
+A type indexed by a promoted @racket[(TList Ty)] is the reusable form of
+the stack machine's stack shape above — no bespoke @racket[Stack] /
+@racket[SPush] datatype is needed.  Ill-kinded indices are still
+rejected: @racket[(TCons TInt TInt)] is a kind error because
+@racket[TCons]'s tail must itself be a @racket[(TList k)], not a tag.
+
+A phantom or otherwise-unconstrained type parameter generalises the same
+way — @racket[Phantom] above is kind-polymorphic in its parameter, so it
+applies both to @racket[*]-kinded types and to higher-kinded ones.
 
 @section{Type aliases}
 

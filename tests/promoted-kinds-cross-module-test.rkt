@@ -40,3 +40,23 @@
    (require "promoted-kinds-cross-module-lib.rkt")
    (data (Bad g)
      (B : (-> (Mem TInt g) (Bad g))))))
+
+;; A PROMOTED PARAMETERISED datatype crosses the module boundary: g is
+;; inferred to kind (PList Ty) from (PStack (PCons TInt g)), so the
+;; importer must have recovered PCons's kind-polymorphic scheme (which
+;; carries a `kapp`) from the sidecar.
+(rackton
+  (require "promoted-kinds-cross-module-lib.rkt")
+  (data (UsesP g)
+    (U : (-> (PStack (PCons TInt g)) (UsesP g)))))
+
+(test-case "imported promoted parameterised datatype: a legitimate use compiles"
+  (check-true #t))
+
+;; Ill-kinded across the boundary: PCons's tail must be a (PList k), but
+;; TInt has kind Ty.
+(test-case "imported promoted parameterised datatype: ill-kinded use is a compile error"
+  (check-rackton-compile-error
+   (require "promoted-kinds-cross-module-lib.rkt")
+   (data (BadP g)
+     (BP : (-> (PStack (PCons TInt TInt)) (BadP g))))))

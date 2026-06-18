@@ -2672,10 +2672,10 @@
     (define abstract? (top:data-abstract? f))
     (env-extend-tcon e tname
                      (tcon-info tname (length tparams)
-                                ;; Placeholder kind; Phase A2.5
+                                ;; Placeholder kind scheme; Phase A2.5
                                 ;; (infer-data-kinds) replaces it with the
                                 ;; inferred kind before any type is checked.
-                                (arity->star-kind (length tparams))
+                                (kscheme-mono (arity->star-kind (length tparams)))
                                 (for/list ([c (in-list ctors)])
                                   (data-ctor-name c))
                                 abstract?
@@ -2706,14 +2706,20 @@
 ;; data-kind inference) wins, then the env's stored kind, then the
 ;; primitive table; #f when unknown (a resolved type should never
 ;; mention an unknown tcon, so callers may treat #f leniently).
+;; Stored kinds may be kind-schemes (tcon-info, promoted-ctors); a fresh
+;; instantiation per use site is what lets a kind-polymorphic constructor
+;; kind-check at different kinds in different places.  Bare kinds (batch
+;; seeds, primitives) pass through `instantiate-kind` unchanged.
 (define (tcon-kind-of env batch-kinds name)
-  (or (hash-ref batch-kinds name #f)
-      (let ([ti (env-ref-tcon env name #f)]) (and ti (tcon-info-kind ti)))
-      ;; A DataKinds-promoted type-level constructor (TInt, SPush, …).
-      ;; Checked after real tcons so an ordinary type of the same name
-      ;; always wins — promotion never reinterprets an existing type.
-      (env-ref-promoted-ctor env name #f)
-      (hash-ref primitive-kind-table name #f)))
+  (define k
+    (or (hash-ref batch-kinds name #f)
+        (let ([ti (env-ref-tcon env name #f)]) (and ti (tcon-info-kind ti)))
+        ;; A DataKinds-promoted type-level constructor (TInt, SPush, …).
+        ;; Checked after real tcons so an ordinary type of the same name
+        ;; always wins — promotion never reinterprets an existing type.
+        (env-ref-promoted-ctor env name #f)
+        (hash-ref primitive-kind-table name #f)))
+  (and k (instantiate-kind k)))
 
 ;; Infer the kind of a resolved core type.  `tvar-kinds` is a mutable
 ;; hasheq name→kind, pre-seeded with the in-scope type variables and
@@ -2948,52 +2954,69 @@
 
 ;; ----- kinds: DataKinds-style promotion (Phase A4.4) -----------------
 
-;; Promote each eligible *monomorphic* datatype to the kind level.  A
-;; datatype T with zero type parameters whose every constructor field is
-;; a bare reference to another monomorphic datatype is promoted: T names
-;; a kind `(kind-con T)`, and each ordinary constructor C with field
-;; types F1..Fn becomes a TYPE-LEVEL constructor of kind
-;; `(kind-con F1) -> … -> (kind-con Fn) -> (kind-con T)`, recorded in the
-;; env's promoted-ctors table.  Promotion only *adds* type-level
-;; identities; value-level data is untouched.  A constructor whose name
-;; already denotes a type, alias, or primitive is left value-only, so
-;; promotion never reinterprets an existing type name.  Out of scope
-;; (Haskell-98-style, matching the rest of Rackton's kind system): no
-;; promotion of parameterised datatypes (that needs kind polymorphism)
-;; and no GADT-syntax constructors among the promoted set.
+;; Promote each eligible datatype to the kind level.  A monomorphic
+;; datatype T promotes to the kind `(kind-con T)`; a PARAMETERISED
+;; datatype `(T p…)` promotes to the applied kind `(kapp (kind-con T)
+;; κp…)`, with its parameters' kinds quantified — so `(List κ)` is a
+;; reusable kind for any element kind κ (PolyKinds).  Each ordinary
+;; constructor C with field types F1..Fn becomes a TYPE-LEVEL constructor
+;; whose kind SCHEME is `∀κ⃗. φ(F1) -> … -> φ(Fn) -> R`, where R is T's
+;; result kind and φ maps a field type to its promoted kind (a parameter
+;; to its kvar, a datatype reference to its promoted kind constructor),
+;; recorded in the env's promoted-ctors table.  Promotion only *adds*
+;; type-level identities; value-level data is untouched.  A constructor
+;; whose name already denotes a type, alias, or primitive — or any
+;; GADT-syntax constructor (one with an explicit result type) — is left
+;; value-only, so promotion never reinterprets an existing type name.
 (define (promote-data env forms)
-  (define (mono-datatype? name)
+  (define (datatype-arity name)
     (define ti (env-ref-tcon env name #f))
-    (and ti (= (tcon-info-arity ti) 0)))
-  ;; The promoted kind of a constructor field's surface type, or #f when
-  ;; the field is not a bare monomorphic-datatype reference.
-  (define (field-kind ft)
+    (and ti (tcon-info-arity ti)))
+  ;; The promoted kind of a constructor field's surface type — a parameter
+  ;; maps to its kvar, a bare monomorphic-datatype reference to its
+  ;; kind-con, and an applied datatype `(D a…)` to `(kapp (kind-con D)
+  ;; …)`.  #f when the field is not promotable (e.g. a scalar type, an
+  ;; arrow, or a parameter applied as a higher-kinded head).
+  (define (field-kind ft param-kinds)
     (match ft
-      [(ty:con n _) (and (mono-datatype? n) (kind-con n))]
-      [_            #f]))
+      [(ty:var n _) (hash-ref param-kinds n (lambda () (kvar (gensym 'k))))]
+      [(ty:con n _) (and (equal? (datatype-arity n) 0) (kind-con n))]
+      [(ty:app (ty:con h _) args _)
+       (define ar (datatype-arity h))
+       (cond
+         [(and ar (positive? ar) (= ar (length args)))
+          (define aks (map (lambda (a) (field-kind a param-kinds)) args))
+          (and (andmap values aks) (kapp (kind-con h) aks))]
+         [else #f])]
+      [_ #f]))
   (define (name-taken? env name)
     (or (env-ref-tcon env name #f)
         (env-ref-alias env name #f)
         (hash-has-key? primitive-kind-table name)))
   (for/fold ([env env]) ([f (in-list forms)] #:when (top:data? f))
     (match-define (top:data tname tparams ctors _ _ _) f)
-    (cond
-      [(not (null? tparams)) env]               ; monomorphic datatypes only
-      [else
-       (define result-kind (kind-con tname))
-       (for/fold ([env env]) ([c (in-list ctors)])
-         (define cname (data-ctor-name c))
-         (define fks (map field-kind (data-ctor-field-types c)))
-         (cond
-           ;; A GADT-result ctor, an unpromotable field, or a name already
-           ;; bound as a type leaves this constructor value-only.
-           [(or (data-ctor-result-type c)
-                (memq #f fks)
-                (name-taken? env cname))
-            env]
-           [else
-            (env-extend-promoted-ctor env cname
-                                      (kind-arrow* fks result-kind))]))])))
+    (define param-kinds
+      (for/hasheq ([p (in-list tparams)]) (values p (kvar (gensym 'k)))))
+    (define result-kind
+      (if (null? tparams)
+          (kind-con tname)
+          (kapp (kind-con tname)
+                (for/list ([p (in-list tparams)]) (hash-ref param-kinds p)))))
+    (for/fold ([env env]) ([c (in-list ctors)])
+      (define cname (data-ctor-name c))
+      (define fks (map (lambda (ft) (field-kind ft param-kinds))
+                       (data-ctor-field-types c)))
+      (cond
+        ;; A GADT-result ctor, an unpromotable field, or a name already
+        ;; bound as a type leaves this constructor value-only.
+        [(or (data-ctor-result-type c)
+             (memq #f fks)
+             (name-taken? env cname))
+         env]
+        [else
+         (env-extend-promoted-ctor
+          env cname
+          (generalize-kind (kind-arrow* fks result-kind)))]))))
 
 ;; ----- kinds: data-type kind inference (Phase A2.5) ------------------
 
@@ -3067,7 +3090,7 @@
        (define ti (env-ref-tcon env name))
        (env-extend-tcon env name
                         (struct-copy tcon-info ti
-                                     [kind (default-kind (apply-ksubst s seed))])))]))
+                                     [kind (generalize-kind (apply-ksubst s seed))])))]))
 
 ;; Resolve every top:data form's ctor field types against the
 ;; type-level-complete env, registering each ctor as a data binding.
@@ -3838,7 +3861,7 @@
      (define env*
        (env-extend-tcon env tname
                         (tcon-info tname (length tparams)
-                                   (arity->star-kind (length tparams))
+                                   (kscheme-mono (arity->star-kind (length tparams)))
                                    (for/list ([c (in-list ctors)])
                                      (data-ctor-name c))
                                    abstract?
@@ -4248,7 +4271,7 @@
            (define e5
              (for/fold ([acc e4]) ([entry (in-list promoted)])
                (env-extend-promoted-ctor acc (car entry)
-                                         (decode-kind (cdr entry)))))
+                                         (decode-kind-scheme (cdr entry)))))
            (for/fold ([acc e5]) ([entry (in-list instances)])
              (define decoded (decode-instance-info entry))
              (define class-name (car decoded))
@@ -4302,6 +4325,7 @@
     [(k:star)      (kind-star)]
     [(k:nat)       (kind-nat)]
     [(k:con n)     (kind-con n)]
+    [(k:app h as) (kapp (kind-con h) (map surface-kind->core as))]
     [(k:arr d c)   (kind-arr (surface-kind->core d) (surface-kind->core c))]
     [_             (kind-star)]))
 
