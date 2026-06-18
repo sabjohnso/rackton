@@ -163,6 +163,22 @@
 ;; the current-* parameters, which the driver wraps around its *synchronous*
 ;; run-infer calls, so they remain in scope during execution.
 (define ((m:fresh-tvar [prefix 'a]) _ctx st) (st:fresh st prefix))
+;; Read the GADT-elimination expected type currently in scope (or #f).
+(define ((m:read-expected) _ctx st) (values (current-expected-type) st))
+;; Run `comp` with `current-expected-type` bound to `exp` (parameterize
+;; wraps the *execution* — the monad is delayed, so binding it at
+;; construction time would not reach run-infer).  Used to push a function's
+;; declared result type into a GADT `match` that sits in a tail position
+;; (an `if` branch, a `let`/`letrec` body) and to CLEAR it everywhere else,
+;; so the expected type only ever reaches a tail GADT-elimination site.
+(define ((with-expected exp comp) ctx st)
+  (parameterize ([current-expected-type exp]) (comp ctx st)))
+;; The expression forms into which an expected result type may flow: a
+;; `match` (which consumes it) or an `if`/`let`/`letrec` (which threads it
+;; on to its own tail sub-expression).  Anything else is NOT a tail
+;; position, so the expected type is cleared before descending into it.
+(define (tail-elim-form? e)
+  (or (e:match? e) (e:match*? e) (e:if? e) (e:let? e) (e:letrec? e)))
 (define ((m:add-preds ps) _ctx st) (values (void) (st:add-preds st ps)))
 (define ((m:snapshot-preds) _ctx st) (values (st:preds st) st))
 (define ((m:set-preds ps) _ctx st) (values (void) (st:set-preds st ps)))
@@ -1223,7 +1239,12 @@
 ;; substitutions threaded), generalized, then made available.  The
 ;; binding-threading for/fold becomes a monadic named-let.
 (define (infer-let/m bindings body env)
-  (let/infer ([acc (let loop ([bs bindings] [s empty-subst] [env-after env])
+  ;; A binding's RHS has its own type, not the `let`'s result type, so the
+  ;; expected type is cleared for the RHSs and re-established only for the
+  ;; body (when it is itself a GADT-elim site).
+  (let/infer ([exp (m:read-expected)])
+   (let/infer ([acc (with-expected #f
+                     (let loop ([bs bindings] [s empty-subst] [env-after env])
                      (cond
                        [(null? bs) (infer-return (cons s env-after))]
                        [else
@@ -1236,17 +1257,22 @@
                                                            (apply-subst s-combined t))])
                               (let* ([env-after* (env-extend-var
                                                   (apply-subst/env s-combined env-after) (car b) sch)])
-                                (loop (cdr bs) s-combined env-after*)))))]))])
+                                (loop (cdr bs) s-combined env-after*)))))])))])
     (let* ([s-acc (car acc)] [env-after (cdr acc)])
-      (let/infer ([rb (infer-expr/m body env-after)])
-        (infer-return (cons (subst-compose (car rb) s-acc) (cdr rb)))))))
+      (let/infer ([rb (with-expected (and (tail-elim-form? body) exp)
+                                     (infer-expr/m body env-after))])
+        (infer-return (cons (subst-compose (car rb) s-acc) (cdr rb))))))))
 
 ;; Mutual recursion: pre-bind each name with a fresh monomorphic tvar so each
 ;; rhs can reference every other binding (and itself).  After inferring all
 ;; rhs's, unify each tvar with the inferred type and generalize against the
 ;; OUTER env's free-var set.
 (define (infer-letrec/m bindings body env)
-  (let/infer ([pre-tvars (infer-sequence (for/list ([b (in-list bindings)]) (m:fresh-tvar)))])
+ ;; As in `infer-let/m`: the RHSs carry no expected type; only the body
+ ;; (if a GADT-elim site) inherits the enclosing result type.
+ (let/infer ([exp (m:read-expected)])
+  (with-expected #f
+   (let/infer ([pre-tvars (infer-sequence (for/list ([b (in-list bindings)]) (m:fresh-tvar)))])
     (let* ([pre-bindings (map (lambda (b t) (cons (car b) t)) bindings pre-tvars)]
            [env-with-pre (for/fold ([e env]) ([pb (in-list pre-bindings)])
                            (env-extend-var e (car pb) (scheme '() (cdr pb))))])
@@ -1274,15 +1300,20 @@
                                                                      (car tts))])
                                         (loop (cdr bs) (cdr tts)
                                               (env-extend-var e (car (car bs)) sch)))]))])
-            (let/infer ([rb (infer-expr/m body env-after)])
-              (infer-return (cons (subst-compose (car rb) s-final) (cdr rb))))))))))
+            (let/infer ([rb (with-expected (and (tail-elim-form? body) exp)
+                                           (infer-expr/m body env-after))])
+              (infer-return (cons (subst-compose (car rb) s-final) (cdr rb))))))))))))
 
 ;; Infer-monad arm.  Pattern for the conversion: `let/infer` binds each
 ;; recursive `infer-expr/m` result (a `subst . type` pair); a `let*` does the
 ;; pure work between binds (unify, subst-compose) and ends in the next monadic
 ;; computation.
 (define (infer-if/m c t e stx env)
-  (let/infer ([rc (infer-expr/m c env)])
+  ;; The condition is a Boolean (not the `if`'s result), so it never
+  ;; carries the expected type; each branch DOES have the `if`'s result
+  ;; type, so a branch that is itself a GADT-elim site inherits it.
+  (let/infer ([exp (m:read-expected)])
+   (let/infer ([rc (with-expected #f (infer-expr/m c env))])
     (let* ([s-c (car rc)] [t-c (cdr rc)]
            [s-cb
             (with-handlers
@@ -1291,10 +1322,12 @@
                  (raise-type-mismatch! (expr-stx c) t-bool (apply-subst s-c t-c)))])
              (unify (apply-subst s-c t-c) t-bool))]
            [s1 (subst-compose s-cb s-c)])
-      (let/infer ([rt (infer-expr/m t (apply-subst/env s1 env))])
+      (let/infer ([rt (with-expected (and (tail-elim-form? t) exp)
+                                     (infer-expr/m t (apply-subst/env s1 env)))])
         (let* ([s-then (car rt)] [t-then (cdr rt)]
                [s2 (subst-compose s-then s1)])
-          (let/infer ([re (infer-expr/m e (apply-subst/env s2 env))])
+          (let/infer ([re (with-expected (and (tail-elim-form? e) exp)
+                                         (infer-expr/m e (apply-subst/env s2 env)))])
             (let* ([s-else (car re)] [t-else (cdr re)]
                    [s3 (subst-compose s-else s2)]
                    [s-branches
@@ -1306,7 +1339,7 @@
                      (unify (normalize-type/guarded env (apply-subst s3 t-then))
                             (normalize-type/guarded env (apply-subst s3 t-else))))]
                    [s-final (subst-compose s-branches s3)])
-              (infer-return (cons s-final (apply-subst s-final t-then))))))))))
+              (infer-return (cons s-final (apply-subst s-final t-then)))))))))))
 
 (define (infer-ann/m expr ty-ast stx env)
   (kind-check-surface env ty-ast)
@@ -1765,6 +1798,42 @@
 ;; infer-pattern, the preds-box discharge, and the unify/gadt-unify work stay
 ;; direct (box/table-backed during the transition); the guard and body
 ;; recursions go through infer-expr/m.
+;; A constructor is GADT-style when its result type FIXES an index — its
+;; result is `(T … concrete-or-repeated …)` rather than `(T v1 … vn)` with
+;; distinct bound tvars (the generic shape).  Matching such a constructor
+;; learns a local index equality; when several arms refine the SAME
+;; scrutinee index and no result type pins each arm independently, the
+;; arms collide and the conflict surfaces as a confusing mismatch.
+(define (ctor-scheme-gadt? sch)
+  (match sch
+    [(scheme vs body)
+     (define result
+       (let loop ([t (qual-body-deep body)])
+         (if (arrow? t) (loop (arrow-cod t)) t)))
+     (match result
+       [(tapp (tcon _) args)
+        (not (and (andmap tvar? args)
+                  (let ([ns (map tvar-name args)])
+                    (and (andmap (lambda (n) (memq n vs)) ns)
+                         (= (length ns) (length (remove-duplicates ns)))))))]
+       [_ #f])]))
+
+(define (gadt-ctor-pattern? env pat)
+  (and (p:ctor? pat)
+       (let ([di (env-ref-data env (p:ctor-name pat))])
+         (and di (ctor-scheme-gadt? (data-info-scheme di))))))
+
+;; Appended to a match error when a GADT constructor is involved: such a
+;; match's arms refine the scrutinee's index and so cannot be unified with
+;; one another — each needs to be checked against a known result type.
+(define gadt-match-hint
+  (string-append
+   "\n  note: this is a GADT match — its arms refine the scrutinee's index, "
+   "so they\n  cannot be reconciled with each other.  Give the enclosing "
+   "definition a type\n  signature (keeping the match in its tail position), "
+   "or factor the match into its\n  own signed helper, so each arm is checked "
+   "against the declared result type."))
+
 (define (infer-clause/m cl scrut-type result-type env [earlier-arms? #t])
   (let/infer ([rp (infer-pattern/m (clause-pattern cl) env)])
    (let ()
@@ -1790,8 +1859,10 @@
           ([exn:fail:unify?
             (lambda (e2)
               (raise-syntax-error 'infer
-                (format "pattern type ~a does not match scrutinee type ~a"
-                        (pretty-type pat-type*) (pretty-type scrut-type*))
+                (string-append
+                 (format "pattern type ~a does not match scrutinee type ~a"
+                         (pretty-type pat-type*) (pretty-type scrut-type*))
+                 (if (gadt-ctor-pattern? env (clause-pattern cl)) gadt-match-hint ""))
                 (clause-stx cl)))])
           (gadt-unify pat-type* scrut-type*)))])
      (values (unify pat-type* scrut-type*) (hash))))
@@ -1853,10 +1924,12 @@
                  (match-define (list got exp)
                    (format-types (list (apply-subst s-acc t-body) refined-result-type)))
                  (raise-syntax-error 'infer
-                   (format (if earlier-arms?
-                               "match clause body has type ~a but earlier arms have ~a"
-                               "match clause body has type ~a but the expected result type is ~a")
-                           got exp)
+                   (string-append
+                    (format (if earlier-arms?
+                                "match clause body has type ~a but earlier arms have ~a"
+                                "match clause body has type ~a but the expected result type is ~a")
+                            got exp)
+                    (if (gadt-ctor-pattern? env (clause-pattern cl)) gadt-match-hint ""))
                    (clause-stx cl)))])
              (unify (apply-skolem-subst arm-skolem-subst (apply-subst s-acc t-body))
                     refined-result-type)))
@@ -3307,8 +3380,7 @@
            (env-extend-var e p (scheme '() ty))))
        (define-values (s-body t-body st-b)
          (cond
-           [(or (e:match? (e:lam-body expr))
-                (e:match*? (e:lam-body expr)))
+           [(tail-elim-form? (e:lam-body expr))
             (parameterize ([current-expected-type cod])
               (infer-expr (e:lam-body expr) env-lam st))]
            [else (infer-expr (e:lam-body expr) env-lam st)]))
@@ -3569,17 +3641,17 @@
                          ([p (in-list (e:lam-params expr))]
                           [ty (in-list arg-tys)])
                  (env-extend-var e p (scheme '() ty))))
-             ;; Only seed the expected-type parameter
-             ;; when the lambda body is DIRECTLY a `match` — that's
-             ;; the GADT-elimination case where pushing the
-             ;; declared codomain into result-tv unlocks local
-             ;; skolem refinement.  For any other body shape, the
-             ;; expected type would propagate too deep (across
-             ;; do-blocks, nested lambdas, etc.) and pin a
-             ;; subexpression's result to the wrong type.
+             ;; Seed the expected-type parameter when the lambda body is a
+             ;; GADT-elim site — a `match`, or an `if`/`let`/`letrec`
+             ;; whose tail leads to one — so the declared codomain reaches
+             ;; the match's result-tv and unlocks local skolem refinement.
+             ;; `with-expected` (in infer-if/let/letrec) clears the type
+             ;; for every NON-tail position, so it can't propagate too
+             ;; deep (into a condition, a binding RHS, an app argument, …)
+             ;; and pin the wrong subexpression.
              (define-values (s-body t-body st-b)
                (cond
-                 [(e:match? (e:lam-body expr))
+                 [(tail-elim-form? (e:lam-body expr))
                   (parameterize ([current-expected-type cod])
                     (infer-expr (e:lam-body expr) env-lam st))]
                  [else (infer-expr (e:lam-body expr) env-lam st)]))
