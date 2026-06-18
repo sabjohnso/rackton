@@ -74,6 +74,36 @@
   (check-equal? s0 "7")
   (check-equal? d1 12))
 
+;; ----- aref on a not-yet-resolved array type -----------------------
+
+(rackton
+  ;; aref on a size-polymorphic parameter: `xs`'s array type is fixed only
+  ;; when the body is later unified with the signature, so at the `aref`
+  ;; itself `xs` is still a bare type variable.  This used to be rejected
+  ;; ("aref target must have a concrete array type"); aref now unifies the
+  ;; target with an array shape instead of demanding one up front.
+  (: head-of (All (n a) (-> (Array n a) a)))
+  (define (head-of xs) (aref xs 0))
+  (: h Integer) (define h (head-of (array 7 8 9))))
+
+(test-case "aref works on a size-polymorphic parameter (typed via signature)"
+  (check-equal? h 7))
+
+;; ----- imap (indexed map) ------------------------------------------
+
+(rackton
+  ;; element i becomes  i*10 + x  — exposes the index that plain map hides
+  (: tagged (Array 3 Integer))
+  (define tagged (array-imap (lambda (i x) (+ (* i 10) x)) (array 1 2 3)))
+  (: t0 Integer) (define t0 (aref tagged 0))   ; 0*10 + 1 = 1
+  (: t1 Integer) (define t1 (aref tagged 1))   ; 1*10 + 2 = 12
+  (: t2 Integer) (define t2 (aref tagged 2)))  ; 2*10 + 3 = 23
+
+(test-case "array-imap exposes the element index, preserving size"
+  (check-equal? t0 1)
+  (check-equal? t1 12)
+  (check-equal? t2 23))
+
 ;; ----- fold --------------------------------------------------------
 
 (rackton

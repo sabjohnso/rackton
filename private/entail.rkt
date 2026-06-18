@@ -32,6 +32,7 @@
          "types.rkt"
          "env.rkt"
          "unify.rkt"
+         "nat-solve.rkt"
          "diagnostic.rkt")
 
 ;; A syntax object to blame for a constraint error raised inside
@@ -71,6 +72,30 @@
         (and σ2 (merge-substs σ1 σ2))])]))
 
 (define (match-one src dst)
+  (cond
+    ;; A Nat-arithmetic head (e.g. `(+ a 1)` in an `(Array (+ a 1))`
+    ;; instance) matches a Nat target by SOLVING the equation rather than
+    ;; matching it structurally: `(+ a 1)` against `3` binds `a := 2`.
+    ;; This subsumes the literal/literal case and `(* 2 n)`-style heads.
+    ;; Handled before the structural `tapp` clause because an arithmetic
+    ;; expression is a `tapp` whose operands must not be matched termwise.
+    [(and (nat-expr? src) (nat-expr? dst)) (nat-match-one src dst)]
+    [else (match-one/structural src dst)]))
+
+;; Solve `src = dst` over the Nats, but keep `match-one`'s one-way
+;; discipline: accept the result only if it binds variables of the
+;; SOURCE (the instance-head pattern) and never of the target.  A
+;; solution that would specialise the target is no match here.
+(define (nat-match-one src dst)
+  (define σ (solve-nat-equation src dst))
+  (cond
+    [(not σ) #f]
+    [(let ([src-vars (type-vars src)])
+       (for/and ([k (in-hash-keys σ)]) (set-member? src-vars k)))
+     σ]
+    [else #f]))
+
+(define (match-one/structural src dst)
   (match* (src dst)
     [((tvar α) t)          (subst-singleton α t)]
     [((tcon c) (tcon c2))  (if (eq? c c2) empty-subst #f)]

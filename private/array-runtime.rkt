@@ -27,6 +27,7 @@
          flatten-major
          flatten-minor
          array-map
+         array-imap
          array-fold
          array-foldr
          array-rotate)
@@ -98,6 +99,17 @@
   (case-lambda
     [(f a) (array-map* f a)]
     [(f)   (lambda (a) (array-map* f a))]))
+
+;; Indexed map: element `i` of the result is `(f i (ref a i))`.  `f` is
+;; curried (`(-> Integer (-> a b))`), applied one argument at a time.
+(define (array-imap* f a)
+  (rackton-array-from-list
+   (for/list ([i (in-range (rackton-array-length a))])
+     ((f i) (rackton-array-ref a i)))))
+(define array-imap
+  (case-lambda
+    [(f a) (array-imap* f a)]
+    [(f)   (lambda (a) (array-imap* f a))]))
 
 (define (array-fold* f z a)
   (for/fold ([acc z]) ([i (in-range (rackton-array-length a))])

@@ -764,6 +764,8 @@
     ;; traverse over an array of any (including polymorphic) size.
     ;; Runtime impls in array-runtime / prelude-runtime.
     (: array-map   (-> (-> a b) (-> (Array n a) (Array n b))))
+    ;; indexed map: element i of the result is (f i (aref arr i)).
+    (: array-imap  (-> (-> Integer (-> a b)) (-> (Array n a) (Array n b))))
     (: array-fold  (-> (-> b (-> a b)) (-> b (-> (Array n a) b))))
     (: array-foldr (-> (-> a (-> b b)) (-> b (-> (Array n a) b))))
     ;; Cyclic rotation (size-preserving): positive k rotates left.

@@ -25,7 +25,17 @@ s-expressions:
 @item{@racket[tcons] — type-constructor name → kind (provided
       types).}
 @item{@racket[classes] — class name → class declaration (provided
-      classes).}
+      classes).  The declaration carries each method's signature
+      @italic{and} its default body: the defaults are serialised as
+      stx-free surface AST (the node set @racket[remap-ast-stx]
+      relocates), so an instance written in an importing module falls
+      back on the protocol's defaults exactly like one in the protocol's
+      own module.  The importer re-anchors every handle with
+      @racket[freshen-ast], so the placeholder syntax a decoded node
+      carries is always replaced; a default that names a binding private
+      to the protocol's module is the one thing that will not resolve
+      across the boundary.  The @racket[#:derive] cross-class bodies
+      (@racket[super-derives]) are still not carried.}
 @item{@racket[instances] — full instance table (always — instances
       ignore @racket[provide]).}]
 

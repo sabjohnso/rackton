@@ -17,6 +17,7 @@
            rackcheck
            "types.rkt"
            "env.rkt"
+           "ast.rkt"
            "scheme-codec.rkt"
            (submod "type-gen.rkt" test))
 
@@ -83,4 +84,25 @@
   ;; An empty-quantifier scheme collapses to the bare body datum and back.
   (let ([s (scheme '() (tcon 'Integer))])
     (check-equal? (scheme->sexp s) 'Integer)
-    (check-equal? (sexp->scheme (scheme->sexp s)) s)))
+    (check-equal? (sexp->scheme (scheme->sexp s)) s))
+
+  ;; A class's DEFAULT method bodies (surface AST) cross modules: encode
+  ;; the class, decode it, and the default round-trips.  The decoded AST
+  ;; carries a placeholder syntax handle (the importer re-anchors it with
+  ;; freshen-ast), so we compare modulo stx by relocating both to one
+  ;; handle.  Body modelled on Comonad's `duplicate = extend id`.
+  (let* ([stx (datum->syntax #f 'orig)]
+         [dup-default
+          (e:lam '(w)
+                 (e:app (e:var 'extend stx)
+                        (list (e:lam '(x) (e:var 'x stx) stx)
+                              (e:var 'w stx))
+                        stx)
+                 stx)]
+         [ci (class-info 'Comonad '(w) (hasheq) '() (hasheq)
+                         (hasheq 'duplicate dup-default)
+                         (hasheq) '() (hasheq) '() '() '())]
+         [ci2 (decode-class-info (encode-class-info ci))]
+         [dup2 (hash-ref (class-info-defaults ci2) 'duplicate)]
+         [norm (lambda (e) (relocate-ast e stx))])
+    (check-equal? (norm dup2) (norm dup-default))))

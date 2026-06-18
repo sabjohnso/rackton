@@ -245,16 +245,19 @@ outer index varies slowest, so each inner array is emitted in turn) and
 
 @deftogether[(
 @defproc[(array-map   [f (-> a b)] [arr (Array n a)]) (Array n b)]
+@defproc[(array-imap  [f (-> Integer (-> a b))] [arr (Array n a)]) (Array n b)]
 @defproc[(array-fold  [f (-> b (-> a b))] [z b] [arr (Array n a)]) b]
 @defproc[(array-foldr [f (-> a (-> b b))] [z b] [arr (Array n a)]) b]
 )]{
 
 @racket[array-map] applies @racket[f] to every element, preserving the
-size; @racket[array-fold] is a strict left fold (@racket[f] applied to
-the accumulator then each element) and @racket[array-foldr] the
-corresponding right fold (@racket[f x0 (f x1 (… (f xⁿ⁻¹ z)))]).  All work
-at any size, including a polymorphic @racket[n] — unlike the concrete-size
-slices @racket[array-take] / @racket[array-drop] / @racket[array-split-at].}
+size; @racket[array-imap] is the indexed variant, where element @racket[i]
+of the result is @racket[(f i (aref arr i))].  @racket[array-fold] is a
+strict left fold (@racket[f] applied to the accumulator then each element)
+and @racket[array-foldr] the corresponding right fold
+(@racket[f x0 (f x1 (… (f xⁿ⁻¹ z)))]).  All work at any size, including a
+polymorphic @racket[n] — unlike the concrete-size slices
+@racket[array-take] / @racket[array-drop] / @racket[array-split-at].}
 
 @defproc[(array-rotate [k Integer] [arr (Array n a)]) (Array n a)]{
 

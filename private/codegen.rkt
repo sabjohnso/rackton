@@ -1383,6 +1383,10 @@
     [(eq? head-tcon 'Boolean) '(Boolean)]
     [(eq? head-tcon 'String)  '(String)]
     [(eq? head-tcon 'Float)   '(Float)]
+    ;; `Array` values are prefab `rkt-array` structs (see array-runtime);
+    ;; an Array-headed instance (Functor / Comonad) registers under that
+    ;; tag, which is what dispatch-tag returns for an array value.
+    [(eq? head-tcon 'Array)   '(rkt-array)]
     ;; The function arrow has no tcon-info shell; a procedure value
     ;; dispatches as the `->` tycon (see dispatch-tag), so a `->`-headed
     ;; instance registers under that tag.

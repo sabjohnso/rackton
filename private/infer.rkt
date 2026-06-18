@@ -1564,30 +1564,38 @@
                  (apply-subst s-final
                               (make-tapp (tcon 'Array) (list (tnat n) β))))))))))
 
-;; `(aref arr n)` — the target must resolve to a concrete array type; when
-;; the size is a concrete Nat the literal index is bounds-checked (with a
-;; variable size the runtime element read is the safety net).  Yields the
-;; element type.
+;; `(aref arr n)` — the target must be an array.  We UNIFY it with a fresh
+;; `(Array size elem)` rather than demanding it already be one: inside a
+;; size-polymorphic function (or an instance method) the target's type is
+;; often still a bare variable when inference reaches the `aref`, only
+;; pinned afterwards by unifying the body against the signature.  When the
+;; size resolves to a concrete Nat the literal index is bounds-checked;
+;; with a symbolic size the runtime element read is the safety net.
 (define (infer-aref/m ae idx stx env)
   (let/infer ([r (infer-expr/m ae env)])
     (let* ([s (car r)] [t (apply-subst s (cdr r))])
-      (match t
-        [(tapp (tcon 'Array) (list size elem))
-         ;; Reduce a computed size like `(* 2 3)` to a literal so it stays
-         ;; bounds-checkable; a variable size stays symbolic (no check).
-         (define size* (normalize-nat-type size))
-         (cond
-           [(and (tnat? size*) (>= idx (tnat-value size*)))
-            (raise-syntax-error 'infer
-              (format "aref index ~a is out of bounds for an array of size ~a"
-                      idx (tnat-value size*))
-              stx)]
-           [else (infer-return (cons s elem))])]
-        [_
-         (raise-syntax-error 'infer
-           (format "aref target must have a concrete array type, got ~a"
-                   (pretty-type t))
-           stx)]))))
+      (let/infer ([elem (m:fresh-tvar)])
+        (let/infer ([size (m:fresh-tvar)])
+          (let* ([arr-ty (make-tapp (tcon 'Array) (list size elem))]
+                 [s-u (with-handlers
+                       ([exn:fail:unify?
+                         (lambda (_)
+                           (raise-syntax-error 'infer
+                             (format "aref target must be an array, got ~a"
+                                     (pretty-type t))
+                             stx))])
+                       (unify t arr-ty))]
+                 [s-now (subst-compose s-u s)]
+                 ;; Reduce a computed size like `(* 2 3)` to a literal so it
+                 ;; stays bounds-checkable; a variable size stays symbolic.
+                 [size* (normalize-nat-type (apply-subst s-now size))])
+            (cond
+              [(and (tnat? size*) (>= idx (tnat-value size*)))
+               (raise-syntax-error 'infer
+                 (format "aref index ~a is out of bounds for an array of size ~a"
+                         idx (tnat-value size*))
+                 stx)]
+              [else (infer-return (cons s-now (apply-subst s-now elem)))])))))))
 
 ;; `(array-take k arr)` / `(array-drop k arr)` / `(array-split-at k arr)`
 ;; — the target must resolve to a CONCRETE-size array `(Array n elem)`;
