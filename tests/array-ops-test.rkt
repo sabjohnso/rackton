@@ -115,6 +115,25 @@
   (check-equal? ok2 3)      ; (Some (array 1 2 3)) → element 2 is 3
   (check-equal? bad? #t))   ; a failing element collapses to None
 
+;; ----- rotate (cyclic, size-preserving) ----------------------------
+
+(rackton
+  ;; positive k rotates left: result[i] = input[(i+k) mod n]
+  (: rl (Array 3 Integer)) (define rl (array-rotate 1 (array 1 2 3)))
+  (: rl0 Integer) (define rl0 (aref rl 0))   ; 2
+  (: rl2 Integer) (define rl2 (aref rl 2))   ; 1
+  ;; negative k rotates right
+  (: rr (Array 3 Integer)) (define rr (array-rotate -1 (array 1 2 3)))
+  (: rr0 Integer) (define rr0 (aref rr 0))   ; 3
+  ;; k wraps modulo the size
+  (: rw (Array 3 Integer)) (define rw (array-rotate 4 (array 1 2 3)))
+  (: rw0 Integer) (define rw0 (aref rw 0)))  ; same as rotate 1 → 2
+
+(test-case "array-rotate cyclically shifts, preserving size"
+  (check-equal? rl0 2) (check-equal? rl2 1)
+  (check-equal? rr0 3)
+  (check-equal? rw0 2))
+
 ;; ----- compile-time checks ----------------------------------------
 
 (test-case "taking more than the array holds is a compile error"

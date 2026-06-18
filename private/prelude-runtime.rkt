@@ -102,6 +102,7 @@
  ;; codegen for the array-take/-drop/-split-at forms (internal — excluded
  ;; from main.rkt's user re-export).  Impls from array-runtime.rkt.
  flatten-major flatten-minor array-map array-fold array-foldr array-traverse
+ array-rotate
  rackton-array-take rackton-array-drop
 
  ;; ADTs (constructors usable as expressions and as match patterns)

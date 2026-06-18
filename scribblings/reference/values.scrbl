@@ -256,6 +256,13 @@ corresponding right fold (@racket[f x0 (f x1 (… (f xⁿ⁻¹ z)))]).  All work
 at any size, including a polymorphic @racket[n] — unlike the concrete-size
 slices @racket[array-take] / @racket[array-drop] / @racket[array-split-at].}
 
+@defproc[(array-rotate [k Integer] [arr (Array n a)]) (Array n a)]{
+
+Cyclic rotation, preserving the size: result element @racket[i] is input
+element @racket[(i + k) mod n].  A positive @racket[k] rotates left
+(so @racket[(array-rotate 1 (array 1 2 3))] is @racket[(array 2 3 1)]), a
+negative @racket[k] rotates right, and @racket[k] wraps modulo the size.}
+
 @defproc[(array-traverse [f (-> a (f b))] [arr (Array n a)]) (f (Array n b))]{
 
 The @tt{mapM} / @racket[traverse]-style helper: apply an

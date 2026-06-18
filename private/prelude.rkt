@@ -766,6 +766,8 @@
     (: array-map   (-> (-> a b) (-> (Array n a) (Array n b))))
     (: array-fold  (-> (-> b (-> a b)) (-> b (-> (Array n a) b))))
     (: array-foldr (-> (-> a (-> b b)) (-> b (-> (Array n a) b))))
+    ;; Cyclic rotation (size-preserving): positive k rotates left.
+    (: array-rotate (-> Integer (-> (Array n a) (Array n a))))
     ;; mapM/traverse-style: apply an effectful function to each element
     ;; and rebuild the array inside the applicative (pure is resolved and
     ;; prepended at each call site, like mconcat's mempty).

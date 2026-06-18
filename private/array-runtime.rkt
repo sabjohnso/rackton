@@ -28,7 +28,8 @@
          flatten-minor
          array-map
          array-fold
-         array-foldr)
+         array-foldr
+         array-rotate)
 
 ;; The handle.  `vec` is the current backing store; it is an
 ;; implementation detail and must not escape this module.  Prefab (not a
@@ -106,6 +107,24 @@
     [(f z a) (array-fold* f z a)]
     [(f z)   (lambda (a) (array-fold* f z a))]
     [(f)     (lambda (z) (lambda (a) (array-fold* f z a)))]))
+
+;; Cyclic rotation, size-preserving: result element `i` is input element
+;; `(i + k) mod n`.  Positive `k` rotates left (brings element `k` to the
+;; front), negative `k` rotates right; `k` wraps modulo the size.  Empty
+;; arrays rotate to themselves.
+(define (array-rotate* k a)
+  (define n (rackton-array-length a))
+  (cond
+    [(= n 0) a]
+    [else
+     (define s (modulo k n))          ; 0..n-1 even for negative k
+     (rackton-array-from-list
+      (for/list ([i (in-range n)])
+        (rackton-array-ref a (modulo (+ i s) n))))]))
+(define array-rotate
+  (case-lambda
+    [(k a) (array-rotate* k a)]
+    [(k)   (lambda (a) (array-rotate* k a))]))
 
 ;; Right fold: `f x0 (f x1 (… (f x_{n-1} z)))`.  `f` is curried
 ;; (`(-> a (-> b b))`), so it is applied one argument at a time.
