@@ -14,6 +14,7 @@
          (struct-out tcon-info)
          (struct-out class-info)
          (struct-out instance-info)
+         (struct-out tyfam-info)
 
          empty-env
          env-extend-var
@@ -24,6 +25,10 @@
          env-ref-tcon
          env-extend-promoted-ctor
          env-ref-promoted-ctor
+         env-extend-tyfam
+         env-ref-tyfam
+         env-tyfam-names
+         env-add-tyfam-clause
          env-extend-class
          env-clear-instances
          env-ref-class
@@ -62,9 +67,21 @@
 ;; a separate table from `tcons` so promotion only adds type-level
 ;; identities and never perturbs value-level data, codegen, or
 ;; exhaustiveness, which read `data-ctors`/`tcons` alone.
+;; `tyfams` maps a STANDALONE type-family name to its `tyfam-info`
+;; (Feature 1): the ordered clauses of a closed family or the coherent
+;; equation set of an open family.  Separate from `classes` (associated
+;; `#:type` families) so the two reduction mechanisms stay independent.
 (struct env (vars data-ctors tcons classes instance-table method-owners aliases
-             struct-fields effects promoted-ctors)
+             struct-fields effects promoted-ctors tyfams)
   #:transparent)
+
+;; A standalone type family's reduction information.
+;;   `arity`     — number of parameters;
+;;   `kind`      — the family's kind scheme (or #f until inferred);
+;;   `openness`  — 'closed (ordered clauses) or 'open (coherent equations);
+;;   `clauses`   — list of `(cons (listof core-type) core-type)` =
+;;                 (LHS patterns . RHS), resolved to core types.
+(struct tyfam-info (name arity kind openness clauses) #:transparent)
 
 ;; A data-constructor's typing information.  `scheme` is the polymorphic
 ;; type assigned to the constructor when used as a value.  `arity` is
@@ -163,7 +180,7 @@
 ;; prelude-instances-table; set intrinsically at construction.
 (struct instance-info (head context methods type-family-bindings origin prelude?) #:transparent)
 
-(define empty-env (env (hasheq) (hasheq) (hasheq) (hasheq) (hasheq) (hasheq) (hasheq) (hasheq) (hasheq) (hasheq)))
+(define empty-env (env (hasheq) (hasheq) (hasheq) (hasheq) (hasheq) (hasheq) (hasheq) (hasheq) (hasheq) (hasheq) (hasheq)))
 
 ;; ----- basic accessors ----------------------------------------------
 
@@ -191,6 +208,33 @@
 
 (define (env-ref-promoted-ctor e name [default #f])
   (hash-ref (env-promoted-ctors e) name default))
+
+;; ----- standalone type families -------------------------------------
+
+(define (env-extend-tyfam e name info)
+  (struct-copy env e [tyfams (hash-set (env-tyfams e) name info)]))
+
+(define (env-ref-tyfam e name [default #f])
+  (hash-ref (env-tyfams e) name default))
+
+;; The set of all standalone type-family names — consumed by the
+;; normalizer's guard so reduction is attempted only on types that
+;; actually mention a family.
+(define (env-tyfam-names e)
+  (for/seteq ([k (in-hash-keys (env-tyfams e))]) k))
+
+;; Append one equation `(pats . rhs)` to an existing OPEN family — used
+;; by the per-form (REPL) path where a `type-instance` arrives after its
+;; family declaration.  No-op if the family is unknown.
+(define (env-add-tyfam-clause e name clause)
+  (define info (env-ref-tyfam e name))
+  (cond
+    [(not info) e]
+    [else
+     (env-extend-tyfam
+      e name
+      (struct-copy tyfam-info info
+                   [clauses (append (tyfam-info-clauses info) (list clause))]))]))
 
 ;; ----- classes & instances ------------------------------------------
 

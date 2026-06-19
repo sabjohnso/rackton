@@ -2614,9 +2614,14 @@
   ;; aliases (A3) — field types may use them — and before any kind-
   ;; checked resolution of a type that mentions these constructors.
   (define env-A4.5 (infer-data-kinds env-A4.4 forms))
+  ;; A4.6: standalone type families.  Register declarations + open
+  ;; equations so later type resolution (class methods, data ctors, def
+  ;; signatures) can reduce family applications; then infer each family's
+  ;; kind from its clauses so its applications are kind-checked.
+  (define env-A4.6 (infer-tyfam-kinds (register-type-families env-A4.5 forms) forms))
   ;; A5: effects (resolve op types against the tcon-complete env).
   (define env-A5
-    (for/fold ([e env-A4.5]) ([f (in-list forms)] #:when (top:effect? f))
+    (for/fold ([e env-A4.6]) ([f (in-list forms)] #:when (top:effect? f))
       ;; Phase-A forms (require/effect/class) are pure: a throwaway st suffices.
       (let-values ([(e* _ _st) (handle-top-form f e (hasheq) (make-infer-state))])
         e*)))
@@ -2714,6 +2719,8 @@
   (define k
     (or (hash-ref batch-kinds name #f)
         (let ([ti (env-ref-tcon env name #f)]) (and ti (tcon-info-kind ti)))
+        ;; A standalone type family's inferred kind (Feature 1, Phase 2).
+        (let ([fi (env-ref-tyfam env name #f)]) (and fi (tyfam-info-kind fi)))
         ;; A DataKinds-promoted type-level constructor (TInt, SPush, …).
         ;; Checked after real tcons so an ordinary type of the same name
         ;; always wins — promotion never reinterprets an existing type.
@@ -2731,6 +2738,7 @@
   (match t
     [(tvar n)
      (values (hash-ref! tvar-kinds n (lambda () (kvar (gensym 'k)))) s)]
+    [(tnat _) (values (kind-nat) s)]
     [(tcon n)
      (define k (tcon-kind-of env batch-kinds n))
      (values (or k (kvar (gensym 'k))) s)]
@@ -3092,6 +3100,120 @@
                         (struct-copy tcon-info ti
                                      [kind (generalize-kind (apply-ksubst s seed))])))]))
 
+;; ----- standalone type families: registration (Phase A4.6) ----------
+
+;; Resolve one closed-family clause to a `(pats . rhs)` of core types.
+(define (resolve-tyfam-clause c env)
+  (cons (for/list ([p (in-list (tyfam-clause-pats c))]) (resolve-type p env))
+        (resolve-type (tyfam-clause-rhs c) env)))
+
+;; Register every `type-family` declaration and fold in every standalone
+;; `type-instance` equation, then check open families for coherence.
+;; Runs after DataKinds promotion / data-kind inference so clause types
+;; may mention promoted constructors and data kinds; before classes and
+;; data ctors so their field/method types can mention families.  Kinds
+;; are left to infer leniently for now (Phase 1): a family head used in a
+;; type kind-checks as an unknown constructor.
+(define (register-type-families env forms)
+  (define env1
+    (for/fold ([e env]) ([f (in-list forms)] #:when (top:type-family? f))
+      (match-define (top:type-family name params _kind clauses _stx) f)
+      (env-extend-tyfam
+       e name
+       (tyfam-info name (length params) #f
+                   (if (null? clauses) 'open 'closed)
+                   (for/list ([c (in-list clauses)]) (resolve-tyfam-clause c e))))))
+  (define env2
+    (for/fold ([e env1]) ([f (in-list forms)] #:when (top:type-instance? f))
+      (match-define (top:type-instance name args rhs stx) f)
+      (define info (env-ref-tyfam e name))
+      (cond
+        [(not info)
+         (raise-syntax-error 'infer
+           (format "type-instance for unknown type family ~a" name) stx)]
+        [(eq? (tyfam-info-openness info) 'closed)
+         (raise-syntax-error 'infer
+           (format "cannot add a type-instance to the closed type family ~a" name) stx)]
+        [(not (= (length args) (tyfam-info-arity info)))
+         (raise-syntax-error 'infer
+           (format "type family ~a expects ~a argument~a"
+                   name (tyfam-info-arity info)
+                   (if (= 1 (tyfam-info-arity info)) "" "s")) stx)]
+        [else
+         (env-add-tyfam-clause
+          e name
+          (cons (for/list ([a (in-list args)]) (resolve-type a e))
+                (resolve-type rhs e)))])))
+  ;; Open families must be coherent: no two equations may overlap.
+  (for ([f (in-list forms)]
+        #:when (and (top:type-family? f) (null? (top:type-family-clauses f))))
+    (define name (top:type-family-name f))
+    (define info (env-ref-tyfam env2 name))
+    (when (and info (tyfam-clauses-overlap? name (tyfam-info-clauses info)))
+      (raise-syntax-error 'infer
+        (format "overlapping type-instance equations for open type family ~a" name)
+        (top:type-family-stx f))))
+  env2)
+
+;; Infer each newly-declared family's KIND from its clauses/equations
+;; (Phase 2), mirroring `infer-data-kinds`: seed every family with param
+;; kvars and a result kvar (so self/mutual references resolve against the
+;; seed), constrain each clause's i-th pattern to the i-th param kind and
+;; its rhs to the result kind, then generalise residual kvars into a kind
+;; scheme stored on the `tyfam-info`.  Only families whose kind is still
+;; #f are inferred — an imported family already carries its kind.
+(define (infer-tyfam-kinds env forms)
+  (define fam-stx
+    (for/hasheq ([f (in-list forms)] #:when (top:type-family? f))
+      (values (top:type-family-name f) (top:type-family-stx f))))
+  (define targets
+    (for/list ([(name info) (in-hash (env-tyfams env))]
+               #:when (not (tyfam-info-kind info)))
+      (cons name info)))
+  (cond
+    [(null? targets) env]
+    [else
+     ;; 1. Seed: name → (list param-kvars result-kvar seed-kind).
+     (define seeds
+       (make-immutable-hasheq
+        (for/list ([p (in-list targets)])
+          (match-define (cons name info) p)
+          (define pks (for/list ([_ (in-range (tyfam-info-arity info))])
+                        (kvar (gensym 'k))))
+          (define rk (kvar (gensym 'k)))
+          (cons name (list pks rk (kind-arrow* pks rk))))))
+     (define batch-kinds
+       (make-immutable-hasheq
+        (for/list ([(name sd) (in-hash seeds)]) (cons name (caddr sd)))))
+     ;; Unify two kinds into the running ksubst; an inconsistent clause
+     ;; blames the family's declaration.
+     (define (demand ka kb s stx)
+       (with-handlers ([exn:fail:kind-unify?
+                        (lambda (e) (kind-fail! stx (exn-message e)) s)])
+         (ksubst-compose (unify-kind (apply-ksubst s ka) (apply-ksubst s kb)) s)))
+     ;; 2. Constrain every clause of every target family.
+     (define s
+       (for/fold ([s empty-ksubst]) ([p (in-list targets)])
+         (match-define (cons name info) p)
+         (match-define (list pks rk _) (hash-ref seeds name))
+         (define stx (hash-ref fam-stx name #f))
+         (for/fold ([s s]) ([clause (in-list (tyfam-info-clauses info))])
+           (match-define (cons pats rhs) clause)
+           (define tvar-kinds (make-hasheq))
+           (define s-pats
+             (for/fold ([s s]) ([pat (in-list pats)] [pk (in-list pks)])
+               (define-values (kp s*) (elab-kind pat env batch-kinds tvar-kinds s))
+               (demand kp pk s* stx)))
+           (define-values (kr s2) (elab-kind rhs env batch-kinds tvar-kinds s-pats))
+           (demand kr rk s2 stx))))
+     ;; 3. Solve & generalise, writing each kind scheme into its tyfam-info.
+     (for/fold ([env env]) ([p (in-list targets)])
+       (match-define (cons name info) p)
+       (match-define (list _ _ seed) (hash-ref seeds name))
+       (env-extend-tyfam env name
+         (struct-copy tyfam-info info
+                      [kind (generalize-kind (apply-ksubst s seed))])))]))
+
 ;; Resolve every top:data form's ctor field types against the
 ;; type-level-complete env, registering each ctor as a data binding.
 ;; Mirrors the existing `handle-top-form` top:data branch's ctor loop.
@@ -3379,7 +3501,7 @@
 (define (infer-declared-def env declared expr name stx st)
   (define decl-scheme (hash-ref declared name))
   (define needs-dict-reqs (var-dict-requirements env decl-scheme))
-  (define-values (decl-ty decl-preds dict-skolems dict-arg-names)
+  (define-values (decl-ty0 decl-preds dict-skolems dict-arg-names)
     (cond
       [(null? needs-dict-reqs)
        (define-values (t p) (skolemize decl-scheme))
@@ -3388,6 +3510,10 @@
        (define-values (t p s) (skolemize/tracked decl-scheme))
        (define-values (sk-map args) (build-dict-skolems needs-dict-reqs s env))
        (values t p sk-map args)]))
+  ;; Reduce any type-family applications in the declared type up front so
+  ;; the arrow-shape check, argument unfolding, and the body/decl unify
+  ;; all see the normal form (e.g. `(Sel PTrue A B)` ⇒ `A`).
+  (define decl-ty (normalize-type/guarded env decl-ty0))
   (define saved-skolems (current-dict-skolems))
   (current-dict-skolems dict-skolems)
   (define-values (s t st1)
@@ -3600,7 +3726,32 @@
     [(top:effect ename ops stx)
      (pass (lambda () (handle-effect-form ename ops stx env declared)))]
     [(top:data tname tparams ctors stx abstract? runtime-tag)
-     (pass (lambda () (handle-data-form tname tparams ctors stx abstract? runtime-tag env declared)))]))
+     (pass (lambda () (handle-data-form tname tparams ctors stx abstract? runtime-tag env declared)))]
+    [(top:type-family name params kind clauses stx)
+     (pass (lambda ()
+             (values (env-extend-tyfam
+                      env name
+                      (tyfam-info name (length params) #f
+                                  (if (null? clauses) 'open 'closed)
+                                  (for/list ([c (in-list clauses)])
+                                    (resolve-tyfam-clause c env))))
+                     declared)))]
+    [(top:type-instance name args rhs stx)
+     (pass (lambda ()
+             (define info (env-ref-tyfam env name))
+             (cond
+               [(not info)
+                (raise-syntax-error 'infer
+                  (format "type-instance for unknown type family ~a" name) stx)]
+               [(eq? (tyfam-info-openness info) 'closed)
+                (raise-syntax-error 'infer
+                  (format "cannot add a type-instance to the closed type family ~a" name) stx)]
+               [else
+                (values (env-add-tyfam-clause
+                         env name
+                         (cons (for/list ([a (in-list args)]) (resolve-type a env))
+                               (resolve-type rhs env)))
+                        declared)])))]))
 
 ;; ----- per-top-form elaboration (the arms of handle-top-form) -------
 
@@ -4252,6 +4403,13 @@
            (define promoted
              (with-handlers ([exn:fail? (lambda (_) '())])
                (dynamic-require submod-spec 'rackton-promoted)))
+           ;; Standalone type families (Feature 1) of the imported module
+           ;; (name → encoded tyfam-info).  Absent in legacy sidecars →
+           ;; empty.  Folded below so the importer reduces family
+           ;; applications using the defining module's clauses + kind.
+           (define tyfams
+             (with-handlers ([exn:fail? (lambda (_) '())])
+               (dynamic-require submod-spec 'rackton-tyfams)))
            (define e1
              (for/fold ([acc e]) ([entry (in-list bindings)])
                (env-extend-var acc (car entry)
@@ -4272,7 +4430,11 @@
              (for/fold ([acc e4]) ([entry (in-list promoted)])
                (env-extend-promoted-ctor acc (car entry)
                                          (decode-kind-scheme (cdr entry)))))
-           (for/fold ([acc e5]) ([entry (in-list instances)])
+           (define e6
+             (for/fold ([acc e5]) ([entry (in-list tyfams)])
+               (env-extend-tyfam acc (car entry)
+                                 (decode-tyfam-info (cdr entry)))))
+           (for/fold ([acc e6]) ([entry (in-list instances)])
              (define decoded (decode-instance-info entry))
              (define class-name (car decoded))
              (define new-inst (cdr decoded))

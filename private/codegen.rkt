@@ -612,6 +612,8 @@
     [(top:dec _ _ _) (values #f st)]
     [(top:alias _ _ _ _) (values #f st)]
     [(top:struct-fields _ _ _) (values #f st)]   ;; Compile-time only
+    [(top:type-family _ _ _ _ _) (values #f st)] ;; Compile-time only
+    [(top:type-instance _ _ _ _) (values #f st)] ;; Compile-time only
 
     [(top:effect ename ops stx)
      ;; Compile an effect to a Racket prompt-tag + one

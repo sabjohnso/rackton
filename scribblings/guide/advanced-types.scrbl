@@ -289,3 +289,53 @@ Calls to @racket[head] on a @racket[(List Integer)] resolve
 becomes @racket[(Maybe Integer)] with no further declaration needed.
 Associated types are how Rackton lets a protocol abstract over a type
 relationship that's more flexible than a fundep.
+
+@section[#:tag "standalone-type-families"]{Standalone type families}
+
+A @racket[type-family] is a top-level type-level function — distinct from
+the associated families above, which belong to a protocol.  It is reduced
+during type checking, so a value whose declared type mentions a family
+checks against the family's @emph{result}.
+
+A @bold{closed} family lists ordered equations; the first whose patterns
+match the arguments fires.  (A later equation applies only when every
+earlier one is @emph{apart} from the arguments, so reduction stays sound
+even on partly-unknown types.)
+
+@rackton-example[#:eval ev #:mode 'defs #:context? #t]{
+(data PBool PTrue PFalse)
+(type-family (If b t e)
+  [PTrue  t e = t]
+  [PFalse t e = e])
+}
+
+Now @racket[(If PTrue Integer String)] reduces to @racket[Integer]
+wherever it appears in a type:
+
+@rackton-example[#:eval ev #:mode 'defs #:context? #t]{
+(: yes (If PTrue Integer String))
+(define yes 5)
+}
+
+A @bold{open} family is declared with no equations and extended by
+separate @racket[type-instance] forms.  Its equations must be
+@emph{coherent} — no two may overlap — so at most one matches any
+argument:
+
+@rackton-example[#:eval ev #:mode 'defs #:context? #t]{
+(type-family (Elem c))
+(type-instance (Elem String)  = Char)
+(type-instance (Elem Boolean) = Boolean)
+}
+
+A family's @seclink["guide-kinds"]{kind} is @emph{inferred} from its
+equations (here @racket[If] takes a @racket[PBool] then two types), and
+applications are kind-checked: @racket[(If Integer Integer String)] is a
+kind error, because @racket[If]'s first argument must have kind
+@racket[PBool], not @racket[*].  A symbolic application such as
+@racket[(If b Integer String)] with an unknown @racket[b] stays
+unreduced (rigid) until @racket[b] is known.
+
+Standalone families cross module boundaries: a family declared in one
+@tt{#lang rackton} module reduces the same way in any module that
+imports it.

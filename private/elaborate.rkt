@@ -320,10 +320,10 @@
     (define inline-log (cg-st-inlined-sites final-cgst))
     ;; Pass the logs + the generated exported-impl names (from the final cg-st)
     ;; alongside the compiled forms.
-    (define-values (final-compiled prov-stx bs dcs tcs cls insts impls macs defs prom)
+    (define-values (final-compiled prov-stx bs dcs tcs cls insts impls macs defs prom tfs)
       (elaborate-finish parsed* env compiled (unbox macros-box)
                         (cg-st-exported-impls final-cgst)))
-    (values final-compiled prov-stx bs dcs tcs cls insts impls macs defs prom
+    (values final-compiled prov-stx bs dcs tcs cls insts impls macs defs prom tfs
             mono-log inline-log)))
 
 ;; ----- export resolution ----------------------------------------------
@@ -709,11 +709,21 @@
                  (let ([ti (env-ref-tcon env (data-info-type-name di))])
                    (and ti (tcon-info-abstract? ti)))))
       (cons external (encode-kind-scheme (env-ref-promoted-ctor env local)))))
+  ;; Standalone type families (Feature 1) declared in this module, as
+  ;; name → encoded tyfam-info.  Transported in full (clauses + inferred
+  ;; kind) so an importer reduces family applications exactly as here.
+  ;; Prelude families (none today) are excluded; a re-declared local
+  ;; family overwrites an imported one of the same name on the importer
+  ;; side, where local registration runs after the require fold-in.
+  (define export-tyfams-encoded
+    (for/list ([(name info) (in-hash (env-tyfams env))]
+               #:unless (env-ref-tyfam prelude-env name #f))
+      (cons name (encode-tyfam-info info))))
   (values compiled prov-stx
           export-bindings export-data-ctors-encoded
           export-tcons-encoded export-classes-encoded export-instances
           exported-impls export-macros-encoded export-defs-encoded
-          export-promoted-encoded))
+          export-promoted-encoded export-tyfams-encoded))
 
 ;; `(rackton form ...)` — embeddable form.  Splices the compiled forms
 ;; but does NOT emit a sidecar schemes submodule, so multiple
@@ -721,7 +731,7 @@
 (define-syntax (rackton stx)
   (syntax-parse stx
     [(_ form ...)
-     (define-values (compiled prov-stx _b _d _t _c _i _impls _macs _defs _prom
+     (define-values (compiled prov-stx _b _d _t _c _i _impls _macs _defs _prom _tfs
                               mono-log inline-log)
        (rackton-elaborate #'(form ...)))
      (define out-forms
@@ -741,7 +751,7 @@
 (define-syntax (rackton/main stx)
   (syntax-parse stx
     [(_ form ...)
-     (define-values (compiled prov-stx bs dcs tcs cls insts impls macs defs prom
+     (define-values (compiled prov-stx bs dcs tcs cls insts impls macs defs prom tfs
                               _mono _inline)
        (rackton-elaborate #'(form ...)))
      (define at-module-level?
@@ -758,7 +768,8 @@
                    [impls        (datum->syntax stx impls)]
                    [macros       (datum->syntax stx macs)]
                    [defs-table   (datum->syntax stx defs)]
-                   [promoted     (datum->syntax stx prom)])
+                   [promoted     (datum->syntax stx prom)]
+                   [tyfams       (datum->syntax stx tfs)])
        (cond
          [at-module-level?
           (syntax/loc stx
@@ -773,7 +784,8 @@
                          rackton-exported-impls
                          rackton-macros
                          rackton-defs
-                         rackton-promoted)
+                         rackton-promoted
+                         rackton-tyfams)
                 (define rackton-bindings        'bindings)
                 (define rackton-data-ctors      'data-ctors)
                 (define rackton-tcons           'tcons)
@@ -782,6 +794,7 @@
                 (define rackton-exported-impls  'impls)
                 (define rackton-macros          'macros)
                 (define rackton-defs            'defs-table)
-                (define rackton-promoted        'promoted))))]
+                (define rackton-promoted        'promoted)
+                (define rackton-tyfams          'tyfams))))]
          [else
           (syntax/loc stx (begin out ...))]))]))

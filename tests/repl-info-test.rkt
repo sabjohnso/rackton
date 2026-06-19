@@ -162,3 +162,27 @@
 
 (test-case ",info on an unbound name says so"
   (check-regexp-match #rx"unbound" (info-output 'no-such-name)))
+
+;; ----- standalone type families -------------------------------------
+
+(test-case ",info on a closed type family shows its kind and clauses"
+  (define-values (_ outs)
+    (drive-session
+     '((data PB PYes PNo)
+       (type-family (Sel b t e) (PYes t e = t) (PNo t e = e))
+       (unquote info Sel))))
+  (define out (last outs))
+  (check-regexp-match #rx"closed type family" out)
+  (check-regexp-match #rx"clauses:" out)
+  (check-regexp-match #rx"PYes" out))
+
+(test-case ",info on an open type family shows its instances"
+  (define-values (_ outs)
+    (drive-session
+     '((type-family (El c))
+       (type-instance (El String) = Integer)
+       (unquote info El))))
+  (define out (last outs))
+  (check-regexp-match #rx"open type family" out)
+  (check-regexp-match #rx"instances:" out)
+  (check-regexp-match #rx"Integer" out))

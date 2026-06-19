@@ -501,6 +501,42 @@ one method-less instance per literal address.
 (instance (CodeAt 0) (#:type (ShapeAt = Integer)))
 (instance (CodeAt 1) (#:type (ShapeAt = Boolean)))]}
 
+@defform*[#:literals (:: =)
+          [(type-family (F param ...) maybe-kind clause ...)
+           (type-instance (F type ...) = type)]
+          #:grammar
+          [(maybe-kind  code:blank (code:line :: kind))
+           (clause      [type ... = type])]]{
+
+A @deftech{standalone type family} — a top-level type-level function
+reduced during type checking, distinct from a protocol's associated
+@racket[#:type] family.
+
+A @racket[type-family] @bold{with} clauses is @emph{closed}: its ordered
+equations are tried top-to-bottom, and the first whose left-hand-side
+patterns match the arguments fires.  A later equation applies only when
+every earlier one is @emph{apart} from the arguments, so reduction is
+sound under substitution; a symbolic application with no firing clause
+stays rigid.  A @racket[type-family] @bold{without} clauses is
+@emph{open}, extended by separate @racket[type-instance] equations whose
+heads must be @emph{coherent} (non-overlapping).
+
+The family's @tech{kind} is inferred from its equations when no
+@racket[:: kind] is given, and its applications are kind-checked.  A
+family declared in a @tt{#lang rackton} module is recovered by importers,
+so it reduces identically across module boundaries.  See
+@seclink["standalone-type-families"]{the guide} for worked examples.
+
+@racketblock[
+(code:comment "closed: ordered equations")
+(type-family (If b t e)
+  [PTrue  t e = t]
+  [PFalse t e = e])
+(code:comment "open: declaration + coherent instances")
+(type-family (Elem c))
+(type-instance (Elem String)  = Char)
+(type-instance (Elem Boolean) = Boolean)]}
+
 @section[#:tag "sf-exprs"]{Expressions}
 
 @deftogether[(

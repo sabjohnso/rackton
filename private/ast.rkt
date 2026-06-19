@@ -226,6 +226,20 @@
 ;; The family is a one-parameter type-level function whose argument
 ;; is the class's parameter; each instance supplies a concrete rhs.
 (struct class-type-fam  (name stx) #:transparent)
+
+;; A STANDALONE type family (Feature 1), distinct from the associated
+;; `#:type` families above.  `(type-family (F p …) [::k] clause …)`:
+;;   `params` are the family's parameter names;
+;;   `kind` is the surface kind AST after `::`, or #f to infer;
+;;   `clauses` is a list of `tyfam-clause` — non-empty ⇒ CLOSED (ordered
+;;   equations), empty ⇒ OPEN (extended by `top:type-instance` forms).
+(struct top:type-family  (name params kind clauses stx) #:transparent)
+;; One closed-family equation: `pats` are the per-parameter LHS type
+;; patterns (surface ty AST), `rhs` the result type (surface ty AST).
+(struct tyfam-clause     (pats rhs stx) #:transparent)
+;; A standalone open-family equation `(type-instance (F T …) = U)`:
+;; `args` are the LHS argument types, `rhs` the result type.
+(struct top:type-instance (name args rhs stx) #:transparent)
 ;; One named law from a `#:laws ([name (ctx … => (All …))] …)` clause in
 ;; a class body: a quantified equation documenting an invariant the
 ;; class's instances must satisfy.  `name` is the law's identifier;

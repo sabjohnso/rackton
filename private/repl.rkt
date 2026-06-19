@@ -130,6 +130,7 @@
        (memq (car form)
              '(define data newtype struct
                 protocol instance define-alias
+                type-family type-instance
                 : require))))
 
 ;; A macro-definition form binds a Racket transformer rather than a
@@ -354,8 +355,30 @@
      => (lambda (ti) (format-tcon-info env name ti))]
     [(env-ref-class env name)
      => (lambda (ci) (format-class-info env name ci))]
+    [(env-ref-tyfam env name)
+     => (lambda (fi) (format-tyfam-info name fi))]
     [(primitive-type? name) (format-primitive-info env name)]
     [else (format "~s is unbound\n" name)]))
+
+;; Render a standalone type family for ,info: its openness, arity, and
+;; inferred kind, then its clauses (closed) or instance equations (open).
+(define (format-tyfam-info name fi)
+  (string-append
+   (format "~s (~a type family, arity ~a)~a\n"
+           name (tyfam-info-openness fi) (tyfam-info-arity fi)
+           (if (tyfam-info-kind fi)
+               (format " :: ~a" (kind->datum (tyfam-info-kind fi)))
+               ""))
+   (let ([cs (tyfam-info-clauses fi)])
+     (if (null? cs)
+         ""
+         (apply string-append
+                (if (eq? (tyfam-info-openness fi) 'closed)
+                    "  clauses:\n" "  instances:\n")
+                (for/list ([c (in-list cs)])
+                  (format "    ~s = ~s\n"
+                          (map type->datum (car c))
+                          (type->datum (cdr c)))))))))
 
 ;; Render a class for ,info: parameters, superclasses, methods (each with
 ;; its scheme), the declared laws, and the heads of its known instances.

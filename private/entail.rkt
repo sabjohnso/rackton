@@ -24,7 +24,8 @@
          by-super
          match-pred
          normalize-type
-         normalize-type/guarded)
+         normalize-type/guarded
+         tyfam-clauses-overlap?)
 
 (require racket/match
          racket/list
@@ -443,7 +444,8 @@
      (define args* (for/list ([a (in-list args)]) (normalize-type env a)))
      (define rewritten
        (cond
-         [(tcon? h*) (try-normalize-family env (tcon-name h*) args*)]
+         [(tcon? h*) (or (try-reduce-tyfam env (tcon-name h*) args*)
+                         (try-normalize-family env (tcon-name h*) args*))]
          [else #f]))
      (or rewritten (make-tapp h* args*))]
     [(qual cs body)
@@ -452,6 +454,108 @@
     [(pred c args)
      (pred c (for/list ([a (in-list args)]) (normalize-type env a)))]
     [_ t]))
+
+;; ----- standalone type-family reduction (Feature 1) -----------------
+;; A CLOSED family reduces by trying its ordered clauses top-to-bottom:
+;; a clause fires when its LHS one-way-matches the arguments AND every
+;; earlier clause is APART from the arguments (no unifier) — otherwise the
+;; application is stuck, since a later substitution could make an earlier
+;; clause apply (soundness).  An OPEN family reduces by coherent single
+;; lookup: its equations are non-overlapping, so at most one matches and
+;; no apartness check is needed.  The rewritten rhs is itself normalized,
+;; under a fuel budget that turns a non-terminating family into a clear
+;; compile-time error instead of a hang.
+
+;; Remaining type-level reduction steps along the current chain.  Reset
+;; per outer reduction; decremented on each family rewrite.
+(define current-tyfam-fuel (make-parameter 10000))
+
+(define (try-reduce-tyfam env name args)
+  (define info (env-ref-tyfam env name))
+  (cond
+    [(not info) #f]
+    [(not (= (length args) (tyfam-info-arity info))) #f]   ; partial ⇒ stuck
+    [else
+     (define rhs
+       (case (tyfam-info-openness info)
+         [(closed) (closed-family-rhs name (tyfam-info-clauses info) args)]
+         [(open)   (open-family-rhs (tyfam-info-clauses info) args)]
+         [else     #f]))
+     (cond
+       [(not rhs) #f]
+       [(<= (current-tyfam-fuel) 0)
+        (raise-constraint-error
+         (format "type-level reduction of ~a exceeded its budget (possible non-terminating type family)"
+                 name))]
+       [else
+        (parameterize ([current-tyfam-fuel (sub1 (current-tyfam-fuel))])
+          (normalize-type env rhs))])]))
+
+;; First firing clause's rhs (with pattern vars substituted), or #f if the
+;; family is stuck on these arguments.
+(define (closed-family-rhs name clauses args)
+  (let loop ([cs clauses] [earlier '()])
+    (cond
+      [(null? cs) #f]
+      [else
+       (match-define (cons pats0 rhs0) (car cs))
+       (define-values (pats rhs) (freshen-clause pats0 rhs0))
+       (define σ (match-many pats args))
+       (cond
+         ;; Fires only if it matches and no earlier clause overlaps `args`.
+         [(and σ (all-apart? name earlier args)) (apply-subst σ rhs)]
+         ;; Matches but an earlier clause could still apply ⇒ stuck.
+         [σ #f]
+         [else (loop (cdr cs) (cons pats earlier))])])))
+
+;; Open family: the unique matching equation's rhs, or #f.  Coherence
+;; (non-overlapping heads) guarantees at most one match.
+(define (open-family-rhs clauses args)
+  (for/or ([c (in-list clauses)])
+    (match-define (cons pats0 rhs0) c)
+    (define-values (pats rhs) (freshen-clause pats0 rhs0))
+    (define σ (match-many pats args))
+    (and σ (apply-subst σ rhs))))
+
+;; Are all earlier clauses' patterns apart from these arguments — i.e. is
+;; there no substitution unifying them?  Apartness lets a later (e.g.
+;; variable) clause fire without an earlier clause silently shadowing it.
+(define (all-apart? name earlier-pats args)
+  (define target (make-tapp (tcon name) args))
+  (for/and ([ep (in-list earlier-pats)])
+    (apart? (make-tapp (tcon name) ep) target)))
+
+(define (apart? a b)
+  (with-handlers ([exn:fail:unify? (lambda (_) #t)])
+    (unify a b)
+    #f))
+
+;; For an OPEN family: do any two equation heads overlap — i.e. unify, so
+;; some argument list could match both?  Returns #t on the first such
+;; pair (a coherence violation).  Closed families need no such check.
+(define (tyfam-clauses-overlap? name clauses)
+  (let loop ([cs clauses])
+    (cond
+      [(or (null? cs) (null? (cdr cs))) #f]
+      [else
+       (define-values (pats-i _ri) (freshen-clause (car (car cs)) (cdr (car cs))))
+       (define head-i (make-tapp (tcon name) pats-i))
+       (or (for/or ([other (in-list (cdr cs))])
+             (define-values (pats-j _rj) (freshen-clause (car other) (cdr other)))
+             (not (apart? head-i (make-tapp (tcon name) pats-j))))
+           (loop (cdr cs)))])))
+
+;; Rename a clause's pattern/rhs type variables to fresh ones so they
+;; cannot collide with variables in the arguments being matched.
+(define (freshen-clause pats rhs)
+  (define vars
+    (for/fold ([s (type-vars rhs)]) ([p (in-list pats)])
+      (set-union s (type-vars p))))
+  (define σ
+    (for/fold ([acc empty-subst]) ([v (in-set vars)])
+      (subst-extend acc v (tvar (gensym v)))))
+  (values (map (lambda (p) (apply-subst σ p)) pats)
+          (apply-subst σ rhs)))
 
 ;; ----- guarded normalization (hot-path) -----------------------------
 ;; `normalize-type` walks and rebuilds a type and scans the class env per
@@ -484,7 +588,7 @@
       [_ #f])))
 
 (define (normalize-type/guarded env t)
-  (define names (env-type-family-names env))
+  (define names (set-union (env-type-family-names env) (env-tyfam-names env)))
   (cond
     [(set-empty? names) t]
     [(type-mentions-family? names t) (normalize-type env t)]

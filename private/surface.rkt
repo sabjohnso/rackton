@@ -1560,6 +1560,16 @@
      "a kind is `*`, `Nat`, an arrow `(-> k …)`, a promoted datatype name (uppercase), or `(K k …)`"
      (k:con (syntax->datum #'k))]))
 
+;; Parse one closed-type-family clause `[pat … = rhs]`: the patterns
+;; before `=` are the per-parameter LHS types, the form after it the rhs.
+(define (parse-tyfam-clause stx)
+  (syntax-parse stx
+    #:datum-literals (=)
+    [(pat ... = rhs)
+     (tyfam-clause (map parse-type (syntax->list #'(pat ...)))
+                   (parse-type #'rhs)
+                   stx)]))
+
 ;; Right-fold a variadic `->` kind form into binary `k:arr` nodes.  Expects
 ;; at least two kind syntax objects (enforced by the caller's pattern).
 (define (build-arrow-kind kind-stxs)
@@ -1610,9 +1620,29 @@
 
 (define (parse-top stx)
   (syntax-parse stx
-    #:datum-literals (define data newtype struct protocol instance define-alias define-effect require provide foreign foreign-c : =>)
+    #:datum-literals (define data newtype struct protocol instance define-alias define-effect require provide foreign foreign-c type-family type-instance : => :: =)
     [(require spec ...)
      (top:require (syntax->list #'(spec ...)) stx)]
+
+    ;; (type-family (F p …) [pat … = rhs] …)   — closed (ordered clauses)
+    ;; (type-family (F p …))                    — open (extended below)
+    ;; (type-family (F p …) :: kind …)          — optional kind annotation
+    [(type-family (fname:id p:id ...) (~optional (~seq :: k)) clause ...)
+     #:fail-unless (not (lowercase-id? (syntax->datum #'fname)))
+     "type family name must be a non-lowercase identifier"
+     (top:type-family (syntax->datum #'fname)
+                      (map syntax->datum (syntax->list #'(p ...)))
+                      (and (attribute k) (parse-kind-stx #'k))
+                      (map parse-tyfam-clause (syntax->list #'(clause ...)))
+                      stx)]
+    ;; (type-instance (F T …) = U)             — an open-family equation
+    [(type-instance (fname:id arg ...) = rhs)
+     #:fail-unless (not (lowercase-id? (syntax->datum #'fname)))
+     "type family name must be a non-lowercase identifier"
+     (top:type-instance (syntax->datum #'fname)
+                        (map parse-type (syntax->list #'(arg ...)))
+                        (parse-type #'rhs)
+                        stx)]
 
     ;; (foreign name τ #:from M)            — racket-id = name
     ;; (foreign name τ #:from M #:as rkt-id) — renamed

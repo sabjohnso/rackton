@@ -27,6 +27,8 @@
          decode-kind
          encode-kind-scheme
          decode-kind-scheme
+         encode-tyfam-info
+         decode-tyfam-info
          encode-class-info
          decode-class-info
          encode-instance-info
@@ -152,6 +154,25 @@
     [(and (pair? datum) (eq? (car datum) 'scheme))
      (kind-scheme (cadr datum) (decode-kind (caddr datum)))]
     [else (kscheme-mono (decode-kind datum))]))
+
+;; ----- standalone type families -------------------------------------
+;; A `tyfam-info` round-trips as
+;;   (name arity kind-scheme openness ((pat-datum … . rhs-datum) …))
+;; where clause LHS/RHS are core types serialized via `type->datum`.
+(define (encode-tyfam-info info)
+  (list (tyfam-info-name info)
+        (tyfam-info-arity info)
+        (encode-kind-scheme (tyfam-info-kind info))
+        (tyfam-info-openness info)
+        (for/list ([c (in-list (tyfam-info-clauses info))])
+          (cons (map type->datum (car c)) (type->datum (cdr c))))))
+
+(define (decode-tyfam-info datum)
+  (match datum
+    [(list name arity kind openness clauses)
+     (tyfam-info name arity (decode-kind-scheme kind) openness
+                 (for/list ([c (in-list clauses)])
+                   (cons (map sexp->type (car c)) (sexp->type (cdr c)))))]))
 
 (define (pred->sexp p) (pred->datum p))
 
