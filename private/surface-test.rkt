@@ -195,6 +195,78 @@
   (check-exn exn:fail:syntax?
              (lambda () (pe '(case-lambda))))
 
+  ;; ----- match* ---------------------------------------------------
+  ;;
+  ;; `match*` parses to the bare `e:match*` core node — the same shape
+  ;; `case-lambda` wraps in a lambda, but over real scrutinee
+  ;; expressions instead of fresh argument names.  No lambda is added.
+
+  (let ([v (pe '(match* (a b)
+                  [((Some x) (Some y)) (Some (+ x y))]
+                  [(_ _)               None]))])
+    (check-pred e:match*? v)
+    (check-equal? (e:match*-scrutinees v)
+                  (list (e:var 'a #f) (e:var 'b #f)))
+    (check-equal?
+     (e:match*-clauses v)
+     (list (clause* (list (p:ctor 'Some (list (p:var 'x #f)) #f)
+                          (p:ctor 'Some (list (p:var 'y #f)) #f))
+                    #f
+                    (e:app (e:var 'Some #f)
+                           (list (e:app (e:var '+ #f)
+                                        (list (e:var 'x #f) (e:var 'y #f)) #f))
+                           #f)
+                    #f)
+           (clause* (list (p:wild #f) (p:wild #f))
+                    #f
+                    (e:var 'None #f)
+                    #f))))
+
+  ;; Single-scrutinee `match*`: a strict generalization of `match`.  The
+  ;; lone constructor-pattern argument needs its own parens — `((Some x))`.
+  (let ([v (pe '(match* (m)
+                  [(None)     0]
+                  [((Some x)) x]))])
+    (check-pred e:match*? v)
+    (check-equal? (e:match*-scrutinees v) (list (e:var 'm #f)))
+    (check-equal?
+     (e:match*-clauses v)
+     (list (clause* (list (p:ctor 'None '() #f)) #f (e:literal 0 #f) #f)
+           (clause* (list (p:ctor 'Some (list (p:var 'x #f)) #f))
+                    #f (e:var 'x #f) #f))))
+
+  ;; A clause may carry a `#:when` guard, just like `match`.
+  (let ([v (pe '(match* (x)
+                  [(k) #:when (> k 0) k]
+                  [(_)               0]))])
+    (check-pred e:match*? v)
+    (check-equal?
+     (e:match*-clauses v)
+     (list (clause* (list (p:var 'k #f))
+                    (e:app (e:var '> #f)
+                           (list (e:var 'k #f) (e:literal 0 #f)) #f)
+                    (e:var 'k #f)
+                    #f)
+           (clause* (list (p:wild #f)) #f (e:literal 0 #f) #f))))
+
+  ;; Scrutinees may be arbitrary expressions, not just variables.
+  (let ([v (pe '(match* ((+ a 1))
+                  [(n) n]))])
+    (check-pred e:match*? v)
+    (check-equal? (e:match*-scrutinees v)
+                  (list (e:app (e:var '+ #f)
+                               (list (e:var 'a #f) (e:literal 1 #f)) #f))))
+
+  ;; Every clause must supply one pattern per scrutinee.
+  (check-exn exn:fail:syntax?
+             (lambda () (pe '(match* (a b)
+                               [(x)   x]
+                               [(_ _) 0]))))
+
+  ;; At least one clause is required.
+  (check-exn exn:fail:syntax?
+             (lambda () (pe '(match* (a)))))
+
   ;; ----- application ----------------------------------------------
 
   (check-equal? (pe '(f a b))

@@ -288,7 +288,7 @@
 
 (define (parse-expr stx)
   (syntax-parse stx
-    #:datum-literals (lambda λ case-lambda case-λ let let& let% let+ letrec let* if cond else ann match racket do proc delay <- update handle return describe context list tuple tref array build-array aref array-take array-drop array-split-at -> quote quasiquote unquote unquote-splicing)
+    #:datum-literals (lambda λ case-lambda case-λ let let& let% let+ letrec let* if cond else ann match match* racket do proc delay <- update handle return describe context list tuple tref array build-array aref array-take array-drop array-split-at -> quote quasiquote unquote unquote-splicing)
     [n:number  (e:literal (syntax->datum #'n) stx)]
     [b:boolean (e:literal (syntax->datum #'b) stx)]
     [s:string  (e:literal (syntax->datum #'s) stx)]
@@ -337,6 +337,16 @@
     [(case-λ      cl ...+) (parse-case-lambda 'case-λ      (syntax->list #'(cl ...)) stx)]
     [(case-lambda . _) (raise-bad-case-lambda 'case-lambda stx)]
     [(case-λ      . _) (raise-bad-case-lambda 'case-λ      stx)]
+
+    ;; `match*` — match several scrutinees at once.  The honest N-ary
+    ;; generalization of `match`: the parenthesized scrutinee list fixes
+    ;; the arity, and each clause leads with a parenthesized list of that
+    ;; many patterns.  It builds the same `e:match*` core node that
+    ;; `case-lambda` desugars into, but over real scrutinee expressions
+    ;; rather than fresh argument names, so no lambda wrapper is added.
+    [(match* (scrut ...) cl ...+)
+     (parse-match* (syntax->list #'(scrut ...)) (syntax->list #'(cl ...)) stx)]
+    [(match* . _) (raise-bad-match* stx)]
 
     ;; Named (loop) let — Scheme-style: `loop` is a recursive procedure
     ;; bound in the body, seeded by the initial RHS.  Matched before the
@@ -765,6 +775,35 @@
    (format
     "malformed ~a: expected (~a [(pat ...) body] ...+) with at least one clause; each clause matches all arguments at once"
     who who)
+   full-stx))
+
+;; `match*` desugaring.  Each clause is `[(pat ...) body]` or
+;; `[(pat ...) #:when guard body]`, sharing the clause grammar with
+;; `case-lambda` (so `parse-case-lambda-clause` is reused).  The arity is
+;; fixed by the scrutinee list; every clause must supply that many
+;; patterns.  Unlike `case-lambda`, the scrutinees are real expressions
+;; matched in place, so no lambda wrapper is built — the result is the
+;; bare `e:match*` core node.
+(define (parse-match* scrut-stxs clause-stxs stx)
+  (define arity (length scrut-stxs))
+  (define clauses (map (lambda (c) (parse-case-lambda-clause 'match* c)) clause-stxs))
+  (for ([cl (in-list clauses)] [c-stx (in-list clause-stxs)])
+    (unless (= (length (clause*-patterns cl)) arity)
+      (raise-syntax-error
+       'match*
+       (format
+        "each match* clause must have one pattern per scrutinee; expected ~a pattern(s) but got ~a"
+        arity (length (clause*-patterns cl)))
+       stx c-stx)))
+  (e:match* (map parse-expr scrut-stxs) clauses #f stx))
+
+;; A `match*` form whose shape is not `(match* (scrut ...) clause ...+)`.
+;; Lands here named instead of falling through to an "unbound
+;; identifier: match*" application reading.
+(define (raise-bad-match* full-stx)
+  (raise-syntax-error
+   'match*
+   "malformed match*: expected (match* (scrut ...) [(pat ...) body] ...+) with at least one clause; each clause supplies one pattern per scrutinee"
    full-stx))
 
 (define (raise-bad-monadic-let who full-stx)

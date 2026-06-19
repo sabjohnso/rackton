@@ -155,6 +155,17 @@ clause must share it.  The form above is equivalent to a two-argument
     [(_ _)               None]))
 }
 
+That @racket[match*] is a real form in its own right — the N-ary
+generalisation of @racket[match], matching several scrutinees at once.
+Reach for it directly when the values to match are arbitrary
+expressions rather than a function's arguments:
+
+@rackton-example[#:eval ev #:mode 'value]{
+(match* ((+ 1 2) (+ 3 4))
+  [(3 7) "both"]
+  [(_ _) "neither"])
+}
+
 Because the first element of a clause is always the argument list, a
 single argument that is itself a constructor pattern needs its own
 parentheses:

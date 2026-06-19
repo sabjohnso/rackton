@@ -703,6 +703,33 @@ constructor of an ADT scrutinee, omits @racket[#t] or @racket[#f] on a
 scrutinee.  Add a wildcard (@racket[_]) or variable pattern to opt
 out.}
 
+@defform[(match* (scrutinee ...) clause ...+)
+         #:grammar
+         [(clause  [(pattern ...) body]
+                   [(pattern ...) #:when guard body])]]{
+
+The N-ary generalisation of @racket[match]: pattern-matches several
+@racket[scrutinee]s at once.  The parenthesised scrutinee list fixes
+the arity; every @racket[clause] leads with a parenthesised list of
+that many patterns and is tried in source order, evaluating the first
+matching @racket[body].  A clause whose pattern count differs from the
+number of scrutinees is a parse-time error, and at least one clause is
+required.
+
+This is the form @racket[case-lambda] desugars into:
+@racket[(case-lambda [(p ...) body] ...)] is equivalent to
+@racket[(lambda (a ...) (match* (a ...) [(p ...) body] ...))].  Reach
+for @racket[match*] directly when the values to match are arbitrary
+expressions rather than a function's arguments.  As in
+@racket[case-lambda], a lone constructor-pattern needs its own
+parentheses (@racket[((Some x))], not @racket[(Some x)] — the latter
+reads as a two-pattern clause).
+
+@racketblock[
+(match* (a b)
+  [((Some x) (Some y)) (Some (+ x y))]
+  [(_ _)               None])]}
+
 @defform[(do clause ... body)
          #:grammar
          [(clause  [var <- expr]
