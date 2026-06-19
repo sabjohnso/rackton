@@ -29,6 +29,8 @@
          env-ref-tyfam
          env-tyfam-names
          env-add-tyfam-clause
+         env-extend-constraint-syn
+         env-ref-constraint-syn
          env-extend-class
          env-clear-instances
          env-ref-class
@@ -71,8 +73,11 @@
 ;; (Feature 1): the ordered clauses of a closed family or the coherent
 ;; equation set of an open family.  Separate from `classes` (associated
 ;; `#:type` families) so the two reduction mechanisms stay independent.
+;; `constraint-syns` maps a constraint-synonym name to `(params . preds)`
+;; — its parameters and the core predicates it abbreviates.  A `(C T…)`
+;; constraint expands to those preds with params substituted by T….
 (struct env (vars data-ctors tcons classes instance-table method-owners aliases
-             struct-fields effects promoted-ctors tyfams)
+             struct-fields effects promoted-ctors tyfams constraint-syns)
   #:transparent)
 
 ;; A standalone type family's reduction information.
@@ -180,7 +185,7 @@
 ;; prelude-instances-table; set intrinsically at construction.
 (struct instance-info (head context methods type-family-bindings origin prelude?) #:transparent)
 
-(define empty-env (env (hasheq) (hasheq) (hasheq) (hasheq) (hasheq) (hasheq) (hasheq) (hasheq) (hasheq) (hasheq) (hasheq)))
+(define empty-env (env (hasheq) (hasheq) (hasheq) (hasheq) (hasheq) (hasheq) (hasheq) (hasheq) (hasheq) (hasheq) (hasheq) (hasheq)))
 
 ;; ----- basic accessors ----------------------------------------------
 
@@ -226,6 +231,16 @@
 ;; Append one equation `(pats . rhs)` to an existing OPEN family — used
 ;; by the per-form (REPL) path where a `type-instance` arrives after its
 ;; family declaration.  No-op if the family is unknown.
+;; ----- constraint synonyms ------------------------------------------
+
+(define (env-extend-constraint-syn e name params preds)
+  (struct-copy env e
+               [constraint-syns
+                (hash-set (env-constraint-syns e) name (cons params preds))]))
+
+(define (env-ref-constraint-syn e name [default #f])
+  (hash-ref (env-constraint-syns e) name default))
+
 (define (env-add-tyfam-clause e name clause)
   (define info (env-ref-tyfam e name))
   (cond

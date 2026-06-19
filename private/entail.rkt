@@ -150,7 +150,18 @@
                     (by-super env (apply-subst σ sp)))))]))
 
 (define (super-closure env hypotheses)
-  (apply append (for/list ([h (in-list hypotheses)]) (by-super env h))))
+  (apply append (for/list ([h (in-list hypotheses)]) (hyp-closure-1 env h))))
+
+;; The constraints a single hypothesis provides: a constraint synonym
+;; provides each of its (recursively expanded) components; an ordinary
+;; predicate provides itself plus its superclasses (`by-super`).
+(define (hyp-closure-1 env h)
+  (cond
+    [(expand-constraint-syn env h)
+     => (lambda (comps)
+          (cons h (apply append
+                         (for/list ([c (in-list comps)]) (hyp-closure-1 env c)))))]
+    [else (by-super env h)]))
 
 ;; ----- entailment --------------------------------------------------
 
@@ -174,7 +185,27 @@
        [(tuple-structural-subgoals target)
         => (lambda (subgoals)
              (for/and ([g (in-list subgoals)]) (entail? env hypotheses g)))]
+       ;; A constraint synonym holds iff all its components hold.
+       [(expand-constraint-syn env target)
+        => (lambda (subgoals)
+             (for/and ([g (in-list subgoals)]) (entail? env hypotheses g)))]
        [else (entail-by-inst? env hypotheses target)])]))
+
+;; If `p`'s head names a constraint synonym, return the component
+;; predicates with the synonym's parameters substituted by `p`'s
+;; arguments; otherwise #f.  Used both as a goal (subgoals to discharge)
+;; and, via `super-closure`, as a hypothesis (components it provides).
+(define (expand-constraint-syn env p)
+  (define syn (env-ref-constraint-syn env (pred-class p) #f))
+  (and syn
+       (let ([params (car syn)] [comps (cdr syn)])
+         (and (= (length params) (length (pred-args p)))
+              (let ([sub (for/fold ([s empty-subst])
+                                   ([param (in-list params)] [arg (in-list (pred-args p))])
+                           (subst-extend s param arg))])
+                (for/list ([c (in-list comps)])
+                  (pred (pred-class c)
+                        (map (lambda (a) (apply-subst sub a)) (pred-args c)))))))))
 
 ;; The classes whose single method is structural over a product, so a
 ;; variadic `(Tuple t …)` satisfies them iff each element does.  A
@@ -339,6 +370,10 @@
           ;; discharged (concrete element) or kept residual (tvar
           ;; element) in head-normal form.  Skip when an exact hypothesis
           ;; already covers `p` (handled by the in-hnf?/entail? arms).
+          => (lambda (subgoals) (loop (append subgoals (cdr ps)) acc))]
+         [(expand-constraint-syn env p)
+          ;; A constraint-synonym goal reduces to its component
+          ;; constraints; splice them so each is discharged or kept.
           => (lambda (subgoals) (loop (append subgoals (cdr ps)) acc))]
          [(in-hnf? p)
           ;; Still keep unless redundant against hypotheses.

@@ -614,6 +614,7 @@
     [(top:struct-fields _ _ _) (values #f st)]   ;; Compile-time only
     [(top:type-family _ _ _ _ _) (values #f st)] ;; Compile-time only
     [(top:type-instance _ _ _ _) (values #f st)] ;; Compile-time only
+    [(top:constraint-syn _ _ _ _) (values #f st)] ;; Compile-time only
     [(top:data-family _ _ _ _) (values #f st)]   ;; type only — no runtime form
     [(top:data-instance _ _ ctors stx)
      ;; Each instance constructor lowers to a struct, like a data ctor.

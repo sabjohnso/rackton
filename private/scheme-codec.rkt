@@ -29,6 +29,8 @@
          decode-kind-scheme
          encode-tyfam-info
          decode-tyfam-info
+         encode-constraint-syn
+         decode-constraint-syn
          encode-class-info
          decode-class-info
          encode-instance-info
@@ -173,6 +175,15 @@
      (tyfam-info name arity (decode-kind-scheme kind) openness
                  (for/list ([c (in-list clauses)])
                    (cons (map sexp->type (car c)) (sexp->type (cdr c)))))]))
+
+;; A constraint synonym's stored value `(params . preds)` round-trips as
+;; `(params (pred-sexp …))`.
+(define (encode-constraint-syn syn)
+  (list (car syn) (map pred->sexp (cdr syn))))
+
+(define (decode-constraint-syn datum)
+  (match datum
+    [(list params preds) (cons params (map sexp->pred preds))]))
 
 (define (pred->sexp p) (pred->datum p))
 

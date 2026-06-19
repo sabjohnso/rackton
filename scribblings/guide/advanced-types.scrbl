@@ -413,3 +413,27 @@ A function that is generic in the family's index cannot pattern-match the
 constructors (which constructor is present depends on the index, which is
 not yet known) — reach them at a concrete index, or through a protocol
 method, exactly as in Haskell.
+
+@section[#:tag "constraint-synonyms"]{Constraint synonyms}
+
+A @racket[define-constraint] names a @emph{conjunction} of constraints,
+so a recurring context can be written once and reused:
+
+@rackton-example[#:eval ev #:mode 'defs #:context? #t]{
+(define-constraint (Stringy a) (Show a) (Eq a))
+}
+
+Now @racket[(Stringy a)] in a @racket[=>] context stands for both
+@racket[(Show a)] and @racket[(Eq a)].  It works in both directions: a
+@racket[(Stringy a) =>] signature @emph{provides} those components to the
+body, and a call @emph{demands} them at the argument type.
+
+@rackton-example[#:eval ev #:mode 'defs #:context? #t]{
+(: describe ((Stringy a) => (-> a String)))
+(define (describe x) (show x))   ;; uses Show, provided by Stringy
+}
+
+@racket[(describe 5)] type-checks because @racket[Integer] has both
+@racket[Show] and @racket[Eq].  Synonyms are expanded during constraint
+solving — they are not abstract — and they cross module boundaries like
+any other declaration.

@@ -564,6 +564,23 @@ constructors cross module boundaries like an ordinary data type.
 
 See @seclink["data-families"]{the guide} for worked examples.}
 
+@defform[(define-constraint (C param ...) constraint ...+)]{
+
+Declares a @deftech{constraint synonym}: @racket[(C T …)] abbreviates the
+listed @racket[constraint]s with @racket[param …] substituted by
+@racket[T …].  A synonym is expanded during constraint solving — both as
+a goal (a @racket[(C T…)] obligation reduces to its components) and as a
+hypothesis (a @racket[(C a) =>] context provides each component to the
+body).  It is not abstract and carries no instances of its own; it
+crosses module boundaries like any other declaration.
+
+@racketblock[
+(define-constraint (Stringy a) (Show a) (Eq a))
+(: describe ((Stringy a) => (-> a String)))
+(define (describe x) (show x))]
+
+See @seclink["constraint-synonyms"]{the guide} for details.}
+
 @section[#:tag "sf-exprs"]{Expressions}
 
 @deftogether[(

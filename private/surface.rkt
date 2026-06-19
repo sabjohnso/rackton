@@ -1620,7 +1620,7 @@
 
 (define (parse-top stx)
   (syntax-parse stx
-    #:datum-literals (define data newtype struct protocol instance define-alias define-effect require provide foreign foreign-c type-family type-instance data-family data-instance : => :: =)
+    #:datum-literals (define data newtype struct protocol instance define-alias define-constraint define-effect require provide foreign foreign-c type-family type-instance data-family data-instance : => :: =)
     [(require spec ...)
      (top:require (syntax->list #'(spec ...)) stx)]
 
@@ -1698,6 +1698,15 @@
      #:fail-unless (not (lowercase-id? (syntax->datum #'aname)))
      "type alias name must be a non-lowercase identifier"
      (top:alias (syntax->datum #'aname) '() (parse-type #'target) stx)]
+
+    ;; (define-constraint (C p …) constraint …) — a constraint synonym
+    [(define-constraint (cname:id p:id ...) c ...+)
+     #:fail-unless (not (lowercase-id? (syntax->datum #'cname)))
+     "constraint synonym name must be a non-lowercase identifier"
+     (top:constraint-syn (syntax->datum #'cname)
+                         (map syntax->datum (syntax->list #'(p ...)))
+                         (map parse-constraint (syntax->list #'(c ...)))
+                         stx)]
     [(: name:id ty)
      (top:dec (syntax->datum #'name) (parse-type #'ty) stx)]
 

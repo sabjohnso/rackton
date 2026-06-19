@@ -2600,8 +2600,12 @@
     (for/fold ([e env-A2]) ([f (in-list forms)] #:when (top:alias? f))
       (env-extend-alias e (top:alias-name f) (top:alias-params f)
                         (top:alias-target f))))
+  ;; A3c: constraint synonyms.  Resolve each synonym's components to core
+  ;; preds and register them, before class methods / data ctors / decs
+  ;; (whose signatures may use a synonym in a `=>` context).
+  (define env-A3c (register-constraint-syns env-A3 forms))
   (define env-A4
-    (for/fold ([e env-A3]) ([f (in-list forms)] #:when (top:struct-fields? f))
+    (for/fold ([e env-A3c]) ([f (in-list forms)] #:when (top:struct-fields? f))
       (env-extend-struct-fields e (top:struct-fields-struct-name f)
                                 (top:struct-fields-field-names f))))
   ;; A4.4: DataKinds promotion.  Lift eligible monomorphic datatypes to
@@ -3127,6 +3131,18 @@
        (env-extend-tcon env name
                         (struct-copy tcon-info ti
                                      [kind (generalize-kind (apply-ksubst s seed))])))]))
+
+;; ----- constraint synonyms: registration (Phase A3c) ----------------
+
+;; Resolve each `define-constraint`'s component constraints to core preds
+;; and register them.  Component preds name classes by symbol only, so
+;; this does not require the classes to be in env yet.
+(define (register-constraint-syns env forms)
+  (for/fold ([e env]) ([f (in-list forms)] #:when (top:constraint-syn? f))
+    (match-define (top:constraint-syn name params constraints _stx) f)
+    (env-extend-constraint-syn
+     e name params
+     (for/list ([c (in-list constraints)]) (resolve-constraint c e)))))
 
 ;; ----- standalone type families: registration (Phase A4.6) ----------
 
@@ -3878,6 +3894,12 @@
                                   (kscheme-mono (arity->star-kind (length params)))
                                   '() #f #f))
                      declared)))]
+    [(top:constraint-syn name params constraints stx)
+     (pass (lambda ()
+             (values (env-extend-constraint-syn
+                      env name params
+                      (for/list ([c (in-list constraints)]) (resolve-constraint c env)))
+                     declared)))]
     [(top:data-instance name args ctors stx)
      (pass (lambda ()
              ;; Register the instance's constructors, then add their names
@@ -4550,6 +4572,11 @@
            (define tyfams
              (with-handlers ([exn:fail? (lambda (_) '())])
                (dynamic-require submod-spec 'rackton-tyfams)))
+           ;; Constraint synonyms of the imported module (name → encoded).
+           ;; Absent in legacy sidecars → empty.
+           (define constraint-syns
+             (with-handlers ([exn:fail? (lambda (_) '())])
+               (dynamic-require submod-spec 'rackton-constraint-syns)))
            (define e1
              (for/fold ([acc e]) ([entry (in-list bindings)])
                (env-extend-var acc (car entry)
@@ -4574,7 +4601,11 @@
              (for/fold ([acc e5]) ([entry (in-list tyfams)])
                (env-extend-tyfam acc (car entry)
                                  (decode-tyfam-info (cdr entry)))))
-           (for/fold ([acc e6]) ([entry (in-list instances)])
+           (define e7
+             (for/fold ([acc e6]) ([entry (in-list constraint-syns)])
+               (define syn (decode-constraint-syn (cdr entry)))
+               (env-extend-constraint-syn acc (car entry) (car syn) (cdr syn))))
+           (for/fold ([acc e7]) ([entry (in-list instances)])
              (define decoded (decode-instance-info entry))
              (define class-name (car decoded))
              (define new-inst (cdr decoded))

@@ -249,6 +249,11 @@
 ;; type arguments, `ctors` the `data-ctor`s introduced for this instance
 ;; (their result type is the head, GADT-style).
 (struct top:data-instance (name args ctors stx) #:transparent)
+
+;; A constraint synonym `(define-constraint (C p …) k …)` — `name`/`params`
+;; and `constraints`, the list of `constraint`s the synonym abbreviates.
+;; A `(C T …)` use expands to these with params substituted by T….
+(struct top:constraint-syn (name params constraints stx) #:transparent)
 ;; One named law from a `#:laws ([name (ctx … => (All …))] …)` clause in
 ;; a class body: a quantified equation documenting an invariant the
 ;; class's instances must satisfy.  `name` is the law's identifier;
