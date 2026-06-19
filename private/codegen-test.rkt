@@ -8,6 +8,7 @@
 
 (module+ test
   (require rackunit
+           racket/match
            "codegen.rkt"
            "surface.rkt"
            "env.rkt")   ; initial-env for compile-top
@@ -25,16 +26,45 @@
   (test-case "a variable lowers to its identifier"
     (check-equal? (lower (e:var 'x h)) 'x))
 
-  (test-case "a single-argument lambda lowers to a surplus-absorbing case-lambda"
-    ;; Over-application stays curried even for one parameter, so the
-    ;; lowering is a case-lambda: an exact clause plus a rest clause
-    ;; that applies the body's result to any extra arguments.
-    (check-equal? (lower (e:lam '(x) (e:var 'x h) h))
-                  '(case-lambda ((x) x) ((x . more) (apply (let () x) more)))))
+  (test-case "a single-argument lambda lowers to a self-curried letrec, body emitted once"
+    ;; Over-application stays curried even for one parameter, but the body
+    ;; must appear EXACTLY ONCE: the exact-arity clause holds it, and the
+    ;; surplus clause re-enters that clause through the letrec self-name to
+    ;; absorb extra arguments.  (Previously the body was duplicated into
+    ;; both clauses, which made nested lambdas blow up 2^depth — the
+    ;; do/let& compile-time cliff.)  The self-name is gensym'd, so match it.
+    (check-true
+     (match (lower (e:lam '(x) (e:var 'x h) h))
+       [`(letrec ([,f (case-lambda
+                        [(x) x]
+                        [(x . more) (apply (,f-over x) more)])])
+           ,f-ret)
+        (and (eq? f f-over) (eq? f f-ret))]
+       [_ #f])))
 
-  (test-case "a multi-argument lambda lowers to a curried case-lambda"
+  (test-case "a multi-argument lambda lowers to a self-curried letrec"
     (define d (lower (e:lam '(x y) (e:var 'x h) h)))
-    (check-true (and (pair? d) (eq? (car d) 'case-lambda))))
+    (check-true (and (pair? d) (eq? (car d) 'letrec))))
+
+  (test-case "nested single-param lambdas keep the body linear (emitted once)"
+    ;; Regression for the 2^depth program-size blowup: each e:lam used to
+    ;; copy its body into both case-lambda clauses, so N nested lambdas
+    ;; duplicated the innermost body 2^N times.  It must now appear once
+    ;; regardless of nesting depth.
+    (define (count-occurrences needle datum)
+      (let loop ([d datum])
+        (cond
+          [(equal? d needle) 1]
+          [(pair? d) (+ (loop (car d)) (loop (cdr d)))]
+          [else 0])))
+    (define (nest depth)
+      (let loop ([n depth])
+        (if (zero? n)
+            (e:literal "MARK" h)
+            (e:lam (list (string->symbol (format "x~a" n))) (loop (sub1 n)) h))))
+    (for ([depth (in-list '(1 5 10))])
+      (check-equal? (count-occurrences "MARK" (lower (nest depth))) 1
+                    (format "body duplicated at nesting depth ~a" depth))))
 
   (test-case "application lowers to a direct call"
     (check-equal? (lower (e:app (e:var 'f h)

@@ -129,53 +129,85 @@
 
 ;; Build a (possibly curried) lambda over `param-stxs` whose body is the
 ;; already-compiled `body-stx`.  For an N-parameter lambda (N ≥ 1) we emit
-;; a `case-lambda` whose first N clauses cover every prefix arity 1..N:
-;; the full-arity clause runs the body directly, and each shorter prefix
-;; returns a recursively-curried lambda over the remaining parameters —
-;; that is partial application.  A final rest-args clause makes
-;; OVER-application curried as well: arguments beyond N are `apply`-ed to
-;; the fully-applied body, so `(f a b c)` equals `(((f a) b) c)` even when
-;; the surplus must flow into a function the body *returns*.  The type
-;; checker already treats arrows as fully curried, so this keeps codegen
-;; honest with it.  Ill-typed over-application never reaches the rest
-;; clause: unification rejects applying a non-function at compile time, so
-;; whenever the clause fires the body provably evaluates to a procedure.
-;; Clause ordering matters — `case-lambda` prefers the exact-arity clause,
-;; so the rest clause only fires for strictly more than N arguments (where
-;; `more` is non-empty).  All clauses lexically capture the same body
-;; syntax — runtime cost is one closure allocation per partial step and one
-;; `apply` per over-application; exact calls pay neither.
+;; a `case-lambda`, bound to a fresh self-name in a `letrec`, whose first N
+;; clauses cover every prefix arity 1..N: the full-arity clause runs the
+;; body directly, and each shorter prefix returns a recursively-curried
+;; lambda over the remaining parameters — that is partial application.  A
+;; final rest-args clause makes OVER-application curried as well: arguments
+;; beyond N are `apply`-ed to the fully-applied result, so `(f a b c)`
+;; equals `(((f a) b) c)` even when the surplus must flow into a function
+;; the body *returns*.  The type checker already treats arrows as fully
+;; curried, so this keeps codegen honest with it.  Ill-typed
+;; over-application never reaches the rest clause: unification rejects
+;; applying a non-function at compile time, so whenever the clause fires
+;; the body provably evaluates to a procedure.  Clause ordering matters —
+;; `case-lambda` prefers the exact-arity clause, so the rest clause only
+;; fires for strictly more than N arguments (where `more` is non-empty).
+;;
+;; The body is emitted EXACTLY ONCE — in the full-arity clause.  Every
+;; other clause (partial and over-application) re-enters the lambda at
+;; exact arity through the `letrec` self-name instead of re-embedding the
+;; body.  Without this, each clause carried its own copy of the body, so a
+;; lambda nested D deep duplicated the innermost body 2^D times — the
+;; exponential compile-time blowup of long `do`/`let&` blocks, whose binds
+;; lower to D nested one-parameter continuations.  Exact-arity calls — the
+;; common path, and the only path for those continuations — pay nothing
+;; extra; only over-application costs one self-call plus the `apply`.
 (define (build-curried-lambda param-stxs body-stx ctx-stx)
   (cond
     [(zero? (length param-stxs))
      (with-syntax ([bdy body-stx])
        (syntax/loc ctx-stx (lambda () bdy)))]
     [else
-     (define n (length param-stxs))
-     (define fixed-clauses
-       (for/list ([k (in-range 1 (add1 n))])
-         (define prefix (take-prefix param-stxs k))
-         (define rest   (drop-prefix param-stxs k))
-         (with-syntax ([(p ...) prefix])
-           (cond
-             [(null? rest)
-              (with-syntax ([bdy body-stx])
-                #'[(p ...) bdy])]
-             [else
-              (with-syntax ([inner (build-curried-lambda rest body-stx ctx-stx)])
-                #'[(p ...) inner])]))))
-     ;; `bdy` may be a `(begin (define …) … result)` that splices its
-     ;; internal definitions into a definition context (e.g. a `(racket
-     ;; …)` escape).  The fixed clauses provide that context directly;
-     ;; the over-clause must restore it with `(let () bdy)` before the
-     ;; result can be `apply`-ed, or the body's defines land in an
-     ;; expression context and fail to compile.
-     (define over-clause
-       (with-syntax ([(p ...) param-stxs]
-                     [bdy body-stx])
-         #'[(p ... . more) (apply (let () bdy) more)]))
-     (with-syntax ([(clause ...) (append fixed-clauses (list over-clause))])
-       (syntax/loc ctx-stx (case-lambda clause ...)))]))
+     ;; A fresh, uninterned self-name: it cannot capture a user binding,
+     ;; and the single syntax object spliced everywhere keeps the letrec
+     ;; binding and its references the same identifier.
+     (define self (datum->syntax ctx-stx (gensym 'curried) ctx-stx))
+     (with-syntax ([f self]
+                   [(p ...) param-stxs])
+       ;; Re-entering at exact arity: `(f p ...)` references the full
+       ;; parameter list, which is in scope at every terminal (each partial
+       ;; level binds its prefix, then recurs binding the rest).
+       (with-syntax ([self-call #'(f p ...)])
+         (with-syntax ([dispatch
+                        ;; Top level: the full-arity terminal is the body.
+                        (build-arity-dispatch param-stxs body-stx #'self-call ctx-stx)])
+           (syntax/loc ctx-stx (letrec ([f dispatch]) f)))))]))
+
+;; The arity-dispatching `case-lambda` for `params` (the parameters this
+;; level still has to bind).  `full-term` is the syntax run once this level
+;; is fully applied — the user body at the top level, the self-call at the
+;; recursive (partial-application) levels.  `self-call` re-invokes the
+;; whole lambda at exact arity, used for over-application and to continue
+;; partial application.  Only `full-term` at the top carries the body;
+;; partial and over clauses carry the small fixed `self-call`, so this
+;; never duplicates the user body.
+(define (build-arity-dispatch params full-term self-call ctx-stx)
+  (define n (length params))
+  (define fixed-clauses
+    (for/list ([k (in-range 1 (add1 n))])
+      (define prefix (take-prefix params k))
+      (define rest   (drop-prefix params k))
+      (with-syntax ([(p ...) prefix])
+        (cond
+          [(null? rest)
+           ;; `full-term` may be a `(begin (define …) … result)` that
+           ;; splices definitions into a context (e.g. a `(racket …)`
+           ;; escape).  A `case-lambda` clause body is a definition
+           ;; context, so this needs no wrapping.
+           (with-syntax ([term full-term])
+             #'[(p ...) term])]
+          [else
+           ;; Partial application: bind the prefix, await the rest, then
+           ;; re-enter the whole lambda at exact arity via `self-call`.
+           (with-syntax ([inner (build-arity-dispatch rest self-call self-call ctx-stx)])
+             #'[(p ...) inner])]))))
+  (define over-clause
+    (with-syntax ([(p ...) params]
+                  [self self-call])
+      #'[(p ... . more) (apply self more)]))
+  (with-syntax ([(clause ...) (append fixed-clauses (list over-clause))])
+    (syntax/loc ctx-stx (case-lambda clause ...))))
 
 (define (take-prefix xs n)
   (cond [(or (zero? n) (null? xs)) '()]
