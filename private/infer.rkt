@@ -2293,6 +2293,158 @@
   (define-values (env* _ _forms _st) (infer-program/phases forms env (hasheq)))
   env*)
 
+;; ----- variadic-call gathering -------------------------------------
+;;
+;; After the env's `variadics` table is complete (Phase A, plus any
+;; imported entries), rewrite every DIRECT call of a variadic name so
+;; its trailing arguments are collected into a rest-list.  A call
+;; `(f a₀ … a_{k-1} x … z)` of a variadic `f` with `k` fixed parameters
+;; becomes `(f a₀ … a_{k-1} (Cons x … (Cons z Nil)))` — a saturated,
+;; ordinary curried application against `f`'s binary core type.  Both
+;; inference and codegen then run on this rewritten AST, oblivious to
+;; the variadicity.  The pass also drops the now-consumed `top:variadic`
+;; markers.
+;;
+;; Local bindings shadow: a `let` / `lambda` / `match` that rebinds a
+;; variadic name suppresses gathering for that name in its scope, so a
+;; shadowing local function is called by ordinary currying.
+
+(define (hash-remove* h keys)
+  (for/fold ([h h]) ([k (in-list keys)]) (hash-remove h k)))
+
+;; Build the AST of a list literal `(Cons e₀ … (Cons e_n Nil))`.
+(define (build-cons-list elems stx)
+  (foldr (lambda (el acc) (e:app (e:var 'Cons stx) (list el acc) stx))
+         (e:var 'Nil stx)
+         elems))
+
+;; Names bound by a core pattern.
+(define (pattern-vars p)
+  (match p
+    [(p:var n _)      (list n)]
+    [(p:ctor _ as _)  (append-map pattern-vars as)]
+    [(p:tuple es _)   (append-map pattern-vars es)]
+    [_                '()]))
+
+(define (gather-variadic-calls forms env)
+  (define vmap (env-variadics env))
+  (if (hash-empty? vmap)
+      (filter (lambda (f) (not (top:variadic? f))) forms)
+      (filter-map (lambda (f) (gv-top f vmap)) forms)))
+
+;; Rewrite one top-form (or drop it, returning #f, for a consumed marker).
+(define (gv-top f vmap)
+  (cond
+    [(top:variadic? f) #f]
+    [(top:def? f)
+     (top:def (top:def-name f) (gv-expr (top:def-expr f) vmap) (top:def-stx f))]
+    [(top:instance? f)
+     (top:instance (top:instance-context f) (top:instance-head f)
+                   (map (lambda (m) (gv-method m vmap)) (top:instance-methods f))
+                   (top:instance-stx f))]
+    [(top:derive-instance? f)
+     (top:derive-instance (top:derive-instance-context f) (top:derive-instance-head f)
+                          (map (lambda (m) (gv-method m vmap))
+                               (top:derive-instance-methods f))
+                          (top:derive-instance-stx f))]
+    [else f]))
+
+;; An instance method is a `top:def` (or an `inst-type-fam`, passed through).
+(define (gv-method m vmap)
+  (if (top:def? m)
+      (top:def (top:def-name m) (gv-expr (top:def-expr m) vmap) (top:def-stx m))
+      m))
+
+(define (gv-expr e vmap)
+  (define (R x) (gv-expr x vmap))
+  (match e
+    [(e:app head args stx)
+     (define head* (R head))
+     (define args* (map R args))
+     (define k (and (e:var? head) (hash-ref vmap (e:var-name head) #f)))
+     (cond
+       [(not k) (e:app head* args* stx)]
+       [else
+        ;; A truly zero-argument call `(f)` was desugared to a single
+        ;; implicit `Unit` argument; for a variadic head that means zero
+        ;; user arguments, so the rest-list is empty.
+        (define zero-arg?
+          (and (= (length args*) 1)
+               (e:var? (car args*))
+               (eq? (e:var-name (car args*)) 'Unit)))
+        (define user-args (if zero-arg? '() args*))
+        (cond
+          [(>= (length user-args) k)
+           (define-values (fixed rest) (split-at user-args k))
+           (e:app head* (append fixed (list (build-cons-list rest stx))) stx)]
+          ;; Too few arguments to satisfy the fixed parameters: leave the
+          ;; call as-is, so it reads as an ordinary (partial) application.
+          [else (e:app head* args* stx)])])]
+    [(e:lam params body stx)
+     (e:lam params (gv-expr body (hash-remove* vmap params)) stx)]
+    [(e:let bs body stx)
+     ;; Parallel let: each rhs is in the OUTER scope; the names shadow in
+     ;; the body only.
+     (define names (map car bs))
+     (e:let (for/list ([b (in-list bs)]) (cons (car b) (R (cdr b))))
+            (gv-expr body (hash-remove* vmap names)) stx)]
+    [(e:letrec bs body stx)
+     ;; Recursive: the names shadow in every rhs and in the body.
+     (define vmap* (hash-remove* vmap (map car bs)))
+     (e:letrec (for/list ([b (in-list bs)]) (cons (car b) (gv-expr (cdr b) vmap*)))
+               (gv-expr body vmap*) stx)]
+    [(e:if a b c stx)        (e:if (R a) (R b) (R c) stx)]
+    [(e:ann ex t stx)        (e:ann (R ex) t stx)]
+    [(e:match scrut cs irr stx)
+     (e:match (R scrut) (for/list ([c (in-list cs)]) (gv-clause c vmap)) irr stx)]
+    [(e:match* scruts cs irr stx)
+     (e:match* (map R scruts)
+               (for/list ([c (in-list cs)]) (gv-clause* c vmap)) irr stx)]
+    [(e:tuple es stx)        (e:tuple (map R es) stx)]
+    [(e:tref t i stx)        (e:tref (R t) i stx)]
+    [(e:update rec ups stx)
+     (e:update (R rec)
+               (for/list ([u (in-list ups)]) (cons (car u) (R (cdr u)))) stx)]
+    [(e:array es stx)        (e:array (map R es) stx)]
+    [(e:build-array n p stx) (e:build-array n (R p) stx)]
+    [(e:aref a i stx)        (e:aref (R a) i stx)]
+    [(e:array-slice op i a stx) (e:array-slice op i (R a) stx)]
+    [(e:handle ex cs ret stx)
+     (e:handle (R ex) (map (lambda (c) (gv-handle-clause c vmap)) cs)
+               (gv-handle-return ret vmap) stx)]
+    ;; e:escape splices raw Racket — leave it untouched; e:literal /
+    ;; e:var / type nodes have no nested expressions to rewrite.
+    [_ e]))
+
+;; A `match` clause: the pattern's variables shadow in its guard and body.
+(define (gv-clause c vmap)
+  (define vmap* (hash-remove* vmap (pattern-vars (clause-pattern c))))
+  (clause (clause-pattern c)
+          (and (clause-guard c) (gv-expr (clause-guard c) vmap*))
+          (gv-expr (clause-body c) vmap*)
+          (clause-stx c)))
+
+(define (gv-clause* c vmap)
+  (define vmap* (hash-remove* vmap (append-map pattern-vars (clause*-patterns c))))
+  (clause* (clause*-patterns c)
+           (and (clause*-guard c) (gv-expr (clause*-guard c) vmap*))
+           (gv-expr (clause*-body c) vmap*)
+           (clause*-stx c)))
+
+(define (gv-handle-clause c vmap)
+  (define vmap* (hash-remove* vmap
+                              (cons (handle-clause-k-name c) (handle-clause-params c))))
+  (handle-clause (handle-clause-op c) (handle-clause-params c)
+                 (handle-clause-k-name c)
+                 (gv-expr (handle-clause-body c) vmap*)
+                 (handle-clause-stx c)))
+
+(define (gv-handle-return r vmap)
+  (define vmap* (hash-remove* vmap (list (handle-return-var r))))
+  (handle-return (handle-return-var r)
+                 (gv-expr (handle-return-body r) vmap*)
+                 (handle-return-stx r)))
+
 ;; Like `infer-program`, but also returns the post-expansion form list
 ;; (with every `#:derive-supers` instance replaced by the plain
 ;; instances it synthesized).  The elaborator drives codegen off THIS
@@ -2333,7 +2485,13 @@
   ;; Now that every class (prelude, local, imported) is in env, rewrite
   ;; each `#:derive-supers` instance into the plain instances it
   ;; synthesizes.  Every later phase — and codegen — runs over `forms*`.
-  (define forms* (expand-derive-instances forms env-after-A))
+  (define forms*0 (expand-derive-instances forms env-after-A))
+  ;; ---- Variadic-call gathering ----
+  ;; With env's `variadics` table complete, rewrite each direct call of a
+  ;; variadic name to collect its trailing args into a rest-list, and drop
+  ;; the consumed `top:variadic` markers.  Every later phase — and codegen
+  ;; — runs over this rewritten list.
+  (define forms* (gather-variadic-calls forms*0 env-after-A))
   ;; ---- Superclass existence ----
   ;; Every superclass a protocol names must be a class that actually
   ;; exists.  Checked here, after Phase A, so a forward reference (a
@@ -2675,7 +2833,23 @@
          (env-extend-var e (top:foreign-c-name f)
                          (resolve-scheme (top:foreign-c-type f) env-A8))]
         [else e])))
-  (values env-A9 declared))
+  ;; A10: variadic-arity markers (from `...` signatures and dotted
+  ;; defines).  A name may carry both — a signature and its definition —
+  ;; in which case their fixed-arg counts must agree.
+  (define env-A10
+    (for/fold ([e env-A9]) ([f (in-list forms)] #:when (top:variadic? f))
+      (define name (top:variadic-name f))
+      (define k    (top:variadic-arity f))
+      (define prev (env-ref-variadic e name #f))
+      (when (and prev (not (= prev k)))
+        (raise-syntax-error 'rackton
+          (format (string-append "variadic arity mismatch for ~a: its signature "
+                                 "and definition disagree on the fixed-argument "
+                                 "count (~a vs ~a)")
+                  name prev k)
+          (top:variadic-stx f)))
+      (env-extend-variadic e name k)))
+  (values env-A10 declared))
 
 ;; Pre-register every top:data's tcon header in env: name + arity +
 ;; full ctor-name list + abstract flag.  Ctor schemes are resolved
@@ -4610,6 +4784,13 @@
            (define constraint-fams
              (with-handlers ([exn:fail? (lambda (_) '())])
                (dynamic-require submod-spec 'rackton-constraint-fams)))
+           ;; Variadic functions of the imported module (name → fixed
+           ;; arity).  Absent in legacy sidecars → empty.  Folded below so
+           ;; the importer's call sites gather trailing arguments into the
+           ;; rest-list, exactly as in the defining module.
+           (define variadics
+             (with-handlers ([exn:fail? (lambda (_) '())])
+               (dynamic-require submod-spec 'rackton-variadics)))
            (define e1
              (for/fold ([acc e]) ([entry (in-list bindings)])
                (env-extend-var acc (car entry)
@@ -4642,7 +4823,10 @@
              (for/fold ([acc e7]) ([entry (in-list constraint-fams)])
                (env-extend-constraint-fam acc (car entry)
                                           (decode-constraint-fam-info (cdr entry)))))
-           (for/fold ([acc e8]) ([entry (in-list instances)])
+           (define e9
+             (for/fold ([acc e8]) ([entry (in-list variadics)])
+               (env-extend-variadic acc (car entry) (cdr entry))))
+           (for/fold ([acc e9]) ([entry (in-list instances)])
              (define decoded (decode-instance-info entry))
              (define class-name (car decoded))
              (define new-inst (cdr decoded))

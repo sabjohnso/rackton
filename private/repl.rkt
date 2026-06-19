@@ -299,7 +299,8 @@
         [else
          (apply string-append
                 (for/list ([h (in-list hits)])
-                  (render-typed (name-doc (car h)) (scheme->pretty-datum (cdr h)))))])])))
+                  (render-typed (name-doc (car h))
+                                (binding-type-datum env (car h) (cdr h)))))])])))
 
 ;; List the functions (and data constructors) in scope that accept an
 ;; argument of the queried type.  Bare-type-variable argument
@@ -322,7 +323,9 @@
         [else
          (apply string-append
                 (for/list ([m (in-list matches)])
-                  (render-typed (name-doc (car m)) (scheme->pretty-datum (cdr m)))))])])))
+                  (render-typed (name-doc (car m))
+                                (binding-type-datum (rackton-repl-state-env state)
+                                                    (car m) (cdr m)))))])])))
 
 ;; Play back the input form(s) that bound `name`: the definition first,
 ;; then — for a class — the live instances the session has seen.
@@ -346,7 +349,7 @@
   (define env (rackton-repl-state-env state))
   (cond
     [(env-ref-var env name)
-     => (lambda (sch) (render-typed (name-doc name) (scheme->pretty-datum sch)))]
+     => (lambda (sch) (render-typed (name-doc name) (binding-type-datum env name sch)))]
     [(env-ref-data env name)
      => (lambda (di) (render-typed (name-doc name)
                                    (scheme->pretty-datum (data-info-scheme di))
@@ -621,10 +624,18 @@
     [`(define (,(? symbol? name) . ,_) . ,_) (echo-definition name post-env)]
     [_ ""]))
 
+;; The display datum for `name`'s scheme: a variadic function is shown in
+;; its surface `...` form, every other binding in the ordinary n-ary form.
+(define (binding-type-datum env name sch)
+  (define k (env-ref-variadic env name #f))
+  (if k
+      (scheme->variadic-pretty-datum sch k)
+      (scheme->pretty-datum sch)))
+
 (define (echo-definition name post-env)
   (define sch (env-ref-var post-env name))
   (cond
-    [sch (render-typed (name-doc name) (scheme->pretty-datum sch))]
+    [sch (render-typed (name-doc name) (binding-type-datum post-env name sch))]
     [else ""]))
 
 ;; ----- expression input -------------------------------------------

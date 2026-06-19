@@ -79,6 +79,7 @@
          type->pretty-datum
          pred->pretty-datum
          scheme->pretty-datum
+         scheme->variadic-pretty-datum
          datum->doc
          group-parts
          format-pretty-datum
@@ -541,6 +542,37 @@
   (match sch
     [(scheme '() body) (type->pretty-datum body)]
     [(scheme vs body)  `(All ,vs ,(type->pretty-datum body))]))
+
+;; Render a variadic function's scheme in its surface `...` form, given
+;; its fixed-parameter count `k`.  The core type is
+;; `(-> A0 … A{k-1} (List C) R)`; this peels the `k` fixed domains and the
+;; `(List C)` rest-argument and produces `(-> A0 … A{k-1} C ... R)` — the
+;; shape the user wrote.  If the type does not have that exact shape
+;; (it always should, for a registered variadic), fall back to the plain
+;; pretty datum so display never errors.
+(define (scheme->variadic-pretty-datum sch k)
+  (match sch
+    [(scheme '() body) (type->variadic-pretty-datum body k)]
+    [(scheme vs body)  `(All ,vs ,(type->variadic-pretty-datum body k))]))
+
+(define (type->variadic-pretty-datum t k)
+  (match t
+    [(qual cs body)
+     `(,@(map pred->pretty-datum cs) => ,(type->variadic-pretty-datum body k))]
+    [_
+     (or (let loop ([n k] [cur t] [fixed '()])
+           (cond
+             [(> n 0)
+              (match cur
+                [(tapp (tcon '->) (list d c))
+                 (loop (sub1 n) c (cons (type->pretty-datum d) fixed))]
+                [_ #f])]
+             [else
+              (match cur
+                [(tapp (tcon '->) (list (tapp (tcon 'List) (list c)) r))
+                 `(-> ,@(reverse fixed) ,(type->pretty-datum c) ... ,(type->pretty-datum r))]
+                [_ #f])]))
+         (type->pretty-datum t))]))
 
 ;; The width budget for rendered types/predicates — the columns available
 ;; *after* the diagnostic's label (`"  expected: "` is 12 chars), so 66

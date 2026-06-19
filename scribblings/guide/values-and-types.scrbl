@@ -306,6 +306,58 @@ returned lambda: a surplus argument flows into that lambda, so
 @racket[->] is variadic in source position but always parses
 right-associatively.
 
+@section[#:tag "guide-variadic"]{Variadic functions}
+
+A function can accept a variable number of arguments of a single type.
+A @racket[...] in the signature marks the last argument before the
+result as repeated zero-or-more times, and a dotted parameter binds the
+gathered trailing arguments as a list:
+
+@rackton-example[#:eval ev #:mode 'value]{
+(: sum-all (-> Integer ... Integer))
+(define (sum-all . xs) (foldr + 0 xs))
+
+(sum-all 1 2 3 4)
+}
+
+This is pure surface convenience: @racket[(-> A C ... R)] desugars to
+the ordinary binary core type @racket[(-> A (-> (List C) R))], so the
+function really takes its rest arguments as one @racket[(List C)].  A
+direct call collects its trailing arguments into that list — so
+@racket[(sum-all 1 2 3 4)] becomes @racket[(sum-all (Cons 1 (Cons 2 (Cons 3 (Cons 4 Nil)))))] —
+and zero trailing arguments give @racket[Nil]:
+
+@rackton-example[#:eval ev #:mode 'value]{
+(: sum-all (-> Integer ... Integer))
+(define (sum-all . xs) (foldr + 0 xs))
+
+(sum-all)
+}
+
+A fixed prefix may precede the repeated tail.  The fixed parameters are
+matched positionally; everything after them is gathered:
+
+@rackton-example[#:eval ev #:mode 'value]{
+(: label-all (-> String String ... String))
+(define (label-all sep . parts) (string-join sep parts))
+
+(label-all ", " "a" "b" "c")
+}
+
+The rest arguments share one type — they are unified as the elements of
+the same list — so @racket[(sum-all 1 "x")] is a type error, not a
+runtime surprise.
+
+Because the gathering happens at each call site, a variadic function is
+@emph{second-class as a value}: a direct application of its name is
+always a complete call (never a partial application waiting for more),
+and using the name without applying it — passing it to @racket[map], say
+— sees only its core @racket[(List C)] type.  To partial-apply or pass a
+variadic function around, wrap it in a @racket[lambda].
+
+A signature is optional: a dotted parameter alone makes a function
+variadic, with its rest binding inferred as a @racket[(List a)].
+
 @section{Explicit polymorphism}
 
 When you want to be specific about quantification, use @racket[All]:

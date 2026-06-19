@@ -47,6 +47,9 @@
          env-ref-alias
          env-extend-struct-fields
          env-ref-struct-fields
+         env-extend-variadic
+         env-ref-variadic
+         env-variadics
          env-extend-effect
          env-ref-effect
          env-effect-of-op
@@ -82,9 +85,13 @@
 ;; `constraint-fams` maps a constraint-FAMILY name to its
 ;; `constraint-fam-info` — ordered clauses computing a constraint from
 ;; type arguments (the higher-order, recursive analogue of a synonym).
+;; `variadics` maps a variadic function's name to its FIXED-parameter
+;; count (the arguments preceding the gathered rest-list).  A pre-pass
+;; reads it to rewrite each direct call, collecting trailing arguments
+;; into a list; the core type carries no trace of the variadicity.
 (struct env (vars data-ctors tcons classes instance-table method-owners aliases
              struct-fields effects promoted-ctors tyfams constraint-syns
-             constraint-fams)
+             constraint-fams variadics)
   #:transparent)
 
 ;; A constraint family's reduction info: `arity` parameters and ordered
@@ -197,7 +204,7 @@
 ;; prelude-instances-table; set intrinsically at construction.
 (struct instance-info (head context methods type-family-bindings origin prelude?) #:transparent)
 
-(define empty-env (env (hasheq) (hasheq) (hasheq) (hasheq) (hasheq) (hasheq) (hasheq) (hasheq) (hasheq) (hasheq) (hasheq) (hasheq) (hasheq)))
+(define empty-env (env (hasheq) (hasheq) (hasheq) (hasheq) (hasheq) (hasheq) (hasheq) (hasheq) (hasheq) (hasheq) (hasheq) (hasheq) (hasheq) (hasheq)))
 
 ;; ----- basic accessors ----------------------------------------------
 
@@ -360,6 +367,20 @@
 ;; Look up a struct's field-name list, or #f if unknown.
 (define (env-ref-struct-fields e struct-name [default #f])
   (hash-ref (env-struct-fields e) struct-name default))
+
+;; Register a variadic function: `name` has `arity` FIXED parameters
+;; before its gathered rest-list.  Re-registering the same name with a
+;; different arity is a contradiction (a `...` signature and a dotted
+;; define that disagree), and the caller is expected to have checked;
+;; here last-writer simply wins.
+(define (env-extend-variadic e name arity)
+  (struct-copy env e
+               [variadics (hash-set (env-variadics e) name arity)]))
+
+;; The fixed-parameter count of a variadic function `name`, or #f if
+;; `name` is not variadic.
+(define (env-ref-variadic e name [default #f])
+  (hash-ref (env-variadics e) name default))
 
 ;; Register an effect's operation list under its name.
 (define (env-extend-effect e effect-name op-names)

@@ -1522,6 +1522,61 @@
                    (build-arrow-type (cdr arg-stxs) stx))
              stx)]))
 
+;; A variadic arrow `(-> fixed … rep ... result)` carries the literal
+;; ellipsis token `...` immediately after the repeated argument type and
+;; immediately before the (single) result type.  When `ty-stx` has that
+;; shape, return two values: the desugared BINARY core type — the
+;; repeated type wrapped as `(List rep)` in final argument position, so
+;; `(-> A C ... R)` becomes `(-> A (-> (List C) R))` — and the count of
+;; FIXED parameters preceding the rest-list.  Otherwise return
+;; `(values #f #f)`, leaving ordinary arrows to `parse-type`.
+(define (parse-variadic-arrow ty-stx)
+  (syntax-parse ty-stx
+    #:datum-literals (All => ->)
+    ;; Peel a leading quantifier / qualifier and rewrap the desugared
+    ;; core, so `(All (a) (-> a ... a))` and `((Ord a) => (-> a ... a))`
+    ;; are recognized as variadic too.
+    [(All (v:id ...) body)
+     (define-values (core k) (parse-variadic-arrow #'body))
+     (if core
+         (values (ty:forall (map syntax->datum (syntax->list #'(v ...))) core ty-stx) k)
+         (values #f #f))]
+    [(c ...+ => body)
+     (define-values (core k) (parse-variadic-arrow #'body))
+     (if core
+         (values (ty:qual (map parse-constraint (syntax->list #'(c ...))) core ty-stx) k)
+         (values #f #f))]
+    [(-> a ...+)
+     (define args (syntax->list #'(a ...)))
+     (define dots-positions
+       (for/list ([x (in-list args)] [i (in-naturals)]
+                  #:when (eq? (syntax->datum x) '...))
+         i))
+     (cond
+       [(null? dots-positions) (values #f #f)]
+       [(not (null? (cdr dots-positions)))
+        (raise-syntax-error 'rackton
+          "a variadic arrow type may contain only one `...`" ty-stx)]
+       [else
+        (define dots-idx (car dots-positions))
+        (define len (length args))
+        (unless (and (>= dots-idx 1) (= dots-idx (- len 2)))
+          (raise-syntax-error 'rackton
+            (string-append "`...` must follow the repeated argument type "
+                           "and precede a single result type")
+            ty-stx))
+        (define k          (sub1 dots-idx))      ; number of fixed params
+        (define fixed-tys  (map parse-type (take args k)))
+        (define rep-ty     (parse-type (list-ref args (sub1 dots-idx))))
+        (define res-ty     (parse-type (list-ref args (sub1 len))))
+        (define list-ty    (ty:app (ty:con 'List ty-stx) (list rep-ty) ty-stx))
+        (define core
+          (foldr (lambda (a acc) (ty:app (ty:con '-> ty-stx) (list a acc) ty-stx))
+                 res-ty
+                 (append fixed-tys (list list-ty))))
+        (values core k)])]
+    [_ (values #f #f)]))
+
 ;; Parse a constraint expression like `(Eq a)` or `(Foo (Maybe a))`.
 ;; The head must be a non-lowercase identifier (a class name); every
 ;; argument is a plain type.  (Kind-annotated class parameters appear
@@ -1737,7 +1792,28 @@
                          (map parse-cfam-clause (syntax->list #'(clause ...)))
                          stx)]
     [(: name:id ty)
-     (top:dec (syntax->datum #'name) (parse-type #'ty) stx)]
+     ;; A `...` in the arrow makes this a variadic declaration: emit the
+     ;; desugared binary core type as the dec, plus a `top:variadic`
+     ;; marker recording the fixed-arg count.
+     (define-values (vcore k) (parse-variadic-arrow #'ty))
+     (if vcore
+         (list (top:dec (syntax->datum #'name) vcore stx)
+               (top:variadic (syntax->datum #'name) k stx))
+         (top:dec (syntax->datum #'name) (parse-type #'ty) stx))]
+
+    [(define (f:id pre ... . rest:id) body)
+     ;; A dotted rest parameter: `(f a b . xs)` binds the gathered
+     ;; trailing arguments as the list `xs`.  Desugar to an ordinary
+     ;; final parameter (so codegen and inference see a plain function
+     ;; whose last argument is a list) plus a `top:variadic` marker
+     ;; recording the count of fixed parameters before the rest-list.
+     (define fixed-stxs (syntax->list #'(pre ...)))
+     (define params-stx
+       (datum->syntax #'body (append fixed-stxs (list #'rest)) #'body))
+     (define-values (names body-ast)
+       (parse-fn-params+body params-stx #'body stx))
+     (list (top:def (syntax->datum #'f) (e:lam names body-ast stx) stx)
+           (top:variadic (syntax->datum #'f) (length fixed-stxs) stx))]
 
     [(define (f:id arg ...) body)
      ;; A 0-arg define `(define (f) body)` desugars to a

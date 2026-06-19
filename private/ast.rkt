@@ -314,6 +314,15 @@
 ;; Carrying this as a separate top-form keeps data-ctor untouched.
 (struct top:struct-fields (struct-name field-names stx) #:transparent)
 
+;; Side-channel variadic-arity registration.  Emitted by the parser
+;; alongside a `top:dec` (whose arrow used `...`) or a `top:def` (whose
+;; head had a dotted rest parameter).  `arity` is the number of FIXED
+;; parameters preceding the gathered rest-list.  Inference folds these
+;; into the env's `variadics` table; a pre-pass then rewrites each direct
+;; call of the name, collecting its trailing arguments into a list.
+;; Carrying this separately keeps top:dec / top:def untouched.
+(struct top:variadic    (name arity stx) #:transparent)
+
 ;; An effect declaration.  `name` is the effect's name;
 ;; `ops` is a list of effect-op describing each operation.
 (struct top:effect    (name ops stx) #:transparent)
