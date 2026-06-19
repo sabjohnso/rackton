@@ -240,6 +240,15 @@
 ;; A standalone open-family equation `(type-instance (F T …) = U)`:
 ;; `args` are the LHS argument types, `rhs` the result type.
 (struct top:type-instance (name args rhs stx) #:transparent)
+
+;; A data family `(data-family (F p …) [:: k])` — a type constructor with
+;; NO constructors of its own; each `data-instance` adds some.  `kind` is
+;; the surface kind after `::`, or #f to infer.
+(struct top:data-family   (name params kind stx) #:transparent)
+;; A data instance `(data-instance (F T …) ctor …)`: `args` are the head
+;; type arguments, `ctors` the `data-ctor`s introduced for this instance
+;; (their result type is the head, GADT-style).
+(struct top:data-instance (name args ctors stx) #:transparent)
 ;; One named law from a `#:laws ([name (ctx … => (All …))] …)` clause in
 ;; a class body: a quantified equation documenting an invariant the
 ;; class's instances must satisfy.  `name` is the law's identifier;

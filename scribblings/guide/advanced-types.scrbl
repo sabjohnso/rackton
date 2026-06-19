@@ -370,3 +370,46 @@ dedicated solver, not recursive families.  Use a promoted Peano datatype
 when you need to recurse structurally over a natural; use the built-in
 @racket[Nat] (with @racket[+]/@racket[*]) when you need to solve linear
 size equations.}
+
+@section[#:tag "data-families"]{Data families}
+
+A @racket[data-family] declares a type constructor with @emph{no}
+constructors of its own; each @racket[data-instance] then supplies
+constructors for a specific index — and different instances may use
+entirely different runtime representations.
+
+@rackton-example[#:eval ev #:mode 'defs #:context? #t]{
+(data-family (Arr a))
+(data-instance (Arr Boolean) (MkBits Integer))   ;; a bitset
+(data-instance (Arr Integer) (MkInts String))    ;; a packed string
+}
+
+Each instance's constructors build and match @emph{at that index only} —
+@racket[MkBits] makes an @racket[(Arr Boolean)], @racket[MkInts] an
+@racket[(Arr Integer)]:
+
+@rackton-example[#:eval ev #:mode 'defs #:context? #t]{
+(: popcount (-> (Arr Boolean) Integer))
+(define (popcount a) (match a [(MkBits n) n]))
+}
+
+The family's @seclink["guide-kinds"]{kind} is inferred from its
+instances, so a family indexed by a promoted tag rather than by a
+@racket[*]-kinded type works too:
+
+@rackton-example[#:eval ev #:mode 'defs #:context? #t]{
+(data Shape SBox SDisc)
+(data-family (Render s))
+(data-instance (Render SBox)  (RBox  Integer Integer))
+(data-instance (Render SDisc) (RDisc Integer))
+}
+
+Here @racket[Render] has kind @racket[(-> Shape *)], inferred from the
+@racket[SBox]/@racket[SDisc] indices.  Instance heads must be
+@emph{coherent} (non-overlapping), and a data family — tcon plus instance
+constructors — crosses module boundaries like an ordinary type.
+
+A function that is generic in the family's index cannot pattern-match the
+constructors (which constructor is present depends on the index, which is
+not yet known) — reach them at a concrete index, or through a protocol
+method, exactly as in Haskell.

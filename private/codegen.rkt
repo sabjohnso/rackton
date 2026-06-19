@@ -614,6 +614,18 @@
     [(top:struct-fields _ _ _) (values #f st)]   ;; Compile-time only
     [(top:type-family _ _ _ _ _) (values #f st)] ;; Compile-time only
     [(top:type-instance _ _ _ _) (values #f st)] ;; Compile-time only
+    [(top:data-family _ _ _ _) (values #f st)]   ;; type only — no runtime form
+    [(top:data-instance _ _ ctors stx)
+     ;; Each instance constructor lowers to a struct, like a data ctor.
+     (values
+      (with-syntax
+       ([(ctor-form ...)
+         (for/list ([c (in-list ctors)])
+           (with-syntax ([nm  (datum->syntax stx (data-ctor-name c) stx)]
+                         [arr (length (data-ctor-field-types c))])
+             #'(define-data-ctor nm arr)))])
+        (syntax/loc stx (begin ctor-form ...)))
+      st)]
 
     [(top:effect ename ops stx)
      ;; Compile an effect to a Racket prompt-tag + one

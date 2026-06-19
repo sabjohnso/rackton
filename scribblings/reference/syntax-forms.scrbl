@@ -537,6 +537,33 @@ so it reduces identically across module boundaries.  See
 (type-instance (Elem String)  = Char)
 (type-instance (Elem Boolean) = Boolean)]}
 
+@defform*[#:literals (::)
+          [(data-family (F param ...) maybe-kind)
+           (data-instance (F type ...) ctor ...)]
+          #:grammar
+          [(maybe-kind  code:blank (code:line :: kind))
+           (ctor        cname (cname field-type ...))]]{
+
+A @deftech{data family} — a type constructor with @emph{no} constructors
+of its own.  Each @racket[data-instance] introduces constructors for a
+specific index @racket[(F type …)]; their result type is that head
+(GADT-style), and each lowers to an ordinary struct, so different
+instances may use different representations.
+
+The family's @tech{kind} is inferred from its instance heads (its result
+is always @racket[*]) unless an explicit @racket[:: kind] is given.
+Instance heads must be @emph{coherent} (non-overlapping).  A function
+generic in the index cannot pattern-match the constructors; match at a
+concrete index or via a protocol method.  A data family and its instance
+constructors cross module boundaries like an ordinary data type.
+
+@racketblock[
+(data-family (Arr a))
+(data-instance (Arr Boolean) (MkBits Integer))
+(data-instance (Arr Integer) (MkInts String))]
+
+See @seclink["data-families"]{the guide} for worked examples.}
+
 @section[#:tag "sf-exprs"]{Expressions}
 
 @deftogether[(

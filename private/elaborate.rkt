@@ -66,6 +66,8 @@
       [(top:foreign? f) 0]
       [(top:foreign-c? f) 0]
       [(top:data? f) 1]
+      [(top:data-family? f) 1]
+      [(top:data-instance? f) 1]   ; instance ctors are structs — define early
       [(top:struct-fields? f) 2]
       [(top:class? f) 3]
       [(top:instance? f) 4]

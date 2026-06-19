@@ -1620,7 +1620,7 @@
 
 (define (parse-top stx)
   (syntax-parse stx
-    #:datum-literals (define data newtype struct protocol instance define-alias define-effect require provide foreign foreign-c type-family type-instance : => :: =)
+    #:datum-literals (define data newtype struct protocol instance define-alias define-effect require provide foreign foreign-c type-family type-instance data-family data-instance : => :: =)
     [(require spec ...)
      (top:require (syntax->list #'(spec ...)) stx)]
 
@@ -1642,6 +1642,23 @@
      (top:type-instance (syntax->datum #'fname)
                         (map parse-type (syntax->list #'(arg ...)))
                         (parse-type #'rhs)
+                        stx)]
+
+    ;; (data-family (F p …) [:: k])            — a data family declaration
+    [(data-family (fname:id p:id ...) (~optional (~seq :: k)))
+     #:fail-unless (not (lowercase-id? (syntax->datum #'fname)))
+     "data family name must be a non-lowercase identifier"
+     (top:data-family (syntax->datum #'fname)
+                      (map syntax->datum (syntax->list #'(p ...)))
+                      (and (attribute k) (parse-kind-stx #'k))
+                      stx)]
+    ;; (data-instance (F T …) ctor …)          — constructors for one instance
+    [(data-instance (fname:id arg ...) ctor ...)
+     #:fail-unless (not (lowercase-id? (syntax->datum #'fname)))
+     "data family name must be a non-lowercase identifier"
+     (top:data-instance (syntax->datum #'fname)
+                        (map parse-type (syntax->list #'(arg ...)))
+                        (map parse-data-ctor (syntax->list #'(ctor ...)))
                         stx)]
 
     ;; (foreign name τ #:from M)            — racket-id = name

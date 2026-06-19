@@ -2619,9 +2619,12 @@
   ;; signatures) can reduce family applications; then infer each family's
   ;; kind from its clauses so its applications are kind-checked.
   (define env-A4.6 (infer-tyfam-kinds (register-type-families env-A4.5 forms) forms))
+  ;; A4.7: infer each data family's kind from its instance heads (result
+  ;; always *), so a family indexed by a promoted tag kind-checks.
+  (define env-A4.7 (infer-data-family-kinds env-A4.6 forms))
   ;; A5: effects (resolve op types against the tcon-complete env).
   (define env-A5
-    (for/fold ([e env-A4.6]) ([f (in-list forms)] #:when (top:effect? f))
+    (for/fold ([e env-A4.7]) ([f (in-list forms)] #:when (top:effect? f))
       ;; Phase-A forms (require/effect/class) are pure: a throwaway st suffices.
       (let-values ([(e* _ _st) (handle-top-form f e (hasheq) (make-infer-state))])
         e*)))
@@ -2636,6 +2639,12 @@
   ;; class constraints in extra-context resolve correctly).
   (define env-A7
     (resolve-data-ctors env-A6 forms))
+  ;; A7b: data-instance constructors (their result type is the instance
+  ;; head; the family tcon shell already exists from A2).
+  (define env-A7b
+    (resolve-data-instance-ctors env-A7 forms))
+  ;; Data family instances must be coherent (non-overlapping heads).
+  (check-data-family-coherence env-A7b forms)
   ;; A8: resolve every top:dec into the shared declared table; mirror
   ;; the entry into env so the rest of the pipeline can env-ref-var
   ;; before the def's body has been inferred.
@@ -2645,7 +2654,7 @@
       ;; declared types may reference; the bare `env` does not.
       (hash-set d (top:dec-name f) (resolve-scheme (top:dec-type f) env-A6))))
   (define env-A8
-    (for/fold ([e env-A7]) ([(name sch) (in-hash declared)])
+    (for/fold ([e env-A7b]) ([(name sch) (in-hash declared)])
       (env-extend-var e name sch)))
   ;; A9: foreign (host) imports — register each as a typed var, like a
   ;; bare dec, but NOT in `declared` (there is no Rackton def body; the
@@ -2670,21 +2679,40 @@
 ;; `env-ref-tcon` answers correctly during type resolution of other
 ;; forms' bodies.
 (define (pre-register-tcon-shells env forms)
-  (for/fold ([e env]) ([f (in-list forms)] #:when (top:data? f))
-    (define tname    (top:data-name f))
-    (define tparams  (top:data-params f))
-    (define ctors    (top:data-ctors f))
-    (define abstract? (top:data-abstract? f))
-    (env-extend-tcon e tname
-                     (tcon-info tname (length tparams)
-                                ;; Placeholder kind scheme; Phase A2.5
-                                ;; (infer-data-kinds) replaces it with the
-                                ;; inferred kind before any type is checked.
-                                (kscheme-mono (arity->star-kind (length tparams)))
-                                (for/list ([c (in-list ctors)])
-                                  (data-ctor-name c))
-                                abstract?
-                                (top:data-runtime-tag f)))))
+  ;; A data family's constructors live in its (separate) data-instance
+  ;; forms; collect them per family so the family tcon shell lists them
+  ;; (exhaustiveness, ,info).
+  (define fam-ctors
+    (for/fold ([h (hasheq)]) ([f (in-list forms)] #:when (top:data-instance? f))
+      (hash-update h (top:data-instance-name f)
+                   (lambda (acc)
+                     (append acc (map data-ctor-name (top:data-instance-ctors f))))
+                   '())))
+  (define e1
+    (for/fold ([e env]) ([f (in-list forms)] #:when (top:data? f))
+      (define tname    (top:data-name f))
+      (define tparams  (top:data-params f))
+      (define ctors    (top:data-ctors f))
+      (define abstract? (top:data-abstract? f))
+      (env-extend-tcon e tname
+                       (tcon-info tname (length tparams)
+                                  ;; Placeholder kind scheme; Phase A2.5
+                                  ;; (infer-data-kinds) replaces it with the
+                                  ;; inferred kind before any type is checked.
+                                  (kscheme-mono (arity->star-kind (length tparams)))
+                                  (for/list ([c (in-list ctors)])
+                                    (data-ctor-name c))
+                                  abstract?
+                                  (top:data-runtime-tag f)))))
+  ;; Data family tcon shells (no constructors of their own).
+  (for/fold ([e e1]) ([f (in-list forms)] #:when (top:data-family? f))
+    (define name   (top:data-family-name f))
+    (define params (top:data-family-params f))
+    (env-extend-tcon e name
+                     (tcon-info name (length params)
+                                (kscheme-mono (arity->star-kind (length params)))
+                                (hash-ref fam-ctors name '())
+                                #f #f))))
 
 ;; ----- kinds: the elaboration walk -----------------------------------
 
@@ -3214,6 +3242,45 @@
          (struct-copy tyfam-info info
                       [kind (generalize-kind (apply-ksubst s seed))])))]))
 
+;; Infer each data family's kind (Phase A4.7).  A data family's result
+;; kind is always `*` (it classifies values); its parameter kinds come
+;; from how its instance heads use them — so a family indexed by a
+;; promoted tag (`(Val TI)`) gets kind `Ty -> *`, not the `*`-placeholder.
+;; An explicit `:: kind` annotation on the family is used verbatim.  Two
+;; instances that disagree on a parameter's kind unify-fail with a kind
+;; error.  The family tcon shell already exists (Phase A2).
+(define (infer-data-family-kinds env forms)
+  (define insts-by-fam
+    (for/fold ([h (hasheq)]) ([f (in-list forms)] #:when (top:data-instance? f))
+      (hash-update h (top:data-instance-name f)
+                   (lambda (a) (cons f a)) '())))
+  (for/fold ([env env]) ([df (in-list forms)] #:when (top:data-family? df))
+    (match-define (top:data-family name params kind-ann stx) df)
+    (define ti (env-ref-tcon env name))
+    (cond
+      [kind-ann
+       (env-extend-tcon env name
+         (struct-copy tcon-info ti
+                      [kind (generalize-kind (surface-kind->core kind-ann))]))]
+      [else
+       (define pks (for/list ([_ (in-list params)]) (kvar (gensym 'k))))
+       (define seed (kind-arrow* pks kstar))
+       (define batch-kinds (hasheq name seed))   ; self-reference seed
+       (define insts (reverse (hash-ref insts-by-fam name '())))
+       (define s
+         (for/fold ([s empty-ksubst]) ([inst (in-list insts)])
+           (define tvar-kinds (make-hasheq))
+           (for/fold ([s s]) ([a (in-list (top:data-instance-args inst))]
+                              [pk (in-list pks)])
+             (define-values (ka s*)
+               (elab-kind (resolve-type a env) env batch-kinds tvar-kinds s))
+             (with-handlers ([exn:fail:kind-unify?
+                              (lambda (e) (kind-fail! stx (exn-message e)) s*)])
+               (ksubst-compose (unify-kind (apply-ksubst s* ka) pk) s*)))))
+       (env-extend-tcon env name
+         (struct-copy tcon-info ti
+                      [kind (generalize-kind (apply-ksubst s seed))]))])))
+
 ;; Resolve every top:data form's ctor field types against the
 ;; type-level-complete env, registering each ctor as a data binding.
 ;; Mirrors the existing `handle-top-form` top:data branch's ctor loop.
@@ -3259,6 +3326,58 @@
                        (data-info tname (data-ctor-name c)
                                   (length field-tys) sch
                                   extra-tvars)))))
+
+;; ----- data families: instance constructor registration -------------
+
+;; Register the constructors of ONE data instance `(F args…)`.  Each
+;; constructor's result type is the instance head (GADT-style), so it
+;; quantifies over the free variables of its fields and head — exactly
+;; the GADT path in `resolve-data-ctors`.  The family tcon `F` already
+;; exists (a `data-family` shell).  Shared by the batch pass and the
+;; per-form REPL path.
+(define (register-data-instance env fname args ctors)
+  (define result-type
+    (make-tapp (tcon fname)
+               (for/list ([a (in-list args)]) (resolve-type a env))))
+  (for/fold ([e env]) ([c (in-list ctors)])
+    (define field-tys
+      (for/list ([t (in-list (data-ctor-field-types c))]) (resolve-type t env)))
+    (define ctor-fn-type (foldr make-arrow result-type field-tys))
+    (define quant
+      (sort (set->list
+             (for/fold ([acc (type-vars result-type)]) ([t (in-list field-tys)])
+               (set-union acc (type-vars t))))
+            symbol<?))
+    (env-extend-data e (data-ctor-name c)
+                     (data-info fname (data-ctor-name c)
+                                (length field-tys)
+                                (scheme quant ctor-fn-type)
+                                '()))))
+
+;; Batch pass: register every data-instance's constructors.  Runs with
+;; resolve-data-ctors (Phase A7), the type-level env complete.
+(define (resolve-data-instance-ctors env forms)
+  (for/fold ([env env]) ([f (in-list forms)] #:when (top:data-instance? f))
+    (match-define (top:data-instance fname args ctors _stx) f)
+    (register-data-instance env fname args ctors)))
+
+;; A data family's instances must be coherent: no two heads may overlap
+;; (unify).  Reuses the closed-family overlap check by treating each
+;; instance head as a clause LHS (the rhs is irrelevant to head apartness).
+(define (check-data-family-coherence env forms)
+  (define insts-by-fam
+    (for/fold ([h (hasheq)]) ([f (in-list forms)] #:when (top:data-instance? f))
+      (hash-update h (top:data-instance-name f) (lambda (a) (cons f a)) '())))
+  (for ([(name insts) (in-hash insts-by-fam)])
+    (define clauses
+      (for/list ([inst (in-list insts)])
+        (cons (for/list ([a (in-list (top:data-instance-args inst))])
+                (resolve-type a env))
+              (tcon 'Unit))))      ; dummy rhs — only the heads are compared
+    (when (tyfam-clauses-overlap? name clauses)
+      (raise-syntax-error 'infer
+        (format "overlapping data-instance heads for data family ~a" name)
+        (top:data-instance-stx (car insts))))))
 
 ;; Phase B — pre-register every top:def's name in env so later
 ;; phases (instances, def-body inference) see all top-level names.
@@ -3751,7 +3870,28 @@
                          env name
                          (cons (for/list ([a (in-list args)]) (resolve-type a env))
                                (resolve-type rhs env)))
-                        declared)])))]))
+                        declared)])))]
+    [(top:data-family name params kind stx)
+     (pass (lambda ()
+             (values (env-extend-tcon env name
+                       (tcon-info name (length params)
+                                  (kscheme-mono (arity->star-kind (length params)))
+                                  '() #f #f))
+                     declared)))]
+    [(top:data-instance name args ctors stx)
+     (pass (lambda ()
+             ;; Register the instance's constructors, then add their names
+             ;; to the family tcon so a match on `(F args)` sees them.
+             (define env1 (register-data-instance env name args ctors))
+             (define ti (env-ref-tcon env1 name))
+             (define env2
+               (if ti
+                   (env-extend-tcon env1 name
+                     (struct-copy tcon-info ti
+                       [ctors (append (tcon-info-ctors ti)
+                                      (map data-ctor-name ctors))]))
+                   env1))
+             (values env2 declared)))]))
 
 ;; ----- per-top-form elaboration (the arms of handle-top-form) -------
 
