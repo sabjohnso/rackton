@@ -15,6 +15,7 @@
          (struct-out class-info)
          (struct-out instance-info)
          (struct-out tyfam-info)
+         (struct-out constraint-fam-info)
 
          empty-env
          env-extend-var
@@ -31,6 +32,8 @@
          env-add-tyfam-clause
          env-extend-constraint-syn
          env-ref-constraint-syn
+         env-extend-constraint-fam
+         env-ref-constraint-fam
          env-extend-class
          env-clear-instances
          env-ref-class
@@ -76,9 +79,18 @@
 ;; `constraint-syns` maps a constraint-synonym name to `(params . preds)`
 ;; — its parameters and the core predicates it abbreviates.  A `(C T…)`
 ;; constraint expands to those preds with params substituted by T….
+;; `constraint-fams` maps a constraint-FAMILY name to its
+;; `constraint-fam-info` — ordered clauses computing a constraint from
+;; type arguments (the higher-order, recursive analogue of a synonym).
 (struct env (vars data-ctors tcons classes instance-table method-owners aliases
-             struct-fields effects promoted-ctors tyfams constraint-syns)
+             struct-fields effects promoted-ctors tyfams constraint-syns
+             constraint-fams)
   #:transparent)
+
+;; A constraint family's reduction info: `arity` parameters and ordered
+;; `clauses`, each `(cons (listof core-type) (listof pred))` = (LHS
+;; patterns . RHS constraint templates).
+(struct constraint-fam-info (name arity clauses) #:transparent)
 
 ;; A standalone type family's reduction information.
 ;;   `arity`     — number of parameters;
@@ -185,7 +197,7 @@
 ;; prelude-instances-table; set intrinsically at construction.
 (struct instance-info (head context methods type-family-bindings origin prelude?) #:transparent)
 
-(define empty-env (env (hasheq) (hasheq) (hasheq) (hasheq) (hasheq) (hasheq) (hasheq) (hasheq) (hasheq) (hasheq) (hasheq) (hasheq)))
+(define empty-env (env (hasheq) (hasheq) (hasheq) (hasheq) (hasheq) (hasheq) (hasheq) (hasheq) (hasheq) (hasheq) (hasheq) (hasheq) (hasheq)))
 
 ;; ----- basic accessors ----------------------------------------------
 
@@ -240,6 +252,13 @@
 
 (define (env-ref-constraint-syn e name [default #f])
   (hash-ref (env-constraint-syns e) name default))
+
+(define (env-extend-constraint-fam e name info)
+  (struct-copy env e
+               [constraint-fams (hash-set (env-constraint-fams e) name info)]))
+
+(define (env-ref-constraint-fam e name [default #f])
+  (hash-ref (env-constraint-fams e) name default))
 
 (define (env-add-tyfam-clause e name clause)
   (define info (env-ref-tyfam e name))

@@ -322,10 +322,10 @@
     (define inline-log (cg-st-inlined-sites final-cgst))
     ;; Pass the logs + the generated exported-impl names (from the final cg-st)
     ;; alongside the compiled forms.
-    (define-values (final-compiled prov-stx bs dcs tcs cls insts impls macs defs prom tfs csyns)
+    (define-values (final-compiled prov-stx bs dcs tcs cls insts impls macs defs prom tfs csyns cfams)
       (elaborate-finish parsed* env compiled (unbox macros-box)
                         (cg-st-exported-impls final-cgst)))
-    (values final-compiled prov-stx bs dcs tcs cls insts impls macs defs prom tfs csyns
+    (values final-compiled prov-stx bs dcs tcs cls insts impls macs defs prom tfs csyns cfams
             mono-log inline-log)))
 
 ;; ----- export resolution ----------------------------------------------
@@ -726,12 +726,17 @@
     (for/list ([(name syn) (in-hash (env-constraint-syns env))]
                #:unless (env-ref-constraint-syn prelude-env name #f))
       (cons name (encode-constraint-syn syn))))
+  ;; Constraint families declared in this module.
+  (define export-constraint-fams-encoded
+    (for/list ([(name info) (in-hash (env-constraint-fams env))]
+               #:unless (env-ref-constraint-fam prelude-env name #f))
+      (cons name (encode-constraint-fam-info info))))
   (values compiled prov-stx
           export-bindings export-data-ctors-encoded
           export-tcons-encoded export-classes-encoded export-instances
           exported-impls export-macros-encoded export-defs-encoded
           export-promoted-encoded export-tyfams-encoded
-          export-constraint-syns-encoded))
+          export-constraint-syns-encoded export-constraint-fams-encoded))
 
 ;; `(rackton form ...)` — embeddable form.  Splices the compiled forms
 ;; but does NOT emit a sidecar schemes submodule, so multiple
@@ -739,7 +744,7 @@
 (define-syntax (rackton stx)
   (syntax-parse stx
     [(_ form ...)
-     (define-values (compiled prov-stx _b _d _t _c _i _impls _macs _defs _prom _tfs _csyns
+     (define-values (compiled prov-stx _b _d _t _c _i _impls _macs _defs _prom _tfs _csyns _cfams
                               mono-log inline-log)
        (rackton-elaborate #'(form ...)))
      (define out-forms
@@ -759,7 +764,7 @@
 (define-syntax (rackton/main stx)
   (syntax-parse stx
     [(_ form ...)
-     (define-values (compiled prov-stx bs dcs tcs cls insts impls macs defs prom tfs csyns
+     (define-values (compiled prov-stx bs dcs tcs cls insts impls macs defs prom tfs csyns cfams
                               _mono _inline)
        (rackton-elaborate #'(form ...)))
      (define at-module-level?
@@ -778,7 +783,8 @@
                    [defs-table   (datum->syntax stx defs)]
                    [promoted     (datum->syntax stx prom)]
                    [tyfams       (datum->syntax stx tfs)]
-                   [constraint-syns (datum->syntax stx csyns)])
+                   [constraint-syns (datum->syntax stx csyns)]
+                   [constraint-fams (datum->syntax stx cfams)])
        (cond
          [at-module-level?
           (syntax/loc stx
@@ -795,7 +801,8 @@
                          rackton-defs
                          rackton-promoted
                          rackton-tyfams
-                         rackton-constraint-syns)
+                         rackton-constraint-syns
+                         rackton-constraint-fams)
                 (define rackton-bindings        'bindings)
                 (define rackton-data-ctors      'data-ctors)
                 (define rackton-tcons           'tcons)
@@ -806,6 +813,7 @@
                 (define rackton-defs            'defs-table)
                 (define rackton-promoted        'promoted)
                 (define rackton-tyfams          'tyfams)
-                (define rackton-constraint-syns 'constraint-syns))))]
+                (define rackton-constraint-syns 'constraint-syns)
+                (define rackton-constraint-fams 'constraint-fams))))]
          [else
           (syntax/loc stx (begin out ...))]))]))

@@ -1570,6 +1570,26 @@
                    (parse-type #'rhs)
                    stx)]))
 
+;; Parse one constraint-family clause `[pat … = constraint …]`: the LHS
+;; type patterns, then a (possibly empty) RHS constraint list.
+(define (parse-cfam-clause stx)
+  (syntax-parse stx
+    #:datum-literals (=)
+    [(pat ... = c ...)
+     (cfam-clause (map parse-type (syntax->list #'(pat ...)))
+                  (map parse-cfam-constraint (syntax->list #'(c ...)))
+                  stx)]))
+
+;; Like `parse-constraint`, but the head may be a lowercase parameter —
+;; a higher-order constraint application `(c x)` whose head is bound to a
+;; concrete class only when the family is reduced.
+(define (parse-cfam-constraint stx)
+  (syntax-parse stx
+    [(name:id arg ...+)
+     (constraint (syntax->datum #'name)
+                 (for/list ([a (in-list (syntax->list #'(arg ...)))]) (parse-type a))
+                 stx)]))
+
 ;; Right-fold a variadic `->` kind form into binary `k:arr` nodes.  Expects
 ;; at least two kind syntax objects (enforced by the caller's pattern).
 (define (build-arrow-kind kind-stxs)
@@ -1620,7 +1640,7 @@
 
 (define (parse-top stx)
   (syntax-parse stx
-    #:datum-literals (define data newtype struct protocol instance define-alias define-constraint define-effect require provide foreign foreign-c type-family type-instance data-family data-instance : => :: =)
+    #:datum-literals (define data newtype struct protocol instance define-alias define-constraint constraint-family define-effect require provide foreign foreign-c type-family type-instance data-family data-instance : => :: =)
     [(require spec ...)
      (top:require (syntax->list #'(spec ...)) stx)]
 
@@ -1706,6 +1726,15 @@
      (top:constraint-syn (syntax->datum #'cname)
                          (map syntax->datum (syntax->list #'(p ...)))
                          (map parse-constraint (syntax->list #'(c ...)))
+                         stx)]
+
+    ;; (constraint-family (F p …) [pat … = constraint …] …)
+    [(constraint-family (fname:id p:id ...) clause ...)
+     #:fail-unless (not (lowercase-id? (syntax->datum #'fname)))
+     "constraint family name must be a non-lowercase identifier"
+     (top:constraint-fam (syntax->datum #'fname)
+                         (map syntax->datum (syntax->list #'(p ...)))
+                         (map parse-cfam-clause (syntax->list #'(clause ...)))
                          stx)]
     [(: name:id ty)
      (top:dec (syntax->datum #'name) (parse-type #'ty) stx)]

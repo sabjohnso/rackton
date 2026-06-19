@@ -2604,8 +2604,10 @@
   ;; preds and register them, before class methods / data ctors / decs
   ;; (whose signatures may use a synonym in a `=>` context).
   (define env-A3c (register-constraint-syns env-A3 forms))
+  ;; A3d: constraint families (same timing rationale as synonyms).
+  (define env-A3d (register-constraint-fams env-A3c forms))
   (define env-A4
-    (for/fold ([e env-A3c]) ([f (in-list forms)] #:when (top:struct-fields? f))
+    (for/fold ([e env-A3d]) ([f (in-list forms)] #:when (top:struct-fields? f))
       (env-extend-struct-fields e (top:struct-fields-struct-name f)
                                 (top:struct-fields-field-names f))))
   ;; A4.4: DataKinds promotion.  Lift eligible monomorphic datatypes to
@@ -3143,6 +3145,22 @@
     (env-extend-constraint-syn
      e name params
      (for/list ([c (in-list constraints)]) (resolve-constraint c e)))))
+
+;; Resolve each `constraint-family`'s clauses (LHS type patterns + RHS
+;; constraint templates) to core form and register it.  Component
+;; constraints may have a parameter head (`(c x)`); resolve-constraint
+;; builds a pred whose class is that symbol, substituted at reduction.
+(define (register-constraint-fams env forms)
+  (for/fold ([e env]) ([f (in-list forms)] #:when (top:constraint-fam? f))
+    (match-define (top:constraint-fam name params clauses _stx) f)
+    (env-extend-constraint-fam
+     e name
+     (constraint-fam-info
+      name (length params)
+      (for/list ([c (in-list clauses)])
+        (cons (for/list ([pt (in-list (cfam-clause-pats c))]) (resolve-type pt e))
+              (for/list ([ct (in-list (cfam-clause-constraints c))])
+                (resolve-constraint ct e))))))))
 
 ;; ----- standalone type families: registration (Phase A4.6) ----------
 
@@ -3900,6 +3918,18 @@
                       env name params
                       (for/list ([c (in-list constraints)]) (resolve-constraint c env)))
                      declared)))]
+    [(top:constraint-fam name params clauses stx)
+     (pass (lambda ()
+             (values (env-extend-constraint-fam
+                      env name
+                      (constraint-fam-info
+                       name (length params)
+                       (for/list ([c (in-list clauses)])
+                         (cons (for/list ([pt (in-list (cfam-clause-pats c))])
+                                 (resolve-type pt env))
+                               (for/list ([ct (in-list (cfam-clause-constraints c))])
+                                 (resolve-constraint ct env))))))
+                     declared)))]
     [(top:data-instance name args ctors stx)
      (pass (lambda ()
              ;; Register the instance's constructors, then add their names
@@ -4577,6 +4607,9 @@
            (define constraint-syns
              (with-handlers ([exn:fail? (lambda (_) '())])
                (dynamic-require submod-spec 'rackton-constraint-syns)))
+           (define constraint-fams
+             (with-handlers ([exn:fail? (lambda (_) '())])
+               (dynamic-require submod-spec 'rackton-constraint-fams)))
            (define e1
              (for/fold ([acc e]) ([entry (in-list bindings)])
                (env-extend-var acc (car entry)
@@ -4605,7 +4638,11 @@
              (for/fold ([acc e6]) ([entry (in-list constraint-syns)])
                (define syn (decode-constraint-syn (cdr entry)))
                (env-extend-constraint-syn acc (car entry) (car syn) (cdr syn))))
-           (for/fold ([acc e7]) ([entry (in-list instances)])
+           (define e8
+             (for/fold ([acc e7]) ([entry (in-list constraint-fams)])
+               (env-extend-constraint-fam acc (car entry)
+                                          (decode-constraint-fam-info (cdr entry)))))
+           (for/fold ([acc e8]) ([entry (in-list instances)])
              (define decoded (decode-instance-info entry))
              (define class-name (car decoded))
              (define new-inst (cdr decoded))

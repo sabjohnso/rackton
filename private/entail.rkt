@@ -189,7 +189,50 @@
        [(expand-constraint-syn env target)
         => (lambda (subgoals)
              (for/and ([g (in-list subgoals)]) (entail? env hypotheses g)))]
+       ;; A constraint family holds iff its reduced components all hold.
+       [(expand-constraint-fam env target)
+        => (lambda (subgoals)
+             (for/and ([g (in-list subgoals)]) (entail? env hypotheses g)))]
        [else (entail-by-inst? env hypotheses target)])]))
+
+;; If `p`'s head names a constraint FAMILY, reduce it by matching its
+;; ordered clauses (first match wins, gated by apartness against earlier
+;; clauses) and return the resulting list of constraint predicates — with
+;; type parameters substituted into each component's arguments AND a
+;; constraint-constructor parameter substituted into the component's head
+;; (so `(c x)` with `c := Show` becomes `(Show x)`).  Returns #f if the
+;; family is stuck (no clause matches); '() is a matched, trivially-true
+;; clause.  No freshening: families reduce on (mostly) ground arguments,
+;; where clause variables cannot capture target variables.
+(define (expand-constraint-fam env p)
+  (define info (env-ref-constraint-fam env (pred-class p) #f))
+  (and info
+       (= (constraint-fam-info-arity info) (length (pred-args p)))
+       (cfam-first-match (pred-class p)
+                         (constraint-fam-info-clauses info)
+                         (pred-args p))))
+
+(define (cfam-first-match name clauses args)
+  (let loop ([cs clauses] [earlier '()])
+    (cond
+      [(null? cs) #f]
+      [else
+       (match-define (cons pats templates) (car cs))
+       (define σ (match-many pats args))
+       (cond
+         [(and σ (all-apart? name earlier args))
+          (map (lambda (t) (apply-template σ t)) templates)]
+         [σ #f]                                   ; matched but earlier overlaps ⇒ stuck
+         [else (loop (cdr cs) (cons pats earlier))])])))
+
+;; Substitute a clause match into a constraint template: apply σ to the
+;; arguments, and if the head names a parameter bound by σ to a type
+;; constructor, use that constructor's name as the head.
+(define (apply-template σ t)
+  (define head (pred-class t))
+  (define bound (subst-ref σ head))
+  (pred (if (and bound (tcon? bound)) (tcon-name bound) head)
+        (map (lambda (a) (apply-subst σ a)) (pred-args t))))
 
 ;; If `p`'s head names a constraint synonym, return the component
 ;; predicates with the synonym's parameters substituted by `p`'s
@@ -335,7 +378,17 @@
 ;; least one type variable at the head of their argument list and
 ;; cannot be dispatched at this point.
 (define (reduce-context env hypotheses preds)
+  ;; A recursive constraint family can grow the worklist; bound total
+  ;; iterations so a non-terminating family fails clearly instead of
+  ;; hanging.  Every non-family branch shrinks the worklist, so only a
+  ;; runaway family can exhaust this.  A local box avoids threading the
+  ;; counter through every recursive `loop` call.
+  (define budget (box (current-tyfam-fuel)))
   (let loop ([ps preds] [acc '()])
+    (set-box! budget (sub1 (unbox budget)))
+    (when (negative? (unbox budget))
+      (raise-constraint-error
+       "constraint reduction exceeded its budget (possible non-terminating constraint family)"))
     (cond
       [(null? ps) (reverse (remove-duplicates acc))]
       [else
@@ -374,6 +427,10 @@
          [(expand-constraint-syn env p)
           ;; A constraint-synonym goal reduces to its component
           ;; constraints; splice them so each is discharged or kept.
+          => (lambda (subgoals) (loop (append subgoals (cdr ps)) acc))]
+         [(expand-constraint-fam env p)
+          ;; A constraint-family goal reduces (by clause match) to a list
+          ;; of constraints — possibly recursive; splice and continue.
           => (lambda (subgoals) (loop (append subgoals (cdr ps)) acc))]
          [(in-hnf? p)
           ;; Still keep unless redundant against hypotheses.

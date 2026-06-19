@@ -437,3 +437,45 @@ body, and a call @emph{demands} them at the argument type.
 @racket[Show] and @racket[Eq].  Synonyms are expanded during constraint
 solving — they are not abstract — and they cross module boundaries like
 any other declaration.
+
+@section[#:tag "constraint-families"]{Constraint families}
+
+A @racket[constraint-family] @emph{computes} a constraint from type
+arguments.  Its clauses are matched in order (like a closed
+@seclink["standalone-type-families"]{type family}), but each right-hand
+side is a list of constraints rather than a type — and a clause may apply
+a @emph{parameter} as a constraint head, so a family can be higher-order
+over the constraint it imposes.
+
+The canonical example is @racket[All]: ``constraint @racket[c] holds of
+every element of the promoted list @racket[xs]''.
+
+@rackton-example[#:eval ev #:mode 'defs #:context? #t]{
+(data (TList a) TNil (TCons a (TList a)))
+(constraint-family (All c xs)
+  [c TNil         = ]                  ;; empty list: no obligation
+  [c (TCons x xs) = (c x) (All c xs)]) ;; head element, then the rest
+}
+
+Now @racket[(All Show xs)] expands to a @racket[Show] obligation on every
+element of @racket[xs].  Used as a function constraint, it is discharged
+at the call site once @racket[xs] is a concrete list:
+
+@rackton-example[#:eval ev #:mode 'defs #:context? #t]{
+(data (Proxy a) MkProxy)
+(: witness ((All Show xs) => (-> (Proxy xs) Integer)))
+(define (witness p) 0)
+
+(: pr (Proxy (TCons Integer (TCons String TNil))))
+(define pr MkProxy)
+}
+
+@racket[(witness pr)] type-checks: @racket[(All Show (TCons Integer (TCons
+String TNil)))] reduces to @racket[(Show Integer)] and @racket[(Show
+String)], both satisfied.  A list element lacking the instance is a
+compile-time error.
+
+Reduction is recursive and bounded by the same @seclink["type-level-recursion"]{fuel
+budget} as type families, so a family that never reaches a base case
+fails clearly instead of hanging.  Constraint families cross module
+boundaries like other declarations.

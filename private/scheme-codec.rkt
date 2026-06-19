@@ -31,6 +31,8 @@
          decode-tyfam-info
          encode-constraint-syn
          decode-constraint-syn
+         encode-constraint-fam-info
+         decode-constraint-fam-info
          encode-class-info
          decode-class-info
          encode-instance-info
@@ -184,6 +186,21 @@
 (define (decode-constraint-syn datum)
   (match datum
     [(list params preds) (cons params (map sexp->pred preds))]))
+
+;; A constraint family round-trips as `(name arity ((pat-datum… . pred-sexp…) …))`.
+(define (encode-constraint-fam-info info)
+  (list (constraint-fam-info-name info)
+        (constraint-fam-info-arity info)
+        (for/list ([c (in-list (constraint-fam-info-clauses info))])
+          (cons (map type->datum (car c)) (map pred->sexp (cdr c))))))
+
+(define (decode-constraint-fam-info datum)
+  (match datum
+    [(list name arity clauses)
+     (constraint-fam-info
+      name arity
+      (for/list ([c (in-list clauses)])
+        (cons (map sexp->type (car c)) (map sexp->pred (cdr c)))))]))
 
 (define (pred->sexp p) (pred->datum p))
 
