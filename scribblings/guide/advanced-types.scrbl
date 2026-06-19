@@ -339,3 +339,34 @@ unreduced (rigid) until @racket[b] is known.
 Standalone families cross module boundaries: a family declared in one
 @tt{#lang rackton} module reduces the same way in any module that
 imports it.
+
+@subsection[#:tag "type-level-recursion"]{Recursion}
+
+A closed family whose right-hand side mentions the family itself
+@emph{recurses}, computing over promoted data.  Appending two promoted
+lists, for instance:
+
+@rackton-example[#:eval ev #:mode 'defs #:context? #t]{
+(data (Lst a) LNil (LCons a (Lst a)))
+(type-family (Append xs ys)
+  [LNil         ys = ys]
+  [(LCons x zs) ys = (LCons x (Append zs ys))])
+}
+
+@racket[(Append (LCons A LNil) ys)] reduces to @racket[(LCons A ys)],
+and a deeper list unwinds one @racket[LCons] per step.  Promoted Peano
+naturals recurse the same way — @racket[(type-family (Plus a b) [PZ b =
+b] [(PS n) b = (PS (Plus n b))])] computes type-level addition.
+
+Reduction is bounded by a @emph{fuel} budget: a family that never reaches
+a base case (or whose recursion grows without limit) stops with a
+compile-time error — @racketfont{type-level reduction … exceeded its
+budget} — rather than hanging the compiler.  Rackton is not a proof
+assistant; the budget trades guaranteed termination for a clear failure.
+
+@margin-note{For @emph{linear} arithmetic on the built-in type-level
+@racket[Nat] (the sizes in @racket[(Array n a)]), Rackton uses a
+dedicated solver, not recursive families.  Use a promoted Peano datatype
+when you need to recurse structurally over a natural; use the built-in
+@racket[Nat] (with @racket[+]/@racket[*]) when you need to solve linear
+size equations.}
