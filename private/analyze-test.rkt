@@ -143,6 +143,37 @@
     (check-equal? (analysis-requires user) (list lib)
                   "required module paths are retained, resolved"))
 
+  ;; ----- bad requires are flagged ---------------------------------------
+
+  ;; A require of a missing file yields exactly one diagnostic, located
+  ;; at the require spec — not swallowed as if it were a sidecar-less
+  ;; plain Racket module.
+  (let ([bad (analyze "#lang rackton"
+                      "(require \"nonexistent.rkt\")"
+                      "(define x 1)")])
+    (check-equal? (length (analysis-diagnostics bad)) 1
+                  "a require of a missing file yields one diagnostic")
+    (check-regexp-match #rx"nonexistent" (diag-message (car (analysis-diagnostics bad))))
+    (check-equal? (srcloc-line (diag-srcloc (car (analysis-diagnostics bad)))) 2
+                  "the diagnostic points at the require, not line 1"))
+
+  ;; An unresolvable collection module path is flagged too.
+  (let ([bad (analyze "#lang rackton"
+                      "(require totally/bogus/collection)"
+                      "(define x 1)")])
+    (check-equal? (length (analysis-diagnostics bad)) 1
+                  "a require of a bad collection path yields one diagnostic"))
+
+  ;; A require of a real plain Racket module (no rackton sidecar) is
+  ;; still tolerated — no diagnostic.
+  (let ()
+    (fixture "plain.rkt" "#lang racket/base" "(provide foo)" "(define foo 5)")
+    (define ok (analyze "#lang rackton"
+                        "(require \"plain.rkt\")"
+                        "(define x 1)"))
+    (check-equal? (analysis-diagnostics ok) '()
+                  "a sidecar-less plain Racket module require is tolerated"))
+
   ;; ----- the workspace index (sidecar defs table) -------------------------
 
   (define entries (module-index-entries lib))

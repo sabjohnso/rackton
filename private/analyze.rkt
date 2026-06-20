@@ -171,8 +171,9 @@
   (analysis path text env defs diags reqs))
 
 ;; The resolved on-disk paths of the module's requires (specs that
-;; resolve to existing files; others are dropped — inference already
-;; diagnoses unloadable requires).
+;; resolve to existing files; others are dropped here — they have no
+;; on-disk path to index, and inference diagnoses the unresolvable
+;; ones, see `handle-require-form` in infer.rkt).
 (define (collect-requires parsed path)
   (define dir (path-only path))
   (for*/list ([t (in-list parsed)]

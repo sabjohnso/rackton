@@ -48,6 +48,7 @@
          racket/set
          racket/list
          racket/string
+         (only-in syntax/modresolve resolve-module-path)
          "types.rkt"
          "diagnostic.rkt"
          "env.rkt"
@@ -4733,9 +4734,18 @@
 (define (handle-require-form specs stx env declared)
   (define new-env
     (for/fold ([e env]) ([spec-stx (in-list specs)])
+      (define base-mp (require-spec->module-path spec-stx))
       (define submod-spec (require-spec->submod-spec spec-stx))
       (cond
         [(not submod-spec) e]
+        ;; A module path that names no module on disk is a genuine
+        ;; mistake.  Flag it here — before the broad recovery handler
+        ;; below — so it cannot be mistaken for the tolerated
+        ;; "resolved, but no rackton sidecar" case.
+        [(not (module-path-exists? base-mp))
+         (raise-syntax-error 'require
+           (format "cannot find module ~s" (syntax->datum spec-stx))
+           spec-stx)]
         [else
          ;; The catch-all `with-handlers` around the
          ;; dynamic-requires must NOT swallow coherence errors —
@@ -4857,10 +4867,11 @@
                [else (env-extend-instance acc class-name new-inst)]))])])))
   (values new-env declared))
 
-;; Resolve a require spec syntax to a usable `(submod ... rackton-schemes)`
-;; module path.  Relative-path strings are interpreted relative to the
-;; source file of the spec itself.
-(define (require-spec->submod-spec spec-stx)
+;; Resolve a require spec syntax to the *base* module path it names
+;; (before the `rackton-schemes` submodule is appended).  Relative-path
+;; strings are interpreted relative to the source file of the spec
+;; itself.  Returns #f for a spec shape we do not handle.
+(define (require-spec->module-path spec-stx)
   (define spec-datum (syntax->datum spec-stx))
   (define src (syntax-source spec-stx))
   (cond
@@ -4869,10 +4880,25 @@
        (let-values ([(base _name _dir?) (split-path src)])
          base))
      (define full (path->complete-path spec-datum caller-dir))
-     `(submod (file ,(path->string full)) rackton-schemes)]
-    [(symbol? spec-datum)
-     `(submod ,spec-datum rackton-schemes)]
+     `(file ,(path->string full))]
+    [(symbol? spec-datum) spec-datum]
     [else #f]))
+
+;; Resolve a require spec syntax to a usable `(submod ... rackton-schemes)`
+;; module path, or #f for an unhandled spec shape.
+(define (require-spec->submod-spec spec-stx)
+  (define mp (require-spec->module-path spec-stx))
+  (and mp `(submod ,mp rackton-schemes)))
+
+;; Does a base module path name a module that actually exists?  A
+;; collection path that names no installed collection makes
+;; `resolve-module-path` raise; a `(file ...)` path that resolves but
+;; is not on disk comes back as a path that fails `file-exists?`.  Both
+;; mean "no such module".
+(define (module-path-exists? mp)
+  (with-handlers ([exn:fail? (lambda (_) #f)])
+    (define resolved (resolve-module-path mp))
+    (and (path? resolved) (file-exists? resolved))))
 
 (define (surface-kind->core k)
   (match k
