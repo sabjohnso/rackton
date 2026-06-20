@@ -284,8 +284,14 @@
  ;; Panic
  panic
 
- ;; Immutable Map / Set + group-by moved to rackton/data/map +
- ;; rackton/data/set (runtime in private/containers-runtime).
+ ;; Immutable Map / Set constructor primitives — promoted into the
+ ;; prelude so the {..} / #{..} literals (and bare Map/Set use) need no
+ ;; import.  $map / $set + accessors are exported for
+ ;; private/containers-runtime, which derives lookup/fold/… from them.
+ ;; group-by and the rest of Data.Map / Data.Set stay in
+ ;; rackton/data/map + rackton/data/set.
+ $map $map-h $set $set-h
+ empty-map map-insert empty-set set-insert
 
  ;; Float
  float-div integer->float float->integer abs-float
@@ -1310,9 +1316,22 @@
 
 (define (panic msg) (error 'rackton-panic msg))
 
-;; Map / Set (and group-by) moved to rackton/data/map + rackton/data/set
-;; (Phase 2 slim); runtime lives in private/containers-runtime.rkt and is
-;; reached via `foreign`.
+;; ----- Map / Set primitives (promoted into the prelude) ------
+;;
+;; The four constructor primitives that the bracket/brace literals
+;; ({..} / #{..}) and everyday Map/Set use rely on are auto-available, so
+;; they live here.  The derived operations (lookup, fold, delete, …) stay
+;; in private/containers-runtime.rkt, which imports these.  Backed by
+;; Racket immutable hashes, so keys/elements compare by `equal?` — which
+;; lines up with Rackton structural == (no Eq dict is threaded).
+;; group-by and the rest of Data.Map / Data.Set remain in
+;; rackton/data/map + rackton/data/set.
+(struct $map (h) #:transparent)
+(struct $set (h) #:transparent)
+(define empty-map ($map (hash)))
+(define empty-set ($set (hash)))
+(define/curried (map-insert k v m) ($map (hash-set ($map-h m) k v)))
+(define/curried (set-insert x s)   ($set (hash-set ($set-h s) x #t)))
 
 ;; ----- Float ops ---------------------------------------------
 

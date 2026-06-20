@@ -74,6 +74,16 @@ with the usual operations, and @racketmodname[rackton/data/maybe] /
          (list "a" "b" "a")))
 }
 
+Lists, maps, and sets also have a literal syntax — square brackets for
+lists, braces for maps, and @litchar|{#{...}}| for sets.  @litchar|{[10 20 30 40]}|
+is exactly @racket[(list 10 20 30 40)], with each element evaluated;
+@litchar|{{k v ...}}| builds a @racket[Map] (a repeated key keeps its last
+value); and @litchar|{#{m ...}}| builds a @racket[Set].  The @racket[Map] /
+@racket[Set] types and these literals are part of the prelude, so they
+need no import, and bracket list literals double as @racket[match]
+patterns.  See @secref["maps" #:doc '(lib "rackton/scribblings/reference/rackton-reference.scrbl")]
+for the full story.
+
 The @racket[Monoid] wrappers live in
 @racketmodname[rackton/data/monoid] (@racket[Sum], @racket[Product],
 @racket[All], @racket[Any], @racket[Endo], @racket[Dual]) and the

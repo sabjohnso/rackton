@@ -24,6 +24,7 @@
          rackton-repl-enter!
          rackton-repl-exit!
          rackton-process
+         rackton-process-pending
          rackton-interaction-read
          rackton-repl-reset!)
 
@@ -72,6 +73,18 @@
 ;; read the whole line and parse it with `rackton-parse-command-line`,
 ;; since a command like `,type EXPR` is two datums that plain `read` would
 ;; split.  Everything else is read one form at a time as before.
+;;
+;; Forms are read with `read-syntax` so the bracket/brace literals'
+;; `paren-shape` survives.  The read syntax can't be carried through a
+;; `(quote …)` (which would flatten it back to a datum and drop
+;; paren-shape), so it is stashed and the emitted call retrieves it —
+;; `current-read-interaction` reads exactly one interaction before
+;; evaluating it, so a single box suffices.
+(define pending-form (box #f))
+
+(define (rackton-process-pending)
+  (rackton-process (unbox pending-form)))
+
 (define (rackton-interaction-read src in)
   ;; A prior `read` leaves the trailing newline in the port, so skip
   ;; leading whitespace before deciding — otherwise `read-line` on a
@@ -80,13 +93,14 @@
   (cond
     [(eof-object? (peek-char in)) eof]
     [(char=? (peek-char in) #\,)
-     (define cmd (rackton-parse-command-line (read-line in)))
-     #`(rackton-process (quote #,(datum->syntax #f cmd)))]
+     (set-box! pending-form (rackton-parse-command-line (read-line in)))
+     #'(rackton-process-pending)]
     [else
-     (define form (read in))
+     (define form (read-syntax src in))
      (if (eof-object? form)
          form
-         #`(rackton-process (quote #,(datum->syntax #f form))))]))
+         (begin (set-box! pending-form form)
+                #'(rackton-process-pending)))]))
 
 ;; Consume leading whitespace on `in` so the next form / command is seen
 ;; at the position it actually starts.

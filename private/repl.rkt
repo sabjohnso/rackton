@@ -106,9 +106,15 @@
 ;; ----- dispatch ----------------------------------------------------
 
 (define (rackton-repl-step state input)
+  ;; `input` may be a syntax object — the readers use `read-syntax`, so a
+  ;; bracket/brace literal's `paren-shape` survives — or a bare datum (the
+  ;; many test callers, plus the macro-import path).  Dispatch decisions
+  ;; read the datum; the eval path threads the original syntax so
+  ;; paren-shape reaches the surface parser.
+  (define datum (if (syntax? input) (syntax->datum input) input))
   (cond
-    [(repl-command? input)   (handle-command state input)]
-    [(macro-def-form? input) (handle-macro-def state input)]
+    [(repl-command? datum)   (handle-command state datum input)]
+    [(macro-def-form? datum) (handle-macro-def state datum)]
     [else
      ;; Expand any session-macro uses first, then dispatch on the result:
      ;; a macro may expand to a top form (e.g. a `define`) or to an
@@ -148,10 +154,15 @@
 
 ;; ----- command handling -------------------------------------------
 
-(define (handle-command state input)
+(define (handle-command state cmd input)
+  ;; `cmd` is the datum (matched below); `input` is the original syntax|datum
+  ;; so a command-argument expression such as `,type [1 2 3]` keeps its
+  ;; paren-shape.  `arg` reads the i-th element as syntax when it can.
   ;; `unquote` is special inside `match`'s quasiquote, so spell the command
   ;; shapes out with explicit `(list 'unquote …)` patterns.
-  (match input
+  (define (arg i)
+    (if (syntax? input) (list-ref (syntax->list input) i) (list-ref cmd i)))
+  (match cmd
     [(list 'unquote)              (values state "")]         ; bare `,` — no-op
     [(list 'unquote 'geiser-no-values) (values state "")]    ; Geiser probe — no-op
     [(list 'unquote 'quit)        (quit state)]
@@ -161,8 +172,8 @@
     [(list 'unquote 'help)        (values state (help-text))]
     [(list 'unquote 'h)           (values state (help-text))]
     [(list 'unquote 'keys)        (values state (keys-text))]
-    [(list 'unquote 'type expr)   (values state (show-type state expr))]
-    [(list 'unquote 't    expr)   (values state (show-type state expr))]
+    [(list 'unquote 'type expr)   (values state (show-type state (arg 2)))]
+    [(list 'unquote 't    expr)   (values state (show-type state (arg 2)))]
     [(list 'unquote 'info name)   (values state (show-info state name))]
     [(list 'unquote 'i    name)   (values state (show-info state name))]
     [(list 'unquote 'source name) (values state (show-source state name))]
@@ -189,7 +200,7 @@
                 (format "unknown color: ~a — try ,colors for the list\n" col)]
                [else (colors-summary)]))]
     [_ (values state
-               (format "unknown command: ~a\n" (command->string input)))]))
+               (format "unknown command: ~a\n" (command->string cmd)))]))
 
 (define (quit state)
   (values (struct-copy rackton-repl-state state [quit? #t]) ""))
@@ -522,26 +533,57 @@
 ;; unaffected.
 (define (expand-session-macros state input)
   (define names (rackton-repl-state-macros state))
-  (define stx (datum->repl-syntax input))
+  (define stx (repl-input->syntax input))
   (cond
     [(null? names) stx]
     [else
      (parameterize ([current-namespace (rackton-repl-state-nsp state)])
        (expand-macro-walk stx names))]))
 
-;; Convert REPL input to syntax.  A `require` form is given a notional
-;; source in the working directory so a relative library path resolves
-;; against the cwd — its spec syntax otherwise carries no source, and
-;; `require-spec->submod-spec` then can't locate the library's sidecar
-;; (so neither its types nor its macros would import).  Every other form
-;; keeps a #f source, so type errors are never prefixed with a fake file.
-(define (datum->repl-syntax input)
+;; Convert REPL input to syntax.  `input` may already be a syntax object
+;; (the readers use `read-syntax`, so the bracket/brace literals'
+;; `paren-shape` is carried) or a bare datum (test callers, macro
+;; imports).  A `require` form is given a notional source in the working
+;; directory so a relative library path resolves against the cwd — its
+;; spec syntax otherwise carries no source, and `require-spec->submod-spec`
+;; then can't locate the library's sidecar (so neither its types nor its
+;; macros would import); `require` specs are module paths with no
+;; paren-shape, so reconstructing them from the datum loses nothing.
+;; Every other syntax input is passed through verbatim so paren-shape
+;; survives; a bare datum keeps a #f source, so type errors are never
+;; prefixed with a fake file.
+(define (repl-input->syntax input)
+  (define datum (if (syntax? input) (syntax->datum input) input))
   (cond
-    [(and (pair? input) (eq? (car input) 'require))
-     (datum->syntax #f input
+    [(and (pair? datum) (eq? (car datum) 'require))
+     (datum->syntax #f datum
                     (list (build-path (current-directory) "repl-input")
                           #f #f #f #f))]
+    [(syntax? input) (strip-syntax-srcloc input)]
     [else (datum->syntax #f input)]))
+
+;; Re-stamp reader syntax with no source location, preserving paren-shape
+;; (and lexical context).  `read-syntax` names a string port 'string, so
+;; without this a type error would be prefixed with a fake `string:` file;
+;; the datum path historically used a #f source, and this matches it while
+;; keeping the paren-shape the bracket/brace literals depend on.
+(define (strip-syntax-srcloc stx)
+  (cond
+    [(syntax? stx)
+     (define e (syntax-e stx))
+     (define e*
+       (cond
+         [(pair? e)
+          (let loop ([p e])
+            (cond
+              [(pair? p) (cons (strip-syntax-srcloc (car p)) (loop (cdr p)))]
+              [(null? p) '()]
+              [else (strip-syntax-srcloc p)]))]   ; improper tail
+         [(vector? e) (list->vector (map strip-syntax-srcloc (vector->list e)))]
+         [(box? e)    (box (strip-syntax-srcloc (unbox e)))]
+         [else e]))
+     (datum->syntax stx e* #f stx)]
+    [else stx]))
 
 ;; ----- top-form input ---------------------------------------------
 

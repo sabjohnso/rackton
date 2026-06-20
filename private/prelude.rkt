@@ -136,6 +136,22 @@
     (data (Either a b) (Left a) (Right b))
     (data Unit Unit)
 
+    ;; Immutable Map / Set — opaque ADTs whose values come from the
+    ;; promoted constructor primitives below (runtime in
+    ;; private/prelude-runtime).  Promoted into the prelude so the
+    ;; {..} / #{..} literals need no import; the rest of Data.Map /
+    ;; Data.Set lives in rackton/data/map + rackton/data/set.
+    (data (Map k v))
+    (data (Set a))
+    (foreign empty-map (Map k v)
+             #:from rackton/private/prelude-runtime)
+    (foreign map-insert (-> k (-> v (-> (Map k v) (Map k v))))
+             #:from rackton/private/prelude-runtime)
+    (foreign empty-set (Set a)
+             #:from rackton/private/prelude-runtime)
+    (foreign set-insert (-> a (-> (Set a) (Set a)))
+             #:from rackton/private/prelude-runtime)
+
     ;; --- Char and Bytes primitives (opaque ADTs; values come from
     ;; Racket's reader as `#\A` and `#"…"`) -----------------------
 

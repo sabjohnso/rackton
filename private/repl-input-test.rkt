@@ -10,8 +10,11 @@
            racket/file
            "repl-input.rkt")
 
+  ;; The reader returns syntax now (read-syntax preserves paren-shape);
+  ;; compare on its datum, keeping eof as eof.
   (define (read-datum-of str)
-    (rackton-editor-read-datum (open-input-string str)))
+    (define d (rackton-editor-read-datum (open-input-string str)))
+    (if (eof-object? d) d (syntax->datum d)))
 
   (define (ready? str)
     (rackton-editor-ready? (open-input-string str)))

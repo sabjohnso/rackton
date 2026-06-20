@@ -10,44 +10,52 @@
 (require rackunit
          "../private/repl.rkt")
 
+;; The reader now returns syntax (read with `read-syntax`, so the
+;; bracket/brace literals' paren-shape survives); compare on its datum.
+(define (read-form p)
+  (define f (rackton-read-form p (lambda (_) "")))
+  (if (eof-object? f) f (syntax->datum f)))
+
 ;; ----- 60.1 multi-line accumulation -----------------------------
 
 (test-case "single complete line returns the form"
   (define p (open-input-string "(define x 5)\n"))
-  (check-equal? (rackton-read-form p (lambda (_) ""))
-                '(define x 5)))
+  (check-equal? (read-form p) '(define x 5)))
 
 (test-case "incomplete line continues on next prompt"
   (define p (open-input-string "(define x\n  (+ 1 2))\n"))
-  (check-equal? (rackton-read-form p (lambda (_) ""))
-                '(define x (+ 1 2))))
+  (check-equal? (read-form p) '(define x (+ 1 2))))
 
 (test-case "three-line continuation closes when parens balance"
   (define p
     (open-input-string "(define\n  (f x)\n  (+ x x))\n"))
-  (check-equal? (rackton-read-form p (lambda (_) ""))
-                '(define (f x) (+ x x))))
+  (check-equal? (read-form p) '(define (f x) (+ x x))))
 
 (test-case "eof returns eof"
   (define p (open-input-string ""))
-  (check-true (eof-object? (rackton-read-form p (lambda (_) "")))))
+  (check-true (eof-object? (read-form p))))
 
 ;; ----- comma-prefixed commands ----------------------------------
 
-(test-case "a comma command line reads as an (unquote ...) datum"
+(test-case "a comma command line reads as an (unquote ...) form"
   (define p (open-input-string ",quit\n"))
-  (check-equal? (rackton-read-form p (lambda (_) ""))
-                '(unquote quit)))
+  (check-equal? (read-form p) '(unquote quit)))
 
 (test-case "a bare comma reads as the (unquote) no-op"
   (define p (open-input-string ",\n"))
-  (check-equal? (rackton-read-form p (lambda (_) ""))
-                '(unquote)))
+  (check-equal? (read-form p) '(unquote)))
 
 (test-case "a comma command carries its argument expression"
   (define p (open-input-string ",type (lambda (x) x)\n"))
-  (check-equal? (rackton-read-form p (lambda (_) ""))
-                '(unquote type (lambda (x) x))))
+  (check-equal? (read-form p) '(unquote type (lambda (x) x))))
+
+(test-case "a comma command keeps a bracket-literal argument's shape"
+  ;; ,type [1 2 3] — the argument's paren-shape must survive the reader,
+  ;; so the kernel can read it as a list literal rather than (1 2 3).
+  (define p (open-input-string ",type [1 2 3]\n"))
+  (define f (rackton-read-form p (lambda (_) "")))
+  (check-equal? (syntax->datum f) '(unquote type (1 2 3)))
+  (check-equal? (syntax-property (caddr (syntax->list f)) 'paren-shape) #\[))
 
 ;; ----- 60.2 tab completion against session env -----------------
 

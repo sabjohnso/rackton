@@ -941,23 +941,18 @@ with the comonad.
 @section{rackton/data/map}
 @defmodule[rackton/data/map]
 
-Immutable key/value maps (Data.Map parity), moved out of the auto-prelude.
+Immutable key/value maps (Data.Map parity).  The @racket[Map] type and
+its @racket[empty-map] / @racket[map-insert] constructor primitives are
+part of the prelude (see @secref["maps"], which also covers the
+@litchar|{{k v ...}}| literal); this module adds the rest of Data.Map.
 The runtime is Racket immutable hashes reached via @racket[foreign]; keys
 compare by structural equality, so no @racket[(Eq k)] constraint is needed.
 
-@defidform[#:kind "type" Map]{The immutable map type @racket[(Map k v)] from
-keys of type @racket[k] to values of type @racket[v]. Opaque; build values
-with @racket[empty-map], @racket[map-insert], @racket[map-singleton], or
-@racket[map-from-list].}
-
-@defthing[empty-map (Map k v)]{The empty map.}
-
 @deftogether[(
-@defproc[(map-insert [k k] [v v] [m (Map k v)]) (Map k v)]
 @defproc[(map-lookup [k k] [m (Map k v)]) (Maybe v)]
 @defproc[(map-delete [k k] [m (Map k v)]) (Map k v)]
-)]{Insert @racket[v] at key @racket[k] (replacing any existing value), look up
-the value at @racket[k] as a @racket[Maybe], and remove key @racket[k].}
+)]{Look up the value at @racket[k] as a @racket[Maybe], and remove key
+@racket[k].}
 
 @deftogether[(
 @defproc[(map-keys [m (Map k v)]) (List k)]
@@ -1217,15 +1212,10 @@ a bounded identity Rackton's numeric types don't provide).
 Immutable sets backed by Racket immutable hashes, reached through
 @racket[foreign] primitives. Elements compare by the runtime's
 structural equality, so no @racket[(Eq a)] or @racket[(Ord a)]
-constraint is required.
-
-@defidform[#:kind "type" Set]{The immutable set type, opaque over its
-element type @racket[a].}
-
-@defthing[empty-set (Set a)]{The empty set.}
-
-@defproc[(set-insert [x a] [s (Set a)]) (Set a)]{Returns @racket[s] with
-@racket[x] added.}
+constraint is required.  The @racket[Set] type and its @racket[empty-set]
+/ @racket[set-insert] constructor primitives are part of the prelude (see
+@secref["maps"], which also covers the @litchar|{#{m ...}}| literal); this
+module adds the rest of Data.Set.
 
 @defproc[(set-member? [x a] [s (Set a)]) Boolean]{Reports whether
 @racket[x] is an element of @racket[s].}

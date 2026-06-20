@@ -86,6 +86,63 @@
                  (list (car elems) (build-list-ast (cdr elems) stx))
                  stx)]))
 
+;; ----- bracket / brace literal syntax -------------------------------
+;;
+;; The reader records the original bracket of each form in the
+;; `paren-shape` syntax property (`#\[` for `[..]`, `#\{` for `{..}` and
+;; `#{..}`; `#f` for ordinary `(..)`).  In *expression* and *pattern*
+;; position that lets three additive literal forms be told apart with no
+;; custom readtable:
+;;
+;;   [v1 v2 ...]   list literal   (List a)   — paren-shape #\[, datum a list
+;;   {k1 v1 ...}   map literal     (Map k v)  — paren-shape #\{, datum a list
+;;   #{m1 m2 ...}  set literal     (Set a)    — paren-shape #\{, datum a vector
+;;
+;; Parens keep every current meaning.  Structural bracket clauses (the
+;; `[..]` in let / cond / match / do / update) never reach here: their
+;; special forms destructure them, so only a bracket/brace in genuine
+;; expression or pattern position is read as a literal.
+
+;; Classify a form by its reader paren-shape: 'list, 'map, 'set, or #f
+;; (an ordinary form to be handled by the usual syntax-parse dispatch).
+(define (bracket-literal-kind stx)
+  (case (syntax-property stx 'paren-shape)
+    [(#\[) 'list]
+    [(#\{) (if (vector? (syntax-e stx)) 'set 'map)]
+    [else  #f]))
+
+;; {k1 v1 ... kn vn} => nested map-insert with the first pair innermost,
+;; so a later duplicate key overwrites an earlier one (last write wins).
+;; An odd number of forms is a located error.
+(define (parse-map-literal stx)
+  (define elems (syntax->list stx))
+  (unless (even? (length elems))
+    (raise-syntax-error 'rackton
+      "map literal {..} needs an even number of forms: {key value ...}"
+      stx))
+  (let loop ([elems elems] [acc (e:var 'empty-map stx)])
+    (cond
+      [(null? elems) acc]
+      [else
+       (loop (cddr elems)
+             (e:app (e:var 'map-insert stx)
+                    (list (parse-expr (car elems))
+                          (parse-expr (cadr elems))
+                          acc)
+                    stx))])))
+
+;; #{m1 ... mn} => nested set-insert; duplicate members collapse.
+(define (parse-set-literal stx)
+  (let loop ([elems (vector->list (syntax-e stx))]
+             [acc (e:var 'empty-set stx)])
+    (cond
+      [(null? elems) acc]
+      [else
+       (loop (cdr elems)
+             (e:app (e:var 'set-insert stx)
+                    (list (parse-expr (car elems)) acc)
+                    stx))])))
+
 ;; ----- quotation ----------------------------------------------------
 ;;
 ;; `'datum` and `` `datum `` build *typed homogeneous list literals*.  A
@@ -287,6 +344,15 @@
     [_ '()]))
 
 (define (parse-expr stx)
+  ;; Bracket/brace literals win unconditionally in expression position
+  ;; (decided once, by paren-shape) before the keyword dispatch below.
+  (case (bracket-literal-kind stx)
+    [(list) (build-list-ast (map parse-expr (syntax->list stx)) stx)]
+    [(map)  (parse-map-literal stx)]
+    [(set)  (parse-set-literal stx)]
+    [else (parse-expr/form stx)]))
+
+(define (parse-expr/form stx)
   (syntax-parse stx
     #:datum-literals (lambda λ case-lambda case-λ let let& let% let+ letrec let* if cond else ann open match match* racket do proc delay <- update handle return describe context list tuple tref array build-array aref array-take array-drop array-split-at -> quote quasiquote unquote unquote-splicing)
     [n:number  (e:literal (syntax->datum #'n) stx)]
@@ -1396,6 +1462,16 @@
      (build-cons-pattern (map parse-pattern elems) (p:ctor 'Nil '() stx) stx)]))
 
 (define (parse-pattern stx)
+  ;; A `[p ...]` list pattern parallels the `[v ...]` expression literal;
+  ;; map/set literals have no pattern meaning and are a located error.
+  (case (bracket-literal-kind stx)
+    [(list) (parse-list-pattern (syntax->list stx) stx)]
+    [(map set)
+     (raise-syntax-error 'rackton
+       "map/set literals ({..} / #{..}) are not patterns" stx)]
+    [else (parse-pattern/form stx)]))
+
+(define (parse-pattern/form stx)
   (syntax-parse stx
     #:datum-literals (quote quasiquote unquote unquote-splicing list tuple)
     [n:number  (p:lit (syntax->datum #'n) stx)]

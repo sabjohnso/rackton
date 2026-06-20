@@ -13,27 +13,43 @@
          racket/port
          "../repl.rkt")
 
-;; ----- the reader rewrites a form into a rackton-process call --------
+;; ----- the reader defers a form to a rackton-process call -----------
+;;
+;; The reader uses `read-syntax` so the bracket/brace literals' paren-shape
+;; survives.  That syntax can't ride through a `(quote …)` (which would
+;; flatten it to a datum), so the reader stashes the read form and emits a
+;; nullary `(rackton-process-pending)` that consumes it.
 
-(test-case "the interaction reader wraps a form into (rackton-process 'form)"
+(test-case "the interaction reader emits a deferred rackton-process call"
   (check-equal?
    (syntax->datum (rackton-interaction-read 'src (open-input-string "(define x 5)")))
-   '(rackton-process '(define x 5))))
+   '(rackton-process-pending)))
 
 (test-case "the interaction reader passes EOF through"
   (check-pred eof-object?
               (rackton-interaction-read 'src (open-input-string ""))))
 
-(test-case "the interaction reader turns a comma command into a command datum"
-  (check-equal?
-   (syntax->datum (rackton-interaction-read 'src (open-input-string ",quit\n")))
-   '(rackton-process '(unquote quit))))
+(test-case "the deferred call evaluates the read form, threading state"
+  (rackton-repl-reset!)
+  (void (rackton-interaction-read 'src (open-input-string "(define x 5)")))
+  (check-regexp-match
+   #rx"x ::"
+   (with-output-to-string (lambda () (rackton-process-pending)))))
 
-(test-case "a comma command keeps its argument, which `read` alone would split"
-  (check-equal?
-   (syntax->datum
-    (rackton-interaction-read 'src (open-input-string ",type (lambda (x) x)\n")))
-   '(rackton-process '(unquote type (lambda (x) x)))))
+(test-case "the embedded reader carries a bracket literal through to eval"
+  ;; under plain `read` this would be (1 2 3) and fail to apply 1
+  (rackton-repl-reset!)
+  (void (rackton-interaction-read 'src (open-input-string "[1 2 3]")))
+  (check-regexp-match
+   #rx"List Integer"
+   (with-output-to-string (lambda () (rackton-process-pending)))))
+
+(test-case "a comma command keeps a bracket-literal argument through to eval"
+  (rackton-repl-reset!)
+  (void (rackton-interaction-read 'src (open-input-string ",type [1 2 3]\n")))
+  (check-regexp-match
+   #rx"List Integer"
+   (with-output-to-string (lambda () (rackton-process-pending)))))
 
 ;; ----- rackton-process evaluates as Rackton, threading state --------
 

@@ -1,18 +1,14 @@
 #lang rackton
 
-;; rackton/data/map — Data.Map.  Immutable key/value maps, moved out of
-;; the auto-prelude (Phase 2 slim).  The runtime lives in
+;; rackton/data/map — Data.Map.  Immutable key/value maps.  The `Map`
+;; type and the constructor primitives (empty-map / map-insert) are
+;; promoted into the prelude (so the {..} literal needs no import); this
+;; module adds the rest of Data.Map.  The derived runtime lives in
 ;; private/containers-runtime (Racket immutable hashes) and is reached
 ;; via `foreign`; keys compare by structural equality.
 
 (provide (all-defined-out))
 
-(data (Map k v))
-
-(foreign empty-map (Map k v)
-         #:from rackton/private/containers-runtime)
-(foreign map-insert (-> k (-> v (-> (Map k v) (Map k v))))
-         #:from rackton/private/containers-runtime)
 (foreign map-lookup (-> k (-> (Map k v) (Maybe v)))
          #:from rackton/private/containers-runtime)
 (foreign map-delete (-> k (-> (Map k v) (Map k v)))

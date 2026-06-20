@@ -1,18 +1,14 @@
 #lang rackton
 
-;; rackton/data/set — Data.Set.  Immutable sets, moved out of the
-;; auto-prelude (Phase 2 slim).  Runtime in private/containers-runtime
-;; (Racket immutable hashes) reached via `foreign`; elements compare by
-;; structural equality.
+;; rackton/data/set — Data.Set.  Immutable sets.  The `Set` type and the
+;; constructor primitives (empty-set / set-insert) are promoted into the
+;; prelude (so the #{..} literal needs no import); this module adds the
+;; rest of Data.Set.  The derived runtime lives in
+;; private/containers-runtime (Racket immutable hashes) reached via
+;; `foreign`; elements compare by structural equality.
 
 (provide (all-defined-out))
 
-(data (Set a))
-
-(foreign empty-set (Set a)
-         #:from rackton/private/containers-runtime)
-(foreign set-insert (-> a (-> (Set a) (Set a)))
-         #:from rackton/private/containers-runtime)
 (foreign set-member? (-> a (-> (Set a) Boolean))
          #:from rackton/private/containers-runtime)
 (foreign set-delete (-> a (-> (Set a) (Set a)))

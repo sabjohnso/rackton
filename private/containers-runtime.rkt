@@ -1,30 +1,29 @@
 #lang racket/base
 
-;; Runtime impls for rackton/data/map and rackton/data/set.
+;; Derived runtime ops for rackton/data/map and rackton/data/set.
 ;;
-;; Moved out of prelude-runtime (Phase 2 slim) so Map / Set are no longer
-;; auto-available: rackton/data/map and rackton/data/set `foreign`-import
-;; these with Rackton types.  This is the companion-runtime pattern for
-;; slimming runtime-backed content onto `foreign` — the impls stay
-;; hand-written Racket, the typed surface lives in a #lang rackton module.
+;; The constructor primitives ($map / $set + empty-map / map-insert /
+;; empty-set / set-insert) are promoted into the prelude and live in
+;; private/prelude-runtime.rkt so the {..} / #{..} literals (and bare
+;; Map/Set use) need no import.  This module imports those and derives
+;; the rest of Data.Map / Data.Set (lookup, delete, fold, …), which the
+;; rackton/data/map + rackton/data/set surfaces `foreign`-import.
 ;;
 ;; Backed by Racket's immutable hashes (so keys compare by `equal?`,
 ;; which lines up with Rackton structural ==; no Eq dict is threaded).
 
-(require (only-in "prelude-runtime.rkt" Some None Cons Nil)
+(require (only-in "prelude-runtime.rkt"
+                  Some None Cons Nil
+                  $map $map-h $set $set-h
+                  empty-map map-insert empty-set set-insert)
          (only-in "dict.rkt" define/curried))
 
+;; Re-export the promoted primitives too, so any `#:from
+;; containers-runtime` reference to them keeps resolving.
 (provide empty-map map-insert map-lookup map-delete
          map-keys map-values map-size map-fold
          empty-set set-insert set-member? set-delete set-size set-to-list)
 
-(struct $map (h) #:transparent)
-(struct $set (h) #:transparent)
-
-(define empty-map ($map (hash)))
-(define empty-set ($set (hash)))
-
-(define/curried (map-insert k v m) ($map (hash-set ($map-h m) k v)))
 (define/curried (map-lookup k m)
   (cond [(hash-has-key? ($map-h m) k) (Some (hash-ref ($map-h m) k))]
         [else None]))
@@ -44,7 +43,6 @@
   (for/fold ([acc z]) ([(k v) (in-hash ($map-h m))])
     (((f k) v) acc)))
 
-(define/curried (set-insert x s) ($set (hash-set ($set-h s) x #t)))
 (define/curried (set-member? x s) (hash-has-key? ($set-h s) x))
 (define/curried (set-delete x s) ($set (hash-remove ($set-h s) x)))
 (define (set-size s) (hash-count ($set-h s)))

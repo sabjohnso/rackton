@@ -119,6 +119,11 @@
                      ;; internal IO-action constructor (used by
                      ;; private/ffi-runtime); never user-facing
                      $io
+                     ;; Map/Set representation structs + accessors
+                     ;; (used by private/containers-runtime); the
+                     ;; constructor primitives empty-map / map-insert /
+                     ;; empty-set / set-insert stay user-facing.
+                     $map $map-h $set $set-h
                      ;; tuple/array representation helpers emitted by
                      ;; codegen / match.rkt; never user-facing
                      rackton-tuple-make rackton-tuple-ref

@@ -276,9 +276,47 @@ left-to-right and, e.g. with @racket[Maybe], short-circuit to
 
 @section[#:tag "maps"]{Immutable Map and Set}
 
-@para{Immutable maps live in @racketmodname[rackton/data/map] and sets
-in @racketmodname[rackton/data/set]; both are documented under
-@secref["stdlib-data"].}
+The @racket[Map] and @racket[Set] types and their constructor primitives
+are part of the prelude, so the brace/hash-brace literal syntax (below)
+needs no import.  The remaining @tt{Data.Map} / @tt{Data.Set} operations
+live in @racketmodname[rackton/data/map] and
+@racketmodname[rackton/data/set] and are documented under
+@secref["stdlib-data"].
+
+@deftogether[(
+@defthing[empty-map (Map k v)]
+@defproc[(map-insert [k k] [v v] [m (Map k v)]) (Map k v)]
+)]{The empty map, and @racket[m] with @racket[v] stored at key @racket[k]
+(replacing any existing value).  Keys compare by structural equality, so
+no @racket[(Eq k)] constraint is needed.}
+
+@deftogether[(
+@defthing[empty-set (Set a)]
+@defproc[(set-insert [x a] [s (Set a)]) (Set a)]
+)]{The empty set, and @racket[s] with @racket[x] added.}
+
+@subsection[#:tag "container-literals"]{Bracket and brace literals}
+
+Three reader-level literal forms build lists, maps, and sets directly,
+distinguished by their bracket shape:
+
+@itemlist[
+@item{@litchar|{[v ...]}| — a @racket[List] literal: each @racket[v] is
+evaluated and consed onto the next, so @litchar|{[a b c]}| is exactly
+@racket[(list a b c)] and @litchar|{[]}| is @racket[Nil].  Bracket list
+literals may also appear as @racket[match] patterns (@litchar|{[a b c]}|,
+or @litchar|{[x ...]}| to bind the rest of the list).}
+@item{@litchar|{{k v ...}}| — a @racket[Map] literal of alternating keys
+and values, so @litchar|{{1 "a" 2 "b"}}| builds the two-entry map.  A
+duplicate key keeps the last value (last write wins); an odd number of
+forms is a compile-time error.  @litchar|{{}}| is @racket[empty-map].}
+@item{@litchar|{#{m ...}}| — a @racket[Set] literal, so @litchar|{#{1 2 3}}|
+builds the three-element set and duplicate members collapse.  @litchar|{#{}}|
+is @racket[empty-set].}
+]
+
+Ordinary parentheses keep every meaning they had: @racket[(list ...)],
+@racket[(array ...)], applications, and special forms are unchanged.
 
 @section[#:tag "io"]{IO}
 

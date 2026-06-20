@@ -9,13 +9,18 @@
 ;; ports in, datums out — except the best-effort history file I/O.
 ;;
 ;; Public API:
-;;   rackton-parse-command-line — one line → command datum, or #f
-;;   rackton-read-form          — port → one form, accumulating lines
-;;                                until parens balance
+;;   rackton-parse-command-line — one line → command syntax, or #f
+;;   rackton-read-form          — port → one form (syntax), accumulating
+;;                                lines until parens balance
 ;;   rackton-editor-read-datum  — port over one accepted editor entry
-;;                                → datum (comma commands included)
+;;                                → syntax (comma commands included)
 ;;   rackton-editor-ready?      — port → may this entry be accepted?
 ;;   rackton-history-path/load/save! — cross-session history
+;;
+;; Forms are read with `read-syntax`, not `read`, so the reader's
+;; `paren-shape` property survives — that is what lets the bracket/brace
+;; literals ([..] / {..} / #{..}) be recognized at the REPL exactly as in
+;; a source file.  The kernel accepts either a datum or a syntax object.
 
 (provide rackton-parse-command-line
          rackton-read-form
@@ -29,10 +34,11 @@
          (only-in racket/port port->string)
          (only-in racket/file make-directory*))
 
-;; Parse one line of input into a command datum, or #f when it is not a
-;; command.  A leading `,` (which never begins a valid Rackton form) marks
-;; a command: the rest of the line is read as the command word and its
-;; arguments, producing `(unquote word arg ...)`.  A bare `,` yields
+;; Parse one line of input into a command syntax object, or #f when it is
+;; not a command.  A leading `,` (which never begins a valid Rackton form)
+;; marks a command: the rest of the line is read (with `read-syntax`, so
+;; argument `paren-shape` survives) as the command word and its arguments,
+;; producing the syntax `(unquote word arg ...)`.  A bare `,` yields
 ;; `(unquote)` — the accepted no-op.  Each `read` is guarded so a
 ;; malformed tail simply stops accumulation instead of raising.
 (define (rackton-parse-command-line str)
@@ -43,9 +49,9 @@
          (let loop ([acc '()])
            (define d
              (with-handlers ([exn:fail:read? (lambda (_) eof)])
-               (read ip)))
+               (read-syntax #f ip)))
            (if (eof-object? d)
-               (cons 'unquote (reverse acc))
+               (datum->syntax #f (cons 'unquote (reverse acc)))
                (loop (cons d acc)))))))
 
 ;; Read one rackton form from `port`, accumulating lines
@@ -66,7 +72,7 @@
           ;; Buffer non-empty but parens never closed — let read
           ;; raise the natural "expected )" error so the caller
           ;; sees a useful message.
-          (read (open-input-string buf))])]
+          (read-syntax #f (open-input-string buf))])]
       [else
        (define buf* (string-append buf line " "))
        (define new-depth (+ depth (line-paren-delta line)))
@@ -81,7 +87,7 @@
              (define trimmed-port (open-input-string buf*))
              (define form
                (with-handlers ([exn:fail:read? (lambda (_) #f)])
-                 (read trimmed-port)))
+                 (read-syntax #f trimmed-port)))
              (cond
                [(eof-object? form) (loop "" 0)]    ;; blank-ish line
                [form form]
@@ -93,16 +99,17 @@
 
 ;; ----- whole-entry reading (the structural editor) -------------------
 
-;; Convert one accepted entry into a datum.  A leading comma marks a
-;; REPL command (`,type EXPR`, …): the whole remaining entry goes
+;; Convert one accepted entry into a syntax object.  A leading comma
+;; marks a REPL command (`,type EXPR`, …): the whole remaining entry goes
 ;; through `rackton-parse-command-line`, because a command like
-;; `,type EXPR` is two datums that a plain `read` would split.
-;; Anything else is one `read`; a whitespace-only entry reads as eof.
+;; `,type EXPR` is two datums that a plain read would split.  Anything
+;; else is one `read-syntax` (so paren-shape survives); a whitespace-only
+;; entry reads as eof.
 (define (rackton-editor-read-datum in)
   (skip-whitespace in)
   (if (eqv? (peek-char in) #\,)
       (rackton-parse-command-line (port->string in))
-      (read in)))
+      (read-syntax #f in)))
 
 ;; Decide whether the editor may accept the entry.  The rule matches
 ;; "every datum reads completely" — keep editing on an unterminated
