@@ -1,86 +1,131 @@
 #lang racket/base
 
-;; Feature 7: first-class existential types — anonymous `(Exists (a) (=> C
-;; body))` types, the dual of the rank-N `(All (a) …)` forall.
+;; Feature 7: first-class existential types — anonymous
+;; `(Exists (a) (C a => body))` types, the dual of the rank-N
+;; `(All (a) (C a => body))` forall (constraints use INFIX `=>`).
 ;;
-;; PHASE 1 (this file, so far): the type-system plumbing only — the
-;; `texists` core node + `ty:exists` surface node and the
-;; parse/type-vars/subst/print/unify sweep.  There is no pack/open yet,
-;; so a first-class existential cannot be *constructed* — Phase 1's
-;; observable behaviour is at the type level (it parses, resolves,
-;; kind-checks, prints, and unifies by alpha-equivalence) plus a
-;; signature that merely *mentions* one compiling.  Pack (Phase 2) and
-;; open (Phase 3) add runnable programs to this file.
+;; PHASE 1: the type-system plumbing — the `texists` core node +
+;; `ty:exists` surface node and the parse/type-vars/subst/print/unify
+;; sweep.
+;;
+;; PHASE 2: `pack` — annotation-driven introduction.  Checking an
+;; expression against an expected existential (here written
+;; `(ann e (Exists …))`) unifies the witness type with the expression's
+;; type, discharges the `#:where` constraints at the pack site, and hides
+;; the witness behind the existential.  (`open`, the eliminator, is
+;; Phase 3 — so packed values still cannot be *used*, only constructed
+;; and carried; the runtime value is the bare witness.)
+
+;; NB: import everything from main.rkt EXCEPT `#%module-begin`.  main.rkt
+;; doubles as a module language, so a plain `(require "../main.rkt")`
+;; would install rackton's `#%module-begin` and govern the `(module+
+;; test …)` submodule — feeding its ordinary Racket forms to the rackton
+;; parser.  The prefixed type modules avoid the name clashes with main's
+;; re-exports.
+(require (for-syntax racket/base)
+         rackunit
+         racket/set
+         (except-in "../main.rkt" #%module-begin)
+         (prefix-in ty: "../private/types.rkt")
+         (prefix-in srf: "../private/surface.rkt")
+         (prefix-in u: "../private/unify.rkt"))
+
+;; Compile-time rejection: evaluating the rackton block must raise.
+(define-syntax-rule (check-rackton-compile-error form ...)
+  (check-exn
+   exn:fail?
+   (lambda ()
+     (eval #'(rackton form ...)
+           (variable-reference->namespace (#%variable-reference))))))
+
+;; ===== PHASE 2: pack (runs at module level) ==========================
+
+;; A value packs into an existential via an annotation; the witness type
+;; is hidden, so values of DIFFERENT types share one element type and sit
+;; in one homogeneous list.  `open` isn't here yet, so we observe only
+;; that it type-checks and that the runtime list has the right shape (the
+;; existential is erased — each element is its bare witness value).
+(rackton
+  (: xs (List (Exists (a) ((Show a) => a))))
+  (define xs
+    (Cons (ann 42 (Exists (a) ((Show a) => a)))
+          (Cons (ann "hi" (Exists (a) ((Show a) => a)))
+                (Cons (ann #t (Exists (a) ((Show a) => a)))
+                      Nil))))
+  (: how-many Integer)
+  (define how-many (length xs)))
+
+;; An existential with no constraints packs any value.
+(rackton
+  (: anything (Exists (a) a))
+  (define anything (ann 42 (Exists (a) a))))
 
 (module+ test
-  (require rackunit
-           racket/set
-           "../private/types.rkt"
-           "../private/surface.rkt"
-           (only-in "../main.rkt" rackton))
 
-  (define t-int (tcon 'Integer))
-  ;; (Exists (a) (=> (Show a) a)) at the core level.
+  ;; ----- Phase 1: surface parse of (Exists …) -----------------------
+
+  (let ([ast (srf:parse-type #'(Exists (a) ((Show a) => a)))])
+    (check-pred srf:ty:exists? ast "(Exists …) parses to a ty:exists node")
+    (check-equal? (srf:ty:exists-vars ast) '(a)))
+
+  ;; ----- Phase 1: types.rkt sweep -----------------------------------
+
+  (define t-int (ty:tcon 'Integer))
   (define (ex-show)
-    (texists '(a) (mqual (list (pred 'Show (list (tvar 'a)))) (tvar 'a))))
+    (ty:texists '(a) (ty:mqual (list (ty:pred 'Show (list (ty:tvar 'a))))
+                               (ty:tvar 'a))))
 
-  ;; ----- surface: parse (Exists …) ----------------------------------
+  (check-true (ty:type? (ex-show)) "a texists is a type")
 
-  (let ([ast (parse-type #'(Exists (a) (=> (Show a) a)))])
-    (check-pred ty:exists? ast "(Exists …) parses to a ty:exists node")
-    (check-equal? (ty:exists-vars ast) '(a)))
-
-  ;; ----- types.rkt sweep --------------------------------------------
-
-  (check-true (type? (ex-show)) "a texists is a type")
-
-  ;; A bound existential var is NOT free in the surrounding type.
-  (check-equal? (type-vars (texists '(a) (tvar 'a))) (seteq))
-  (check-equal? (type-vars (texists '(a) (make-arrow (tvar 'a) (tvar 'b))))
+  (check-equal? (ty:type-vars (ty:texists '(a) (ty:tvar 'a))) (seteq))
+  (check-equal? (ty:type-vars (ty:texists '(a) (ty:make-arrow (ty:tvar 'a)
+                                                              (ty:tvar 'b))))
                 (seteq 'b)
                 "only the un-bound var is free")
 
-  ;; Substitution skips a shadowed bound var, but reaches a free one.
-  (check-equal? (apply-subst (subst-singleton 'a t-int)
-                             (texists '(a) (tvar 'a)))
-                (texists '(a) (tvar 'a))
+  (check-equal? (ty:apply-subst (ty:subst-singleton 'a t-int)
+                                (ty:texists '(a) (ty:tvar 'a)))
+                (ty:texists '(a) (ty:tvar 'a))
                 "a bound var shadows the substitution")
-  (check-equal? (apply-subst (subst-singleton 'b t-int)
-                             (texists '(a) (make-arrow (tvar 'a) (tvar 'b))))
-                (texists '(a) (make-arrow (tvar 'a) t-int))
+  (check-equal? (ty:apply-subst (ty:subst-singleton 'b t-int)
+                                (ty:texists '(a) (ty:make-arrow (ty:tvar 'a)
+                                                                (ty:tvar 'b))))
+                (ty:texists '(a) (ty:make-arrow (ty:tvar 'a) t-int))
                 "a free var is substituted under the binder")
 
-  ;; Printer renders the surface `Exists` form.
-  (check-equal? (type->datum (ex-show))
+  (check-equal? (ty:type->datum (ex-show))
                 '(Exists (a) ((Show a) => a)))
 
-  ;; ----- unify.rkt: alpha-equivalence -------------------------------
+  ;; ----- Phase 1: unify.rkt alpha-equivalence -----------------------
 
-  (local-require "../private/unify.rkt")
-
-  ;; Two alpha-equivalent existentials unify.
-  (check-true (subst? (unify (texists '(a) (tvar 'a))
-                             (texists '(b) (tvar 'b))))
+  (check-true (ty:subst? (u:unify (ty:texists '(a) (ty:tvar 'a))
+                                  (ty:texists '(b) (ty:tvar 'b))))
               "alpha-equivalent existentials unify")
-
-  ;; Different bodies do not.
-  (check-exn exn:fail:unify?
-             (lambda () (unify (texists '(a) (tvar 'a))
-                               (texists '(a) t-int))))
-
-  ;; An existential is NOT a universal: `(Exists a. a)` ≠ `(All a. a)`.
-  (check-exn exn:fail:unify?
-             (lambda () (unify (texists '(a) (tvar 'a))
-                               (tforall '(a) (tvar 'a))))
+  (check-exn u:exn:fail:unify?
+             (lambda () (u:unify (ty:texists '(a) (ty:tvar 'a))
+                                 (ty:texists '(a) t-int))))
+  (check-exn u:exn:fail:unify?
+             (lambda () (u:unify (ty:texists '(a) (ty:tvar 'a))
+                                 (ty:tforall '(a) (ty:tvar 'a))))
              "existential and universal quantifiers are distinct")
 
-  ;; ----- pipeline: a signature mentioning an existential compiles ---
-  ;; No pack yet, so the argument can't be constructed; we only check
-  ;; that the embedded existential resolves + kind-checks + compiles.
+  ;; ----- Phase 2: pack behaviour ------------------------------------
 
-  (rackton
-    (: ignore-exists (-> (Exists (a) (=> (Show a) a)) Integer))
-    (define (ignore-exists e) 0))
+  (check-equal? how-many 3
+                "heterogeneous values pack into one existential element type")
 
-  (check-true (procedure? ignore-exists)
-              "a function with an existential parameter type compiles"))
+  ;; The witness is erased: the packed value is the bare datum.
+  (check-equal? anything 42
+                "a packed value is runtime-transparent (the bare witness)")
+
+  ;; The `#:where` constraint is discharged at the pack site: packing a
+  ;; value of a ground type with no `Show` instance (a concrete function
+  ;; type) is rejected.  (A *polymorphic* witness leaves the constraint
+  ;; over a free var — deferred, not a hard error — so the witness here is
+  ;; ground: `(-> Integer Integer)`.)
+  (check-rackton-compile-error
+   (define bad (ann (lambda (x) (+ x 1)) (Exists (a) ((Show a) => a)))))
+
+  ;; Likewise for a different missing constraint: no `Eq` on functions.
+  (check-rackton-compile-error
+   (define bad2 (ann (lambda (x) (+ x 1)) (Exists (a) ((Eq a) => a))))))

@@ -285,6 +285,22 @@
 ;;     with `expected-ty`.
 (define (check-expr/m expr env expected-ty)
   (cond
+    [(texists? expected-ty)
+     ;; PACK — the dual of the tforall skolemize branch.  Instantiate the
+     ;; hidden vars with fresh UNIFICATION tvars (the witness solves them),
+     ;; check `expr` against the body, and emit the `#:where` constraints
+     ;; as pending preds so they are discharged at this site against the
+     ;; concrete witness.  The result type is the existential itself — the
+     ;; witness is hidden (it appears nowhere in `expected-ty`).
+     (match-define (texists vs body) expected-ty)
+     (let/infer ([s-inst (fresh-subst/m vs)])
+       (let* ([body*  (apply-subst s-inst body)]
+              [preds  (qual-constraints-of body*)]
+              [bare   (qual-body-deep body*)])
+         (let/infer ([_ (m:add-preds preds)]
+                     [r (check-expr/m expr env bare)])
+           (let ([s (car r)])
+             (infer-return (cons s (apply-subst s expected-ty)))))))]
     [(tforall? expected-ty)
      (match-define (tforall vs body) expected-ty)
      (define s-skol
@@ -1353,9 +1369,21 @@
 
 (define (infer-ann/m expr ty-ast stx env)
   (kind-check-surface env ty-ast)
+  (define resolved (resolve-type ty-ast env))
+  (cond
+    ;; An existential annotation is a PACK: hand off to the bidirectional
+    ;; checker, which instantiates the hidden vars, checks `expr` against
+    ;; the body, and discharges the `#:where` constraints (see the
+    ;; `texists?` branch of `check-expr/m`).
+    [(texists? resolved)
+     (check-expr/m expr env resolved)]
+    [else
+     (infer-ann-unify/m expr resolved stx env)]))
+
+(define (infer-ann-unify/m expr resolved stx env)
   (let/infer ([re (infer-expr/m expr env)])
     (let* ([s-e (car re)] [t-e (cdr re)]
-           [declared (qual-body-type (resolve-type ty-ast env))]
+           [declared (qual-body-type resolved)]
            [s-u (with-handlers
                  ([exn:fail:unify?
                    (lambda (_)

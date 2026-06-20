@@ -71,7 +71,29 @@
     ;; universal and an existential are correctly kept apart.
     [((texists vs1 b1) (texists vs2 b2))
      (unify-quantified vs1 b1 vs2 b2 σ τ)]
+    ;; Qualified bodies (the usual shape under an existential, e.g.
+    ;; `(Show a => a)`): unify the bare bodies, then the constraints
+    ;; pairwise.  Two existentials whose constraints differ (`Show a` vs
+    ;; `Eq a`) must NOT unify, so the class names and arities must match.
+    [((qual cs1 b1) (qual cs2 b2))
+     (unify-qual cs1 b1 cs2 b2 σ τ)]
     [(_ _) (raise-unify! 'mismatch σ τ)]))
+
+;; Unify two qualified types: bodies first, then each constraint pair.
+(define (unify-qual cs1 b1 cs2 b2 σ τ)
+  (cond
+    [(not (= (length cs1) (length cs2))) (raise-unify! 'arity σ τ)]
+    [else
+     (for/fold ([s (unify b1 b2)])
+               ([p1 (in-list cs1)] [p2 (in-list cs2)])
+       (cond
+         [(not (eq? (pred-class p1) (pred-class p2))) (raise-unify! 'mismatch σ τ)]
+         [(not (= (length (pred-args p1)) (length (pred-args p2))))
+          (raise-unify! 'arity σ τ)]
+         [else
+          (for/fold ([s s]) ([a1 (in-list (pred-args p1))]
+                             [a2 (in-list (pred-args p2))])
+            (subst-compose (unify (apply-subst s a1) (apply-subst s a2)) s))]))]))
 
 ;; Alpha-equivalent unification of two quantified types (∀ or ∃) of the
 ;; same flavour.  Same arity required; rename one side's bound vars to
