@@ -53,6 +53,10 @@
 ;; A `(letrec ([name expr] ...) body)` form.  Each binding's rhs may
 ;; reference every binding's name (mutual recursion).
 (struct e:letrec  (bindings body stx) #:transparent)
+;; `(open e (a … x) body)` — eliminate a first-class existential.  `tyvars`
+;; are the hidden type variables bound rigidly for `body` (the existential's
+;; arity), `valvar` the witness value bound in `body`.  Dual of pack.
+(struct e:open    (expr tyvars valvar body stx) #:transparent)
 ;; A `match` clause.  `guard` is either #f (no guard) or a surface
 ;; expression that must evaluate to #t for the clause to fire.
 (struct clause    (pattern guard body stx) #:transparent)
@@ -180,6 +184,8 @@
      (e:letrec (for/list ([b (in-list bs)]) (cons (car b) (R (cdr b))))
                (R body) new-stx)]
     [(e:if a b c _)      (e:if (R a) (R b) (R c) new-stx)]
+    [(e:open e tvs vv body _)
+     (e:open (R e) tvs vv (R body) new-stx)]
     [(e:ann e t _)       (e:ann (R e) (R t) new-stx)]
     [(e:escape t vs body _)
      ;; Escapes splice raw Racket syntax — relocating it would mean

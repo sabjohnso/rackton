@@ -288,7 +288,7 @@
 
 (define (parse-expr stx)
   (syntax-parse stx
-    #:datum-literals (lambda λ case-lambda case-λ let let& let% let+ letrec let* if cond else ann match match* racket do proc delay <- update handle return describe context list tuple tref array build-array aref array-take array-drop array-split-at -> quote quasiquote unquote unquote-splicing)
+    #:datum-literals (lambda λ case-lambda case-λ let let& let% let+ letrec let* if cond else ann open match match* racket do proc delay <- update handle return describe context list tuple tref array build-array aref array-take array-drop array-split-at -> quote quasiquote unquote unquote-splicing)
     [n:number  (e:literal (syntax->datum #'n) stx)]
     [b:boolean (e:literal (syntax->datum #'b) stx)]
     [s:string  (e:literal (syntax->datum #'s) stx)]
@@ -526,6 +526,16 @@
 
     [(ann e t)
      (e:ann (parse-expr #'e) (parse-type #'t) stx)]
+
+    ;; Existential elimination: `(open e (a … x) body)` binds the hidden
+    ;; type variable(s) `a …` and the witness value `x` (the LAST id) for
+    ;; `body`.
+    [(open e (tv:id ... x:id) body)
+     (e:open (parse-expr #'e)
+             (map syntax->datum (syntax->list #'(tv ...)))
+             (syntax->datum #'x)
+             (parse-expr #'body)
+             stx)]
 
     [(match scrut cl ...+)
      (e:match (parse-expr #'scrut)

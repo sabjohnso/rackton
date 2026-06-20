@@ -822,6 +822,7 @@
     [(e:let _ _ s)      s]
     [(e:letrec _ _ s)   s]
     [(e:if _ _ _ s)     s]
+    [(e:open _ _ _ _ s) s]
     [(e:ann _ _ s)      s]
     [(e:match _ _ _ s)  s]
     [(e:match* _ _ _ s) s]
@@ -1095,6 +1096,7 @@
     [(e:let bindings body _)         (infer-let/m bindings body env)]
     [(e:letrec bindings body _)      (infer-letrec/m bindings body env)]
     [(e:if c t els stx)              (infer-if/m c t els stx env)]
+    [(e:open e tvs vv body stx)      (infer-open/m e tvs vv body stx env)]
     [(e:ann expr ty-ast stx)         (infer-ann/m expr ty-ast stx env)]
     [(e:escape ty-ast vars _ stx)    (infer-escape/m ty-ast vars stx env)]
     [(e:update record updates stx)   (infer-update/m record updates stx env)]
@@ -1391,6 +1393,79 @@
                  (unify (normalize-type/guarded env (apply-subst s-e t-e))
                         (normalize-type/guarded env declared)))])
       (infer-return (cons (subst-compose s-u s-e) (apply-subst s-u declared))))))
+
+;; `(open e (a … x) body)` — eliminate a first-class existential.  Mirror
+;; the constructor-existential unpack: infer `e`, require a `texists`,
+;; skolemize its hidden vars to fresh RIGID skolems, bind `x` to the
+;; witness type and the packed constraints as hypotheses (so a method like
+;; `show` resolves), infer `body`, then run the ESCAPE CHECK — no skolem
+;; may appear in the body's result type (it would outlive its scope).
+(define (infer-open/m e-expr tyvars valvar body stx env)
+  (let/infer ([re (infer-expr/m e-expr env)])
+    (let* ([s-e (car re)]
+           [t-e (normalize-type/guarded env (apply-subst s-e (cdr re)))])
+      (cond
+        [(not (texists? t-e))
+         (raise-syntax-error 'open
+           (format "open expects a value of existential type, got ~a"
+                   (pretty-type t-e))
+           stx)]
+        [else
+         (match-define (texists vs ex-body) t-e)
+         (unless (= (length tyvars) (length vs))
+           (raise-syntax-error 'open
+             (format "open binds ~a type variable(s) but the existential hides ~a"
+                     (length tyvars) (length vs))
+             stx))
+         (define skolems
+           (for/list ([tv (in-list tyvars)])
+             (tcon (gensym (format "$ex-skolem.~a." tv)))))
+         (define skolem-names (list->seteq (map tcon-name skolems)))
+         (define sub
+           (for/fold ([s empty-subst]) ([v (in-list vs)] [sk (in-list skolems)])
+             (subst-extend s v sk)))
+         (define ex-body* (apply-subst sub ex-body))
+         (define hyps        (qual-constraints-of ex-body*))
+         (define witness-ty  (qual-body-deep ex-body*))
+         (define env* (env-extend-var env valvar (scheme '() witness-ty)))
+         (let/infer ([rb (infer-expr/m body env*)])
+           (let* ([s-acc (subst-compose (car rb) s-e)]
+                  [t-body (apply-subst s-acc (cdr rb))])
+             ;; Discharge pending preds the packed constraints prove (the
+             ;; open is the proof), exactly as a match arm discharges an
+             ;; existential constructor's hypotheses.
+             (let/infer ([_ (if (null? hyps)
+                                (infer-return (void))
+                                (let/infer ([_ (m:apply-subst-to-preds s-acc)]
+                                            [cur (m:snapshot-preds)])
+                                  (m:set-preds
+                                   (parameterize ([current-reduce-blame stx])
+                                     (reduce-context env
+                                                     (map (lambda (p) (apply-subst s-acc p)) hyps)
+                                                     cur)))))])
+               (let ()
+                 ;; Escape check: the fresh skolem must not leak out in the
+                 ;; result type.
+                 (when (type-mentions-tcon-names? t-body skolem-names)
+                   (raise-syntax-error 'open
+                     (format "existential type escapes its scope: the result type ~a mentions the hidden type"
+                             (pretty-type t-body))
+                     stx))
+                 (infer-return (cons s-acc t-body))))))]))))
+
+;; Does `t` mention any tcon whose name is in `names` (a seteq)?  Used by
+;; the `open` escape check against this site's fresh skolems.
+(define (type-mentions-tcon-names? t names)
+  (let walk ([t t])
+    (match t
+      [(tcon n)      (set-member? names n)]
+      [(tvar _)      #f]
+      [(tnat _)      #f]
+      [(tapp h args) (or (walk h) (ormap walk args))]
+      [(qual cs b)   (or (ormap (lambda (p) (ormap walk (pred-args p))) cs) (walk b))]
+      [(tforall _ b) (walk b)]
+      [(texists _ b) (walk b)]
+      [_             #f])))
 
 (define (infer-escape/m ty-ast vars stx env)
   (kind-check-surface env ty-ast)
@@ -2432,6 +2507,8 @@
      (e:letrec (for/list ([b (in-list bs)]) (cons (car b) (gv-expr (cdr b) vmap*)))
                (gv-expr body vmap*) stx)]
     [(e:if a b c stx)        (e:if (R a) (R b) (R c) stx)]
+    [(e:open e tvs vv body stx)
+     (e:open (R e) tvs vv (gv-expr body (hash-remove vmap vv)) stx)]
     [(e:ann ex t stx)        (e:ann (R ex) t stx)]
     [(e:match scrut cs irr stx)
      (e:match (R scrut) (for/list ([c (in-list cs)]) (gv-clause c vmap)) irr stx)]
@@ -3738,6 +3815,8 @@
        (for ([b (in-list bindings)]) (walk (cdr b) sh*))
        (walk body sh*)]
       [(e:if c th el _) (walk c shadowed) (walk th shadowed) (walk el shadowed)]
+      [(e:open e _ vv body _)
+       (walk e shadowed) (walk body (set-add shadowed vv))]
       [(e:ann body _ _) (walk body shadowed)]
       [(e:match scrut clauses _ _)
        (walk scrut shadowed)
@@ -4509,6 +4588,7 @@
       [(e:lam ps b stx)    (e:lam ps (R b) stx)]
       [(e:app h as stx)    (e:app (R h) (map R as) stx)]
       [(e:if a b c stx)    (e:if (R a) (R b) (R c) stx)]
+      [(e:open ex tvs vv body stx) (e:open (R ex) tvs vv (R body) stx)]
       [(e:let bs b stx)
        (e:let (for/list ([p (in-list bs)]) (cons (car p) (R (cdr p)))) (R b) stx)]
       [(e:letrec bs b stx)
@@ -5169,6 +5249,8 @@
           (walk body new-shadowed? st1)]
          [(e:if c th el _)
           (walk el shadowed? (walk th shadowed? (walk c shadowed? st)))]
+         [(e:open e _ vv body _)
+          (walk body (or shadowed? (eq? vv name)) (walk e shadowed? st))]
          [(e:ann body _ _) (walk body shadowed? st)]
          [(e:match scrut clauses _ _)
           (for/fold ([st (walk scrut shadowed? st)]) ([cl (in-list clauses)])
@@ -5702,6 +5784,8 @@
       [(e:if? e) (visit (e:if-test e))
                  (visit (e:if-then e))
                  (visit (e:if-else e))]
+      [(e:open? e) (visit (e:open-expr e))
+                   (visit (e:open-body e))]
       [(e:ann? e) (visit (e:ann-expr e))]
       [(e:match? e) (visit (e:match-scrutinee e))
                     (for ([c (in-list (e:match-clauses e))])

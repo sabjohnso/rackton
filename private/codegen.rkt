@@ -299,6 +299,17 @@
           (syntax/loc stx (letrec (binding ...) bdy)))
         st))]
 
+    ;; `(open e (a … x) body)` erases its type binders: types are gone at
+    ;; runtime, and class methods dispatch on the witness VALUE's tag, so
+    ;; unpacking is just binding `x` to `e` and running `body`.
+    [(e:open e _tyvars valvar body stx)
+     (let*-values ([(re  st) (compile-expr e ctx st)]
+                   [(bdy st) (compile-expr body ctx st)])
+       (values
+        (with-syntax ([x (emit-id valvar stx)] [re re] [bdy bdy])
+          (syntax/loc stx (let ([x re]) bdy)))
+        st))]
+
     [(e:if c t e stx)
      (let*-values ([(cc st) (compile-expr c ctx st)]
                    [(tt st) (compile-expr t ctx st)]
@@ -584,6 +595,7 @@
         (for/sum ([p (in-list bs)]) (ast-size (cdr p)))
         (ast-size b))]
     [(e:if c t e _) (+ 1 (ast-size c) (ast-size t) (ast-size e))]
+    [(e:open e _ _ b _) (+ 1 (ast-size e) (ast-size b))]
     [(e:ann e _ _) (ast-size e)]
     [(e:match s cs _ _)
      (+ 1 (ast-size s)

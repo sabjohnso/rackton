@@ -60,6 +60,34 @@
   (: anything (Exists (a) a))
   (define anything (ann 42 (Exists (a) a))))
 
+;; ===== PHASE 3: open =================================================
+
+;; `(open e (a x) body)` unpacks: `a` is a fresh rigid type, `x` the
+;; witness value, and the packed `Show` dictionary is in scope, so
+;; `(show x)` resolves and dispatches on the runtime value.  Used here to
+;; render a heterogeneous list — the payoff of the whole feature.
+(rackton
+  (: render (-> (Exists (a) ((Show a) => a)) String))
+  (define (render e) (open e (a x) (show x)))
+
+  (: items (List (Exists (a) ((Show a) => a))))
+  (define items
+    (Cons (ann 42 (Exists (a) ((Show a) => a)))
+          (Cons (ann "hi" (Exists (a) ((Show a) => a)))
+                (Cons (ann #t (Exists (a) ((Show a) => a))) Nil))))
+
+  (: render-all (-> (List (Exists (a) ((Show a) => a))) (List String)))
+  (define (render-all ys)
+    (match ys
+      [(Nil) Nil]
+      [(Cons e rest) (Cons (render e) (render-all rest))]))
+
+  (: shown-all (List String))
+  (define shown-all (render-all items))
+
+  (: shown-one String)
+  (define shown-one (render (ann 7 (Exists (a) ((Show a) => a))))))
+
 (module+ test
 
   ;; ----- Phase 1: surface parse of (Exists …) -----------------------
@@ -128,4 +156,18 @@
 
   ;; Likewise for a different missing constraint: no `Eq` on functions.
   (check-rackton-compile-error
-   (define bad2 (ann (lambda (x) (+ x 1)) (Exists (a) ((Eq a) => a))))))
+   (define bad2 (ann (lambda (x) (+ x 1)) (Exists (a) ((Eq a) => a)))))
+
+  ;; ----- Phase 3: open behaviour ------------------------------------
+
+  (check-equal? shown-one "7"
+                "open unpacks and `show` dispatches on the witness")
+  (check-equal? shown-all (Cons "42" (Cons "\"hi\"" (Cons "True" Nil)))
+                "open inside a fold renders a heterogeneous list")
+
+  ;; Escape check: the opened type must not leak.  `(open e (a x) x)`
+  ;; returns the witness itself, whose type is the fresh rigid `a` — that
+  ;; would escape the `open`, so it is rejected.
+  (check-rackton-compile-error
+   (define leak
+     (open (ann 42 (Exists (a) ((Show a) => a))) (a x) x))))
