@@ -351,9 +351,16 @@
     [(env-ref-var env name)
      => (lambda (sch) (render-typed (name-doc name) (binding-type-datum env name sch)))]
     [(env-ref-data env name)
-     => (lambda (di) (render-typed (name-doc name)
-                                   (scheme->pretty-datum (data-info-scheme di))
-                                   #:suffix " (data ctor)"))]
+     => (lambda (di)
+          ;; A single-constructor datatype binds the same name as both a
+          ;; data ctor and a type ctor.  Show the ctor's scheme, then the
+          ;; type description when the name is also a type constructor.
+          (string-append
+           (render-typed (name-doc name)
+                         (scheme->pretty-datum (data-info-scheme di))
+                         #:suffix " (data ctor)")
+           (cond [(env-ref-tcon env name) => (lambda (ti) (format-tcon-info env name ti))]
+                 [else ""])))]
     [(env-ref-tcon env name)
      => (lambda (ti) (format-tcon-info env name ti))]
     [(env-ref-class env name)

@@ -160,6 +160,20 @@
   (check-regexp-match #rx"data ctor" out)
   (check-regexp-match #rx"Maybe" out))
 
+(test-case ",info on a name that is both a type and a ctor shows both"
+  ;; A single-constructor datatype binds the same name as both a type
+  ;; constructor and a data constructor.  ,info must describe both, not
+  ;; stop at the data ctor.
+  (define-values (_ outs)
+    (drive-session
+     '((data (Box a) (Box a))
+       (unquote info Box))))
+  (define out (last outs))
+  (check-regexp-match #rx"data ctor" out)        ; the constructor view
+  (check-regexp-match #rx"type ctor" out)        ; the type view
+  (check-regexp-match #rx"arity 1" out)
+  (check-regexp-match #rx"constructors:" out))
+
 (test-case ",info on an unbound name says so"
   (check-regexp-match #rx"unbound" (info-output 'no-such-name)))
 
