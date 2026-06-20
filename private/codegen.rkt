@@ -1413,6 +1413,7 @@
      (make-tapp (ty-ast->type h)
                 (for/list ([a (in-list args)]) (ty-ast->type a)))]
     [(ty:forall _ body _) (ty-ast->type body)]
+    [(ty:exists _ body _) (ty-ast->type body)]
     [(ty:qual _ body _)   (ty-ast->type body)]))
 
 ;; Given a list of head-arg core types, return the dispatch tags for the

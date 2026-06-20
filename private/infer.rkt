@@ -931,6 +931,11 @@
      ;; Top-level schemes come through `resolve-scheme` instead.
      (let/ctx ([rb (resolve-type/m body)])
        (ctx-return (tforall vs rb)))]
+    [(ty:exists vs body _)
+     ;; A first-class existential becomes a `texists` carrying its hidden
+     ;; vars; the body (usually a `qual`) resolves under them.
+     (let/ctx ([rb (resolve-type/m body)])
+       (ctx-return (texists vs rb)))]
     [(ty:qual cs body _)
      (let/ctx ([rcs (ctx-sequence (map resolve-constraint/m cs))]
                [rb  (resolve-type/m body)])
@@ -976,6 +981,10 @@
      (define sub*
        (for/fold ([s sub]) ([v (in-list vs)]) (hash-remove s v)))
      (ty:forall vs (substitute-tyvars sub* body) stx)]
+    [(ty:exists vs body stx)
+     (define sub*
+       (for/fold ([s sub]) ([v (in-list vs)]) (hash-remove s v)))
+     (ty:exists vs (substitute-tyvars sub* body) stx)]
     [(ty:qual cs body stx)
      (ty:qual (for/list ([c (in-list cs)]) (substitute-constraint-tyvars sub c))
               (substitute-tyvars sub body)
@@ -2982,6 +2991,9 @@
     [(tforall vs body)
      (for ([v (in-list vs)]) (hash-set! tvar-kinds v (kvar (gensym 'k))))
      (elab-kind body env batch-kinds tvar-kinds s)]
+    [(texists vs body)
+     (for ([v (in-list vs)]) (hash-set! tvar-kinds v (kvar (gensym 'k))))
+     (elab-kind body env batch-kinds tvar-kinds s)]
     [(qual _cs body)
      ;; The predicates' own kinds are checked at their resolution sites;
      ;; the qualified type's kind is its body's.
@@ -3007,6 +3019,7 @@
     [(ty:nat _ stx)      stx]
     [(ty:app _ _ stx)    stx]
     [(ty:forall _ _ stx) stx]
+    [(ty:exists _ _ stx) stx]
     [(ty:qual _ _ stx)   stx]
     [_                   #f]))
 
@@ -3096,6 +3109,11 @@
     [(ty:forall vs body _)
      (for ([v (in-list vs)]) (hash-set! tvar-kinds v (kvar (gensym 'k))))
      (elab-surface body env batch-kinds tvar-kinds s)]
+    [(ty:exists vs body _)
+     ;; An existential binds its own vars (give each a fresh kvar) and has
+     ;; the kind of its body — the same treatment as a forall.
+     (for ([v (in-list vs)]) (hash-set! tvar-kinds v (kvar (gensym 'k))))
+     (elab-surface body env batch-kinds tvar-kinds s)]
     [(ty:qual _cs body _)
      ;; A qualified body's constraints are checked by the entry points;
      ;; the type's kind is its body's.
@@ -3156,6 +3174,9 @@
     (let loop ([t ty-ast])
       (match t
         [(ty:forall vs body _)
+         (for ([v (in-list vs)]) (hash-set! tvar-kinds v (kvar (gensym 'k))))
+         (loop body)]
+        [(ty:exists vs body _)
          (for ([v (in-list vs)]) (hash-set! tvar-kinds v (kvar (gensym 'k))))
          (loop body)]
         [(ty:qual cs body _)
@@ -4477,6 +4498,7 @@
     [(ty:app h args _)   (append (law-surface-type-vars h bound)
                                  (append-map (lambda (a) (law-surface-type-vars a bound)) args))]
     [(ty:forall vs b _)  (law-surface-type-vars b (append vs bound))]
+    [(ty:exists vs b _)  (law-surface-type-vars b (append vs bound))]
     [(ty:qual cs b _)    (append (append-map (lambda (c) (law-constraint-type-vars c bound)) cs)
                                  (law-surface-type-vars b bound))]
     [_ '()]))

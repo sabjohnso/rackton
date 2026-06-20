@@ -170,6 +170,7 @@
         (mqual (map deep-normalize-nats cs) (deep-normalize-nats body))]
        [(pred c args) (pred c (map deep-normalize-nats args))]
        [(tforall vs body) (tforall vs (deep-normalize-nats body))]
+       [(texists vs body) (texists vs (deep-normalize-nats body))]
        [_ t])]))
 
 ;; Solve σ = τ.  Returns a substitution (possibly empty) on success, or

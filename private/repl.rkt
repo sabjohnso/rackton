@@ -485,6 +485,7 @@
     [(tapp h args)  (or (type-mentions-tcon? h name)
                         (ormap (lambda (a) (type-mentions-tcon? a name)) args))]
     [(tforall _ b)  (type-mentions-tcon? b name)]
+    [(texists _ b)  (type-mentions-tcon? b name)]
     [(qual cs b)    (or (ormap (lambda (c) (pred-mentions-tcon? c name)) cs)
                         (type-mentions-tcon? b name))]
     [_              #f]))

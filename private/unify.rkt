@@ -64,27 +64,35 @@
     [((tapp h1 args1) (tapp h2 args2))
      (unify-tapp h1 args1 h2 args2 σ τ)]
     [((tforall vs1 b1) (tforall vs2 b2))
-     ;; Alpha-equivalent unification of two polymorphic
-     ;; types.  Same arity required; rename one side's bound vars
-     ;; to fresh names, then unify the bodies.  The result subst
-     ;; must not mention either side's bound vars — if it does,
-     ;; the types weren't really equivalent (one side leaked a
-     ;; bound var) and we reject.
-     (cond
-       [(not (= (length vs1) (length vs2)))
-        (raise-unify! 'arity σ τ)]
-       [else
-        (define fresh
-          (for/list ([v (in-list vs1)])
-            (gensym (format "$alpha.~a." v))))
-        (define s1 (alpha-rename vs1 fresh b1))
-        (define s2 (alpha-rename vs2 fresh b2))
-        (define θ (unify s1 s2))
-        (define escapes? (escapes-fresh? θ fresh))
-        (cond
-          [escapes? (raise-unify! 'escape σ τ)]
-          [else θ])])]
+     (unify-quantified vs1 b1 vs2 b2 σ τ)]
+    ;; Existentials unify by the same alpha-equivalence rule — but ONLY
+    ;; with each other.  A `texists` never matches a `tforall` (the
+    ;; clauses are distinct and fall through to `mismatch`), so a
+    ;; universal and an existential are correctly kept apart.
+    [((texists vs1 b1) (texists vs2 b2))
+     (unify-quantified vs1 b1 vs2 b2 σ τ)]
     [(_ _) (raise-unify! 'mismatch σ τ)]))
+
+;; Alpha-equivalent unification of two quantified types (∀ or ∃) of the
+;; same flavour.  Same arity required; rename one side's bound vars to
+;; fresh names, then unify the bodies.  The result subst must not mention
+;; either side's bound vars — if it does, the types weren't really
+;; equivalent (one side leaked a bound var) and we reject.
+(define (unify-quantified vs1 b1 vs2 b2 σ τ)
+  (cond
+    [(not (= (length vs1) (length vs2)))
+     (raise-unify! 'arity σ τ)]
+    [else
+     (define fresh
+       (for/list ([v (in-list vs1)])
+         (gensym (format "$alpha.~a." v))))
+     (define s1 (alpha-rename vs1 fresh b1))
+     (define s2 (alpha-rename vs2 fresh b2))
+     (define θ (unify s1 s2))
+     (define escapes? (escapes-fresh? θ fresh))
+     (cond
+       [escapes? (raise-unify! 'escape σ τ)]
+       [else θ])]))
 
 ;; Build a fresh-renaming substitution from a list of bound vars to
 ;; a list of fresh names, then apply to the body — returns the

@@ -77,6 +77,10 @@
 (struct ty:nat    (value stx) #:transparent)
 (struct ty:app    (head args stx) #:transparent)
 (struct ty:forall (vars body stx) #:transparent)
+;; A first-class existential type, the dual of `ty:forall`:
+;; `(Exists (a …) (=> ctx body))` reads "∃a…. ctx ⇒ body" and hides the
+;; quantified vars behind the constraints, usable anywhere a type is.
+(struct ty:exists (vars body stx) #:transparent)
 (struct ty:qual   (constraints body stx) #:transparent)
 ;; A constraint is `(C arg ...)` in surface syntax — class name + type args.
 (struct constraint (class args stx) #:transparent)
@@ -211,6 +215,7 @@
     [(ty:nat v _)        (ty:nat v new-stx)]
     [(ty:app h args _)   (ty:app (R h) (map R args) new-stx)]
     [(ty:forall vs b _)  (ty:forall vs (R b) new-stx)]
+    [(ty:exists vs b _)  (ty:exists vs (R b) new-stx)]
     [(ty:qual cs b _)
      (ty:qual (for/list ([c (in-list cs)]) (R c)) (R b) new-stx)]
     [(constraint c args _) (constraint c (map R args) new-stx)]))

@@ -21,6 +21,7 @@
          (struct-out tapp)
          (struct-out tnat)
          (struct-out tforall)
+         (struct-out texists)
          (struct-out scheme)
          (struct-out qual)
          (struct-out pred)
@@ -122,6 +123,12 @@
 ;; rank-N).  This is distinct from `scheme`, which only lives at the
 ;; top of env entries and never embeds.
 (struct tforall (vars body) #:transparent)
+;; A first-class existential type embedded in a larger type: the dual of
+;; `tforall`.  `(texists vars body)` reads "∃vars. body" — the quantified
+;; vars are *hidden*, recoverable only by `open`-ing a value of this type
+;; (which skolemizes them).  Like `tforall` it may appear in any
+;; type-level position and is distinct from `scheme`.
+(struct texists (vars body) #:transparent)
 
 ;; A class predicate, e.g. (Eq a) or (Ord Integer).
 (struct pred   (class args) #:transparent)
@@ -330,7 +337,7 @@
 (struct qual   (constraints body) #:transparent)
 
 (define (type? v)
-  (or (tvar? v) (tcon? v) (tapp? v) (tnat? v) (tforall? v)))
+  (or (tvar? v) (tcon? v) (tapp? v) (tnat? v) (tforall? v) (texists? v)))
 
 (define (mqual constraints body)
   (cond
@@ -399,6 +406,9 @@
     [(tforall vs body)
      ;; A tforall's quantified vars are bound there and
      ;; don't count as free in the surrounding type.
+     (set-subtract (type-vars body) (list->seteq vs))]
+    [(texists vs body)
+     ;; An existential's vars are bound (and hidden) — also not free.
      (set-subtract (type-vars body) (list->seteq vs))]))
 
 ;; The free type variables of a single predicate, exposed for callers
@@ -455,7 +465,14 @@
         (define s*
           (for/fold ([acc s]) ([v (in-list vs)])
             (hash-remove acc v)))
-        (tforall vs (apply-subst s* body))])]))
+        (tforall vs (apply-subst s* body))]
+       [(texists vs body)
+        ;; Same shadowing discipline as tforall: the bound vars are
+        ;; dropped from `s` before recursing into the body.
+        (define s*
+          (for/fold ([acc s]) ([v (in-list vs)])
+            (hash-remove acc v)))
+        (texists vs (apply-subst s* body))])]))
 
 (define (apply-subst/scheme s sch)
   (match sch
@@ -492,7 +509,9 @@
     [(qual cs body)
      `(,@(map pred->datum cs) => ,(type->datum body))]
     [(tforall vs body)
-     `(All ,vs ,(type->datum body))]))
+     `(All ,vs ,(type->datum body))]
+    [(texists vs body)
+     `(Exists ,vs ,(type->datum body))]))
 
 (define (pred->datum p)
   (match p
@@ -530,7 +549,9 @@
     [(qual cs body)
      `(,@(map pred->pretty-datum cs) => ,(type->pretty-datum body))]
     [(tforall vs body)
-     `(All ,vs ,(type->pretty-datum body))]))
+     `(All ,vs ,(type->pretty-datum body))]
+    [(texists vs body)
+     `(Exists ,vs ,(type->pretty-datum body))]))
 
 (define (pred->pretty-datum p)
   (match p
@@ -653,6 +674,7 @@
       [(tapp h args) (walk h) (for-each walk args)]
       [(qual cs body) (for-each walk cs) (walk body)]
       [(tforall _ body) (walk body)]
+      [(texists _ body) (walk body)]
       [(pred _ args) (for-each walk args)]))
   (for-each walk ts)
   (reverse out))
@@ -699,6 +721,7 @@
       [(tapp h args) (walk h) (for-each walk args)]
       [(qual cs body) (for-each walk cs) (walk body)]
       [(tforall _ body) (walk body)]
+      [(texists _ body) (walk body)]
       [(pred _ args) (for-each walk args)]))
   (for-each walk ts)
   (reverse out))
@@ -723,7 +746,9 @@
        `(,@(map (lambda (p) (pred->pretty-datum/sk p skmap)) cs)
          => ,(recur body))]
       [(tforall vs body)
-       `(All ,vs ,(recur body))])))
+       `(All ,vs ,(recur body))]
+      [(texists vs body)
+       `(Exists ,vs ,(recur body))])))
 
 (define (pred->pretty-datum/sk p skmap)
   (match p

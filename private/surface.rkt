@@ -1502,12 +1502,18 @@
 
 (define (parse-type stx)
   (syntax-parse stx
-    #:datum-literals (All => ->)
+    #:datum-literals (All Exists => ->)
     ;; A non-negative integer literal in type position is a type-level
     ;; natural (kind `Nat`) — e.g. the `3` in `(Array 3 a)`.
     [n:nat (ty:nat (syntax->datum #'n) stx)]
     [(All (v:id ...) body)
      (ty:forall (map syntax->datum (syntax->list #'(v ...)))
+                (parse-type #'body)
+                stx)]
+    ;; First-class existential: the dual of `All`.  `(Exists (a …) body)`,
+    ;; where `body` is usually a qualified type `(=> ctx τ)`.
+    [(Exists (v:id ...) body)
+     (ty:exists (map syntax->datum (syntax->list #'(v ...)))
                 (parse-type #'body)
                 stx)]
     ;; Qualified type: (constraint ...+ => body)
