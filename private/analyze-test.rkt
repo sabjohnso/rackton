@@ -82,6 +82,42 @@
     (check-equal? (diag-severity (car (analysis-diagnostics unparsable)))
                   'error))
 
+  ;; A parse error in one form must NOT suppress a type error in
+  ;; another, well-formed form: inference still runs over the forms
+  ;; that parsed, and both diagnostics are reported.
+  (let ([a (analyze "#lang rackton"
+                    "(define)"                 ; parse error
+                    "(: bad Integer)"
+                    "(define bad \"x\")")])     ; type error: String vs Integer
+    (check-true (>= (length (analysis-diagnostics a)) 2)
+                "both the parse error and the type error are reported")
+    (check-true (for/or ([d (in-list (analysis-diagnostics a))])
+                  (regexp-match? #rx"mismatch|expected|String|Integer"
+                                 (diag-message d)))
+                "the type error in the well-formed form still surfaces"))
+
+  ;; ----- macros ---------------------------------------------------------
+
+  ;; A `define-syntax` / `define-syntax-rule` form is not a parse error;
+  ;; its uses are expanded before inference, exactly as in compilation.
+  (let ([a (analyze "#lang rackton"
+                    "(define-syntax-rule (twice x) (+ x x))"
+                    "(: four Integer)"
+                    "(define four (twice 2))")])
+    (check-equal? (analysis-diagnostics a) '()
+                  "a macro definition and use analyze cleanly")
+    (check-equal? (srcloc-line (defsite-srcloc (analysis-def-of a 'four))) 4
+                  "a macro-using definition keeps its source line"))
+
+  ;; A type error *inside* a macro expansion is still caught — proof the
+  ;; use was actually expanded, not merely dropped.
+  (let ([a (analyze "#lang rackton"
+                    "(define-syntax-rule (twice x) (+ x x))"
+                    "(: oops Integer)"
+                    "(define oops (twice \"s\"))")])   ; expands to (+ "s" "s")
+    (check-true (pair? (analysis-diagnostics a))
+                "a type error inside a macro expansion is reported"))
+
   ;; Even when inference fails, definition sites are still collected.
   (let ([bad (analyze "#lang rackton"
                       "(define (f x) x)"

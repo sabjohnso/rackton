@@ -50,6 +50,7 @@
          "prelude.rkt"
          "env.rkt"
          "types.rkt"
+         "macro-expand.rkt"
          (only-in "scheme-codec.rkt" sexp->scheme decode-data-info)
          (only-in "repl-entry.rkt" tokenize tok-type tok-start tok-end))
 
@@ -143,7 +144,11 @@
     (with-handlers ([exn:fail?
                      (lambda (e)
                        (values (hasheq) '() #f (list (exn->diag e path))))])
-      (define forms (read-text-forms text path))
+      ;; Expand user-macro uses first, mirroring compilation: a
+      ;; `define-syntax` form is not a Rackton top form, so it must be
+      ;; consumed (and its uses expanded) before parsing, or `parse-top`
+      ;; would reject it.
+      (define forms (expand-user-macro-uses (read-text-forms text path)))
       ;; Parse each form on its own: one broken form (the common
       ;; mid-edit state) must not blind the analysis to every other
       ;; form's definitions.
@@ -152,23 +157,63 @@
           (with-handlers ([exn:fail? (lambda (e) e)])
             (parse-toplevel-list (list f)))))
       (define parse-errors (filter exn? parses))
+      (define parse-diags (map (lambda (e) (exn->diag e path)) parse-errors))
       (define parsed (append* (filter list? parses)))
       (define defs (collect-defs parsed path))
       (define reqs (collect-requires parsed path))
-      (cond
-        [(pair? parse-errors)
-         (values defs reqs #f
-                 (for/list ([e (in-list parse-errors)])
-                   (exn->diag e path)))]
-        [else
-         (with-handlers ([exn:fail?
-                          (lambda (e)
-                            (values defs reqs #f (list (exn->diag e path))))])
-           (define-values (env* _declared* _parsed* _st)
-             (infer-program/phases parsed prelude-env (hasheq)
-                                   (make-infer-state)))
-           (values defs reqs env* '()))])))
+      ;; A parse error in one form must not suppress errors in the
+      ;; others: run inference over the forms that DID parse, and report
+      ;; its diagnostics alongside the parse errors.  (Inference over a
+      ;; program missing a form may itself report a follow-on error —
+      ;; e.g. an unbound reference to a name the broken form would have
+      ;; defined — which is the expected cost of partial analysis.)
+      (define-values (env* infer-diags)
+        (with-handlers ([exn:fail? (lambda (e) (values #f (list (exn->diag e path))))])
+          (define-values (e* _declared* _parsed* _st)
+            (infer-program/phases parsed prelude-env (hasheq)
+                                  (make-infer-state)))
+          (values e* '())))
+      (values defs reqs env* (append parse-diags infer-diags))))
   (analysis path text env defs diags reqs))
+
+;; Does the syntax `form` define a macro?  (The REPL's counterpart works
+;; on a datum; here forms are syntax fresh from `read-syntax`.)
+(define (macro-def-form? form)
+  (define l (syntax->list form))
+  (and l (pair? l) (identifier? (car l))
+       (and (memq (syntax-e (car l))
+                  '(define-syntax define-syntax-rule define-syntaxes))
+            #t)))
+
+;; Expand every user-macro use in `forms` so `parse-top` sees Rackton
+;; core forms, and drop the macro-definition forms (consumed, as the
+;; elaborator consumes them).  Mirrors the REPL's phase-0 strategy
+;; (`repl.rkt`): bind each transformer into a throwaway namespace, then
+;; single-step-expand uses of the names it bound.  Returns the forms
+;; unchanged when none define a macro, so non-macro files are
+;; byte-for-byte unaffected and pay no namespace cost.  Best-effort:
+;; any failure (a bad transformer, an expansion error) falls back to the
+;; form as written, so analysis still proceeds and surfaces whatever
+;; downstream diagnostic the unexpanded form produces.
+(define (expand-user-macro-uses forms)
+  (define macro-defs (filter macro-def-form? forms))
+  (cond
+    [(null? macro-defs) forms]
+    [else
+     (define ns (make-base-namespace))
+     (parameterize ([current-namespace ns])
+       (namespace-require 'racket/base)
+       (namespace-require '(for-syntax racket/base))
+       (define names
+         (append-map
+          (lambda (f)
+            (with-handlers ([exn:fail? (lambda (_) '())])
+              (eval (datum->syntax #f (syntax->datum f)))
+              (macro-def-names (syntax->datum f))))
+          macro-defs))
+       (for/list ([f (in-list forms)] #:unless (macro-def-form? f))
+         (with-handlers ([exn:fail? (lambda (_) f)])
+           (expand-macro-walk f names))))]))
 
 ;; The resolved on-disk paths of the module's requires (specs that
 ;; resolve to existing files; others are dropped here — they have no
