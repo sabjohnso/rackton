@@ -160,3 +160,53 @@
 (check-property
  (property ([a gen:natural] [b gen:natural] [c gen:natural])
    (check-equal? (((lit3 a) b) c) (((call3 a) b) c))))
+
+;; ===== dotted-pair literals =========================================
+;;
+;; [a . b] is to Pair what [a b c] is to List: the square-bracket form
+;; evaluates both positions, quotation builds a Pair of quoted data, and a
+;; head unquote escapes.  (S-expression dotted notation only stays a pair
+;; when the tail reads as an atom, so [a . b] / '(a . b) are the forms.)
+
+(rackton
+  (define pr-eval   [10 . 20])         ; evaluating Pair
+  (define x-val 7)
+  (define pr-vars   [x-val . 99])      ; both positions evaluate
+  (define pr-quote  '(a . b))          ; quoted Pair of symbols
+  (define h-val 5)
+  (define pr-qq     `(,h-val . tag))   ; head unquote escapes, tail literal
+
+  ;; dotted-pair as a match pattern
+  (: pair-sum (-> (Pair Integer Integer) Integer))
+  (define (pair-sum p) (match p [[a . b] (+ a b)]))
+  (define summed (pair-sum [3 . 4]))
+
+  (: pair-fst (-> (Pair a b) a))
+  (define (pair-fst p) (match p [[x . _] x]))
+  (define got-fst (pair-fst [111 . 222])))
+
+(test-case "[a . b] builds a Pair, evaluating both positions"
+  (check-equal? pr-eval (Pair 10 20)))
+
+(test-case "dotted-pair positions are evaluated"
+  (check-equal? pr-vars (Pair 7 99)))
+
+(test-case "'(a . b) is a quoted Pair of symbols"
+  (check-equal? pr-quote (Pair 'a 'b)))
+
+(test-case "a head unquote in a dotted pair escapes; the tail stays literal"
+  (check-equal? pr-qq (Pair 5 'tag)))
+
+(test-case "a dotted-pair match pattern destructures both fields"
+  (check-equal? summed 7))
+
+(test-case "a dotted-pair pattern binds its head"
+  (check-equal? got-fst 111))
+
+(test-case "a multi-element dotted bracket is rejected"
+  (check-rackton-compile-error
+   (define bad [1 2 . 3])))
+
+(test-case "a multi-element dotted quote is rejected"
+  (check-rackton-compile-error
+   (define bad '(1 2 . 3))))

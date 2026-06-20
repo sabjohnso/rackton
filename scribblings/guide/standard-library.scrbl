@@ -81,7 +81,8 @@ is exactly @racket[(list 10 20 30 40)], with each element evaluated;
 value); and @litchar|{#{m ...}}| builds a @racket[Set].  The @racket[Map] /
 @racket[Set] types and these literals are part of the prelude, so they
 need no import, and bracket list literals double as @racket[match]
-patterns.  See @secref["maps" #:doc '(lib "rackton/scribblings/reference/rackton-reference.scrbl")]
+patterns.  A dotted bracket @litchar|{[a . b]}| is a @racket[Pair].  See
+@secref["maps" #:doc '(lib "rackton/scribblings/reference/rackton-reference.scrbl")]
 for the full story.
 
 The @racket[Monoid] wrappers live in

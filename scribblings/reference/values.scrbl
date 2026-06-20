@@ -297,7 +297,7 @@ no @racket[(Eq k)] constraint is needed.}
 
 @subsection[#:tag "container-literals"]{Bracket and brace literals}
 
-Three reader-level literal forms build lists, maps, and sets directly,
+Reader-level literal forms build lists, pairs, maps, and sets directly,
 distinguished by their bracket shape:
 
 @itemlist[
@@ -306,6 +306,13 @@ evaluated and consed onto the next, so @litchar|{[a b c]}| is exactly
 @racket[(list a b c)] and @litchar|{[]}| is @racket[Nil].  Bracket list
 literals may also appear as @racket[match] patterns (@litchar|{[a b c]}|,
 or @litchar|{[x ...]}| to bind the rest of the list).}
+@item{@litchar|{[a . b]}| — a @racket[Pair] literal: the dotted square
+bracket evaluates both positions, so @litchar|{[a . b]}| is @racket[(Pair a b)]
+(and works as a @racket[match] pattern).  Because s-expression dotted
+notation only stays a pair when the tail reads as an atom, the tail of a
+@litchar|{[a . b]}| / @litchar|{'(a . b)}| literal must be atomic
+(@litchar|{[x . (f y)]}| reads as the @emph{list} @litchar|{[x f y]}|); for
+a computed second component, use @racket[(Pair a b)] directly.}
 @item{@litchar|{{k v ...}}| — a @racket[Map] literal of alternating keys
 and values, so @litchar|{{1 "a" 2 "b"}}| builds the two-entry map.  A
 duplicate key keeps the last value (last write wins); an odd number of
@@ -315,8 +322,13 @@ builds the three-element set and duplicate members collapse.  @litchar|{#{}}|
 is @racket[empty-set].}
 ]
 
+Under quotation the same shapes build data: @litchar|{'(a b c)}| is a
+@racket[List] of symbols and @litchar|{'(a . b)}| is @racket[(Pair 'a 'b)];
+a head unquote escapes, as in @litchar|{`(,x . tag)}|.
+
 Ordinary parentheses keep every meaning they had: @racket[(list ...)],
-@racket[(array ...)], applications, and special forms are unchanged.
+@racket[(Pair a b)], @racket[(array ...)], applications, and special forms
+are unchanged.
 
 @section[#:tag "io"]{IO}
 

@@ -103,13 +103,33 @@
 ;; special forms destructure them, so only a bracket/brace in genuine
 ;; expression or pattern position is read as a literal.
 
-;; Classify a form by its reader paren-shape: 'list, 'map, 'set, or #f
-;; (an ordinary form to be handled by the usual syntax-parse dispatch).
+;; Classify a form by its reader paren-shape: 'list, 'pair, 'map, 'set, or
+;; #f (an ordinary form to be handled by the usual syntax-parse dispatch).
+;; A square-bracket form is a list literal when proper ([a b c]) and a
+;; dotted-pair literal when improper ([a . b]).
 (define (bracket-literal-kind stx)
   (case (syntax-property stx 'paren-shape)
-    [(#\[) 'list]
+    [(#\[) (if (improper-pair-syntax? stx) 'pair 'list)]
     [(#\{) (if (vector? (syntax-e stx)) 'set 'map)]
     [else  #f]))
+
+;; #t when the form is an improper pair — a dotted tail, [a . b] / (a . b).
+;; (`syntax->list` returns #f exactly for an improper list.)
+(define (improper-pair-syntax? stx)
+  (and (pair? (syntax-e stx)) (not (syntax->list stx))))
+
+;; [a . b] => (Pair a b), evaluating both positions — the Pair analogue of
+;; the [a b c] list literal.  The dotted tail must read as a single element
+;; ([a . b]); a longer dotted form ([a b . c]) is a located error.
+(define (parse-pair-literal stx)
+  (define e (syntax-e stx))
+  (define cdr-stx (cdr e))
+  (when (pair? (syntax-e cdr-stx))
+    (raise-syntax-error 'rackton
+      "dotted pair literal must have the form [a . b]" stx))
+  (e:app (e:var 'Pair stx)
+         (list (parse-expr (car e)) (parse-expr cdr-stx))
+         stx))
 
 ;; {k1 v1 ... kn vn} => nested map-insert with the first pair innermost,
 ;; so a later duplicate key overwrites an earlier one (last write wins).
@@ -198,8 +218,21 @@
     [by:bytes  (e:literal (syntax->datum #'by) stx)]
     [x:id      (e:literal (syntax->datum #'x) stx)]
     [(elem ...) (quote-list (syntax->list #'(elem ...)) level stx)]
+    ;; A dotted pair (proper lists are matched above): '(a . b) builds a
+    ;; Pair of the quoted parts; a head unquote still escapes.
+    [(a . b)   (quote-pair #'a #'b level stx)]
     [_ (raise-syntax-error 'rackton
                            "unsupported quoted form (improper list?)" stx d)]))
+
+;; '(a . b) => (Pair a b) over the quoted parts.  The dotted tail must read
+;; as a single element; a longer dotted form ((a b . c)) is an error.
+(define (quote-pair a-stx b-stx level stx)
+  (when (pair? (syntax-e b-stx))
+    (raise-syntax-error 'rackton
+      "a dotted pair must have the form (a . b)" stx b-stx))
+  (e:app (e:var 'Pair stx)
+         (list (quote->ast a-stx level stx) (quote->ast b-stx level stx))
+         stx))
 
 ;; Build a quoted list, splicing `,@e` elements positionally.
 (define (quote-list elems level stx)
@@ -341,6 +374,10 @@
     [(elem ...)
      (append-map (lambda (e) (quasi-pattern-binder-ids e level))
                  (syntax->list #'(elem ...)))]
+    ;; a dotted pair (proper lists matched above): collect from both parts
+    [(a . b)
+     (append (quasi-pattern-binder-ids #'a level)
+             (quasi-pattern-binder-ids #'b level))]
     [_ '()]))
 
 (define (parse-expr stx)
@@ -348,6 +385,7 @@
   ;; (decided once, by paren-shape) before the keyword dispatch below.
   (case (bracket-literal-kind stx)
     [(list) (build-list-ast (map parse-expr (syntax->list stx)) stx)]
+    [(pair) (parse-pair-literal stx)]
     [(map)  (parse-map-literal stx)]
     [(set)  (parse-set-literal stx)]
     [else (parse-expr/form stx)]))
@@ -1429,6 +1467,14 @@
       (for/list ([e (in-list (syntax->list #'(elem ...)))])
         (quote->pattern e level stx))
       (p:ctor 'Nil '() stx) stx)]
+    ;; '(a . b) as a pattern (proper lists matched above) => Pair pattern.
+    [(a . b)
+     (when (pair? (syntax-e #'b))
+       (raise-syntax-error 'rackton
+         "a dotted pair must have the form (a . b)" stx #'b))
+     (p:ctor 'Pair
+             (list (quote->pattern #'a level stx) (quote->pattern #'b level stx))
+             stx)]
     [_ (raise-syntax-error 'rackton "unsupported quoted pattern" stx d)]))
 
 ;; A literal `...` token (the ellipsis identifier).
@@ -1462,14 +1508,26 @@
      (build-cons-pattern (map parse-pattern elems) (p:ctor 'Nil '() stx) stx)]))
 
 (define (parse-pattern stx)
-  ;; A `[p ...]` list pattern parallels the `[v ...]` expression literal;
+  ;; A `[p ...]` list pattern parallels the `[v ...]` expression literal,
+  ;; and `[a . b]` a Pair pattern parallels the dotted-pair literal;
   ;; map/set literals have no pattern meaning and are a located error.
   (case (bracket-literal-kind stx)
     [(list) (parse-list-pattern (syntax->list stx) stx)]
+    [(pair) (parse-pair-pattern stx)]
     [(map set)
      (raise-syntax-error 'rackton
        "map/set literals ({..} / #{..}) are not patterns" stx)]
     [else (parse-pattern/form stx)]))
+
+;; [a . b] as a pattern => (Pair a b).  The dotted tail must be a single
+;; element ([a . b]); a longer dotted form ([a b . c]) is a located error.
+(define (parse-pair-pattern stx)
+  (define e (syntax-e stx))
+  (define cdr-stx (cdr e))
+  (when (pair? (syntax-e cdr-stx))
+    (raise-syntax-error 'rackton
+      "dotted pair pattern must have the form [a . b]" stx))
+  (p:ctor 'Pair (list (parse-pattern (car e)) (parse-pattern cdr-stx)) stx))
 
 (define (parse-pattern/form stx)
   (syntax-parse stx
