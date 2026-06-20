@@ -97,6 +97,28 @@ that is not generalised at the surrounding @racket[define].
 (: apply-twice (All (a) (-> (-> a a) (-> a a))))
 (define (apply-twice f) (lambda (x) (f (f x))))]}
 
+@defform[#:literals (Exists =>)
+         (Exists (a ...) type)]{
+
+First-class existential quantifier — the dual of @racket[All].  Binds
+@racket[a ...] in @racket[type] (usually a qualified type
+@racket[((C a) ... => τ)]) and @italic{hides} them: a value of
+@racket[(Exists (a) ((Show a) => a))] is some value whose type satisfies
+@racket[Show], with the type itself erased from the outside.
+
+A value is introduced (@italic{packed}) by annotating it with the
+existential type, @racket[(ann e (Exists …))], which discharges the
+constraints against the concrete witness and hides it.  It is eliminated
+(@italic{unpacked}) by @racket[open].  Like @racket[All], @racket[Exists]
+is never inferred.  See
+@seclink["existentials" #:doc '(lib "rackton/scribblings/guide/rackton-guide.scrbl")]{the guide}.
+
+@racketblock[
+(: showables (List (Exists (a) ((Show a) => a))))
+(define showables
+  (Cons (ann 42 (Exists (a) ((Show a) => a)))
+        (Cons (ann "hi" (Exists (a) ((Show a) => a))) Nil)))]}
+
 @defform[
          (data (Name param ...) ctor-spec ... maybe-deriving)
          #:grammar
@@ -685,6 +707,23 @@ the type of the @racket[if].}
 Multi-way conditional.  Equivalent to nested @racket[if]s with an
 @racket[else] catch-all.  Each @racket[test] must have type
 @racket[Boolean] and each @racket[expr] must have the same type.}
+
+@defform[(open existential (tyvar ... valvar) body)]{
+
+Eliminates a first-class @racket[Exists] value.  @racket[existential]
+must have an existential type; @racket[open] binds its hidden type
+variables as fresh @italic{rigid} types @racket[tyvar ...] (matching the
+existential's arity — the trailing identifier @racket[valvar] is the
+witness value), with the packed constraints in scope inside
+@racket[body], so a constrained method resolves on the witness.
+
+The hidden types may not @italic{escape}: @racket[body]'s result type
+must not mention any @racket[tyvar].  Returning the witness directly is
+therefore a compile error.
+
+@racketblock[
+(: render (-> (Exists (a) ((Show a) => a)) String))
+(define (render e) (open e (a x) (show x)))]}
 
 @defform[(match scrutinee clause ...)
          #:grammar

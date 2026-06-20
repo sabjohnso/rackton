@@ -41,6 +41,12 @@
   (check-regexp-match #rx"^3 :: " (car outs2))
   (check-regexp-match #rx"Integer" (car outs2)))
 
+(test-case "REPL: ,type renders a first-class existential"
+  ;; A packed value prints with its existential type (witness hidden).
+  (define-values (_ outs)
+    (drive-session '((unquote type (ann 42 (Exists (a) ((Show a) => a)))))))
+  (check-regexp-match #rx"Exists" (car outs)))
+
 (test-case "REPL: bare , is an accepted no-op"
   ;; A lone comma reads as `(unquote)`; it leaves the session untouched,
   ;; emits no output, and does not signal exit.

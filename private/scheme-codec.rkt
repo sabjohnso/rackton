@@ -53,6 +53,13 @@
     [(exact-nonnegative-integer? datum) (tnat datum)]
     [(symbol? datum)
      (if (lowercase-id? datum) (tvar datum) (tcon datum))]
+    ;; A first-class existential `(Exists (v …) body)` — the dual of the
+    ;; scheme-level `(All …)`.  Decoded before the generic application case
+    ;; so `Exists` is not mistaken for a type constructor applied to a
+    ;; variable list.  (type->datum emits exactly this shape.)
+    [(and (list? datum) (= (length datum) 3)
+          (eq? (car datum) 'Exists) (list? (cadr datum)))
+     (texists (cadr datum) (sexp->type (caddr datum)))]
     [(and (list? datum) (memq '=> datum))
      (define i (index-of datum '=>))
      (define preds-syntax (take datum i))

@@ -28,7 +28,8 @@
          (except-in "../main.rkt" #%module-begin)
          (prefix-in ty: "../private/types.rkt")
          (prefix-in srf: "../private/surface.rkt")
-         (prefix-in u: "../private/unify.rkt"))
+         (prefix-in u: "../private/unify.rkt")
+         (prefix-in sc: "../private/scheme-codec.rkt"))
 
 ;; Compile-time rejection: evaluating the rackton block must raise.
 (define-syntax-rule (check-rackton-compile-error form ...)
@@ -123,6 +124,11 @@
 
   (check-equal? (ty:type->datum (ex-show))
                 '(Exists (a) ((Show a) => a)))
+
+  ;; ----- Phase 5: cross-module type codec round-trip ----------------
+
+  (check-equal? (sc:sexp->type (ty:type->datum (ex-show))) (ex-show)
+                "a texists round-trips through the sidecar type codec")
 
   ;; ----- Phase 1: unify.rkt alpha-equivalence -----------------------
 

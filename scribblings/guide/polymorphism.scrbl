@@ -124,3 +124,51 @@ skolem inside the clause:
 Inside the clause, @racket[v] and @racket[print] share the same fresh
 @racket[a]; outside, that @racket[a] cannot escape.  See
 @secref["advanced-types"] for more.
+
+@section{First-class existential types}
+
+The constructor form above wraps the existential in a named datatype.
+You can also write an existential @italic{inline}, anywhere a type is
+expected, with @racket[Exists] — the dual of @racket[All].  Constraints
+use the same infix @racket[=>]:
+
+@rackton-example[#:eval ev #:mode 'defs #:context? #t]{
+(: a-showable (Exists (a) ((Show a) => a)))
+(define a-showable (ann 42 (Exists (a) ((Show a) => a))))
+}
+
+A value is @italic{packed} into an existential by annotating it with the
+existential type (the @racket[ann] form).  The witness type — here
+@racket[Integer] — is hidden, and its @racket[Show] constraint is
+discharged at the pack site.  Because the witness is hidden, values of
+different types share one element type and sit in one list:
+
+@rackton-example[#:eval ev #:mode 'defs #:context? #t]{
+(: showables (List (Exists (a) ((Show a) => a))))
+(define showables
+  (Cons (ann 42 (Exists (a) ((Show a) => a)))
+        (Cons (ann "hi" (Exists (a) ((Show a) => a)))
+              Nil)))
+}
+
+A packed value is @italic{unpacked} with @racket[open].  @racket[(open e
+(a x) body)] binds the hidden type as a fresh rigid @racket[a] and the
+witness value as @racket[x], with the packed constraints in scope — so a
+method like @racket[show] resolves and dispatches on the runtime value:
+
+@rackton-example[#:eval ev #:mode 'defs #:context? #t]{
+(: render (-> (Exists (a) ((Show a) => a)) String))
+(define (render e) (open e (a x) (show x)))
+}
+
+@rackton-example[#:eval ev #:mode 'value #:context? #t]{
+(render a-showable)
+}
+
+The hidden type may not @italic{escape} the @racket[open]: the body's
+result type cannot mention @racket[a].  Returning the witness itself is
+a compile error, because its type is exactly the hidden @racket[a].
+
+Like rank-N @racket[All], @racket[Exists] is never inferred: you pack
+with an explicit @racket[ann] and bound the hidden type's scope with
+@racket[open].
