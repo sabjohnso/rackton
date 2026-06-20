@@ -63,3 +63,28 @@
    #rx"6"
    (last-out '("(define xs [1 2 3])"
                "(match xs [[a b c] (+ a (+ b c))] [_ 0])"))))
+
+;; ----- values print back in the literal syntax ---------------------
+
+(test-case "a list value prints with bracket syntax"
+  (check-regexp-match #rx"\\[1 2 3\\]" (last-out '("[1 2 3]")))
+  ;; and not the old (list ..) head
+  (check-false (regexp-match #rx"list 1 2 3" (last-out '("[1 2 3]")))))
+
+(test-case "an empty list prints as []"
+  (check-regexp-match #rx"\\[\\]" (last-out '("[]"))))
+
+(test-case "a map value prints with brace syntax, entries sorted by key"
+  (check-regexp-match #rx"\\{1 10 2 20\\}" (last-out '("{2 20 1 10}"))))
+
+(test-case "a set value prints with hash-brace syntax, members sorted"
+  (check-regexp-match #rx"#\\{1 2 3\\}" (last-out '("#{3 1 2}"))))
+
+(test-case "a pair value prints with dotted bracket syntax"
+  (check-regexp-match #rx"\\[1 \\. 2\\]" (last-out '("[1 . 2]"))))
+
+(test-case "a pair with a non-atomic tail falls back to (Pair ..)"
+  ;; [1 . (Some 2)] would flatten at read time, so a symbol/struct tail
+  ;; can't use the dotted form and must round-trip as (Pair ..)
+  (check-regexp-match #rx"\\(Pair 1 \\(Some 2\\)\\)"
+                      (last-out '("(Pair 1 (Some 2))"))))

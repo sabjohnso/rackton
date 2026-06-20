@@ -1,10 +1,11 @@
 #lang racket/base
 
 ;; REPL pretty-printing: values and types in REPL output wrap at the
-;; terminal width through the shared document engine, lists render with
-;; the `(list …)` surface syntax, and function types print in the
-;; readable n-ary arrow form (the same form the type-error diagnostics
-;; use).  These tests drive the kernel directly, like
+;; terminal width through the shared document engine, containers render in
+;; the bracket/brace literal syntax ([..] / {..} / #{..} / [a . b]), and
+;; function types print in the readable n-ary arrow form (the same form
+;; the type-error diagnostics use).  These tests drive the kernel
+;; directly, like
 ;; repl-usability-test.rkt; `current-type-columns` is the width budget,
 ;; so a small value forces the wrap path deterministically.
 
@@ -22,20 +23,21 @@
 (define (last-output inputs)
   (car (reverse (drive-session inputs))))
 
-;; ----- lists render with (list …) ---------------------------------
+;; ----- lists render with [..] -------------------------------------
 
-(test-case "a Cons/Nil chain prints as (list …)"
+(test-case "a Cons/Nil chain prints as [..]"
   (define out (last-output '((Cons 1 (Cons 2 (Cons 3 Nil))))))
-  (check-regexp-match #rx"\\(list 1 2 3\\)" out)
+  (check-regexp-match #rx"\\[1 2 3\\]" out)
   (check-false (regexp-match #rx"Cons" out)))
 
-(test-case "the empty list prints as (list)"
+(test-case "the empty list prints as []"
   (define out (last-output '(Nil)))
-  (check-regexp-match #rx"\\(list\\)" out))
+  (check-regexp-match #rx"\\[\\]" out))
 
 (test-case "nested data inside a list renders recursively"
+  ;; a list of pairs prints as a list of dotted pairs
   (define out (last-output '((Cons (Pair 1 1) (Cons (Pair 2 4) Nil)))))
-  (check-regexp-match #rx"\\(list \\(Pair 1 1\\) \\(Pair 2 4\\)\\)" out))
+  (check-regexp-match #rx"\\[\\[1 \\. 1\\] \\[2 \\. 4\\]\\]" out))
 
 ;; ----- tuples and arrays evaluate and render in the REPL ----------
 ;; Regression: the codegen-emitted tuple/array runtime helpers must be
@@ -71,7 +73,7 @@
   (define out (last-output '((Cons 1 (Cons 2 Nil)))))
   ;; only the trailing newline
   (check-equal? (length (regexp-match* #rx"\n" out)) 1)
-  (check-regexp-match #rx"\\(list 1 2\\) :: \\(List Integer\\)" out))
+  (check-regexp-match #rx"\\[1 2\\] :: \\(List Integer\\)" out))
 
 ;; ----- ,info long lines wrap --------------------------------------
 

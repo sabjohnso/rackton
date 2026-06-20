@@ -900,15 +900,17 @@
 ;; ----- value rendering --------------------------------------------
 
 ;; Render a Rackton value the way the user wrote it, as a document the
-;; engine can lay out across lines.  Data constructors are transparent
-;; structs named `$ctor:<Name>`; print them under the bare `<Name>` (a
-;; nullary ctor with no parens, an n-ary one as `(Name field …)`,
-;; recursively).  A Cons/Nil chain collapses to the `(list …)` surface
-;; form.  Functions read as `<lambda>` rather than Racket's
-;; `#<procedure:…>`; the type, printed alongside, carries the real
-;; information.  Everything else (numbers, strings, symbols, Maps, …)
-;; falls back to `print` form — so a Symbol value reads as `'x`, not the
-;; bare `x` that a constructor head uses.
+;; engine can lay out across lines.  The container values print in the
+;; bracket/brace literal syntax — a Cons/Nil chain as `[elem …]`, a Map as
+;; `{k v …}`, a Set as `#{m …}`, and a `Pair` as `[a . b]` (or `(Pair a b)`
+;; when its tail would not round-trip in dotted position).  Data
+;; constructors are transparent structs named `$ctor:<Name>`; print them
+;; under the bare `<Name>` (a nullary ctor with no parens, an n-ary one as
+;; `(Name field …)`, recursively).  Functions read as `<lambda>` rather
+;; than Racket's `#<procedure:…>`; the type, printed alongside, carries the
+;; real information.  Everything else (numbers, strings, symbols, …) falls
+;; back to `print` form — so a Symbol value reads as `'x`, not the bare `x`
+;; that a constructor head uses.
 ;; Pretty datum for a scheme shown beside a VALUE result: reduce ground
 ;; Nat arithmetic in the type first, so a computed size like `(* 2 2)`
 ;; from `flatten-major` shows as `4` rather than the raw expression.
@@ -918,21 +920,36 @@
 
 (define (value->doc v)
   (cond
+    ;; Containers print back in the bracket/brace literal syntax, so the
+    ;; output round-trips as Rackton source.
     [(rackton-list-elements v)
-     => (lambda (elems)
-          (group-parts (cons (doc-text "list") (map value->doc elems))))]
+     => (lambda (elems) (bracket-parts "[" "]" (map value->doc elems)))]
+    [(rackton-map-entries v)
+     => (lambda (entries)
+          (bracket-parts "{" "}"
+            (append-map (lambda (kv)
+                          (list (value->doc (car kv)) (value->doc (cdr kv))))
+                        entries)))]
+    [(rackton-set-members v)
+     => (lambda (members) (bracket-parts "#{" "}" (map value->doc members)))]
     [(data-ctor-value? v)
      (define-values (name fields) (data-ctor-name+fields v))
      (if (null? fields)
          (doc-text name)
          (group-parts (cons (doc-text name) (map value->doc fields))))]
     ;; Tuples are vectors (see prelude-runtime's rackton-tuple-make).  A
-    ;; 2-tuple is a `Pair`; any other arity prints with the `tuple` head.
-    ;; Both forms are valid surface syntax, so the output round-trips.
+    ;; 2-tuple is a `Pair`: it prints in the dotted-pair literal `[a . b]`
+    ;; when the tail reads back as an atom, otherwise as `(Pair a b)` (which
+    ;; always round-trips).  Any other arity prints with the `tuple` head.
     [(vector? v)
      (define elems (vector->list v))
-     (define head (if (= (length elems) 2) "Pair" "tuple"))
-     (group-parts (cons (doc-text head) (map value->doc elems)))]
+     (cond
+       [(and (= (length elems) 2) (self-reading-atom? (cadr elems)))
+        (pair-doc (value->doc (car elems)) (value->doc (cadr elems)))]
+       [(= (length elems) 2)
+        (group-parts (cons (doc-text "Pair") (map value->doc elems)))]
+       [else
+        (group-parts (cons (doc-text "tuple") (map value->doc elems)))])]
     ;; A fixed-size array (the opaque handle from array-runtime) prints
     ;; with the `array` head — its hidden layout never shows.
     [(rackton-array? v)
@@ -942,6 +959,65 @@
               (value->doc (rackton-array-ref v i)))))]
     [(procedure? v) (doc-text "<lambda>")]
     [else (doc-text (format "~v" v))]))
+
+;; Lay out `<open> p1 p2 … <close>` from already-built part docs (no head),
+;; on one line when it fits, else one part per line indented under the
+;; opener.  Empty renders as just `<open><close>` (e.g. [] / {} / #{}).
+(define (bracket-parts open close parts)
+  (cond
+    [(null? parts) (doc-text (string-append open close))]
+    [(null? (cdr parts)) (doc-cat (doc-text open) (car parts) (doc-text close))]
+    [else
+     (doc-group
+      (doc-cat (doc-text open)
+               (car parts)
+               (doc-nest (string-length open)
+                         (apply doc-cat
+                                (map (lambda (p) (doc-cat doc-line p)) (cdr parts))))
+               (doc-text close)))]))
+
+;; [a . b] — the dotted-pair literal layout.
+(define (pair-doc a-doc b-doc)
+  (doc-cat (doc-text "[") a-doc (doc-text " . ") b-doc (doc-text "]")))
+
+;; A value that prints as a single self-reading atom, so it round-trips in
+;; the dotted tail position of `[a . b]`.  Symbols print as `'x` (a quote
+;; form) and lists/structs as multi-token forms, so they are excluded — a
+;; pair with such a tail falls back to `(Pair a b)`.
+(define (self-reading-atom? v)
+  (or (number? v) (string? v) (boolean? v) (char? v)))
+
+;; The (key . value) entries of a `$map` value (sorted by key), or #f; and
+;; the members of a `$set` value (sorted), or #f.  Detected by struct type
+;; name via `struct->vector` — like `data-ctor-value?` — so a value built in
+;; the evaluation namespace is still recognized.  `$map` / `$set` are
+;; transparent, so the backing immutable hash is their sole field.
+(define (struct-field-named v type-name)
+  (and (struct? v)
+       (let ([sv (struct->vector v)])
+         (and (eq? (vector-ref sv 0) type-name)
+              (= (vector-length sv) 2)
+              (vector-ref sv 1)))))
+
+(define (rackton-map-entries v)
+  (define h (struct-field-named v 'struct:$map))
+  (and (hash? h) (sort (hash->list h) rackton-value<? #:key car)))
+
+(define (rackton-set-members v)
+  (define h (struct-field-named v 'struct:$set))
+  (and (hash? h) (sort (hash-keys h) rackton-value<?)))
+
+;; A stable order for map/set display.  The keys/members of one collection
+;; are homogeneous (the type system guarantees it), so the same-type
+;; branches cover every real comparison; the `~v` fallback only keeps the
+;; order total for compound element types.
+(define (rackton-value<? a b)
+  (cond
+    [(and (real? a)   (real? b))   (< a b)]
+    [(and (string? a) (string? b)) (string<? a b)]
+    [(and (char? a)   (char? b))   (char<? a b)]
+    [(and (symbol? a) (symbol? b)) (symbol<? a b)]
+    [else (string<? (format "~v" a) (format "~v" b))]))
 
 ;; The element values of a Cons/Nil list, in order, or #f if `v` is not
 ;; one.  Matched structurally by constructor name *and* arity so an
