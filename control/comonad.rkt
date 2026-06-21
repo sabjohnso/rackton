@@ -32,7 +32,20 @@
   ;; duplicate = extend id
   (define (duplicate w) (extend (lambda (x) x) w))
   ;; extend f = fmap f . duplicate
-  (define (extend f w) (fmap f (duplicate w))))
+  (define (extend f w) (fmap f (duplicate w)))
+  ;; The comonad laws, dual to the prelude Monad laws: `extract` is a left
+  ;; and right counit for `duplicate`, and `duplicate` is coassociative.
+  ;; Quantified over the element type; the container is compared via an
+  ;; assumed `(Eq (w …))`.  All three are property-runnable (no arrow
+  ;; binder, no return-typed method).
+  #:laws
+    ([extract-duplicate ((Eq (w a)) =>
+       (All ([c : (w a)]) (== (extract (duplicate c)) c)))]
+     [fmap-extract-duplicate ((Eq (w a)) =>
+       (All ([c : (w a)]) (== (fmap extract (duplicate c)) c)))]
+     [duplicate-duplicate ((Eq (w (w (w a)))) =>
+       (All ([c : (w a)])
+         (== (duplicate (duplicate c)) (fmap duplicate (duplicate c)))))]))
 
 ;; ComonadApply: a Comonad that is also a FunctorApply, with `coapply`
 ;; (Haskell's `<@>`) defaulting to the `FunctorApply` `apply`.  Instances
@@ -40,7 +53,15 @@
 (protocol (ComonadApply (w :: (-> * *)))
   (#:requires (Comonad w) (FunctorApply w))
   (: coapply (-> (w (-> a b)) (-> (w a) (w b))))
-  (define (coapply ff fx) (apply ff fx)))
+  (define (coapply ff fx) (apply ff fx))
+  ;; `coapply` must agree with the inherited `FunctorApply` `apply`: an
+  ;; instance that overrides the default for a cheaper zip stays
+  ;; consistent with it.  Quantified over a container of functions, so it
+  ;; type-checks as the specification (no generator for `(w (-> …))`).
+  #:laws
+    ([coapply-apply ((Eq (w b)) =>
+       (All ([ff : (w (-> a b))] [fx : (w a)])
+         (== (coapply ff fx) (apply ff fx))))]))
 
 ;; --- Identity: the trivial comonad ----------------------------------
 ;; `extract` unwraps; `duplicate` adds exactly one layer.  Since there is

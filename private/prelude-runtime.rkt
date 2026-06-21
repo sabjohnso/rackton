@@ -1446,8 +1446,14 @@
 (define $dispatch:rem  (make-hasheq))
 (define-class-method rem  $dispatch:rem  0 2)
 
+;; `div`/`mod` are the FLOOR pair (Haskell `div`/`mod`), distinct from the
+;; truncating `quot`/`rem` below.  `div` must be floor division so that it
+;; pairs with `mod = modulo` to satisfy the Integral law
+;; `(div x y) * y + (mod x y) = x` for negative operands too (e.g.
+;; div -50 3 = -17, not the truncating -16).  `a - (a mod b)` is exactly
+;; divisible by `b`, so `quotient` of it is the exact floor quotient.
 (register-instance-method! $dispatch:div  'Integer
-                           (lambda (a b) (rkt:quotient a b)))
+                           (lambda (a b) (rkt:quotient (rkt:- a (rkt:modulo a b)) b)))
 (register-instance-method! $dispatch:mod  'Integer
                            (lambda (a b) (rkt:modulo a b)))
 (register-instance-method! $dispatch:quot 'Integer

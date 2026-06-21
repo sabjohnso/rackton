@@ -447,7 +447,27 @@
       (: first  (-> (-> a c) (-> (p a b) (p c b))))
       (: second (-> (-> b d) (-> (p a b) (p a d))))
       (define (first  f x) (bimap f  id x))
-      (define (second g x) (bimap id g  x)))
+      (define (second g x) (bimap id g  x))
+      ;; `bimap` preserves identity and composition over both arguments,
+      ;; and the derived `first`/`second` agree with `bimap`-with-`id`.
+      ;; Quantified over all four element types; the container is compared
+      ;; via an assumed `(Eq (p …))`.  Only `identity` is property-runnable
+      ;; (the others quantify over function binders, for which there is no
+      ;; generator); the rest type-check as the specification.
+      #:laws
+        ([identity ((Eq (p a b)) =>
+           (All ([x : (p a b)]) (== (bimap id id x) x)))]
+         [composition ((Eq (p e k)) =>
+           (All ([g : (-> c e)] [f : (-> a c)] [j : (-> d k)] [h : (-> b d)]
+                 [x : (p a b)])
+             (== (bimap (lambda (z) (g (f z))) (lambda (z) (j (h z))) x)
+                 (bimap g j (bimap f h x)))))]
+         [first-bimap ((Eq (p c b)) =>
+           (All ([f : (-> a c)] [x : (p a b)])
+             (== (first f x) (bimap f id x))))]
+         [second-bimap ((Eq (p a d)) =>
+           (All ([g : (-> b d)] [x : (p a b)])
+             (== (second g x) (bimap id g x))))]))
 
     (instance (Bifunctor Pair)
       (define (bimap f g p)
@@ -480,12 +500,41 @@
     (protocol (Prod (p :: (-> * (-> * *))))
       (: mk-prod   (-> a (-> b (p a b))))
       (: prod-fst  (-> (p a b) a))
-      (: prod-snd  (-> (p a b) b)))
+      (: prod-snd  (-> (p a b) b))
+      ;; The product β/η laws: the projections recover the components of a
+      ;; constructed product, and re-pairing the projections of a product
+      ;; recovers it.  `mk-prod` is return-typed, so these type-check as
+      ;; the specification rather than running through the generic bundle.
+      #:laws
+        ([fst-beta ((Eq a) =>
+           (All ([x : a] [y : b]) (== (prod-fst (ann (mk-prod x y) (p a b))) x)))]
+         [snd-beta ((Eq b) =>
+           (All ([x : a] [y : b]) (== (prod-snd (ann (mk-prod x y) (p a b))) y)))]
+         [eta ((Eq (p a b)) =>
+           (All ([q : (p a b)])
+             (== (mk-prod (prod-fst q) (prod-snd q)) q)))]))
 
     (protocol (Coprod (s :: (-> * (-> * *))))
       (: inj-left  (-> a (s a b)))
       (: inj-right (-> b (s a b)))
-      (: co-elim   (-> (-> a c) (-> (-> b c) (-> (s a b) c)))))
+      (: co-elim   (-> (-> a c) (-> (-> b c) (-> (s a b) c))))
+      ;; The coproduct β/η laws: `co-elim` applied to an injection runs the
+      ;; matching branch, and eliminating with the injections themselves is
+      ;; the identity.  `inj-left`/`inj-right` are return-typed, so the eta
+      ;; law pins them with `ann`; these type-check as the specification.
+      #:laws
+        ([left-beta ((Eq c) =>
+           (All ([f : (-> a c)] [g : (-> b c)] [x : a])
+             (== (co-elim f g (ann (inj-left x) (s a b))) (f x))))]
+         [right-beta ((Eq c) =>
+           (All ([f : (-> a c)] [g : (-> b c)] [y : b])
+             (== (co-elim f g (ann (inj-right y) (s a b))) (g y))))]
+         [eta ((Eq (s a b)) =>
+           (All ([e : (s a b)])
+             (== (co-elim (lambda (x) (ann (inj-left x) (s a b)))
+                          (lambda (y) (ann (inj-right y) (s a b)))
+                          e)
+                 e)))]))
 
     (instance (Prod Pair)
       (define (mk-prod a b) (Pair a b))
@@ -879,7 +928,29 @@
       (#:fundep m -> s)
       (: get-st    (m s))
       (: put-st    (-> s (m Unit)))
-      (: modify-st (-> (-> s s) (m Unit))))
+      (: modify-st (-> (-> s s) (m Unit)))
+      ;; The four MonadState laws (Gibbons & Hinze): consecutive puts keep
+      ;; the last, a put determines the next get, getting then putting back
+      ;; is a no-op, and `modify-st` is `get` then `put`-of-the-update.
+      ;; Equality is on monadic actions, assumed via `(Eq (m …))`; `pure`
+      ;; is return-typed so it is pinned with `ann`.  (`get-put` is closed,
+      ;; so it carries an unused binder to satisfy the quantifier.)
+      #:laws
+        ([put-put ((Eq (m Unit)) =>
+           (All ([s1 : s] [s2 : s])
+             (== (flatmap (lambda (z) (put-st s2)) (ann (put-st s1) (m Unit)))
+                 (ann (put-st s2) (m Unit)))))]
+         [put-get ((Eq (m s)) =>
+           (All ([s1 : s])
+             (== (flatmap (lambda (z) (ann get-st (m s))) (ann (put-st s1) (m Unit)))
+                 (flatmap (lambda (z) (ann (pure s1) (m s))) (ann (put-st s1) (m Unit))))))]
+         [get-put ((Eq (m Unit)) =>
+           (All ([s0 : s])
+             (== (flatmap put-st (ann get-st (m s))) (ann (pure Unit) (m Unit)))))]
+         [modify-def ((Eq (m Unit)) =>
+           (All ([f : (-> s s)])
+             (== (ann (modify-st f) (m Unit))
+                 (flatmap (lambda (s) (put-st (f s))) (ann get-st (m s))))))]))
 
     ;; (MonadState instances for State and StateT moved to
     ;; rackton/control/monad/state)
@@ -895,7 +966,23 @@
     (protocol (MonadEnv r [m => Monad])
       (#:fundep m -> r)
       (: ask-en   (m r))
-      (: local-en (-> (-> r r) (-> (m a) (m a)))))
+      (: local-en (-> (-> r r) (-> (m a) (m a))))
+      ;; The MonadEnv (Reader) laws: `local f` modifies the environment
+      ;; seen by `ask`, leaves a `pure` action untouched, and composes the
+      ;; environment transformer (running `local f` outside `local g` sees
+      ;; `g (f r)`).  Equality on actions assumed via `(Eq (m …))`; `pure`
+      ;; pinned with `ann`.
+      #:laws
+        ([local-ask ((Eq (m r)) =>
+           (All ([f : (-> r r)])
+             (== (local-en f ask-en) (fmap f (ann ask-en (m r))))))]
+         [local-pure ((Eq (m a)) =>
+           (All ([f : (-> r r)] [x : a])
+             (== (local-en f (ann (pure x) (m a))) (ann (pure x) (m a)))))]
+         [local-comp ((Eq (m a)) =>
+           (All ([f : (-> r r)] [g : (-> r r)] [c : (m a)])
+             (== (local-en f (local-en g c))
+                 (local-en (lambda (z) (g (f z))) c))))]))
 
     ;; (MonadEnv instances for Env and EnvT moved to
     ;; rackton/control/monad/reader; MonadEnv (StateT s m) to
@@ -911,7 +998,20 @@
       (#:fundep m -> w)
       (: tell-w (-> w (m Unit)))
       (: listen (-> (m a) (m (Pair a w))))
-      (: censor (-> (-> w w) (-> (m a) (m a)))))
+      (: censor (-> (-> w w) (-> (m a) (m a))))
+      ;; MonadWriter laws: consecutive `tell`s accumulate via the monoid,
+      ;; and `censor f` post-applies `f` to what a `tell` emits.  Equality
+      ;; on actions assumed via `(Eq (m Unit))`.  (The `listen` laws need
+      ;; `Pair`/return-typed pieces and are left to the deferred hand-
+      ;; written bundle.)
+      #:laws
+        ([tell-tell ((Eq (m Unit)) =>
+           (All ([w1 : w] [w2 : w])
+             (== (flatmap (lambda (z) (tell-w w2)) (ann (tell-w w1) (m Unit)))
+                 (ann (tell-w (mappend w1 w2)) (m Unit)))))]
+         [censor-tell ((Eq (m Unit)) =>
+           (All ([f : (-> w w)] [u : w])
+             (== (censor f (tell-w u)) (ann (tell-w (f u)) (m Unit)))))]))
 
     ;; (MonadWriter (WriterT w m) moved to rackton/control/monad/writer)
 
@@ -926,7 +1026,17 @@
     (protocol (MonadError e [m => Monad])
       (#:fundep m -> e)
       (: throw-e (-> e (m a)))
-      (: catch-e (-> (m a) (-> (-> e (m a)) (m a)))))
+      (: catch-e (-> (m a) (-> (-> e (m a)) (m a))))
+      ;; MonadError laws: catching a thrown error runs the handler on it,
+      ;; and a thrown error is a left-zero for `flatmap` (the continuation
+      ;; never runs).  Equality on actions assumed via `(Eq (m …))`.
+      #:laws
+        ([catch-throw ((Eq (m a)) =>
+           (All ([err : e] [h : (-> e (m a))])
+             (== (catch-e (throw-e err) h) (h err))))]
+         [throw-bind ((Eq (m b)) =>
+           (All ([err : e] [k : (-> a (m b))])
+             (== (flatmap k (throw-e err)) (ann (throw-e err) (m b)))))]))
 
     ;; (MonadError (ExceptT e m) moved to rackton/control/monad/except)
 
@@ -1020,7 +1130,20 @@
     ;; on the result monad), so the class lives here in the prelude and
     ;; instances register cross-module via the dispatch table.
     (protocol (MonadIO [m => Monad])
-      (: lift-io (-> (IO a) (m a))))
+      (: lift-io (-> (IO a) (m a)))
+      ;; `lift-io` is a monad morphism: it preserves `pure` and `flatmap`
+      ;; (distributes over the bind).  Equality on actions assumed via
+      ;; `(Eq (m …))`; the `pure`s — one in `IO`, one in `m` — are pinned
+      ;; with `ann`.
+      #:laws
+        ([lift-pure ((Eq (m a)) =>
+           (All ([x : a])
+             (== (ann (lift-io (ann (pure x) (IO a))) (m a)) (ann (pure x) (m a)))))]
+         [lift-bind ((Eq (m b)) =>
+           (All ([io : (IO a)] [k : (-> a (IO b))])
+             (== (ann (lift-io (flatmap k io)) (m b))
+                 (flatmap (lambda (x) (ann (lift-io (k x)) (m b)))
+                          (ann (lift-io io) (m a))))))]))
 
     (instance (MonadIO IO)
       (define (lift-io io) (racket (IO a) (io) #f)))
@@ -1300,7 +1423,22 @@
       (: div  (-> a (-> a a)))
       (: mod  (-> a (-> a a)))
       (: quot (-> a (-> a a)))
-      (: rem  (-> a (-> a a))))
+      (: rem  (-> a (-> a a)))
+      ;; `quot`/`rem` and `div`/`mod` each reconstruct the dividend:
+      ;; `(quot x y) * y + (rem x y) = x` (and likewise for div/mod),
+      ;; except when the divisor is zero.  The divisor-zero case is
+      ;; guarded by testing `y` against the additive zero `(- y y)`, so
+      ;; no polymorphic numeric literal is needed.  Equality is assumed
+      ;; via `(Eq a)` rather than required of every Integral instance.
+      #:laws
+        ([quot-rem ((Eq a) =>
+           (All ([x : a] [y : a])
+             (if (== y (- y y)) #t
+                 (== (+ (* (quot x y) y) (rem x y)) x))))]
+         [div-mod ((Eq a) =>
+           (All ([x : a] [y : a])
+             (if (== y (- y y)) #t
+                 (== (+ (* (div x y) y) (mod x y)) x))))]))
 
     (instance (Integral Integer)
       (define (div  a b) (racket Integer (a b) 0))
@@ -1311,7 +1449,17 @@
     ;; --- Real class --------------------------------
 
     (protocol (Real [a => Num Ord])
-      (: to-rational (-> a Rational)))
+      (: to-rational (-> a Rational))
+      ;; `to-rational` is order-preserving (monotone): it embeds the type
+      ;; into the rationals respecting `<=`.  Only monotonicity is stated
+      ;; — it holds for every instance including `Float`, whose conversion
+      ;; is exact.  The additive-homomorphism law (`to-rational (x + y) =
+      ;; to-rational x + to-rational y`) is deliberately omitted: it fails
+      ;; under floating-point rounding.  Needs `Ord` on both `a` (a
+      ;; superclass) and `Rational` (in scope), so no extra law context.
+      #:laws
+        ([monotone (All ([x : a] [y : a])
+           (if (<= x y) (<= (to-rational x) (to-rational y)) #t))]))
 
     (instance (Real Integer)
       (define (to-rational n) (racket Rational (n) #f)))

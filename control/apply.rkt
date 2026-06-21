@@ -25,7 +25,18 @@
   ;; apply ff fx = liftF2 (\g x -> g x) ff fx
   (define (apply ff fx) (liftF2 (lambda (g) (lambda (x) (g x))) ff fx))
   ;; liftF2 g fa fb = apply (fmap g fa) fb
-  (define (liftF2 g fa fb) (apply (fmap g fa) fb)))
+  (define (liftF2 g fa fb) (apply (fmap g fa) fb))
+  ;; The Apply composition law: `apply` is associative under composition.
+  ;; This is the Applicative composition law minus the `pure`-dependent
+  ;; identity and homomorphism, which `FunctorApply` cannot state (it has
+  ;; no `pure`).  Quantified over containers of functions, so it type-
+  ;; checks as the specification rather than running through the generic
+  ;; bundle (no generator for `(f (-> …))`).
+  #:laws
+    ([composition ((Eq (f c)) =>
+       (All ([u : (f (-> b c))] [v : (f (-> a b))] [w : (f a)])
+         (== (apply (apply (fmap (lambda (g) (lambda (h) (lambda (x) (g (h x))))) u) v) w)
+             (apply u (apply v w)))))]))
 
 ;; The prelude Applicatives are Applies with `apply = fapply`.
 
