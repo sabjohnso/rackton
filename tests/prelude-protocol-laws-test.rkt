@@ -20,6 +20,9 @@
 (: gi (Gen Integer))
 (define gi (int-range -50 50))
 
+(: gen-list-int (Gen (List Integer)))
+(define gen-list-int (gen-list gi))
+
 ;; ----- local equalities (Identity has no prelude Eq instance) -------
 
 (: eq-id (-> (Identity Integer) (-> (Identity Integer) Boolean)))
@@ -79,7 +82,20 @@
      (for-all gi
        (lambda (n)
          (eq-id3 (duplicate (duplicate (Identity n)))
-                 (fmap duplicate (duplicate (Identity n)))))))))
+                 (fmap duplicate (duplicate (Identity n)))))))
+
+   ;; Semigroup/Monoid laws on SHIPPED instances.  Until now the only
+   ;; semigroup-laws invocation was against a deliberately-broken test
+   ;; type (to prove the bundle catches failure); associativity of
+   ;; `mappend` was verified on NO real instance.  Run the bundles over
+   ;; String and (List Integer): semigroup-laws checks associativity,
+   ;; monoid-laws the two-sided identity.
+   (group-of "Semigroup/Monoid on shipped instances"
+     (list
+      (semigroup-laws gen-string)
+      (semigroup-laws gen-list-int)
+      (monoid-laws gen-string "")
+      (monoid-laws gen-list-int (ann Nil (List Integer)))))))
 
 (: main Unit)
 (define main (run-io (run-suite "prelude/stdlib protocol laws" suite)))
