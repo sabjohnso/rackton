@@ -41,5 +41,5 @@
         (list (check-equal? pol-mag 5.0)
               (check-equal? pol-ph 0.0))))))
 
-(: _ran Unit)
-(define _ran (run-io (run-suite "data-complex" suite)))
+(: main Unit)
+(define main (run-io (run-suite "data-complex" suite)))

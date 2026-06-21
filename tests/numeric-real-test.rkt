@@ -49,5 +49,5 @@
               (check-equal? pf-neg-i -3)
               (check-true (< (abs (- pf-neg-f -0.7)) 1e-9)))))))
 
-(: _ran Unit)
-(define _ran (run-io (run-suite "numeric-real" suite)))
+(: main Unit)
+(define main (run-io (run-suite "numeric-real" suite)))

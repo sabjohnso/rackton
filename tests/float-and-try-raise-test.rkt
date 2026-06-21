@@ -70,5 +70,5 @@
    (it "try captures panic / raise-io as Err"
        (check-true (pinch-failed -1)))))
 
-(: _ran Unit)
-(define _ran (run-io (run-suite "float-and-try-raise" suite)))
+(: main Unit)
+(define main (run-io (run-suite "float-and-try-raise" suite)))

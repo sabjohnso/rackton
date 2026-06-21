@@ -20,5 +20,5 @@
               (check-equal? cn 3) (check-equal? cd 2)
               (check-equal? tf 0.5))))))
 
-(: _ran Unit)
-(define _ran (run-io (run-suite "rackton/data/ratio" suite)))
+(: main Unit)
+(define main (run-io (run-suite "rackton/data/ratio" suite)))

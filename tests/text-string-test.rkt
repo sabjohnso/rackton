@@ -51,5 +51,5 @@
         (list (check-equal? uw "a b c")
               (check-equal? ul "a\nb\n"))))))
 
-(: _ran Unit)
-(define _ran (run-io (run-suite "rackton/text/string" suite)))
+(: main Unit)
+(define main (run-io (run-suite "rackton/text/string" suite)))

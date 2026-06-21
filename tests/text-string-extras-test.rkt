@@ -55,5 +55,5 @@
               (check-equal? re2 "f00 b00")
               (check-equal? re3 "abc"))))))
 
-(: _ran Unit)
-(define _ran (run-io (run-suite "rackton/text/string extras" suite)))
+(: main Unit)
+(define main (run-io (run-suite "rackton/text/string extras" suite)))

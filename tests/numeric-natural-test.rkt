@@ -46,5 +46,5 @@
               (check-true  lt-t)
               (check-equal? shown "42"))))))
 
-(: _ran Unit)
-(define _ran (run-io (run-suite "numeric-natural" suite)))
+(: main Unit)
+(define main (run-io (run-suite "numeric-natural" suite)))

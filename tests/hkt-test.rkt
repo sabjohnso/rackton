@@ -59,5 +59,5 @@
         (list (check-equal? (div-chain 10 2) (Right 5))
               (check-equal? (div-chain 10 0) (Left "divide by zero")))))))
 
-(: _ran Unit)
-(define _ran (run-io (run-suite "hkt" suite)))
+(: main Unit)
+(define main (run-io (run-suite "hkt" suite)))

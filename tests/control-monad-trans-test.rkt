@@ -60,5 +60,5 @@
    (it "lift-io through a two-layer stack"
        (check-equal? r-io-nested (Ok (Pair 0 1))))))
 
-(: _ran Unit)
-(define _ran (run-io (run-suite "control-monad-trans" suite)))
+(: main Unit)
+(define main (run-io (run-suite "control-monad-trans" suite)))

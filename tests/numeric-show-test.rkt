@@ -36,5 +36,5 @@
               (check-equal? ro-bad -1)
               (check-equal? rd-bad -1))))))
 
-(: _ran Unit)
-(define _ran (run-io (run-suite "rackton/numeric/show" suite)))
+(: main Unit)
+(define main (run-io (run-suite "rackton/numeric/show" suite)))

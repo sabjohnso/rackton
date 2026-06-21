@@ -35,5 +35,5 @@
         (list (check-equal? l3-ok  (Some 6))
               (check-equal? l3-bad None))))))
 
-(: _ran Unit)
-(define _ran (run-io (run-suite "rackton/data/traversable + applicative" suite)))
+(: main Unit)
+(define main (run-io (run-suite "rackton/data/traversable + applicative" suite)))

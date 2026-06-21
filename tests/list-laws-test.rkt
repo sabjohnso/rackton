@@ -61,5 +61,5 @@
                            (<= (length (filter (lambda (n) (> n 0)) xs))
                                (length xs)))))))
 
-(: _ran Unit)
-(define _ran (run-io (run-suite "List laws" suite)))
+(: main Unit)
+(define main (run-io (run-suite "List laws" suite)))

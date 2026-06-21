@@ -59,5 +59,5 @@
    (it "inherited default resolves return-typed make for Wrap"
        (check-equal? (unwrap wrapped) 7))))
 
-(: _ran Unit)
-(define _ran (run-io (run-suite "inherited-default-return-typed" suite)))
+(: main Unit)
+(define main (run-io (run-suite "inherited-default-return-typed" suite)))

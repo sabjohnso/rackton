@@ -112,5 +112,5 @@
               (check-equal? r->e-err (Left "e"))
               (check-equal? e->r-rt  (Right 5)))))))
 
-(: _ran Unit)
-(define _ran (run-io (run-suite "rackton/data/result" suite)))
+(: main Unit)
+(define main (run-io (run-suite "rackton/data/result" suite)))

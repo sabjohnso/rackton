@@ -55,5 +55,5 @@
               (check-equal? upa #\A)
               (check-equal? loZ #\z))))))
 
-(: _ran Unit)
-(define _ran (run-io (run-suite "data-char" suite)))
+(: main Unit)
+(define main (run-io (run-suite "data-char" suite)))

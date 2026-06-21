@@ -43,5 +43,5 @@
    (it "a plain binding named like a method shadows it"
        (check-equal? poke-shadow 7))))
 
-(: _ran Unit)
-(define _ran (run-io (run-suite "method-name shadowing" suite)))
+(: main Unit)
+(define main (run-io (run-suite "method-name shadowing" suite)))

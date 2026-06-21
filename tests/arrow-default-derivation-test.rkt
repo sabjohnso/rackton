@@ -173,5 +173,5 @@
    (it "fanin derives from fork (Right → second arrow)"
        (check-equal? (g-fanin (Right 5)) 10))))
 
-(: _ran Unit)
-(define _ran (run-io (run-suite "arrow-default-derivation" suite)))
+(: main Unit)
+(define main (run-io (run-suite "arrow-default-derivation" suite)))

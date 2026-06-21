@@ -38,5 +38,5 @@
    (it "delay defers and force memoizes"
        (check-equal? (run-io defer+memo) (Pair 0 1)))))
 
-(: _ran Unit)
-(define _ran (run-io (run-suite "lazy" suite)))
+(: main Unit)
+(define main (run-io (run-suite "lazy" suite)))

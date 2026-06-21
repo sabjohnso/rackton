@@ -85,5 +85,5 @@
    (it "round-trip file write / read"
        (check-equal? (run-io file-roundtrip) "rackton file io rules"))))
 
-(: _ran Unit)
-(define _ran (run-io (run-suite "io-refs-and-files" suite)))
+(: main Unit)
+(define main (run-io (run-suite "io-refs-and-files" suite)))

@@ -107,5 +107,5 @@
 
 ;; ----- run quietly; panic (failing raco test) on any failure --------
 
-(: _ran Unit)
-(define _ran (run-io (run-suite "higher-kinded laws" suite)))
+(: main Unit)
+(define main (run-io (run-suite "higher-kinded laws" suite)))

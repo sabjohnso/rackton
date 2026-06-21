@@ -46,5 +46,5 @@
         (list (check-equal? b-value 42)
               (check-equal? b-label "answer"))))))
 
-(: _ran Unit)
-(define _ran (run-io (run-suite "records" suite)))
+(: main Unit)
+(define main (run-io (run-suite "records" suite)))

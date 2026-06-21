@@ -80,5 +80,5 @@
         (list (check-equal? cls "three-four")
               (check-equal? cls-other "other"))))))
 
-(: _ran Unit)
-(define _ran (run-io (run-suite "complex literals" suite)))
+(: main Unit)
+(define main (run-io (run-suite "complex literals" suite)))

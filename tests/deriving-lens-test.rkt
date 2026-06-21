@@ -88,5 +88,5 @@
               (check-equal? seg-shifted (Segment (Point 42 2) (Point 10 20)))
               (check-equal? seg-doubled (Segment (Point 2 2)  (Point 10 20))))))))
 
-(: _ran Unit)
-(define _ran (run-io (run-suite "deriving Lens" suite)))
+(: main Unit)
+(define main (run-io (run-suite "deriving Lens" suite)))

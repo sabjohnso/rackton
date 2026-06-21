@@ -51,5 +51,5 @@
    (it "getCurrentTime (ms)"      (check-true r-now))
    (it "getCPUTime (ms)"          (check-true r-cpu))))
 
-(: _ran Unit)
-(define _ran (run-io (run-suite "rackton/system leftovers" suite)))
+(: main Unit)
+(define main (run-io (run-suite "rackton/system leftovers" suite)))

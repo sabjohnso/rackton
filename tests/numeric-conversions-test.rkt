@@ -39,5 +39,5 @@
               (check-true (< (abs (- rtf-int 2.0)) 1e-9))
               (check-true (< (abs (- rtf-flt 1.5)) 1e-9)))))))
 
-(: _ran Unit)
-(define _ran (run-io (run-suite "numeric-conversions" suite)))
+(: main Unit)
+(define main (run-io (run-suite "numeric-conversions" suite)))

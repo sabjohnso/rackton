@@ -55,5 +55,5 @@
    (it "1-arg `(-> T)` (0-arg fn encoding) still works"
        (check-equal? thunk-val 99))))
 
-(: _ran Unit)
-(define _ran (run-io (run-suite "variadic arrow" suite)))
+(: main Unit)
+(define main (run-io (run-suite "variadic arrow" suite)))

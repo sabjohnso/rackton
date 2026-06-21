@@ -89,5 +89,5 @@
               (check-equal? filt1 #f) (check-equal? filt2 #t)
               (check-equal? filtk #f))))))
 
-(: _ran Unit)
-(define _ran (run-io (run-suite "rackton/data/map" suite)))
+(: main Unit)
+(define main (run-io (run-suite "rackton/data/map" suite)))

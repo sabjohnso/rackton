@@ -71,5 +71,5 @@
    (it "random"      (check-true   r-rand))
    (it "environment" (check-true   r-env))))
 
-(: _ran Unit)
-(define _ran (run-io (run-suite "rackton/system split" suite)))
+(: main Unit)
+(define main (run-io (run-suite "rackton/system split" suite)))

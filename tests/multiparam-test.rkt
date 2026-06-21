@@ -31,5 +31,5 @@
               (check-equal? (bool-to-string #t)   "yes")
               (check-equal? (bool-to-string #f)   "no"))))))
 
-(: _ran Unit)
-(define _ran (run-io (run-suite "multiparam" suite)))
+(: main Unit)
+(define main (run-io (run-suite "multiparam" suite)))

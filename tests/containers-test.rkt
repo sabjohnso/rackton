@@ -100,5 +100,5 @@
         (list (check-equal? odd-bucket  (Some (Cons 1 (Cons 3 (Cons 5 Nil)))))
               (check-equal? even-bucket (Some (Cons 2 (Cons 4 Nil)))))))))
 
-(: _ran Unit)
-(define _ran (run-io (run-suite "containers" suite)))
+(: main Unit)
+(define main (run-io (run-suite "containers" suite)))

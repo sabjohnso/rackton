@@ -32,5 +32,5 @@
    (it "Storable Float"
        (check-true (< (abs-float (- (run-io flt-rt) 2.5)) 1e-9)))))
 
-(: _ran Unit)
-(define _ran (run-io (run-suite "Storable" suite)))
+(: main Unit)
+(define main (run-io (run-suite "Storable" suite)))

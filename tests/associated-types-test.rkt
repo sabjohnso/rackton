@@ -44,5 +44,5 @@
                        [(MkMap n) n])
                      99))))
 
-(: _ran Unit)
-(define _ran (run-io (run-suite "associated-types" suite)))
+(: main Unit)
+(define main (run-io (run-suite "associated-types" suite)))

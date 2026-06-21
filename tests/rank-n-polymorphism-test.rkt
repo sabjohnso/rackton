@@ -59,5 +59,5 @@
    (it "rank-2: polymorphic arg called twice at one return type"
        (check-equal? r-twice 7))))
 
-(: _ran Unit)
-(define _ran (run-io (run-suite "rank-N polymorphism" suite)))
+(: main Unit)
+(define main (run-io (run-suite "rank-N polymorphism" suite)))

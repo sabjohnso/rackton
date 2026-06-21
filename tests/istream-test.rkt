@@ -70,5 +70,5 @@
                                              nats))
                      (Cons 1 (Cons 3 (Cons 5 Nil)))))))
 
-(: _ran Unit)
-(define _ran (run-io (run-suite "istream" suite)))
+(: main Unit)
+(define main (run-io (run-suite "istream" suite)))

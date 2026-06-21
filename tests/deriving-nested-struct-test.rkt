@@ -31,5 +31,5 @@
    (it "field access is intact (not a leaked dict)"
        (check-equal? (Point-x (Segment-start s1)) 1))))
 
-(: _ran Unit)
-(define _ran (run-io (run-suite "deriving nested struct" suite)))
+(: main Unit)
+(define main (run-io (run-suite "deriving nested struct" suite)))

@@ -67,5 +67,5 @@
         (list (check-equal? matched-foo   "got foo")
               (check-equal? matched-other "other"))))))
 
-(: _ran Unit)
-(define _ran (run-io (run-suite "symbol" suite)))
+(: main Unit)
+(define main (run-io (run-suite "symbol" suite)))

@@ -61,5 +61,5 @@
        (check-equal? combined-counter
                      (Counter (Cons 1 (Cons 2 Nil)) "ab")))))
 
-(: _ran Unit)
-(define _ran (run-io (run-suite "deriving-traversable-and-monoid" suite)))
+(: main Unit)
+(define main (run-io (run-suite "deriving-traversable-and-monoid" suite)))

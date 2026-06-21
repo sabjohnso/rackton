@@ -58,5 +58,5 @@
    (it "ComonadApply (Pair e) mappends envs"
        (check-equal? p-coapply (Pair "ab" 42)))))
 
-(: _ran Unit)
-(define _ran (run-io (run-suite "tuple comonad/apply" suite)))
+(: main Unit)
+(define main (run-io (run-suite "tuple comonad/apply" suite)))

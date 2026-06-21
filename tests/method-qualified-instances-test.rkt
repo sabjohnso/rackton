@@ -68,5 +68,5 @@
    (it "derived Traversable Box (failure)"
        (check-equal? derived-trav-fail None))))
 
-(: _ran Unit)
-(define _ran (run-io (run-suite "method-qualified-instances" suite)))
+(: main Unit)
+(define main (run-io (run-suite "method-qualified-instances" suite)))

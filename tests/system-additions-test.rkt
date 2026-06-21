@@ -50,5 +50,5 @@
    (it "setEnv"              (check-true (run-io env-rt)))
    (it "withFile round-trip" (check-equal? (run-io wf) "wrote"))))
 
-(: _ran Unit)
-(define _ran (run-io (run-suite "system additions" suite)))
+(: main Unit)
+(define main (run-io (run-suite "system additions" suite)))

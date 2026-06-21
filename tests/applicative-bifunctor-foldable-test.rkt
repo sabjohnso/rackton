@@ -136,5 +136,5 @@
    (it "Foldable sum default"
        (check-equal? list-sum-default 30))))
 
-(: _ran Unit)
-(define _ran (run-io (run-suite "applicative-bifunctor-foldable" suite)))
+(: main Unit)
+(define main (run-io (run-suite "applicative-bifunctor-foldable" suite)))

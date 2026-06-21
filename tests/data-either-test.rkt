@@ -60,5 +60,5 @@
               (check-equal? r-to-maybe0  None)
               (check-equal? r-from-maybe (Right 9)))))))
 
-(: _ran Unit)
-(define _ran (run-io (run-suite "rackton/data/either" suite)))
+(: main Unit)
+(define main (run-io (run-suite "rackton/data/either" suite)))

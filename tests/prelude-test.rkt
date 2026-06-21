@@ -57,5 +57,5 @@
               (check-true  (neq (Some 1) (Some 2)))
               (check-false (neq (Some 1) (Some 1))))))))
 
-(: _ran Unit)
-(define _ran (run-io (run-suite "prelude (user Eq/Ord)" suite)))
+(: main Unit)
+(define main (run-io (run-suite "prelude (user Eq/Ord)" suite)))

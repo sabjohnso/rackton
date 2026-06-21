@@ -38,5 +38,5 @@
        (all-checks
         (list (check-equal? el-l #t) (check-equal? el-s #t) (check-equal? el-n #f))))))
 
-(: _ran Unit)
-(define _ran (run-io (run-suite "rackton/data/foldable" suite)))
+(: main Unit)
+(define main (run-io (run-suite "rackton/data/foldable" suite)))

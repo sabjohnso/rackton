@@ -50,5 +50,5 @@
    (it "make-directory + list-directory"
        (check-equal? out-dir 0))))
 
-(: _ran Unit)
-(define _ran (run-io (run-suite "rackton/system primitives" suite)))
+(: main Unit)
+(define main (run-io (run-suite "rackton/system primitives" suite)))

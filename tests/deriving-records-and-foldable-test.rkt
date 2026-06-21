@@ -122,5 +122,5 @@
               (check-equal? wrap-show "(MkWrap 42)")
               (check-equal? id-mapped (MkIdiom 42)))))))
 
-(: _ran Unit)
-(define _ran (run-io (run-suite "deriving records + Foldable" suite)))
+(: main Unit)
+(define main (run-io (run-suite "deriving records + Foldable" suite)))

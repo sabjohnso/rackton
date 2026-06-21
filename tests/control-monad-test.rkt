@@ -59,5 +59,5 @@
        (check-equal? seq-list
                      (list (list 1 3) (list 1 4) (list 2 3) (list 2 4))))))
 
-(: _ran Unit)
-(define _ran (run-io (run-suite "control-monad" suite)))
+(: main Unit)
+(define main (run-io (run-suite "control-monad" suite)))

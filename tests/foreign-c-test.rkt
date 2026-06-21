@@ -28,5 +28,5 @@
    (it "two-argument libm"
        (check-true (< (abs (- r-hypot 5.0)) 1e-9)))))
 
-(: _ran Unit)
-(define _ran (run-io (run-suite "foreign-c" suite)))
+(: main Unit)
+(define main (run-io (run-suite "foreign-c" suite)))

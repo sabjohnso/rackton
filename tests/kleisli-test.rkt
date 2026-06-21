@@ -78,5 +78,5 @@
    (it "ArrowApply: arrow-app applies a wrapped arrow"
        (check-equal? app-out (Some 11)))))
 
-(: _ran Unit)
-(define _ran (run-io (run-suite "rackton/data/kleisli" suite)))
+(: main Unit)
+(define main (run-io (run-suite "rackton/data/kleisli" suite)))

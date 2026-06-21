@@ -79,5 +79,5 @@
    (it "#:requires: subclass method reaches the superclass method"
        (check-equal? retagged 105))))
 
-(: _ran Unit)
-(define _ran (run-io (run-suite "superclass-bounds" suite)))
+(: main Unit)
+(define main (run-io (run-suite "superclass-bounds" suite)))

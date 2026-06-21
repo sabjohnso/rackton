@@ -53,5 +53,5 @@
           (ne-to-list (flatmap twice (flatmap twice ne123)))
           (ne-to-list (flatmap (lambda (x) (flatmap twice (twice x))) ne123))))))))
 
-(: _ran Unit)
-(define _ran (run-io (run-suite "nonempty monad" suite)))
+(: main Unit)
+(define main (run-io (run-suite "nonempty monad" suite)))

@@ -112,5 +112,5 @@
        (check-equal? (nestream-take 3 (extend (lambda (w) (extract w)) ne123))
                      l123))))
 
-(: _ran Unit)
-(define _ran (run-io (run-suite "nestream" suite)))
+(: main Unit)
+(define main (run-io (run-suite "nestream" suite)))

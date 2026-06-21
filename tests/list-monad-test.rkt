@@ -49,5 +49,5 @@
    (it "flatmap to Nil drops that element"
        (check-equal? with-empty (Cons 1 (Cons 3 Nil))))))
 
-(: _ran Unit)
-(define _ran (run-io (run-suite "list-monad" suite)))
+(: main Unit)
+(define main (run-io (run-suite "list-monad" suite)))

@@ -114,5 +114,5 @@
               (check-equal? max-float  2.5)
               (check-equal? min-str    "alpha"))))))
 
-(: _ran Unit)
-(define _ran (run-io (run-suite "identity-monad-and-blocking-retry" suite)))
+(: main Unit)
+(define main (run-io (run-suite "identity-monad-and-blocking-retry" suite)))

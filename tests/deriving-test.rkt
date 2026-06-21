@@ -32,5 +32,5 @@
    (it "derived Show renders constructors"
        (check-equal? tree-show "(Node Leaf 1 (Node Leaf 2 Leaf))"))))
 
-(: _ran Unit)
-(define _ran (run-io (run-suite "deriving" suite)))
+(: main Unit)
+(define main (run-io (run-suite "deriving" suite)))

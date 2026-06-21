@@ -53,5 +53,5 @@
    (it "Arrow: &&& fans the same context to both"
        (check-equal? fan-out (Pair 11 20)))))
 
-(: _ran Unit)
-(define _ran (run-io (run-suite "rackton/data/cokleisli" suite)))
+(: main Unit)
+(define main (run-io (run-suite "rackton/data/cokleisli" suite)))

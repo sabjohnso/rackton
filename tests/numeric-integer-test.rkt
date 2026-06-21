@@ -59,5 +59,5 @@
    (it "from-integral"
        (check-equal? from-3 3.0))))
 
-(: _ran Unit)
-(define _ran (run-io (run-suite "numeric-integer" suite)))
+(: main Unit)
+(define main (run-io (run-suite "numeric-integer" suite)))

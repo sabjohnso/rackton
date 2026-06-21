@@ -48,5 +48,5 @@
         (list (check-equal? r-count 3)
               (check-equal? r-count0 0))))))
 
-(: _ran Unit)
-(define _ran (run-io (run-suite "data-bits" suite)))
+(: main Unit)
+(define main (run-io (run-suite "data-bits" suite)))

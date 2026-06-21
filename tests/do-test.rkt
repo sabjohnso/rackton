@@ -60,5 +60,5 @@
         (list (check-equal? bare-clause-seq (Some 12))
               (check-equal? bare-clause-short None))))))
 
-(: _ran Unit)
-(define _ran (run-io (run-suite "do" suite)))
+(: main Unit)
+(define main (run-io (run-suite "do" suite)))

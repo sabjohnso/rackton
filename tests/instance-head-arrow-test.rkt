@@ -29,5 +29,5 @@
   (list (it "(->)-headed multi-param instance compiles and dispatches"
             (check-equal? r (Pair 4 100)))))
 
-(: _ran Unit)
-(define _ran (run-io (run-suite "instance-head-arrow" suite)))
+(: main Unit)
+(define main (run-io (run-suite "instance-head-arrow" suite)))

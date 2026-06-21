@@ -82,5 +82,5 @@
         (list (check-equal? x-collected (Cons 3 Nil))
               (check-equal? x-bumped    (Point 4 7)))))))
 
-(: _ran Unit)
-(define _ran (run-io (run-suite "prisms and traversals" suite)))
+(: main Unit)
+(define main (run-io (run-suite "prisms and traversals" suite)))

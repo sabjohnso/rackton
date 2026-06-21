@@ -31,5 +31,5 @@
               (check-equal? ffl  (Some 4))
               (check-equal? ffl0 None))))))
 
-(: _ran Unit)
-(define _ran (run-io (run-suite "rackton/data/list/nonempty" suite)))
+(: main Unit)
+(define main (run-io (run-suite "rackton/data/list/nonempty" suite)))

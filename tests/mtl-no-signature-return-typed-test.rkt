@@ -69,5 +69,5 @@
    (it "the same no-signature function also resolves at StateT _ Maybe"
        (check-equal? c-maybe-result (Some (Pair 105 105))))))
 
-(: _ran Unit)
-(define _ran (run-io (run-suite "mtl-no-signature-return-typed" suite)))
+(: main Unit)
+(define main (run-io (run-suite "mtl-no-signature-return-typed" suite)))

@@ -95,5 +95,5 @@
    (it "ExceptT over Maybe: bind on Err short-circuits within outer Some"
        (check-equal? maybe-chained-result (Some (Err "from-mid"))))))
 
-(: _ran Unit)
-(define _ran (run-io (run-suite "except-transformer" suite)))
+(: main Unit)
+(define main (run-io (run-suite "except-transformer" suite)))

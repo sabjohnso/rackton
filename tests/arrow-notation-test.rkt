@@ -149,5 +149,5 @@
               (check-equal? (p-sign 0)  1)    ; Zero → inc 0
               (check-equal? (p-sign 4)  8)))))) ; Pos  → dbl 4
 
-(: _ran Unit)
-(define _ran (run-io (run-suite "arrow-notation" suite)))
+(: main Unit)
+(define main (run-io (run-suite "arrow-notation" suite)))

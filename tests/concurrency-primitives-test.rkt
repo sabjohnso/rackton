@@ -81,5 +81,5 @@
    (it "read-mvar is non-destructive"
        (check-equal? r-twice (Pair 7 7)))))
 
-(: _ran Unit)
-(define _ran (run-io (run-suite "concurrency-primitives" suite)))
+(: main Unit)
+(define main (run-io (run-suite "concurrency-primitives" suite)))

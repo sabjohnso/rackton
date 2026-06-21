@@ -35,5 +35,5 @@
    (it "effectful (IO) C function"
        (check-true (> r4 0)))))   ; getpid is a positive process id
 
-(: _ran Unit)
-(define _ran (run-io (run-suite "foreign-c-inline" suite)))
+(: main Unit)
+(define main (run-io (run-suite "foreign-c-inline" suite)))

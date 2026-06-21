@@ -89,5 +89,5 @@
        (check-equal? (stream-take 5 (flatmap twice nats))
                      (Cons 0 (Cons 0 (Cons 1 (Cons 10 (Cons 2 Nil)))))))))
 
-(: _ran Unit)
-(define _ran (run-io (run-suite "lazy-stream" suite)))
+(: main Unit)
+(define main (run-io (run-suite "lazy-stream" suite)))

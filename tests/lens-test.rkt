@@ -86,5 +86,5 @@
    (it "composed lens over transforms only the focused position"
        (check-equal? seg-over (Segment (Point 100 2) (Point 10 20))))))
 
-(: _ran Unit)
-(define _ran (run-io (run-suite "lens" suite)))
+(: main Unit)
+(define main (run-io (run-suite "lens" suite)))

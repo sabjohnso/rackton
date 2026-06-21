@@ -53,5 +53,5 @@
    (it "h-get-line yields Some then None at EOF"
        (check-true (run-io line-eof)))))
 
-(: _ran Unit)
-(define _ran (run-io (run-suite "system/io" suite)))
+(: main Unit)
+(define main (run-io (run-suite "system/io" suite)))

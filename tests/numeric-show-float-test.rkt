@@ -37,5 +37,5 @@
               (check-equal? g-big "1.23e7")
               (check-equal? g-sml "1.00e-3"))))))
 
-(: _ran Unit)
-(define _ran (run-io (run-suite "rackton/numeric/show (float)" suite)))
+(: main Unit)
+(define main (run-io (run-suite "rackton/numeric/show (float)" suite)))

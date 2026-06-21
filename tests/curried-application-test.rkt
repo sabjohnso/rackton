@@ -84,5 +84,5 @@
    (it "partial application of prelude string-append"
        (check-equal? greeting "hello, world"))))
 
-(: _ran Unit)
-(define _ran (run-io (run-suite "curried-application" suite)))
+(: main Unit)
+(define main (run-io (run-suite "curried-application" suite)))

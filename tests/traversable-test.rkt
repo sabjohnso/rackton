@@ -64,5 +64,5 @@
    (it "traverse List into Either (short-circuit on Left)"
        (check-equal? result-of-list-fail (Left "non-positive")))))
 
-(: _ran Unit)
-(define _ran (run-io (run-suite "traversable" suite)))
+(: main Unit)
+(define main (run-io (run-suite "traversable" suite)))

@@ -81,5 +81,5 @@
          (eq-id3 (duplicate (duplicate (Identity n)))
                  (fmap duplicate (duplicate (Identity n)))))))))
 
-(: _ran Unit)
-(define _ran (run-io (run-suite "prelude/stdlib protocol laws" suite)))
+(: main Unit)
+(define main (run-io (run-suite "prelude/stdlib protocol laws" suite)))

@@ -42,5 +42,5 @@
         (list (check-equal? r-maybe 6)
               (check-true  r-isjust))))))
 
-(: _ran Unit)
-(define _ran (run-io (run-suite "rackton/data/maybe" suite)))
+(: main Unit)
+(define main (run-io (run-suite "rackton/data/maybe" suite)))

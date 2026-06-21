@@ -121,5 +121,5 @@
         (list (check-equal? prev-tri3 (Some (tuple 1 2 3)))
               (check-equal? rev-tri3  (Tri3 1 2 3)))))))
 
-(: _ran Unit)
-(define _ran (run-io (run-suite "deriving Prism" suite)))
+(: main Unit)
+(define main (run-io (run-suite "deriving Prism" suite)))

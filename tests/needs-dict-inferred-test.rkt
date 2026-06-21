@@ -84,5 +84,5 @@
    (it "recursive needs-dict function over Either"
        (check-equal? rep-result (Right 99)))))
 
-(: _ran Unit)
-(define _ran (run-io (run-suite "needs-dict-inferred" suite)))
+(: main Unit)
+(define main (run-io (run-suite "needs-dict-inferred" suite)))

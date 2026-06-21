@@ -63,5 +63,5 @@
    (it "fundep needs-dict value-form method threads inner pure"
        (check-equal? held-val (Some 0)))))
 
-(: _ran Unit)
-(define _ran (run-io (run-suite "needs-dict-fundep-method" suite)))
+(: main Unit)
+(define main (run-io (run-suite "needs-dict-fundep-method" suite)))

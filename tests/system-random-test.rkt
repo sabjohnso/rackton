@@ -59,5 +59,5 @@
         (list (check-equal? r-rio 5)
               (check-true (< (abs (- r-rfo 2.0)) 1e-9)))))))
 
-(: _ran Unit)
-(define _ran (run-io (run-suite "rackton/system/random" suite)))
+(: main Unit)
+(define main (run-io (run-suite "rackton/system/random" suite)))

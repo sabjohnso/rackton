@@ -163,5 +163,5 @@
         (list (check-equal? decoded     (Some "Aé"))
               (check-equal? decoded-bad None))))))
 
-(: _ran Unit)
-(define _ran (run-io (run-suite "char-and-bytes" suite)))
+(: main Unit)
+(define main (run-io (run-suite "char-and-bytes" suite)))

@@ -53,5 +53,5 @@
         (Cons 1 (Cons 2 (Cons 3 (Cons 4 (Cons 5 (Cons 6
           (Cons 7 (Cons 8 (Cons 9 (Cons 10 (Cons 11 (Cons 12 Nil))))))))))))))))
 
-(: _ran Unit)
-(define _ran (run-io (run-suite "functional-dependencies" suite)))
+(: main Unit)
+(define main (run-io (run-suite "functional-dependencies" suite)))

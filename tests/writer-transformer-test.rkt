@@ -86,5 +86,5 @@
    (it "lift-writer-t starts with empty log"
        (check-equal? r-hoisted (Pair "" 100)))))
 
-(: _ran Unit)
-(define _ran (run-io (run-suite "writer transformer" suite)))
+(: main Unit)
+(define main (run-io (run-suite "writer transformer" suite)))

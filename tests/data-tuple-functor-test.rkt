@@ -29,5 +29,5 @@
    (it "const-replace-flipped"
        (check-equal? cf-res 9))))
 
-(: _ran Unit)
-(define _ran (run-io (run-suite "rackton/data/tuple+functor" suite)))
+(: main Unit)
+(define main (run-io (run-suite "rackton/data/tuple+functor" suite)))

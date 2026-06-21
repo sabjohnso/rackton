@@ -65,5 +65,5 @@
    (it "ComonadApply defaults to apply"
        (check-equal? coapp (list 5 50)))))
 
-(: _ran Unit)
-(define _ran (run-io (run-suite "nonempty comonad/apply" suite)))
+(: main Unit)
+(define main (run-io (run-suite "nonempty comonad/apply" suite)))

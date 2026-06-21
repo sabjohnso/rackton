@@ -44,5 +44,5 @@
    (it "coapply over Identity"
        (check-equal? i-coapply 42))))
 
-(: _ran Unit)
-(define _ran (run-io (run-suite "rackton/control/comonad" suite)))
+(: main Unit)
+(define main (run-io (run-suite "rackton/control/comonad" suite)))

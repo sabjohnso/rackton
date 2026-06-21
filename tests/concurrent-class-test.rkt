@@ -54,5 +54,5 @@
    (it "yield-c is callable"
        (check-equal? r-yield Unit))))
 
-(: _ran Unit)
-(define _ran (run-io (run-suite "concurrent-class" suite)))
+(: main Unit)
+(define main (run-io (run-suite "concurrent-class" suite)))

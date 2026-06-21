@@ -35,5 +35,5 @@
    (it "composition threads the continuation"
        (check-equal? r-chain "x=5!"))))
 
-(: _ran Unit)
-(define _ran (run-io (run-suite "rackton/text/show" suite)))
+(: main Unit)
+(define main (run-io (run-suite "rackton/text/show" suite)))

@@ -176,5 +176,5 @@
               (check-true  inf-is-inf)
               (check-false finite-is-nan))))))
 
-(: _ran Unit)
-(define _ran (run-io (run-suite "numeric tower" suite)))
+(: main Unit)
+(define main (run-io (run-suite "numeric tower" suite)))

@@ -78,5 +78,5 @@
         (list (check-equal? same-five 5)
               (check-equal? identity-applied "x"))))))
 
-(: _ran Unit)
-(define _ran (run-io (run-suite "prelude builtins" suite)))
+(: main Unit)
+(define main (run-io (run-suite "prelude builtins" suite)))

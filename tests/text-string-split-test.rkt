@@ -44,5 +44,5 @@
               (check-equal? io2 -1)
               (check-equal? io3 0))))))
 
-(: _ran Unit)
-(define _ran (run-io (run-suite "rackton/text/string split" suite)))
+(: main Unit)
+(define main (run-io (run-suite "rackton/text/string split" suite)))

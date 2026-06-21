@@ -36,5 +36,5 @@
               (check-false rb-f)
               (check-true  rb-bad))))))
 
-(: _ran Unit)
-(define _ran (run-io (run-suite "rackton/text/read" suite)))
+(: main Unit)
+(define main (run-io (run-suite "rackton/text/read" suite)))

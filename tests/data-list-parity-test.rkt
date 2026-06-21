@@ -221,5 +221,5 @@
               (check-equal? q-perms   (list (list 1 2) (list 2 1)))
               (check-equal? q-mapaccum (Pair 6 (list 10 20 30))))))))
 
-(: _ran Unit)
-(define _ran (run-io (run-suite "rackton/data/list (parity)" suite)))
+(: main Unit)
+(define main (run-io (run-suite "rackton/data/list (parity)" suite)))

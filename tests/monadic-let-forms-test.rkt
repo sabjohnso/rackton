@@ -116,5 +116,5 @@
         (list (check-equal? (count-down 5) (Some 0))
               (check-equal? (count-down 0) (Some 0)))))))
 
-(: _ran Unit)
-(define _ran (run-io (run-suite "monadic-let-forms" suite)))
+(: main Unit)
+(define main (run-io (run-suite "monadic-let-forms" suite)))

@@ -75,5 +75,5 @@
    (it "C string round-trip"
        (check-equal? (run-io cstr-rt) "hello"))))
 
-(: _ran Unit)
-(define _ran (run-io (run-suite "foreign-ptr" suite)))
+(: main Unit)
+(define main (run-io (run-suite "foreign-ptr" suite)))

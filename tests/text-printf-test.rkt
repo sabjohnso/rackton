@@ -38,5 +38,5 @@
    (it "generic Show directive"
        (check-equal? show-out "n=42"))))
 
-(: _ran Unit)
-(define _ran (run-io (run-suite "rackton/text/printf" suite)))
+(: main Unit)
+(define main (run-io (run-suite "rackton/text/printf" suite)))

@@ -84,5 +84,5 @@
        (check-equal? (stream-take 4 nats-no-sig)
                      (Cons 0 (Cons 1 (Cons 2 (Cons 3 Nil))))))))
 
-(: _ran Unit)
-(define _ran (run-io (run-suite "lazy-arrow" suite)))
+(: main Unit)
+(define main (run-io (run-suite "lazy-arrow" suite)))

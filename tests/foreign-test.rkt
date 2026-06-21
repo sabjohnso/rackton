@@ -35,5 +35,5 @@
    (it "foreign import with #:as rename"
        (check-equal? dashed "a-b-c"))))
 
-(: _ran Unit)
-(define _ran (run-io (run-suite "foreign" suite)))
+(: main Unit)
+(define main (run-io (run-suite "foreign" suite)))

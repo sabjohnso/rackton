@@ -50,5 +50,5 @@
    (it "apply over Identity"
        (check-equal? i-apply 42))))
 
-(: _ran Unit)
-(define _ran (run-io (run-suite "rackton/control/apply" suite)))
+(: main Unit)
+(define main (run-io (run-suite "rackton/control/apply" suite)))

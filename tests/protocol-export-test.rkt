@@ -30,5 +30,5 @@
               (check-equal? g "green")
               (check-equal? c "custom"))))))
 
-(: _ran Unit)
-(define _ran (run-io (run-suite "cross-module protocol instance" suite)))
+(: main Unit)
+(define main (run-io (run-suite "cross-module protocol instance" suite)))

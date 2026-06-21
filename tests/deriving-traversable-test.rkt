@@ -48,5 +48,5 @@
    (it "recursive type, short-circuits to None"
        (check-equal? rtb None))))
 
-(: _ran Unit)
-(define _ran (run-io (run-suite "deriving Traversable" suite)))
+(: main Unit)
+(define main (run-io (run-suite "deriving Traversable" suite)))

@@ -123,5 +123,5 @@
    (it "arrow-app applies a captured arrow to its argument"
        (check-equal? (apply-arrow (Pair inc 5)) 6))))
 
-(: _ran Unit)
-(define _ran (run-io (run-suite "category-arrow" suite)))
+(: main Unit)
+(define main (run-io (run-suite "category-arrow" suite)))

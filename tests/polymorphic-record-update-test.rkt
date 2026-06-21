@@ -53,5 +53,5 @@
    (it "parametric record: update tag field"
        (check-true (box-int-eq? r-box2 7 "new")))))
 
-(: _ran Unit)
-(define _ran (run-io (run-suite "polymorphic record update" suite)))
+(: main Unit)
+(define main (run-io (run-suite "polymorphic record update" suite)))

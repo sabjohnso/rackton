@@ -65,5 +65,5 @@
               (check-equal? filt-mem1 #f) (check-equal? filt-mem2 #t)
               (check-equal? fold-sum 6))))))
 
-(: _ran Unit)
-(define _ran (run-io (run-suite "rackton/data/set" suite)))
+(: main Unit)
+(define main (run-io (run-suite "rackton/data/set" suite)))

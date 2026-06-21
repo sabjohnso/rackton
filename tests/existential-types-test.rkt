@@ -63,5 +63,5 @@
         (list (check-true self-eq-int)
               (check-true self-eq-str))))))
 
-(: _ran Unit)
-(define _ran (run-io (run-suite "existential-types" suite)))
+(: main Unit)
+(define main (run-io (run-suite "existential-types" suite)))

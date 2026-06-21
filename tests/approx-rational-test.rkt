@@ -38,5 +38,5 @@
         (list (check-true (< (abs (- pi-approx 3.14159)) 0.01))
               (check-true (<= pi-den 50)))))))
 
-(: _ran Unit)
-(define _ran (run-io (run-suite "approx-rational" suite)))
+(: main Unit)
+(define main (run-io (run-suite "approx-rational" suite)))

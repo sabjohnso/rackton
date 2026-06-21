@@ -110,5 +110,5 @@
        (check-equal? (run-io caught-outer-result)
                      (Ok (Ok 99))))))
 
-(: _ran Unit)
-(define _ran (run-io (run-suite "needs-dict-on-transformers" suite)))
+(: main Unit)
+(define main (run-io (run-suite "needs-dict-on-transformers" suite)))

@@ -79,5 +79,5 @@
    (it "user body mixes runtime mappend and dict-passed mempty (Sum)"
        (check-equal? (get-sum wrapped-sum) 99))))
 
-(: _ran Unit)
-(define _ran (run-io (run-suite "needs-dict-functions" suite)))
+(: main Unit)
+(define main (run-io (run-suite "needs-dict-functions" suite)))

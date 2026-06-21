@@ -34,5 +34,5 @@
         (list (check-equal? dual-flip "ba")
               (check-equal? dual-mempty ""))))))
 
-(: _ran Unit)
-(define _ran (run-io (run-suite "rackton/data/monoid (Endo/Dual)" suite)))
+(: main Unit)
+(define main (run-io (run-suite "rackton/data/monoid (Endo/Dual)" suite)))

@@ -75,5 +75,5 @@
    (it "do-notation chain over STM"
        (check-equal? (run-io do-chain-result) 30))))
 
-(: _ran Unit)
-(define _ran (run-io (run-suite "STM" suite)))
+(: main Unit)
+(define main (run-io (run-suite "STM" suite)))

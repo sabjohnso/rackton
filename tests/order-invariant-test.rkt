@@ -112,5 +112,5 @@
         (list (check-equal? use1 (Some 3))
               (check-equal? use2 (Some "x")))))))
 
-(: _ran Unit)
-(define _ran (run-io (run-suite "order invariance" suite)))
+(: main Unit)
+(define main (run-io (run-suite "order invariance" suite)))

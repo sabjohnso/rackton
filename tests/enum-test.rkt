@@ -54,5 +54,5 @@
       (it "stops before overshooting the high bound"
           (check-equal? (enum-from-then-to 1 3 8) (list 1 3 5 7))))))
 
-(: _ran Unit)
-(define _ran (run-io (run-suite-tree enum-integer)))
+(: main Unit)
+(define main (run-io (run-suite-tree enum-integer)))

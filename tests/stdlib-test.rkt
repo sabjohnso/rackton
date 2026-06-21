@@ -32,5 +32,5 @@
               (check-equal? len-of-big 2)
               (check-equal? big (Cons 3 (Cons 4 Nil))))))))
 
-(: _ran Unit)
-(define _ran (run-io (run-suite "stdlib" suite)))
+(: main Unit)
+(define main (run-io (run-suite "stdlib" suite)))

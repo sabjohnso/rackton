@@ -39,5 +39,5 @@
         (list (check-equal? mn 3) (check-equal? mx 7)
               (check-equal? ft 1) (check-equal? lt 2))))))
 
-(: _ran Unit)
-(define _ran (run-io (run-suite "rackton/data/monoid+semigroup" suite)))
+(: main Unit)
+(define main (run-io (run-suite "rackton/data/monoid+semigroup" suite)))

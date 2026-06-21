@@ -37,5 +37,5 @@
               (check-true  p-eq)
               (check-false p-gt))))))
 
-(: _ran Unit)
-(define _ran (run-io (run-suite "deriving Ord" suite)))
+(: main Unit)
+(define main (run-io (run-suite "deriving Ord" suite)))
