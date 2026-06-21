@@ -3,8 +3,11 @@
 ;; Higher-kinded algebraic-law property tests.
 ;;
 ;; Exercises the functor / applicative / monad / traversable law
-;; bundles from rackton/unit on the prelude's `Maybe` and `List`
-;; instances.  This file is written in the Rackton native testing
+;; bundles from rackton/unit on the prelude's `Maybe`, `List`, and
+;; `Identity` instances.  (Identity was added to close a coverage gap:
+;; its Functor/Applicative instances had no direct assertion anywhere —
+;; only its Comonad laws were checked.)  This file is written in the
+;; Rackton native testing
 ;; framework end to end: the bundles build `Test` trees of seeded
 ;; properties, `run-tests` walks them in IO, and the module `panic`s if
 ;; any property fails so `raco test` sees a non-zero result.
@@ -62,6 +65,13 @@
     [(None)    (match b [(None) #t] [(Some _) #f])]
     [(Some xs) (match b [(None) #f] [(Some ys) (eq-list-int xs ys)])]))
 
+;; Identity has no prelude Eq/Show, so compare and render via run-identity.
+(: eq-id-int (-> (Identity Integer) (-> (Identity Integer) Boolean)))
+(define (eq-id-int a b) (== (run-identity a) (run-identity b)))
+
+(: render-id (-> (Identity Integer) String))
+(define (render-id i) (string-append "Identity " (integer->string (run-identity i))))
+
 ;; ----- generators ---------------------------------------------------
 
 ;; A mix of None and Some across the small integer range.
@@ -71,6 +81,9 @@
 
 (: gen-list-int (Gen (List Integer)))
 (define gen-list-int (gen-list (int-range -5 20)))
+
+(: gen-id-int (Gen (Identity Integer)))
+(define gen-id-int (fmap (lambda (n) (Identity n)) (int-range -5 20)))
 
 ;; ----- the point (pure/return) operations ---------------------------
 ;;
@@ -91,6 +104,12 @@
 (: list-point-fn (-> (-> Integer Integer) (List (-> Integer Integer))))
 (define (list-point-fn g) (Cons g Nil))
 
+(: id-point (-> Integer (Identity Integer)))
+(define (id-point x) (Identity x))
+
+(: id-point-fn (-> (-> Integer Integer) (Identity (-> Integer Integer))))
+(define (id-point-fn g) (Identity g))
+
 ;; ----- the suite ----------------------------------------------------
 
 (: suite (List Test))
@@ -102,6 +121,9 @@
    (applicative-laws eq-list-int  render-list  list-point  list-point-fn  gen-list-int)
    (monad-laws       eq-maybe-int render-maybe maybe-point gen-maybe-int)
    (monad-laws       eq-list-int  render-list  list-point  gen-list-int)
+   (functor-laws     eq-id-int    render-id    gen-id-int)
+   (applicative-laws eq-id-int    render-id    id-point    id-point-fn   gen-id-int)
+   (monad-laws       eq-id-int    render-id    id-point    gen-id-int)
    (traversable-laws eq-maybe-maybe render-maybe gen-maybe-int)
    (traversable-laws eq-maybe-list  render-list  gen-list-int)))
 
