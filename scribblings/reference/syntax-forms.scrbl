@@ -307,8 +307,24 @@ prelude's @racket[Eq], @racket[Ord], @racket[Num], @racket[Semigroup],
 @racket[Foldable], @racket[Traversable], and @racket[Enum] protocols all
 carry their laws this way.
 
-Laws are formal documentation: they carry no runtime behaviour and are
-not (currently) executed or serialized across module boundaries.
+Laws are type-checked documentation.  When the declaring module also
+imports @racket[rackton/unit], each lawful protocol additionally
+generates a runnable bundle: a value binding
+@racketidfont{@racketvarfont{Protocol}-laws} of type
+@racket[(_constraints ... (Show a) => (-> (Gen a) Test))] that turns
+generators into a property per law, reusing each law's own (already
+type-checked) body and labeling every binder by source name on failure.
+Without the import the laws stay compile-time only.  Generation is
+best-effort per law: a law is skipped when it quantifies over a function
+type (no generator exists for functions) or its body uses a return-typed
+method (such as @racket[pure] or @racket[mempty], which cannot dispatch
+without a value); a protocol with no runnable law generates no bundle.
+The bundle takes one generator per distinct binder type across its
+runnable laws, and — being an ordinary value — may be @racket[provide]d
+and run from another module.  See
+@secref["protocol-laws-bundles" #:doc '(lib "rackton/scribblings/guide/rackton-guide.scrbl")]
+in the guide.  The law metadata itself is not serialized across module
+boundaries; the generated bundle value is.
 
 A single @racket[#:derive] keyword introduces a list of
 @deftech{cross-protocol derivation}s, one bracketed

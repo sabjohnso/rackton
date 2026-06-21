@@ -18,6 +18,7 @@
                      syntax/parse
                      racket/list
                      "surface.rkt"
+                     "law-bundle.rkt"
                      "infer.rkt"
                      "codegen.rkt"
                      "prelude.rkt"
@@ -272,9 +273,17 @@
     (parameterize ([current-collected-macros macros-box]
                    [current-had-macros       had-macros?-box])
       (expand-user-macros raw-forms)))
-  (define parsed
+  (define parsed0
     (parameterize ([current-hygiene? (unbox had-macros?-box)])
       (parse-toplevel-list expanded-forms)))
+  ;; Splice in any auto-generated `<Class>-laws` bundles (Feature 9):
+  ;; ordinary `top:def`s synthesized from each lawful protocol's `#:laws`,
+  ;; gated on this module importing rackton/unit.  They flow through
+  ;; inference + codegen like user code.
+  (define parsed
+    (append parsed0
+            (synthesize-law-bundles parsed0
+                                    (env-return-typed-methods prelude-env))))
   ;; The inference→codegen resolution tables (method-resolutions,
   ;; method-dict-resolutions, needs-dict-defs, instance-default-bodies) are
   ;; now owned by `infer-program+forms`, which returns them in a

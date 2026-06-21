@@ -142,6 +142,65 @@ checks reflexivity and totality of @racket[<=]; @racketidfont{semigroup-laws}
 checks associativity of @racket[mappend]; @racketidfont{monoid-laws} additionally
 checks that the supplied identity is a left and right unit.
 
+@section[#:tag "protocol-laws-bundles"]{Running a protocol's own laws}
+
+The bundles above restate each equation by hand.  When you write the laws
+once, in a protocol's @racket[#:laws] clause (see
+@secref["type-classes"]), and the module also
+imports @racket[rackton/unit], Rackton generates a runnable bundle for
+you automatically: a function @racketidfont{@racketvarfont{Protocol}-laws}
+that turns generators into a @racket[Test] group, one property per law.
+You never restate the equation — it comes from the declaration — and each
+failing case names the law and labels every binder by its source name.
+
+@rackton-example[#:eval ev]{
+#lang rackton
+(require rackton/unit)
+
+;; the laws are written once, on the protocol
+(protocol (Combine a)
+  (: combine (-> a (-> a a)))
+  #:laws
+    ([associativity ((Eq a) =>
+       (All ([x : a] [y : a] [z : a])
+         (== (combine (combine x y) z)
+             (combine x (combine y z)))))]))
+
+(data MaxI (MkMax Integer))
+(instance (Eq MaxI)
+  (define (== p q) (match p [(MkMax a) (match q [(MkMax b) (== a b)])])))
+(instance (Show MaxI)
+  (define (show p) (match p [(MkMax a) (integer->string a)])))
+;; max is associative
+(instance (Combine MaxI)
+  (define (combine p q)
+    (match p [(MkMax a) (match q [(MkMax b) (MkMax (if (< a b) b a))])])))
+
+(define gen-max (fmap (lambda (n) (MkMax n)) (int-range 0 100)))
+
+;; Combine-laws is generated from the #:laws clause above
+(define _ (run-io (run-tests (Combine-laws gen-max))))
+}
+
+The generated bundle's type is inferred — here
+@racket[((Eq a) (Show a) (Combine a) => (-> (Gen a) Test))].  It takes one
+generator per distinct binder type across the laws (so a first-order
+protocol like @racket[Combine] takes a single @racket[(Gen a)]; a
+higher-kinded one takes, e.g., @racket[(Gen (f a))]).  Because the bundle
+is an ordinary value, you can @racket[provide] it and run it from another
+module.
+
+Generation is gated on the @racket[(require rackton/unit)] import — a
+protocol declared without it keeps its laws as compile-time documentation
+only.  It is also @emph{best-effort per law}: a law is skipped (and the
+rest of the protocol's laws still generate) when it quantifies over a
+function — there is no function generator — or when its body uses a
+return-typed method such as @racket[pure] or @racket[mempty], which cannot
+be dispatched without a value.  So a @racket[Functor]-shaped protocol gets
+a runnable @racket[identity] law while its @racket[composition] law (which
+quantifies over functions) is skipped, and a protocol whose every law is
+unrunnable generates no bundle.
+
 @section{Reproducibility and seeds}
 
 Generation never performs @racket[IO]; it threads a pure, splittable
@@ -160,10 +219,15 @@ reproduces a failure deterministically.
 @item{For the same reason, build constant generators with
       @racketidfont{constant} rather than @racket[pure] when writing
       generators outside the library.}
-@item{Functor/Monad law bundles are not included: comparing mapped
-      containers needs an @racket[Eq] instance for the container, and
-      generating function arguments needs facilities not yet present.
-      You can still express such laws directly with @racketidfont{for-all-gen}
-      and your own @racket[Eq].}
+@item{A generated @racketidfont{@racketvarfont{Protocol}-laws} bundle
+      covers a higher-kinded protocol's first-order laws — a
+      @racket[Functor] @racket[identity] law, say — but skips any law that
+      quantifies over a function (@racket[Functor] @racket[composition]) or
+      uses a return-typed method, since neither can be run.  For those,
+      reach for the explicit bundles @racketidfont{functor-laws},
+      @racketidfont{applicative-laws}, @racketidfont{monad-laws}, and
+      @racketidfont{traversable-laws} — which substitute fixed
+      representative functions and take an explicit container @racket[Eq] —
+      or write the property directly with @racketidfont{for-all-gen}.}
 @item{The pseudo-random generator is adequate for test-case generation,
       not statistical rigor.}]
