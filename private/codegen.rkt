@@ -113,7 +113,31 @@
          "entail.rkt"
          "impl-symbols.rkt"
          "codegen-plan.rkt"
-         "infer.rkt")
+         "infer.rkt"
+         ;; Coverage instrumentation (Phase 2b), gated at codegen-emit
+         ;; time: `cover-wrap` returns the impl unchanged in a normal build
+         ;; (so the emitted code is byte-identical), and wraps it in
+         ;; `cover-fn` only when RACKTON_COVERAGE_BUILD is set.  `cover-fn`
+         ;; itself is referenced through dict.rkt (which re-exports it and
+         ;; which the runtime already pulls in), so the emitted reference
+         ;; resolves like `register-instance-method!` does.  See
+         ;; coverage/instrument.rkt.
+         (only-in "../coverage/instrument.rkt" coverage-build-codegen?))
+
+;; Wrap an instance-method impl's binding for coverage, gated at emit
+;; time.  In a coverage build this emits `(cover-fn 'method 'type impl)`
+;; so a dict-passed or monomorphized reference to the `$method:Tcon`
+;; binding logs, just like a runtime dispatch already does; in a normal
+;; build it returns `impl-stx` untouched.  `cover-fn` self-guards on
+;; `procedure?`, so wrapping a return-typed VALUE impl is harmless.
+(define (cover-wrap impl-stx method-sym type-sym stx)
+  (cond
+    [(coverage-build-codegen?)
+     (with-syntax ([impl impl-stx]
+                   [m    method-sym]
+                   [t    type-sym])
+       (syntax/loc stx (cover-fn 'm 't impl)))]
+    [else impl-stx]))
 
 ;; Prepend `dict-arg-names` to an expression's outermost lambda
 ;; parameter list.  If `expr` is already an e:lam, return a new e:lam
@@ -1062,7 +1086,7 @@
   (let-values ([(impl st) (compile-expr body* ctx st)])
    (define def-form
     (with-syntax ([impl-name (datum->syntax stx impl-name-sym stx)]
-                  [impl impl])
+                  [impl (cover-wrap impl name (car head-tcon-names) stx)])
       #'(define impl-name impl)))
    (cond
     ;; needs-dict return-typed instance (e.g. a transformer's
@@ -1148,7 +1172,7 @@
      (define-values (named-impl st2) (compile-expr expr* ctx st1))
      (define named-def
        (with-syntax ([impl-name (datum->syntax stx impl-name-sym stx)]
-                     [impl named-impl])
+                     [impl (cover-wrap named-impl name (car head-tcon-names) stx)])
          #'(define impl-name impl)))
      ;; ALSO register a runtime dispatcher so POLYMORPHIC call
      ;; sites (where the dispatch type is an abstract tvar, e.g.
@@ -1230,7 +1254,7 @@
                       stx
                       (overlap-impl-symbol name head-arg-types)
                       stx)]
-                    [impl impl])
+                    [impl (cover-wrap impl name (car head-tcon-names) stx)])
         (list #'(define impl-name impl)))
       st*)]
     [else
@@ -1257,7 +1281,7 @@
      (define-values (impl st2) (compile-expr body* ctx st1))
      (define def-form
        (with-syntax ([impl-name (datum->syntax stx impl-name-sym stx)]
-                     [impl      impl])
+                     [impl      (cover-wrap impl name (car head-tcon-names) stx)])
          #'(define impl-name impl)))
      (define register-forms
        (for/list ([tag (in-list tags)])

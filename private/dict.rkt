@@ -18,7 +18,12 @@
          register-instance-method!
          lookup-return-method
          dispatch-tag
-         rackton-no-instance-error)
+         rackton-no-instance-error
+         ;; Re-exported so codegen-emitted instance impls can reference
+         ;; `cover-fn` the same way they reference `register-instance-
+         ;; method!` — through dict.rkt, which the runtime already pulls
+         ;; in.  In a normal build codegen never emits the reference.
+         cover-fn)
 
 (require racket/struct
          ;; Coverage instrumentation, gated at COMPILE time: `when-coverage`

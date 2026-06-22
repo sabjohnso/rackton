@@ -64,11 +64,15 @@
       (flush-output port))))
 
 ;; Wrap a method impl so each invocation logs (method, tag) before
-;; running.  Codegen emits `(cover-fn 'method 'Tcon <impl>)` for an
-;; instance impl in a coverage build, so EVERY path to the impl — runtime
-;; dispatch, a dict-passed reference, or a monomorphized direct call —
-;; goes through the same wrapper.
+;; running.  Codegen emits `(cover-fn 'method 'Tcon <impl>)` around an
+;; instance impl's binding in a coverage build, so EVERY path to it —
+;; runtime dispatch, a dict-passed reference, or a monomorphized direct
+;; call — goes through the same wrapper.  Self-guards on `procedure?`:
+;; a return-typed VALUE impl (e.g. `mempty`) is returned untouched, since
+;; a value has no invocation to log and must not become a function.
 (define (cover-fn method tag impl)
-  (lambda args
-    (record-cover! method tag)
-    (apply impl args)))
+  (if (procedure? impl)
+      (lambda args
+        (record-cover! method tag)
+        (apply impl args))
+      impl))
