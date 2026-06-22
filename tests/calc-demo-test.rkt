@@ -5,15 +5,20 @@
 ;; printed results match.
 
 (require rackunit
-         racket/port)
+         racket/port
+         racket/runtime-path)
 
-(define here (path->complete-path "calc-demo-input"))
+;; The example lives at <project>/examples/calc.rkt, relative to this
+;; test module.  `define-runtime-path` resolves it portably — it works
+;; in an installed package and is independent of the current directory.
+;; (The previous hardcoded absolute path only existed on one dev
+;; machine, so CI could not open it.)
+(define-runtime-path calc-example "../examples/calc.rkt")
 
 (define (run-calc input)
   (parameterize ([current-input-port  (open-input-string input)]
                  [current-output-port (open-output-string)])
-    (dynamic-require '(file "/home/sbj/Sandbox/rackton/examples/calc.rkt")
-                     #f)
+    (dynamic-require calc-example #f)
     (get-output-string (current-output-port))))
 
 (test-case "calc evaluates simple expressions"
