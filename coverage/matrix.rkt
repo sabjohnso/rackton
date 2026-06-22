@@ -71,12 +71,25 @@
     (hash-set! m (car entry) (data-info-type-name (decode-data-info (cdr entry)))))
   m)
 
-;; `$ctor:Some` -> 'Maybe ;  a primitive tag (Integer, ->, …) IS its type.
+;; A few types dispatch under a runtime-representation tag that differs
+;; from the declared type name, so the join must alias them or their cells
+;; read as falsely uncovered: a Pair is a 2-vector (tag `Tuple`), and IO /
+;; STM / Array have opaque representations (`$io` / `$stm` / `rkt-array`).
+;; None of these runtime tags is itself a declared type, so the mapping is
+;; unambiguous.
+(define tag-rep-aliases
+  (hash 'Tuple     'Pair
+        '$io       'IO
+        '$stm      'STM
+        'rkt-array 'Array))
+
+;; `$ctor:Some` -> 'Maybe ;  a primitive / representation tag (Integer,
+;; ->, Tuple, $io, …) IS (or aliases to) its type.
 (define (tag->type c->t tag)
   (define s (symbol->string tag))
   (if (string-prefix? s "$ctor:")
       (hash-ref c->t (string->symbol (substring s 6)) #f)
-      tag))
+      (hash-ref tag-rep-aliases tag tag)))
 
 ;; ----- exercised cells from the log -----------------------------------
 
