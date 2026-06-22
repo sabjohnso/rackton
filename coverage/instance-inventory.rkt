@@ -28,7 +28,9 @@
          "../private/scheme-codec.rkt")
 
 (provide collect-instance-records   ; -> (listof (list class type source))
-         collect-instance-cells)    ; -> (listof (cons class type)), deduped
+         collect-instance-cells     ; -> (listof (cons class type)), deduped
+         stdlib-files               ; -> (listof path), shipped module files
+         pkg-root)                  ; the package root path (for sidecar reads)
 
 (define-runtime-path pkg-root "..")
 

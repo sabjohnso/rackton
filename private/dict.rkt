@@ -21,6 +21,11 @@
          rackton-no-instance-error)
 
 (require racket/struct
+         ;; Coverage instrumentation, gated at COMPILE time: `when-coverage`
+         ;; expands to nothing unless this module is compiled with
+         ;; RACKTON_COVERAGE_BUILD set, so a normal build emits no logging
+         ;; code on the dispatch path (see coverage/instrument.rkt).
+         "../coverage/instrument.rkt"
          (for-syntax racket/base
                      syntax/parse))
 
@@ -106,8 +111,10 @@
 
 (define (dispatch-and-apply name table pos args)
   (define tagger (list-ref args pos))
+  (define tag (dispatch-tag tagger))
+  (when-coverage (record-cover! name tag))
   (define impl
-    (hash-ref table (dispatch-tag tagger)
+    (hash-ref table tag
               (lambda ()
                 (rackton-no-instance-error name tagger))))
   (apply impl args))
@@ -122,6 +129,7 @@
 ;; instance is registered for that type (e.g. an instance module was
 ;; never required, so its registration side-effect never ran).
 (define (lookup-return-method table tag method-name)
+  (when-coverage (record-cover! method-name tag))
   (hash-ref table tag
             (lambda ()
               (error method-name
