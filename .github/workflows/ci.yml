@@ -9,13 +9,17 @@ jobs:
       fail-fast: false
       matrix:
         racket-version: ["stable", "current"]
-        racket-variant: ["BC", "CS"]
+        # CS only: Racket no longer distributes BC bundles (v9.2 is
+        # CS-only), so setup-racket 404s on a BC install.  BC can now be
+        # had only by building from source, which a pure-Racket project
+        # does not need.
+        racket-variant: ["CS"]
         include:
           - racket-version: current
             experimental: true
     steps:
       - uses: actions/checkout@v4
-      - uses: Bogdanp/setup-racket@v1.12
+      - uses: Bogdanp/setup-racket@v1.15
         with:
           architecture: x64
           distribution: full
@@ -26,4 +30,9 @@ jobs:
       - name: Compiling rackton and building its docs
         run: raco setup --check-pkg-deps --unused-pkg-deps rackton
       - name: Testing rackton
-        run: raco test -x -p rackton
+        # No -x: `-x` (--no-run-if-absent) runs nothing for a file that
+        # has no `test` submodule, which silently skips the ~91% of our
+        # tests that run at the top level (every native `#lang rackton`
+        # suite ending in `(define main (run-io (run-suite …)))`).  The
+        # default (-r) loads the module top level, so those tests run.
+        run: raco test -p rackton
