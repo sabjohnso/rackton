@@ -17,6 +17,7 @@
                      racket/match
                      syntax/parse
                      racket/list
+                     racket/set
                      "surface.rkt"
                      "law-bundle.rkt"
                      "infer.rkt"
@@ -634,6 +635,21 @@
     (for ([(mname _sig) (in-hash (class-info-methods ci))])
       (define sym (method-dispatch-symbol mname))
       (hash-set! export-vars sym sym)))
+  ;; A RETURN-TYPED (result-dispatched) method has no plain runtime value
+  ;; binding — its call sites compile to a lookup against the per-method
+  ;; table $dispatch:<m> — so providing the bare name fails ("not defined
+  ;; or required").  Swap each such bare name in export-vars for its
+  ;; dispatch-table symbol, the artifact a cross-module call site actually
+  ;; needs.  Idempotent with the force-export loop above (same key when the
+  ;; owning class is also exported), and self-healing when only the method
+  ;; is provided by name.  The method's TYPE still crosses via the exported
+  ;; class encoding, so an importer can type-check and run the call.
+  (define rt-methods (env-return-typed-methods env))
+  (for ([local (in-list (hash-keys export-vars))]
+        #:when (set-member? rt-methods local))
+    (hash-remove! export-vars local)
+    (hash-set! export-vars (method-dispatch-symbol local)
+                           (method-dispatch-symbol local)))
   ;; Sidecar bindings — filtered by export-vars, with renames
   ;; reflected in the published name.
   (define export-bindings
