@@ -552,7 +552,22 @@
     ;; (resolved from the expected type, like `pure`).
     (protocol (Category (cat :: (-> * (-> * *))))
       (: ident (cat a a))
-      (: comp (-> (cat b c) (-> (cat a b) (cat a c)))))
+      (: comp (-> (cat b c) (-> (cat a b) (cat a c))))
+      ;; `ident` is a left and right unit of `comp`, and `comp` is
+      ;; associative — the category laws.  Stated intensionally: equality
+      ;; is between ARROWS, assumed via `(Eq (cat …))` (no shipped arrow
+      ;; type has decidable arrow equality, but a free category does — see
+      ;; tests/category-laws-test.rkt, which also checks `(->)`
+      ;; extensionally).  `ident` is return-typed, so it is pinned with
+      ;; `ann` at the object it must take.
+      #:laws
+        ([left-identity  ((Eq (cat a b)) =>
+           (All ([f : (cat a b)]) (== (comp (ann ident (cat b b)) f) f)))]
+         [right-identity ((Eq (cat a b)) =>
+           (All ([f : (cat a b)]) (== (comp f (ann ident (cat a a))) f)))]
+         [associativity  ((Eq (cat a d)) =>
+           (All ([f : (cat c d)] [g : (cat b c)] [h : (cat a b)])
+             (== (comp (comp f g) h) (comp f (comp g h)))))]))
 
     ;; Arrow over a product `p` (determined by the arrow via the fundep).
     ;; Signatures use `(p a c)` in place of the old `(Pair a c)`.
