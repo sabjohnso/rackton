@@ -39,6 +39,40 @@
 (: gen-cat (Gen (FreeCat Integer Integer)))
 (define gen-cat (fmap (lambda (xs) (MkFreeCat xs)) (gen-list gen-string)))
 
+;; ----- a deliberately UNLAWFUL category (teeth check) -----------------
+;; Same free representation, but `ident` is NOT the empty path, so it is
+;; not a unit of `comp`: `(comp ident f)` appends "BAD" and never equals
+;; `f`.  The identity laws must catch it.  (`comp` is honest append, so it
+;; stays associative — the violation is specifically the unit law.)
+
+(data (BadCat a b) (MkBadCat (List String)))
+
+(instance (Category BadCat)
+  (define ident (MkBadCat (Cons "BAD" Nil)))
+  (define (comp f g)
+    (match f
+      [(MkBadCat fs)
+       (match g [(MkBadCat gs) (MkBadCat (append gs fs))])])))
+
+(instance (Eq (BadCat a b))
+  (define (== x y)
+    (match x [(MkBadCat xs) (match y [(MkBadCat ys) (== xs ys)])])))
+
+(instance (Show (BadCat a b))
+  (define (show x) (match x [(MkBadCat xs) (mappend "BadCat" (show xs))])))
+
+(: gen-bad (Gen (BadCat Integer Integer)))
+(define gen-bad (fmap (lambda (xs) (MkBadCat xs)) (gen-list gen-string)))
+
+;; The left-identity property RUN over BadCat must FAIL — `run-property`
+;; returns `PropFailed`.  The test passes by detecting that failure.
+(: bad-caught? Boolean)
+(define bad-caught?
+  (match (run-property 50 12345
+                       (for-all gen-bad (lambda (f) (== (comp ident f) f))))
+    [(PropFailed _ _) #t]
+    [(PropPassed _)   #f]))
+
 ;; ----- concrete (->) arrows for the extensional checks ----------------
 
 (: f1 (-> Integer Integer)) (define f1 (lambda (n) (+ n 1)))
@@ -73,7 +107,10 @@
       (for-all gi
         (lambda (x)
           (== ((comp (comp f1 g1) h1) x)
-              ((comp f1 (comp g1 h1)) x)))))))
+              ((comp f1 (comp g1 h1)) x)))))
+    ;; teeth: an unlawful Category (ident not a unit) must be caught
+    (it "an unlawful Category is caught by the identity law"
+      (check-true bad-caught?))))
 
 (: main Unit)
 (define main (run-io (run-suite-tree suite)))
