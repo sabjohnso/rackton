@@ -22,6 +22,6 @@
 ;; component past the minor is a trailing zero.  A patch-zero release is
 ;; the two-part "0.38" (not "0.38.0"); a non-zero patch is "0.38.1".
 ;; The minor is the release counter.
-(define version "1.2")
+(define version "1.3")
 (define pkg-authors '(sbj))
 (define license '(Apache-2.0 OR MIT))
