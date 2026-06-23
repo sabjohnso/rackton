@@ -4613,6 +4613,39 @@
 (define (law-constraint-type-vars c [bound '()])
   (append-map (lambda (a) (law-surface-type-vars a bound)) (constraint-args c)))
 
+;; Improvement by hypotheses (law-checking only).  The law's hypotheses
+;; are SKOLEMIZED givens; a residual constraint introduced by a method
+;; whose type underdetermines a parameter — `arr`'s product `p` (the
+;; `cat -> p` fundep cannot fire for a skolem `cat`), or `on-first`'s
+;; untouched component `c` (a fresh result variable) — carries FLEXIBLE
+;; variables that should be pinned to the givens' skolems.  `reduce-context`
+;; only discharges a hypothesis by rigid match, so it never closes these.
+;; Here we UNIFY each residual against the unique hypothesis sharing its
+;; class, accumulating the substitution, so the subsequent reduce-context
+;; can discharge it.  Conservative: only a unique, successful unification
+;; improves — an ambiguous (two same-class hyps) or failing match is left
+;; for reduce-context to resolve or report, exactly as before.  Bounded by
+;; one pass per residual (a chain can need several to propagate), which is
+;; idempotent once stable, so it terminates.
+(define (law-unify-pred-args p h)
+  (and (= (length (pred-args p)) (length (pred-args h)))
+       (with-handlers ([exn:fail:unify? (lambda (_) #f)])
+         (for/fold ([s empty-subst])
+                   ([pa (in-list (pred-args p))] [ha (in-list (pred-args h))])
+           (subst-compose (unify (apply-subst s pa) (apply-subst s ha)) s)))))
+
+(define (law-improve-by-hyps hyps preds)
+  (for/fold ([s empty-subst]) ([_ (in-range (add1 (length preds)))])
+    (for/fold ([s s]) ([p (in-list preds)])
+      (define p* (apply-subst s p))
+      (define cands
+        (filter (lambda (h) (eq? (pred-class h) (pred-class p*))) hyps))
+      (cond
+        [(and (pair? cands) (null? (cdr cands)))
+         (define u (law-unify-pred-args p* (car cands)))
+         (if u (subst-compose u s) s)]
+        [else s]))))
+
 (define (check-class-law law class-name class-params super-preds env)
   (match-define (class-law law-name context binders body law-stx) law)
   ;; A law is universally quantified over its element type variables —
@@ -4667,9 +4700,16 @@
      (unify (apply-subst s t) t-bool)))
   (define final (subst-compose s-bool s))
   (define st2 (st:apply-subst-to-preds st1 final))
+  ;; Improve flexible residual variables against the skolemized
+  ;; hypotheses before reduction (see law-improve-by-hyps), so a law that
+  ;; underdetermines a class parameter — e.g. `arr`'s product, `on-first`'s
+  ;; untouched component — pins it to the law's own givens.
+  (define improve (law-improve-by-hyps hyps (st:preds st2)))
+  (define preds*
+    (for/list ([p (in-list (st:preds st2))]) (apply-subst improve p)))
   (define residual
     (parameterize ([current-reduce-blame law-stx])
-      (reduce-context env hyps (st:preds st2))))
+      (reduce-context env hyps preds*)))
   (unless (null? residual)
     (raise-syntax-error 'infer
       (format "law ~s of protocol ~s relies on constraints the protocol does not guarantee: ~a"
