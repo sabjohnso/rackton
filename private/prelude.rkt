@@ -603,7 +603,35 @@
                           (on-first f)))))
       ;; f &&& g = arr dup >>> (f *** g)
       (define (fanout f g)
-        (comp (split f g) (arr (lambda (x) (mk-prod x x))))))
+        (comp (split f g) (arr (lambda (x) (mk-prod x x)))))
+      ;; The Arrow laws (Hughes).  `arr` is an identity-on-objects functor
+      ;; from `(->)` into the arrow; `first` preserves it, is functorial,
+      ;; and exchanges with the product structure.  Stated intensionally,
+      ;; equality between arrows assumed via `(Eq (cat …))`.  `comp` reads
+      ;; right-to-left, so `f >>> g` is `(comp g f)`.  Return-typed `arr`
+      ;; and `ident` are pinned with `ann`; the law checker improves the
+      ;; product `p` (underdetermined by `arr`) against the protocol's own
+      ;; hypotheses.
+      #:laws
+        ([arr-identity ((Eq (cat a a)) =>
+           (All ([z : a])
+             (== (ann (arr (lambda (x) x)) (cat a a))
+                 (ann ident (cat a a)))))]
+         [arr-composition ((Eq (cat a c)) =>
+           (All ([f : (-> a b)] [g : (-> b c)])
+             (== (ann (arr (lambda (x) (g (f x)))) (cat a c))
+                 (comp (arr g) (arr f)))))]
+         [first-arr ((Eq (cat (p a c) (p b c))) =>
+           (All ([f : (-> a b)])
+             (== (on-first (arr f))
+                 (arr (lambda (q) (mk-prod (f (prod-fst q)) (prod-snd q)))))))]
+         [first-composition ((Eq (cat (p a c) (p d c))) =>
+           (All ([f : (cat a b)] [g : (cat b d)])
+             (== (on-first (comp g f)) (comp (on-first g) (on-first f)))))]
+         [first-projection ((Eq (cat (p a c) b)) =>
+           (All ([f : (cat a b)])
+             (== (comp (arr (lambda (q) (prod-fst q))) (on-first f))
+                 (comp f (arr (lambda (q) (prod-fst q)))))))]))
 
     (instance (Category (->))
       (define ident (lambda (x) x))
@@ -650,7 +678,26 @@
       ;; f ||| g = (f +++ g) >>> arr untag
       (define (fanin f g)
         (comp (arr (lambda (e) (co-elim (lambda (x) x) (lambda (x) x) e)))
-              (fork f g))))
+              (fork f g)))
+      ;; The ArrowChoice laws, dual to Arrow over the coproduct `s`:
+      ;; `on-left` preserves a lifted function, is functorial, and `inj-left`
+      ;; is natural.  Equality between arrows assumed via `(Eq (cat …))`.
+      ;; The return-typed `arr` / `inj-left` / `inj-right` resolve their
+      ;; product/coproduct parameters by improvement against the protocol's
+      ;; hypotheses.
+      #:laws
+        ([left-arr ((Eq (cat (s a x) (s b x))) =>
+           (All ([f : (-> a b)])
+             (== (on-left (arr f))
+                 (arr (lambda (e)
+                        (co-elim (lambda (av) (inj-left (f av))) inj-right e))))))]
+         [left-composition ((Eq (cat (s a x) (s d x))) =>
+           (All ([f : (cat a b)] [g : (cat b d)])
+             (== (on-left (comp g f)) (comp (on-left g) (on-left f)))))]
+         [left-injection ((Eq (cat a (s b x))) =>
+           (All ([f : (cat a b)])
+             (== (comp (on-left f) (arr (lambda (v) (inj-left v))))
+                 (comp (arr (lambda (v) (inj-left v))) f))))]))
 
     ;; Only the primitive; on-right/fork/fanin come from the ArrowChoice
     ;; defaults.  Runtime impls are hand-registered in prelude-runtime.rkt.
@@ -663,7 +710,15 @@
     (protocol (ArrowApply (cat :: (-> * (-> * *))) (p :: (-> * (-> * *))))
       (#:requires (Arrow cat p))
       (#:fundep cat -> p)
-      (: arrow-app (cat (p (cat a b) a) b)))
+      (: arrow-app (cat (p (cat a b) a) b))
+      ;; ArrowApply's characterizing law: pairing a value with a fixed
+      ;; arrow `f` and then applying recovers `f` —
+      ;; `app . arr (\a -> (f, a)) = f`.  Return-typed `arrow-app` / `arr`
+      ;; / `mk-prod` resolve by improvement against the hypotheses.
+      #:laws
+        ([apply-pairing ((Eq (cat a b)) =>
+           (All ([f : (cat a b)])
+             (== (comp arrow-app (arr (lambda (av) (mk-prod f av)))) f)))]))
 
     (instance (ArrowApply (->) Pair)
       (define arrow-app (lambda (q) (match q [(Pair f x) (f x)]))))
@@ -677,7 +732,17 @@
     (protocol (ArrowLoop (cat :: (-> * (-> * *))) (p :: (-> * (-> * *))))
       (#:requires (Arrow cat p))
       (#:fundep cat -> p)
-      (: arrow-loop (-> (cat (p a c) (p b c)) (cat a b))))
+      (: arrow-loop (-> (cat (p a c) (p b c)) (cat a b)))
+      ;; ArrowLoop's left-tightening law: a pure-on-first stage before the
+      ;; loop body slides out of the loop —
+      ;; `loop (first h >>> f) = h >>> loop f`.  (`(->)` has no ArrowLoop
+      ;; instance — tying the knot needs laziness — so this is verified
+      ;; extensionally on the lazy-function arrow.)
+      #:laws
+        ([left-tightening ((Eq (cat a b)) =>
+           (All ([h : (cat a e)] [f : (cat (p e c) (p b c))])
+             (== (arrow-loop (comp f (on-first h)))
+                 (comp (arrow-loop f) h))))]))
 
     ;; --- Small stdlib ------------------------------------------
 
