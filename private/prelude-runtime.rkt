@@ -703,8 +703,10 @@
 (define/curried (substring s start end) (rkt:substring s start end))
 
 (define/curried (string-prefix? p s)
-  (and (rkt:<= (rkt:string-length p) (rkt:string-length s))
-       (rkt:string=? p (rkt:substring s 0 (rkt:string-length p)))))
+  ;; rkt:and (short-circuiting), NOT the strict Rackton `and`, so the
+  ;; length guard protects the substring when s is shorter than p.
+  (rkt:and (rkt:<= (rkt:string-length p) (rkt:string-length s))
+           (rkt:string=? p (rkt:substring s 0 (rkt:string-length p)))))
 
 (define/curried (string-split sep s)
   ;; Split `s` on every occurrence of `sep`.  Behaves like Racket's

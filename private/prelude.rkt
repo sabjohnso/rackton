@@ -288,7 +288,11 @@
       (define (fapply ff fa)
         (fmap (lambda (p) (match p [(Pair f x) (f x)])) (product ff fa)))
       (define (liftA2 g x y) (fapply (fmap g x) y))
-      (define (product x y) (liftA2 Pair x y))
+      ;; An explicit curried lambda, not the bare 2-arg `Pair`
+      ;; constructor: n-ary data constructors do not curry as
+      ;; first-class values, so `(liftA2 Pair …)` applied `Pair` to one
+      ;; argument and threw an arity error.  See ISSUES.org.
+      (define (product x y) (liftA2 (lambda (a) (lambda (b) (Pair a b))) x y))
       ;; Cross-class derivation of the Functor superclass: an Applicative
       ;; instance written with `#:derive-supers` (supplying `pure`
       ;; and `fapply`) gets `Functor` for free via `fmap f = pure f <*>`.
