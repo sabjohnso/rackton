@@ -40,6 +40,7 @@ The families, each documenting the modules beneath it:
 @include-section["stdlib-linear.scrbl"]
 @include-section["stdlib-effects.scrbl"]
 @include-section["stdlib-temporal.scrbl"]
+@include-section["stdlib-incremental.scrbl"]
 
 @section[#:tag "stdlib-foreign"]{@tt{rackton/foreign} — raw memory (unsafe)}
 
