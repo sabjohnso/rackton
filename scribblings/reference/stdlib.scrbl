@@ -38,6 +38,7 @@ The families, each documenting the modules beneath it:
 @include-section["stdlib-unit.scrbl"]
 @include-section["stdlib-mono.scrbl"]
 @include-section["stdlib-linear.scrbl"]
+@include-section["stdlib-effects.scrbl"]
 
 @section[#:tag "stdlib-foreign"]{@tt{rackton/foreign} — raw memory (unsafe)}
 
