@@ -21,7 +21,7 @@
 (require rackton/mono
          rackton/temporal)
 
-(provide scan-mono)
+(provide scan-mono scan-mono-diff)
 
 ;; From the previous output and the current input, `step` builds a monotone
 ;; endomap whose least fixpoint is this tick's output; that output is then
@@ -39,3 +39,21 @@
 (define (scan-mono/emit step out later-ins)
   (SigCons out
            (map-later (lambda (rest) (scan-mono step out rest)) later-ins)))
+
+;; DIFFERENTIAL variant: resume each tick's fixpoint from the PREVIOUS output
+;; (`mono-fix-from`) instead of from ⊥, doing incremental rather than
+;; from-scratch work.  Sound — gives the same stream as `scan-mono` — WHEN
+;; the per-tick maps grow monotonically (each tick's map ⊒ the last), since
+;; then the previous output is below the new least fixpoint.  That holds for
+;; accumulating dataflow (state folded forward).  The caller's initial `seed`
+;; must be a valid lower bound (e.g. ⊥).
+(: scan-mono-diff ((Eq s) =>
+   (-> (-> s in (Mono s s)) s (Signal in) (Signal s))))
+(define (scan-mono-diff step prev ins)
+  (scan-diff/emit step (mono-fix-from prev (step prev (sig-head ins))) (sig-tail ins)))
+
+(: scan-diff/emit ((Eq s) =>
+   (-> (-> s in (Mono s s)) s (Later (Signal in)) (Signal s))))
+(define (scan-diff/emit step out later-ins)
+  (SigCons out
+           (map-later (lambda (rest) (scan-mono-diff step out rest)) later-ins)))

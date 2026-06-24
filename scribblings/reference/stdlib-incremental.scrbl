@@ -35,6 +35,16 @@ auto-prelude; @racket[require] it explicitly.
   (see @tt{examples/incremental-dataflow.rkt}).
 }
 
+@defproc[(scan-mono-diff [step (-> s in (Mono s s))] [seed s] [ins (Signal in)]) (Signal s)]{
+  The @bold{differential} variant (needs @racket[(Eq s)]): resume each tick's
+  fixpoint from the PREVIOUS output (via @racket[mono-fix-from]) instead of
+  from ⊥, doing incremental rather than from-scratch work.  Produces the same
+  stream as @racket[scan-mono] WHEN the per-tick maps grow monotonically
+  (each tick's map dominates the last) — which holds for accumulating
+  dataflow, where the previous output is below the new least fixpoint.  The
+  initial @racket[seed] must be a valid lower bound (e.g. ⊥).
+}
+
 @section{Example — a latch}
 
 A minimal instance over the shipped @racket[Boolean] lattice: the new value

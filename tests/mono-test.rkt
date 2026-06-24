@@ -126,7 +126,13 @@
                      [(Some r) (== r expected)] [None #f])))
      (it "mono-fix/fuel returns None when starved"
        (check-true (match (mono-fix/fuel 1 step)
-                     [(Some r) #f] [None #t]))))))
+                     [(Some r) #f] [None #t])))
+     ;; mono-fix-from: resuming from ⊥ matches mono-fix; resuming from the
+     ;; answer itself is idempotent (the differential refinement is correct)
+     (it "mono-fix-from bot agrees with mono-fix"
+       (check-true (== (mono-fix-from (MkRel empty-set) step) tc)))
+     (it "mono-fix-from the fixpoint is idempotent"
+       (check-true (== (mono-fix-from tc step) tc))))))
 
 (: suite Test)
 (define suite (group-of "rackton/mono" (list order-laws combinator-laws datalog)))

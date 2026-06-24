@@ -34,7 +34,7 @@
          run-mono app-mono
          mono-id mono-comp mono-const mono-fst mono-snd mono-pair mono-join
          unsafe-mono
-         mono-fix mono-fix/fuel)
+         mono-fix mono-fix-from mono-fix/fuel)
 
 ;; ===== order-theory protocols =========================================
 
@@ -133,8 +133,18 @@
 (define (fix-iter step x)
   (if (== (step x) x) x (fix-iter step (step x))))
 
+;; Resume the fixpoint from a given `seed` instead of ⊥.  When `seed` is a
+;; PRE-FIXPOINT (seed ⊑ f seed — in particular any seed below the least
+;; fixpoint), the iteration ascends to the least fixpoint that dominates
+;; `seed`, which equals the global least fixpoint when seed ⊑ lfp(f).  ⊥ is
+;; always valid (and recovers `mono-fix`); a HIGHER valid seed reaches the
+;; fixpoint in fewer steps — the basis of differential / incremental
+;; recomputation (resume from a previous result).
+(: mono-fix-from ((Eq a) => (-> a (Mono a a) a)))
+(define (mono-fix-from seed f) (fix-iter (run-mono f) seed))
+
 (: mono-fix ((BoundedJoinSemilattice a) => (-> (Mono a a) a)))
-(define (mono-fix f) (fix-iter (run-mono f) bot))
+(define (mono-fix f) (mono-fix-from bot f))
 
 ;; fuel-bounded: `Some` the least fixpoint if reached within `fuel` steps,
 ;; else `None`.

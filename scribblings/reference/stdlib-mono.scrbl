@@ -107,6 +107,17 @@ carries it with no special checker support.
   carrier whose ascending-chain condition is not guaranteed.
 }
 
+@defproc[(mono-fix-from [seed a] [f (Mono a a)]) a]{
+  Resume the fixpoint from @racket[seed] instead of @racket[bot] (needs only
+  @racket[(Eq a)]).  When @racket[seed] is below the least fixpoint (a
+  pre-fixpoint, @racket[seed ⊑ (app-mono f seed)]), the iteration ascends to
+  the @emph{same} least fixpoint @racket[mono-fix] would compute — but a
+  @racket[seed] closer to the answer reaches it in fewer steps.  This is the
+  basis of differential / incremental recomputation: resume from a previous
+  result rather than from scratch (see @racketmodname[rackton/incremental]).
+  @racket[bot] is always a valid seed and recovers @racket[mono-fix].
+}
+
 @section{Example — transitive closure as a least fixpoint}
 
 A one-rule Datalog program: the transitive closure of a graph is the least
