@@ -124,12 +124,17 @@
 (: spaces (-> Integer String))
 (define (spaces n) (if (<= n 0) "" (string-append " " (spaces (- n 1)))))
 
+;; Accumulate the pieces in `acc` in REVERSE order (each push O(1)) and
+;; concatenate once with `string-join` (a single linear pass), so a
+;; large SimpleDoc renders in O(n) rather than the O(n^2) of repeatedly
+;; `string-append`-ing onto the growing tail.
 (: layout (-> SimpleDoc String))
 (define (layout sd)
-  (match sd
-    [(SEmpty)       ""]
-    [(SText s rest) (string-append s (layout rest))]
-    [(SLine i rest) (string-append (string-append "\n" (spaces i)) (layout rest))]))
+  (let loop ([d sd] [acc Nil])
+    (match d
+      [(SEmpty)       (string-join "" (reverse acc))]
+      [(SText s rest) (loop rest (Cons s acc))]
+      [(SLine i rest) (loop rest (Cons (spaces i) (Cons "\n" acc)))])))
 
 ;; Does the flat first line of this work list fit in `avail` columns?
 ;; Walk cheaply, stopping at the first line break; `k` is the absolute
