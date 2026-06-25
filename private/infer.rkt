@@ -99,6 +99,17 @@
 ;; resolve to the locally-bound dict args.
 (define current-dict-skolems (make-parameter (hasheq)))
 
+;; The skolemized constraints of the declared signature whose body is
+;; currently being checked — e.g. `(Eq $skolem.a)` for `(: f (All (a)
+;; ((Eq a) => …)))`.  These givens are in scope throughout the body, so
+;; an inner `let`/`letrec` generalized mid-body may assume them when it
+;; discharges its own constraints.  The declared-def paths set this
+;; around body inference; `generalize*` folds it into the hypotheses it
+;; hands to `reduce-context`.  Empty everywhere else (the undeclared
+;; path has no skolem givens, so a residual constraint there is a tvar
+;; constraint that stays in head-normal form and propagates up).
+(define current-given-preds (make-parameter '()))
+
 ;; The monomorphization log is the 'monomorphized-sites channel in the threaded
 ;; infer-state (a newest-first list); resolve-method-uses accumulates it and
 ;; infer-program+forms reads it out for the elaborator.
@@ -737,7 +748,14 @@
   (define ty-fv  (type-vars ty*))
   (define q-set  (set-subtract ty-fv env-fv))
   (define-values (preds st2) (st:take-relevant-preds st1 q-set))
-  (define reduced (reduce-context env hypotheses preds))
+  ;; The enclosing declared signature's skolem givens (if any) are in
+  ;; scope here, so a constraint this binding raised over one of those
+  ;; skolems — e.g. an inner `let loop` using `==` under `(Eq a)` —
+  ;; is discharged against the hypothesis rather than searched for as
+  ;; an instance.  Without it, the ground skolem pred has no proof and
+  ;; reduce-context reports a spurious "no instance".
+  (define reduced
+    (reduce-context env (append hypotheses (current-given-preds)) preds))
   (define final-q
     (for/fold ([acc q-set]) ([p (in-list reduced)])
       (set-union acc (type-vars p))))
@@ -3972,6 +3990,11 @@
   (define decl-ty (normalize-type/guarded env decl-ty0))
   (define saved-skolems (current-dict-skolems))
   (current-dict-skolems dict-skolems)
+  ;; Make the signature's skolem givens visible while the body is
+  ;; inferred, so an inner `let`/`letrec` generalized mid-body can
+  ;; discharge a constraint over those skolems (see `generalize*`).
+  (define saved-given (current-given-preds))
+  (current-given-preds decl-preds)
   (define-values (s t st1)
     (cond
       [(and (e:lam? expr)
@@ -4038,6 +4061,7 @@
   (define st7 (if (null? dict-arg-names) st6
                   (st-table-put st6 'needs-dict-defs name dict-arg-names)))
   (current-dict-skolems saved-skolems)
+  (current-given-preds saved-given)
   (values env st7))
 
 ;; Infer one SCC of undeclared defs.  Singleton SCC (no self-edge):
@@ -4290,6 +4314,11 @@
         ;; for the whole branch instead of wrapping just infer-expr.
         (define saved-skolems (current-dict-skolems))
         (current-dict-skolems dict-skolems)
+        ;; Make the signature's skolem givens visible while the body is
+        ;; inferred (see `current-given-preds` / `generalize*`), so an
+        ;; inner `let`/`letrec` can discharge a constraint over them.
+        (define saved-given (current-given-preds))
+        (current-given-preds decl-preds)
         ;; When the body is a lambda and the declared
         ;; type has at least that many leading arrows, push the
         ;; SKOLEMIZED parameter types directly into the env so
@@ -4363,6 +4392,7 @@
         (define st5 (if (null? dict-arg-names) st4
                         (st-table-put st4 'needs-dict-defs name dict-arg-names)))
         (current-dict-skolems saved-skolems)
+        (current-given-preds saved-given)
         (values (env-extend-var env name decl-scheme)
                 (hash-remove declared name)
                 st5)]
