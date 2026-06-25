@@ -203,7 +203,16 @@
 
    (it "reindent aligns data-list elements under the first"
        (all-checks
-        (list (check-equal? (reindent-source "([x 1]\n[y 2])") "([x 1]\n [y 2])"))))))
+        (list (check-equal? (reindent-source "([x 1]\n[y 2])") "([x 1]\n [y 2])"))))
+
+   (it "racket/base special forms reindent their body +2, not aligned under arg1"
+       (all-checks
+        (list (check-equal? (reindent-source "(define-syntax foo\n(bar))")
+                            "(define-syntax foo\n  (bar))")
+              (check-equal? (reindent-source "(case x\n[a 1]\n[b 2])")
+                            "(case x\n  [a 1]\n  [b 2])")
+              (check-equal? (reindent-source "(let-values ([x y])\n(g))")
+                            "(let-values ([x y])\n  (g))"))))))
 
 ;; ----- safety: formatting preserves every code token --------------
 

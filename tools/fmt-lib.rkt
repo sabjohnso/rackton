@@ -233,15 +233,32 @@
 (: head-spec (-> String IndentSpec))
 (define (head-spec h)
   (cond
-    ;; the host escape: type + var-list distinguished, body +2
-    [(== h "racket") (Body 2)]
-    [(member-of h (list "define" "lambda" "λ" "fn" "let" "let*" "letrec"
-                        "let&" "let%" "let+" "do" "when" "unless" "if" "match"
-                        "match*" "for" "for/list" "for/fold" "parameterize"
-                        "with-handlers" "struct" "module" "module*"))
+    ;; two distinguished args on the head line, body +2:
+    ;; the host escape (type + vars), and syntax-case (stx + literals)
+    [(member-of h (list "racket" "syntax-case")) (Body 2)]
+    ;; one distinguished arg on the head line, body +2
+    [(member-of h (list
+                   ;; Rackton + Racket binding / definition forms
+                   "define" "lambda" "λ" "fn" "let" "let*" "letrec"
+                   "let&" "let%" "let+" "do" "when" "unless" "if" "match"
+                   "match*" "parameterize" "parameterize*" "with-handlers"
+                   "with-handlers*" "struct" "module" "module*" "module+"
+                   "define-syntax" "define-syntax-rule" "define-syntaxes"
+                   "define-values" "define-for-syntax" "define-struct"
+                   "define-match-expander" "match-define"
+                   "let-values" "let*-values" "letrec-values"
+                   "let-syntax" "letrec-syntax" "let-syntaxes"
+                   "match-let" "match-let*" "case" "begin0"
+                   "with-syntax" "with-syntax*" "syntax-parse" "syntax-parser"
+                   ;; for-comprehension family
+                   "for" "for*" "for/list" "for*/list" "for/fold" "for*/fold"
+                   "for/vector" "for*/vector" "for/hash" "for/hasheq"
+                   "for/hasheqv" "for/and" "for/or" "for/sum" "for/product"
+                   "for/first" "for/last" "for/lists" "for/string" "for/foldr"))
      (Body 1)]
-    [(member-of h (list "cond" "begin" "data" "class" "instance"
-                        "case-lambda" "match-lambda"))
+    ;; no distinguished args; every clause / form indents +2
+    [(member-of h (list "cond" "begin" "begin-for-syntax" "data" "class"
+                        "instance" "case-lambda" "match-lambda" "match-lambda*"))
      (Body 0)]
     ;; any other atom head is a function call (require/provide included)
     [else Call]))
