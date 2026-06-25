@@ -193,8 +193,48 @@
                       stx))
          stx))
 
-;; Convert a quoted/quasiquoted datum to a core AST node.
+;; {k1 v1 ... kn vn} under quote/quasiquote => nested map-insert, the first
+;; pair innermost (last write wins), recursing through `quote->ast` at the
+;; current level so a `,` escape evaluates and a bare key stays a Symbol.
+;; An odd number of forms is a located error.
+(define (quote-map elems level stx)
+  (unless (even? (length elems))
+    (raise-syntax-error 'rackton
+      "quoted map literal {..} needs an even number of forms: {key value ...}"
+      stx))
+  (let loop ([elems elems] [acc (e:var 'empty-map stx)])
+    (cond
+      [(null? elems) acc]
+      [else
+       (loop (cddr elems)
+             (e:app (e:var 'map-insert stx)
+                    (list (quote->ast (car elems) level stx)
+                          (quote->ast (cadr elems) level stx)
+                          acc)
+                    stx))])))
+
+;; #{m1 ... mn} under quote/quasiquote => nested set-insert, recursing
+;; through `quote->ast` at the current level; duplicate members collapse.
+(define (quote-set elems level stx)
+  (let loop ([elems elems] [acc (e:var 'empty-set stx)])
+    (cond
+      [(null? elems) acc]
+      [else
+       (loop (cdr elems)
+             (e:app (e:var 'set-insert stx)
+                    (list (quote->ast (car elems) level stx) acc)
+                    stx))])))
+
+;; Convert a quoted/quasiquoted datum to a core AST node.  A curly-brace
+;; datum builds a Map/Set literal (paren-shape #\{, list => map, vector =>
+;; set), extending {..}/#{..} to quotation exactly as '[..] extends [..].
 (define (quote->ast d level stx)
+  (case (bracket-literal-kind d)
+    [(map) (quote-map (syntax->list d) level stx)]
+    [(set) (quote-set (vector->list (syntax-e d)) level stx)]
+    [else (quote->ast/form d level stx)]))
+
+(define (quote->ast/form d level stx)
   (syntax-parse d
     #:datum-literals (quasiquote unquote unquote-splicing)
     [(unquote e)
@@ -1442,6 +1482,16 @@
 ;; keep it as data.  A quoted list is always fixed-arity (Nil-terminated);
 ;; `,@` (splice) has no pattern meaning and is rejected.
 (define (quote->pattern d level stx)
+  ;; Curly-brace literals have no pattern meaning (as in unquoted position),
+  ;; so a quoted/quasiquoted map or set is a located error rather than a
+  ;; silently-different list pattern.
+  (case (bracket-literal-kind d)
+    [(map set)
+     (raise-syntax-error 'rackton
+       "map/set literals ({..} / #{..}) are not patterns" stx)]
+    [else (quote->pattern/form d level stx)]))
+
+(define (quote->pattern/form d level stx)
   (syntax-parse d
     #:datum-literals (quasiquote unquote unquote-splicing)
     [(unquote e)

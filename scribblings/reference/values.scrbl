@@ -324,7 +324,14 @@ is @racket[empty-set].}
 
 Under quotation the same shapes build data: @litchar|{'(a b c)}| is a
 @racket[List] of symbols and @litchar|{'(a . b)}| is @racket[(Pair 'a 'b)];
-a head unquote escapes, as in @litchar|{`(,x . tag)}|.
+a head unquote escapes, as in @litchar|{`(,x . tag)}|.  The brace shapes
+quote the same way: @litchar|{'{A 1 B 2}}| is a @racket[(Map Symbol Integer)]
+(keys and values quoted) and @litchar|{'#{A B C}}| is a
+@racket[(Set Symbol)], while under quasiquote a @litchar|{,}| escape
+evaluates its position — @litchar|{`{,k 1 ,j 2}}| keys the map by the
+@emph{values} of @racket[k] and @racket[j], and @litchar|{`#{,x ,y}}|
+builds a set of the values of @racket[x] and @racket[y].  As with the
+unquoted forms, a quoted map or set is not a @racket[match] pattern.
 
 Ordinary parentheses keep every meaning they had: @racket[(list ...)],
 @racket[(Pair a b)], @racket[(array ...)], applications, and special forms

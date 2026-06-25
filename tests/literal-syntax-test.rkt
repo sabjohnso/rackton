@@ -161,6 +161,67 @@
  (property ([a gen:natural] [b gen:natural] [c gen:natural])
    (check-equal? (((lit3 a) b) c) (((call3 a) b) c))))
 
+;; ===== quoted map/set literals ======================================
+;;
+;; Quotation extends the {..}/#{..} literals the same way it extends
+;; [..]: paren-shape is honoured under quote/quasiquote.
+;;
+;;   '{A 1 B 2}    => (Map Symbol Integer)   keys/values quoted
+;;   `{,A 1 ,B 2}  => (Map ABC Integer)      `,` escapes evaluate
+;;   '#{A B C}     => (Set Symbol)           members quoted
+;;   `#{,A ,B ,C}  => (Set ABC)              `,` escapes evaluate
+
+(rackton
+  (data ABC A B C)
+
+  ;; quoted: symbol keys, integer values  => (Map Symbol Integer)
+  (define qmap-sym   '{A 1 B 2})
+  ;; quasiquoted keys evaluate            => (Map ABC Integer)
+  (define qmap-abc     `{,A 1 ,B 2})
+  (define qmap-abc-exp (map-insert A 1 (map-insert B 2 empty-map)))
+  (define qmap-empty '{})
+
+  ;; quoted: symbol members               => (Set Symbol)
+  (define qset-sym   '#{A B C})
+  ;; quasiquoted members evaluate         => (Set ABC)
+  (define qset-abc     `#{,A ,B ,C})
+  (define qset-abc-exp (set-insert A (set-insert B (set-insert C empty-set))))
+  (define qset-empty '#{}))
+
+(test-case "'{...} builds a Map with quoted (symbol) keys and values"
+  (check-equal? qmap-sym (map-insert 'A 1 (map-insert 'B 2 empty-map))))
+
+(test-case "`{,k v ...} evaluates unquoted keys"
+  (check-equal? qmap-abc qmap-abc-exp))
+
+(test-case "'{} is the empty map"
+  (check-equal? qmap-empty empty-map))
+
+(test-case "'#{...} builds a Set of quoted (symbol) members"
+  (check-equal? qset-sym (set-insert 'A (set-insert 'B (set-insert 'C empty-set)))))
+
+(test-case "`#{,m ...} evaluates unquoted members"
+  (check-equal? qset-abc qset-abc-exp))
+
+(test-case "'#{} is the empty set"
+  (check-equal? qset-empty empty-set))
+
+(test-case "an odd-length quoted map literal is rejected"
+  (check-rackton-compile-error
+   (define bad '{A 1 B})))
+
+(test-case "a heterogeneous quoted map literal is a type error"
+  (check-rackton-compile-error
+   (define bad '{A 1 B "x"})))
+
+(test-case "a quoted map literal is not a pattern"
+  (check-rackton-compile-error
+   (define (f m) (match m ['{A 1} "x"] [_ "y"]))))
+
+(test-case "a quoted set literal is not a pattern"
+  (check-rackton-compile-error
+   (define (f s) (match s ['#{A B} "x"] [_ "y"]))))
+
 ;; ===== dotted-pair literals =========================================
 ;;
 ;; [a . b] is to Pair what [a b c] is to List: the square-bracket form
