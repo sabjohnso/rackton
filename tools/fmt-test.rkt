@@ -112,10 +112,17 @@
         (list (check-equal? (reflow-source 80 "(define   (f  x)   (+ x   1))")
                             "(define (f x) (+ x 1))\n"))))
 
-   (it "a form that does not fit breaks, args aligned under the first"
+   (it "a call that does not fit keeps arg1 on the head line, rest +2"
        (all-checks
         (list (check-equal? (reflow-source 10 "(foo aa bb cc)")
-                            "(foo aa\n     bb\n     cc)\n"))))
+                            "(foo aa\n  bb\n  cc)\n"))))
+
+   (it "a data list aligns its elements under the first"
+       (all-checks
+        (list (check-equal? (reflow-source 8 "([a 1] [b 2])")
+                            "([a 1]\n [b 2])\n")
+              (check-equal? (reflow-source 12 "(let ([x 1] [y 2]) z)")
+                            "(let ([x 1]\n      [y 2])\n  z)\n"))))
 
    (it "a trailing comment stays on its line"
        (all-checks
@@ -152,7 +159,23 @@
    (it "a trailing comment after the head args stays on the head line"
        (all-checks
         (list (check-equal? (reflow-source 80 "(let ([x 1]) ; note\n  (g x))")
-                            "(let ([x 1]) ; note\n  (g x))\n"))))))
+                            "(let ([x 1]) ; note\n  (g x))\n"))))
+
+   ;; house-style tuning of the indent table
+   (it "do keeps its first binding on the head line, body +2"
+       (all-checks
+        (list (check-equal? (reflow-source 16 "(do [a b] (c) (d))")
+                            "(do [a b]\n  (c)\n  (d))\n"))))
+
+   (it "require is a call: specs +2 in reflow"
+       (all-checks
+        (list (check-equal? (reflow-source 18 "(require aaa bbb ccc)")
+                            "(require aaa\n  bbb\n  ccc)\n"))))
+
+   (it "the racket escape keeps type + vars on the head line, body +2"
+       (all-checks
+        (list (check-equal? (reflow-source 20 "(racket Foo (x) (bar) (baz))")
+                            "(racket Foo (x)\n  (bar)\n  (baz))\n"))))))
 
 ;; ----- Step 4: reindent --------------------------------------------
 
@@ -176,7 +199,11 @@
    (it "reindent compounds nested indentation"
        (all-checks
         (list (check-equal? (reindent-source "(define (f)\n(let ([x 1])\n(g x)))")
-                            "(define (f)\n  (let ([x 1])\n    (g x)))"))))))
+                            "(define (f)\n  (let ([x 1])\n    (g x)))"))))
+
+   (it "reindent aligns data-list elements under the first"
+       (all-checks
+        (list (check-equal? (reindent-source "([x 1]\n[y 2])") "([x 1]\n [y 2])"))))))
 
 ;; ----- safety: formatting preserves every code token --------------
 

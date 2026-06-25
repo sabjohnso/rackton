@@ -217,20 +217,14 @@
     [(Cons (Pair _ it) rest)
      (<> (item-doc it) (<> (glue it (blank-of rest) (item-of rest)) (join-marked rest)))]))
 
-;; separator between a group's head and the aligned rest.
-(: head-sep (-> Item (List (Pair Boolean Item)) Doc))
-(define (head-sep head rest)
-  (cond
-    [(blank-of rest)        (<> hardline hardline)]
-    [(comment-item? head)   hardline]
-    [else                   space]))
 
 ;; ----- the head-indent table ---------------------------------------
 ;; How a group lays out when broken, chosen by its head atom.
 
 (data IndentSpec
-  (Body Integer)   ; keep N distinguished args on the head line, body indents 2
-  Apply)            ; align all args under the first argument (a call)
+  (Body Integer)   ; special form: keep N distinguished args on the head line, body +2
+  Call             ; function call: head + arg1 on the head line, the rest +2
+  DataList)         ; head is not a name (a bracketed list): align elements under the first
 
 (: member-of (-> String (List String) Boolean))
 (define (member-of x xs)
@@ -239,19 +233,24 @@
 (: head-spec (-> String IndentSpec))
 (define (head-spec h)
   (cond
+    ;; the host escape: type + var-list distinguished, body +2
+    [(== h "racket") (Body 2)]
     [(member-of h (list "define" "lambda" "λ" "fn" "let" "let*" "letrec"
-                        "let&" "let%" "let+" "when" "unless" "if" "match"
+                        "let&" "let%" "let+" "do" "when" "unless" "if" "match"
                         "match*" "for" "for/list" "for/fold" "parameterize"
                         "with-handlers" "struct" "module" "module*"))
      (Body 1)]
-    [(member-of h (list "cond" "begin" "do" "data" "class" "instance"
-                        "case-lambda" "match-lambda" "provide" "require"))
+    [(member-of h (list "cond" "begin" "data" "class" "instance"
+                        "case-lambda" "match-lambda"))
      (Body 0)]
-    [else Apply]))
+    ;; any other atom head is a function call (require/provide included)
+    [else Call]))
 
+;; a group whose head is not a name (e.g. a let binding list) is a data
+;; list; its elements align under the first.
 (: head-spec-of (-> Item IndentSpec))
 (define (head-spec-of it)
-  (match it [(INode (Atom x)) (head-spec x)] [_ Apply]))
+  (match it [(INode (Atom x)) (head-spec x)] [_ DataList]))
 
 ;; split the first n marked items off the front.
 (: split-marked (-> Integer (List (Pair Boolean Item))
@@ -316,24 +315,25 @@
                                                  (nest 2 (<> sep (join-marked body)))
                                                  c)))))]))])])))
 
-;; a function call: the rest align under the first argument.
-(: apply-layout (-> Shape Item (List (Pair Boolean Item)) Doc))
-(define (apply-layout shape head rest)
+;; a data list: every element aligns under the first (which sits right
+;; after the open bracket — a fixed column, so no name-length drift).
+(: datalist-layout (-> Shape (List (Pair Boolean Item)) Doc))
+(define (datalist-layout shape ms)
   (let ([o (text (open-str shape))] [c (text (close-str shape))])
-    (group (<> o (<> (item-doc head)
-                     (<> (head-sep head rest)
-                         (<> (align (join-marked rest)) c)))))))
+    (group (hcat (list o (align (join-marked ms)) c)))))
 
 (: group-doc (-> Shape (List Item) Doc))
 (define (group-doc shape items)
-  (let ([o (text (open-str shape))] [c (text (close-str shape))])
-    (match (mark-blanks items)
+  (let ([o (text (open-str shape))] [c (text (close-str shape))]
+        [ms (mark-blanks items)])
+    (match ms
       [(Nil)                      (<> o c)]
       [(Cons (Pair _ head) (Nil)) (<> o (<> (item-doc head) c))]
       [(Cons (Pair _ head) rest)
        (match (head-spec-of head)
-         [(Body n) (body-layout shape head rest n)]
-         [(Apply)  (apply-layout shape head rest)])])))
+         [(Body n)   (body-layout shape head rest n)]
+         [(Call)     (body-layout shape head rest 1)]   ; arg1 on head line, rest +2
+         [(DataList) (datalist-layout shape ms)])])))
 
 ;; top level: each form on its own line, blank lines preserved.
 (: top-glue (-> Item Boolean Item Doc))
@@ -411,21 +411,25 @@
 (: drop-ctx (-> (List Ctx) (List Ctx)))
 (define (drop-ctx stack) (match stack [(Nil) Nil] [(Cons _ r) r]))
 
-;; a call's continuation lines align under arg1 (or just inside the open).
+;; a call's continuation lines align under arg1 when the author put
+;; arguments on the call's line; otherwise they fall to a fixed +2.
 (: apply-indent (-> Integer (Maybe Integer) Integer))
-(define (apply-indent oc a) (match a [(Some ac) ac] [(None) (+ oc 1)]))
+(define (apply-indent oc a) (match a [(Some ac) ac] [(None) (+ oc 2)]))
 
 ;; the indentation a new line should get, from the innermost context.
+;; A data list (no atom head) aligns its elements under the first, which
+;; sits just inside the open bracket (oc+1).
 (: compute-indent (-> (List Ctx) Integer))
 (define (compute-indent stack)
   (match stack
     [(Nil) 0]
     [(Cons (Ctx oc head items a) _)
      (match head
-       [(None)   (apply-indent oc a)]
+       [(None)   (+ oc 1)]
        [(Some h) (match (head-spec h)
-                   [(Body n) (+ oc 2)]
-                   [(Apply)  (apply-indent oc a)])])]))
+                   [(Body n)   (+ oc 2)]
+                   [(Call)     (apply-indent oc a)]
+                   [(DataList) (+ oc 1)])])]))
 
 ;; Walk the tokens, tracking the open-paren stack and current column;
 ;; emit each token verbatim, but at every line break replace the next
