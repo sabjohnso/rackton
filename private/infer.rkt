@@ -185,6 +185,15 @@
 ;; so the expected type only ever reaches a tail GADT-elimination site.
 (define ((with-expected exp comp) ctx st)
   (parameterize ([current-expected-type exp]) (comp ctx st)))
+;; Run a monadic computation with extra skolem givens in scope (see
+;; `current-given-preds`).  Appends to the execution-time givens rather
+;; than replacing them, so a scope nested inside a declared def — an
+;; existential `open` or a `match` arm in the def's body — composes its
+;; own packed hypotheses with the def's.  Parameterizes the *execution*
+;; (the monad is delayed), mirroring `with-expected`.
+(define ((with-given-preds ps comp) ctx st)
+  (parameterize ([current-given-preds (append ps (current-given-preds))])
+    (comp ctx st)))
 ;; The expression forms into which an expected result type may flow: a
 ;; `match` (which consumes it) or an `if`/`let`/`letrec` (which threads it
 ;; on to its own tail sub-expression).  Anything else is NOT a tail
@@ -1446,7 +1455,9 @@
          (define hyps        (qual-constraints-of ex-body*))
          (define witness-ty  (qual-body-deep ex-body*))
          (define env* (env-extend-var env valvar (scheme '() witness-ty)))
-         (let/infer ([rb (infer-expr/m body env*)])
+         ;; The packed constraints are givens throughout the open body, so
+         ;; an inner `let`/`letrec` generalized there may assume them.
+         (let/infer ([rb (with-given-preds hyps (infer-expr/m body env*))])
            (let* ([s-acc (subst-compose (car rb) s-e)]
                   [t-body (apply-subst s-acc (cdr rb))])
              ;; Discharge pending preds the packed constraints prove (the
@@ -2028,7 +2039,13 @@
                       (infer-return (cons s* (apply-subst/env s* env*)))))]
                  [else (infer-return (cons s-pat env*))])])
     (let* ([s-pre-body (car guard-acc)] [env-pre-body (cdr guard-acc)])
-      (let/infer ([rb (infer-expr/m (clause-body cl) env-pre-body)])
+      ;; An existential-constructor pattern brings its packed
+      ;; constraints (`ex-hyps`) into the arm as givens, so an inner
+      ;; `let`/`letrec` generalized in the arm body may assume them.
+      ;; Non-existential clauses have `ex-hyps` empty, so this is a no-op
+      ;; for them.
+      (let/infer ([rb (with-given-preds ex-hyps
+                        (infer-expr/m (clause-body cl) env-pre-body))])
         (let ()
           (define s-body (car rb))
           (define t-body (cdr rb))
@@ -4718,7 +4735,12 @@
   ;; `(ann (pure x) (f Integer))` resolves a return-typed method's
   ;; container to the law's rigid skolem rather than a fresh variable.
   (define body* (relabel-law-ann-types body ty-sub))
-  (define-values (s t st1) (infer-expr body* env+binders (make-infer-state)))
+  ;; The law's skolemized hypotheses (its `=>` context, the class head,
+  ;; and superclass preds) are givens while the body is checked, so an
+  ;; inner `let`/`letrec` generalized in the body may assume them.
+  (define-values (s t st1)
+    (parameterize ([current-given-preds (append hyps (current-given-preds))])
+      (infer-expr body* env+binders (make-infer-state))))
   (define s-bool
     (with-handlers
      ([exn:fail:unify?
