@@ -434,30 +434,35 @@
 ;; Walk the tokens, tracking the open-paren stack and current column;
 ;; emit each token verbatim, but at every line break replace the next
 ;; line's leading whitespace with the computed indentation.
+;;
+;; Output pieces accumulate in `acc` in REVERSE order — each push is
+;; O(1) — and are concatenated once at the end with `string-join` (a
+;; single linear pass), so the whole pass is O(n) rather than the
+;; O(n^2) of repeatedly `mappend`-ing onto a growing string.
 (: reindent (-> (List Token) String))
 (define (reindent toks)
-  (let loop ([ts toks] [stack Nil] [col 0] [out ""])
+  (let loop ([ts toks] [stack Nil] [col 0] [acc Nil])
     (match ts
-      [(Nil) out]
+      [(Nil) (string-join "" (reverse acc))]
       [(Cons (TSpace ws) rest)
        (if (> (count-newlines ws) 0)
            (let ([ind (compute-indent stack)])
              (loop rest stack ind
-                   (mappend out (mappend (newlines (count-newlines ws)) (spaces ind)))))
-           (loop rest stack (+ col (string-length ws)) (mappend out ws)))]
+                   (Cons (spaces ind) (Cons (newlines (count-newlines ws)) acc))))
+           (loop rest stack (+ col (string-length ws)) (Cons ws acc)))]
       [(Cons (TOpen shape) rest)
        (loop rest (Cons (Ctx col None 0 None) (record-item stack col None))
-             (+ col 1) (mappend out (open-str shape)))]
+             (+ col 1) (Cons (open-str shape) acc))]
       [(Cons (TClose shape) rest)
-       (loop rest (drop-ctx stack) (+ col 1) (mappend out (close-str shape)))]
+       (loop rest (drop-ctx stack) (+ col 1) (Cons (close-str shape) acc))]
       [(Cons (TAtom x) rest)
-       (loop rest (record-item stack col (Some x)) (advance-col col x) (mappend out x))]
+       (loop rest (record-item stack col (Some x)) (advance-col col x) (Cons x acc))]
       [(Cons (TLineC x) rest)
-       (loop rest stack (advance-col col x) (mappend out x))]
+       (loop rest stack (advance-col col x) (Cons x acc))]
       [(Cons (TBlockC x) rest)
-       (loop rest stack (advance-col col x) (mappend out x))]
+       (loop rest stack (advance-col col x) (Cons x acc))]
       [(Cons (TDatumC x) rest)
-       (loop rest stack (advance-col col x) (mappend out x))])))
+       (loop rest stack (advance-col col x) (Cons x acc))])))
 
 (: reindent-source (-> String String))
 (define (reindent-source s) (reindent (lex (racket-tokenize s))))
