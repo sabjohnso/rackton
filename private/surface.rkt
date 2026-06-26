@@ -420,6 +420,76 @@
              (quasi-pattern-binder-ids #'b level))]
     [_ '()]))
 
+;; ----- infix notation -----------------------------------------------
+;;
+;; A quasiquoted identifier in operator position turns an application into
+;; infix notation:
+;;
+;;   (a `op b)            => (op a b)
+;;   (a `op b `op c ...)  => (op a b c ...)
+;;   (`op b ...)          => (lambda (x) (op x b ...))   right section
+;;   (a `op)              => (lambda (x) (op a x))        left section
+;;
+;; The operator must be HOMOGENEOUS across a chain: mixing `+ and `* in one
+;; expression is exactly the precedence ambiguity infix notation invites,
+;; so it is a located error rather than a silent reading.  Because Rackton
+;; is curried with over-application, a homogeneous chain of N terms is a
+;; single application of the operator to N arguments and a section is an
+;; ordinary one-argument lambda.  The design mirrors spork's `#%app`-based
+;; notation, but is realised here in the surface parser since Rackton owns
+;; its own application reading.
+
+;; A quasiquoted identifier: `op reads as (quasiquote op).
+(define-syntax-class infix-operator
+  #:datum-literals (quasiquote)
+  (pattern (quasiquote name:id)))
+
+;; Compatible operators: an #f tail-operator marks the end of a chain and
+;; is compatible with anything; otherwise the two must be the same symbol.
+(define (uniform-operator? head-op tail-op)
+  (or (not (syntax->datum tail-op))
+      (eq? (syntax->datum head-op) (syntax->datum tail-op))))
+
+;; The leading `term `op` of an infix expression.
+(define-splicing-syntax-class infix-head
+  #:attributes (term operator)
+  (pattern (~seq term:expr op:infix-operator)
+           #:with operator #'op.name))
+
+;; `term `op term `op ... term` — terms separated by a homogeneous
+;; operator, ending ON A TERM.  `operator` is #f for a lone term.
+(define-splicing-syntax-class infix-tail
+  #:attributes (operator (terms 1))
+  (pattern (~seq term:expr op:infix-operator tail:infix-tail)
+           #:when (uniform-operator? #'op.name #'tail.operator)
+           #:with operator #'op.name
+           #:with (terms ...) #'(term tail.terms ...))
+  (pattern (~seq term:expr)
+           #:with operator #f
+           #:with (terms ...) #'(term)))
+
+;; `\`op term ... \`op` — the tail of a left section: a homogeneous
+;; operator separating terms but ending ON AN OPERATOR (no final term).
+(define-splicing-syntax-class infix-left-tail
+  #:attributes (operator (terms 1))
+  (pattern (~seq op:infix-operator term:expr tail:infix-left-tail)
+           #:when (uniform-operator? #'op.name #'tail.operator)
+           #:with operator #'op.name
+           #:with (terms ...) #'(term tail.terms ...))
+  (pattern (~seq op:infix-operator)
+           #:with operator #'op.name
+           #:with (terms ...) #'()))
+
+;; The infix operator symbols appearing in `stx`, for the inhomogeneous
+;; error message.
+(define (infix-operator-names stx)
+  (filter values
+          (for/list ([e (in-list (syntax->list stx))])
+            (syntax-parse e
+              #:datum-literals (quasiquote)
+              [(quasiquote name:id) (syntax->datum #'name)]
+              [_ #f]))))
+
 (define (parse-expr stx)
   ;; Bracket/brace literals win unconditionally in expression position
   ;; (decided once, by paren-shape) before the keyword dispatch below.
@@ -749,6 +819,41 @@
                stx)]
 
     [x:id  (e:var (resolve-id #'x) stx)]
+
+    ;; ----- infix notation (see the syntax classes above) -----
+    ;; (a `op b `op ... z)  =>  (op a b ... z)   homogeneous operator
+    [(h:infix-head t:infix-tail)
+     #:when (uniform-operator? #'h.operator #'t.operator)
+     (e:app (e:var (resolve-id #'h.operator) stx)
+            (map parse-expr (cons #'h.term (syntax->list #'(t.terms ...))))
+            stx)]
+    ;; (`op b ...)  =>  right section  (lambda (x) (op x b ...))
+    [(op:infix-operator t:infix-tail)
+     #:when (uniform-operator? #'op.name #'t.operator)
+     (let ([arg (gensym '$infix)])
+       (e:lam (list arg)
+              (e:app (e:var (resolve-id #'op.name) stx)
+                     (cons (e:var arg stx)
+                           (map parse-expr (syntax->list #'(t.terms ...))))
+                     stx)
+              stx))]
+    ;; (a `op)  =>  left section  (lambda (x) (op a ... x))
+    [(term:expr t:infix-left-tail)
+     (let ([arg (gensym '$infix)])
+       (e:lam (list arg)
+              (e:app (e:var (resolve-id #'t.operator) stx)
+                     (append (map parse-expr
+                                  (cons #'term (syntax->list #'(t.terms ...))))
+                             (list (e:var arg stx)))
+                     stx)
+              stx))]
+    ;; A leading `term `op` whose chain is not homogeneous: mixed operators
+    ;; (`+ and `*) are an ambiguity we refuse to silently disambiguate.
+    [(h:infix-head t:expr ...+)
+     (raise-syntax-error 'rackton
+       (format "infix operators must be homogeneous in one expression, but got ~a"
+               (infix-operator-names stx))
+       stx)]
 
     ;; Also accept zero-arg applications `(f)`.  These
     ;; are passed an implicit Unit so the typing of 0-arg ops

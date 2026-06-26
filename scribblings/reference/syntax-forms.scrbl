@@ -846,6 +846,48 @@ but @racket[body] is a @emph{pure} expression mapped in with
        [b (Some 5)])
   (+ a b))]}
 
+@subsection[#:tag "infix-notation"]{Infix notation}
+
+A @emph{quasiquoted identifier} in operator position turns an application
+into infix notation.  Writing @racket[`op] (a backtick before a bare
+identifier) between two terms applies @racket[op] to them:
+
+@racketblock[
+(1 `+ 2)            (code:comment "(+ 1 2)")
+(xs `append ys)     (code:comment "(append xs ys)")
+((f `compose g) x)  (code:comment "((compose f g) x)")]
+
+A chain of more than two terms is allowed, but the operator must be
+@emph{homogeneous} — every operator in one infix expression must be the
+same identifier.  Because Rackton is curried with over-application, the
+chain is a single application of the operator to all the terms, so the
+operator must accept that many arguments:
+
+@racketblock[
+(2 `fma 3 `fma 4)   (code:comment "(fma 2 3 4)")]
+
+Mixing operators (@racket[(1 `+ 2 `* 3)]) is the precedence ambiguity
+infix notation is prone to, and is a compile-time error rather than a
+silent reading.
+
+Omitting one operand makes a one-argument @emph{section}.  With the
+operator first, the missing operand is on the left; with the operator
+last, it is on the right:
+
+@racketblock[
+(`< 3)              (code:comment "(lambda (x) (< x 3))")
+(3 `<)              (code:comment "(lambda (x) (< 3 x))")
+(`- 3)              (code:comment "(lambda (x) (- x 3))")]
+
+The operator must be a bare identifier: @racket[`(lambda (x y) ...)] is
+not an infix operator, so such a form is read as an ordinary application
+(and fails, since its head is not a function).  Quasiquotation keeps its
+data meaning everywhere else — @racket[`(a b c)] is still a quoted
+@racket[List] and @racket[`{,k 1}] still a @racket[Map] (see
+@secref["container-literals" #:doc '(lib "rackton/scribblings/reference/rackton-reference.scrbl")]);
+the infix reading applies only to a @racket[`id] sitting in operator
+position inside an application.
+
 @subsection[#:tag "arrow-notation"]{Arrow notation}
 
 @defform[#:literals (feed feed-apply let if match via rec <-)
