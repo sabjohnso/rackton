@@ -71,6 +71,23 @@ schemes.  Plain Racket modules can still be @racket[require]d, but
 their bindings are invisible to the type checker — they're runtime
 only.
 
+The require sub-forms @racket[only-in], @racket[rename-in],
+@racket[prefix-in], and @racket[except-in] work as in Racket and select
+or rename the imported schemes the same way they select or rename the
+runtime bindings, so a renamed import is known to the type checker under
+its new name:
+
+@racketblock[
+(require (rename-in "lib.rkt" [tree-sum total]))
+(require (only-in   "lib.rkt" tree-sum))
+(require (prefix-in t: "lib.rkt"))
+(require (except-in "lib.rkt" tree-sum))]
+
+They nest, so @racket[(prefix-in t: (only-in "lib.rkt" tree-sum))]
+selects @racket[tree-sum] and then prefixes it to @racket[t:tree-sum].
+Instances are unaffected by these sub-forms: module-level coherence
+makes them global, so they are always imported.
+
 @section{Cross-file protocols and instances}
 
 @hash-lang[] @racketmodfont{rackton} modules also export their protocol

@@ -5023,41 +5023,42 @@
            (define variadics
              (with-handlers ([exn:fail? (lambda (_) '())])
                (dynamic-require submod-spec 'rackton-variadics)))
+           ;; The names a require sub-form (only-in / rename-in / prefix-in
+           ;; / except-in) selects and renames.  A bare spec is the
+           ;; identity, so a plain require is unchanged.  Instances carry
+           ;; no name and stay global (coherence), so they are not filtered.
+           (define xform (require-spec->name-transform (syntax->datum spec-stx)))
            (define e1
-             (for/fold ([acc e]) ([entry (in-list bindings)])
-               (env-extend-var acc (car entry)
-                               (sexp->scheme (cdr entry)))))
+             (fold-imported xform e bindings
+               (lambda (acc nm enc) (env-extend-var acc nm (sexp->scheme enc)))))
            (define e2
-             (for/fold ([acc e1]) ([entry (in-list data-ctors)])
-               (env-extend-data acc (car entry)
-                                (decode-data-info (cdr entry)))))
+             (fold-imported xform e1 data-ctors
+               (lambda (acc nm enc) (env-extend-data acc nm (decode-data-info enc)))))
            (define e3
-             (for/fold ([acc e2]) ([entry (in-list tcons)])
-               (env-extend-tcon acc (car entry)
-                                (decode-tcon-info (cdr entry)))))
+             (fold-imported xform e2 tcons
+               (lambda (acc nm enc) (env-extend-tcon acc nm (decode-tcon-info enc)))))
            (define e4
-             (for/fold ([acc e3]) ([entry (in-list classes)])
-               (env-extend-class acc (car entry)
-                                 (decode-class-info (cdr entry)))))
+             (fold-imported xform e3 classes
+               (lambda (acc nm enc) (env-extend-class acc nm (decode-class-info enc)))))
            (define e5
-             (for/fold ([acc e4]) ([entry (in-list promoted)])
-               (env-extend-promoted-ctor acc (car entry)
-                                         (decode-kind-scheme (cdr entry)))))
+             (fold-imported xform e4 promoted
+               (lambda (acc nm enc)
+                 (env-extend-promoted-ctor acc nm (decode-kind-scheme enc)))))
            (define e6
-             (for/fold ([acc e5]) ([entry (in-list tyfams)])
-               (env-extend-tyfam acc (car entry)
-                                 (decode-tyfam-info (cdr entry)))))
+             (fold-imported xform e5 tyfams
+               (lambda (acc nm enc) (env-extend-tyfam acc nm (decode-tyfam-info enc)))))
            (define e7
-             (for/fold ([acc e6]) ([entry (in-list constraint-syns)])
-               (define syn (decode-constraint-syn (cdr entry)))
-               (env-extend-constraint-syn acc (car entry) (car syn) (cdr syn))))
+             (fold-imported xform e6 constraint-syns
+               (lambda (acc nm enc)
+                 (define syn (decode-constraint-syn enc))
+                 (env-extend-constraint-syn acc nm (car syn) (cdr syn)))))
            (define e8
-             (for/fold ([acc e7]) ([entry (in-list constraint-fams)])
-               (env-extend-constraint-fam acc (car entry)
-                                          (decode-constraint-fam-info (cdr entry)))))
+             (fold-imported xform e7 constraint-fams
+               (lambda (acc nm enc)
+                 (env-extend-constraint-fam acc nm (decode-constraint-fam-info enc)))))
            (define e9
-             (for/fold ([acc e8]) ([entry (in-list variadics)])
-               (env-extend-variadic acc (car entry) (cdr entry))))
+             (fold-imported xform e8 variadics
+               (lambda (acc nm arity) (env-extend-variadic acc nm arity))))
            (for/fold ([acc e9]) ([entry (in-list instances)])
              (define decoded (decode-instance-info entry))
              (define class-name (car decoded))
@@ -5094,17 +5095,84 @@
 ;; strings are interpreted relative to the source file of the spec
 ;; itself.  Returns #f for a spec shape we do not handle.
 (define (require-spec->module-path spec-stx)
-  (define spec-datum (syntax->datum spec-stx))
+  (define base (require-spec-base-datum (syntax->datum spec-stx)))
   (define src (syntax-source spec-stx))
   (cond
-    [(and (string? spec-datum) (path-string? spec-datum) src)
+    [(and (string? base) (path-string? base) src)
      (define caller-dir
-       (let-values ([(base _name _dir?) (split-path src)])
-         base))
-     (define full (path->complete-path spec-datum caller-dir))
+       (let-values ([(dir _name _dir?) (split-path src)])
+         dir))
+     (define full (path->complete-path base caller-dir))
      `(file ,(path->string full))]
-    [(symbol? spec-datum) spec-datum]
+    [(symbol? base) base]
     [else #f]))
+
+;; Peel the standard wrapper sub-forms — only-in / except-in / rename-in
+;; (inner spec is the second element) and prefix-in (the third) — down to
+;; the inner module reference (a path string or a collection symbol).  An
+;; unhandled shape (e.g. combine-in, which names several modules) yields #f
+;; and is skipped, exactly as a bare unrecognised spec was before.
+(define (require-spec-base-datum d)
+  (cond
+    [(string? d) d]
+    [(symbol? d) d]
+    [(pair? d)
+     (case (car d)
+       [(only-in except-in rename-in) (require-spec-base-datum (cadr d))]
+       [(prefix-in)                   (require-spec-base-datum (caddr d))]
+       [else #f])]
+    [else #f]))
+
+;; The name transform a require spec imposes on the importee's exported
+;; names: a (symbol -> (or/c symbol #f)) where #f means "not imported".
+;; Transforms compose inner-first, so a nested spec such as
+;; `(prefix-in p (only-in m a [b c]))` selects/renames before prefixing,
+;; matching Racket's own sub-form semantics.
+(define (require-spec->name-transform d)
+  (cond
+    [(pair? d)
+     (case (car d)
+       [(only-in)
+        (define inner (require-spec->name-transform (cadr d)))
+        (define table (require-rename-table (cddr d)))
+        (lambda (n) (let ([m (inner n)]) (and m (hash-ref table m #f))))]
+       [(rename-in)
+        (define inner (require-spec->name-transform (cadr d)))
+        (define table (require-rename-table (cddr d)))
+        (lambda (n) (let ([m (inner n)]) (and m (hash-ref table m m))))]
+       [(except-in)
+        (define inner (require-spec->name-transform (cadr d)))
+        (define dropped (list->seteq (cddr d)))
+        (lambda (n)
+          (let ([m (inner n)]) (and m (not (set-member? dropped m)) m)))]
+       [(prefix-in)
+        (define inner (require-spec->name-transform (caddr d)))
+        (define pfx (symbol->string (cadr d)))
+        (lambda (n)
+          (let ([m (inner n)])
+            (and m (string->symbol (string-append pfx (symbol->string m))))))]
+       ;; An unhandled wrapper imports nothing (its module path is #f too).
+       [else (lambda (n) #f)])]
+    ;; A bare module reference imports every name unchanged.
+    [else (lambda (n) n)]))
+
+;; Index a require clause list (only-in / rename-in) by importee name.  A
+;; bare `id` keeps its name; a `[orig new]` clause renames `orig` to `new`.
+(define (require-rename-table clauses)
+  (for/hasheq ([c (in-list clauses)])
+    (cond
+      [(symbol? c)                      (values c c)]
+      [(and (pair? c) (pair? (cdr c)))  (values (car c) (cadr c))]
+      [else                             (values c c)])))
+
+;; Fold imported entries into `acc` under the names `xform` selects, each
+;; entry being `(name . encoded)`.  An entry whose name `xform` drops (#f)
+;; is skipped; the rest are added via `extend`, called as
+;; `(extend acc selected-name encoded)`.
+(define (fold-imported xform acc entries extend)
+  (for/fold ([a acc]) ([entry (in-list entries)])
+    (define nm (xform (car entry)))
+    (if nm (extend a nm (cdr entry)) a)))
 
 ;; Resolve a require spec syntax to a usable `(submod ... rackton-schemes)`
 ;; module path, or #f for an unhandled spec shape.
