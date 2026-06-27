@@ -35,6 +35,12 @@ expressed over the list round-trip and @racket[take]/@racket[drop] from
 
 @defproc[(bytes-concat [bss (List Bytes)]) Bytes]{Concatenate a list of byte strings.}
 
+@defproc[(bytes->string-lossy [b Bytes]) String]{UTF-8 decode that never
+fails — bytes that are not valid UTF-8 become the Unicode replacement char.
+Complements the prelude's strict @racket[bytes->string] (which returns
+@racket[(Maybe String)]); useful when a String rendering is wanted even for
+not-quite-text input.}
+
 
 @section{rackton/text/printf}
 @defmodule[rackton/text/printf]

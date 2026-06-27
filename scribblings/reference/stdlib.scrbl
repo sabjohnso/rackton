@@ -34,6 +34,7 @@ The families, each documenting the modules beneath it:
 @include-section["stdlib-control.scrbl"]
 @include-section["stdlib-numeric.scrbl"]
 @include-section["stdlib-system.scrbl"]
+@include-section["stdlib-network.scrbl"]
 @include-section["stdlib-text.scrbl"]
 @include-section["stdlib-unit.scrbl"]
 @include-section["stdlib-mono.scrbl"]

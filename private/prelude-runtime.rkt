@@ -81,6 +81,8 @@
          racket/file
          (only-in racket/port port->string)
          racket/async-channel
+         (prefix-in net: racket/tcp)
+         (prefix-in net: racket/udp)
          "adt.rkt"
          "dict.rkt"
          "array-runtime.rkt")
@@ -322,6 +324,17 @@
  ;; System.IO
  stdin stdout stderr open-file-with-mode h-close
  h-put-str h-put-str-ln h-flush h-get-contents h-get-line
+ ;; Bytes: lossy UTF-8 decode (backs convenience String socket reads)
+ bytes->string-lossy
+ ;; Network.TCP
+ tcp-connect-prim tcp-listen-prim tcp-accept-prim tcp-accept-timeout-prim
+ tcp-listener-port tcp-peer-address-prim
+ tcp-send-bytes-prim tcp-recv-bytes-prim tcp-recv-bytes-timeout-prim
+ tcp-close-prim tcp-close-listener
+ ;; Network.UDP
+ udp-open-prim udp-bind-prim udp-local-port-prim
+ udp-send-to-bytes-prim udp-recv-from-bytes-prim udp-recv-from-timeout-prim
+ udp-close-prim
  ;; Numeric float formatting
  show-f-float show-e-float show-g-float)
 
@@ -1702,6 +1715,153 @@
   ($io (lambda ()
          (define line (rkt:read-line h))
          (if (eof-object? line) None (Some line)))))
+
+;; bytes->string-lossy: UTF-8 decode that never fails — bytes that are
+;; not valid UTF-8 become the replacement char.  Backs the convenience
+;; String socket reads; the strict, total-information decode is the
+;; prelude's `bytes->string` (-> Bytes (Maybe String)).
+(define (bytes->string-lossy b)
+  (rkt:bytes->string/utf-8 b #\?))
+
+;; milliseconds -> seconds, the unit `sync/timeout` takes.  A 0 ms budget
+;; becomes 0.0: sync/timeout then polls and returns immediately, which is
+;; how the network modules offer non-blocking reads/accepts.
+(define (ms->secs ms) (rkt:/ ms 1000.0))
+
+;; ----- Network: TCP -------------------------------------------------
+;; A connected TCP socket is the duplex pair of ports racket/tcp hands
+;; back; the opaque `Socket` value bundles them.  Prefab so the struct
+;; keeps its identity across the REPL's separate namespace (a connection
+;; built by run-io in one namespace is closed in another).  The wire is
+;; byte-oriented; the String send/recv layer on top in network/tcp.
+(struct tcp-conn (in out) #:prefab)
+
+(define/curried (tcp-connect-prim host port)
+  ($io (lambda ()
+         (define-values (in out) (net:tcp-connect host port))
+         (tcp-conn in out))))
+
+(define (tcp-listen-prim port)
+  ($io (lambda () (net:tcp-listen port 4 #t))))
+
+(define (tcp-accept-prim listener)
+  ($io (lambda ()
+         (define-values (in out) (net:tcp-accept listener))
+         (tcp-conn in out))))
+
+;; accept with a millisecond deadline: (Some socket) on a connection,
+;; None if the budget elapses first.  tcp-accept-evt accepts only when
+;; the event is chosen, so a timeout consumes no pending connection.
+(define/curried (tcp-accept-timeout-prim listener ms)
+  ($io (lambda ()
+         (define r (sync/timeout (ms->secs ms) (net:tcp-accept-evt listener)))
+         (if r
+             (Some (tcp-conn (car r) (cadr r)))  ; evt yields (list in out)
+             None))))
+
+;; The local port a listener is bound to (resolves an ephemeral port-0
+;; bind to the OS-assigned number).
+(define (tcp-listener-port listener)
+  ($io (lambda ()
+         (define-values (_host port _rhost _rport)
+           (net:tcp-addresses listener #t))
+         port)))
+
+;; The connected peer's (host, port).
+(define (tcp-peer-address-prim conn)
+  ($io (lambda ()
+         (define-values (_lhost _lport rhost rport)
+           (net:tcp-addresses (tcp-conn-in conn) #t))
+         (rackton-tuple-make rhost rport))))
+
+(define/curried (tcp-send-bytes-prim conn b)
+  ($io (lambda ()
+         (write-bytes b (tcp-conn-out conn))
+         (flush-output (tcp-conn-out conn))
+         Unit)))
+
+;; recv reads whatever is available up to `n` bytes — it blocks for the
+;; first byte but never waits to fill the buffer — so an echo peer that
+;; holds the connection open does not deadlock the reader.  (Some bytes)
+;; on data, None at end-of-file (the peer closed).
+(define/curried (tcp-recv-bytes-prim conn n)
+  ($io (lambda ()
+         (define buf (rkt:make-bytes n))
+         (define k (read-bytes-avail! buf (tcp-conn-in conn) 0 n))
+         (if (eof-object? k) None (Some (subbytes buf 0 k))))))
+
+;; recv with a millisecond deadline, three outcomes encoded as nested
+;; Maybe so the runtime speaks only built-ins (network/tcp maps this onto
+;; the RecvResult ADT): None = timed out, (Some None) = peer closed,
+;; (Some (Some bytes)) = data.
+(define/curried (tcp-recv-bytes-timeout-prim conn n ms)
+  ($io (lambda ()
+         (define in (tcp-conn-in conn))
+         (define ready (sync/timeout (ms->secs ms) in))
+         (if (not ready)
+             None
+             (let ()
+               (define buf (rkt:make-bytes n))
+               (define k (read-bytes-avail! buf in 0 n))
+               (if (eof-object? k)
+                   (Some None)
+                   (Some (Some (subbytes buf 0 k)))))))))
+
+(define (tcp-close-prim conn)
+  ($io (lambda ()
+         (close-input-port (tcp-conn-in conn))
+         (close-output-port (tcp-conn-out conn))
+         Unit)))
+
+(define (tcp-close-listener listener)
+  ($io (lambda () (net:tcp-close listener) Unit)))
+
+;; ----- Network: UDP -------------------------------------------------
+;; A UDP socket is racket/udp's socket object directly.  recv-from fills
+;; a fresh buffer per call and returns the datagram paired with the
+;; sender's (host, port) as nested tuples, matching the `Pair`/`Tuple`
+;; runtime representation (a vector).
+(define udp-open-prim
+  ($io (lambda () (net:udp-open-socket))))
+
+(define/curried (udp-bind-prim sock host port)
+  ($io (lambda ()
+         ;; "" means "any local interface" — racket/udp spells that #f.
+         (net:udp-bind! sock (if (string=? host "") #f host) port)
+         Unit)))
+
+(define (udp-local-port-prim sock)
+  ($io (lambda ()
+         (define-values (_host port _rhost _rport)
+           (net:udp-addresses sock #t))
+         port)))
+
+(define/curried (udp-send-to-bytes-prim sock host port b)
+  ($io (lambda ()
+         (net:udp-send-to sock host port b)
+         Unit)))
+
+(define/curried (udp-recv-from-bytes-prim sock n)
+  ($io (lambda ()
+         (define buf (rkt:make-bytes n))
+         (define-values (k host port) (net:udp-receive! sock buf))
+         (rackton-tuple-make (subbytes buf 0 k)
+                             (rackton-tuple-make host port)))))
+
+;; recv-from with a millisecond deadline: (Some (bytes, (host, port)))
+;; on a datagram, None if the budget elapses.  UDP has no end-of-file, so
+;; two states suffice.
+(define/curried (udp-recv-from-timeout-prim sock n ms)
+  ($io (lambda ()
+         (define buf (rkt:make-bytes n))
+         (define r (sync/timeout (ms->secs ms) (net:udp-receive!-evt sock buf)))
+         (if r
+             (Some (rackton-tuple-make (subbytes buf 0 (car r))
+                                       (rackton-tuple-make (cadr r) (caddr r))))
+             None))))
+
+(define (udp-close-prim sock)
+  ($io (lambda () (net:udp-close sock) Unit)))
 
 ;; ----- Numeric: float formatting ------------------------------
 ;; showFFloat / showEFloat / showGFloat.  `prec` is the number of

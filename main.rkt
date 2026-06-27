@@ -151,6 +151,18 @@
                      stdin stdout stderr open-file-with-mode h-close
                      h-put-str h-put-str-ln h-flush h-get-contents
                      h-get-line
+                     ;; rackton/text/bytes (lossy decode)
+                     bytes->string-lossy
+                     ;; rackton/network/tcp
+                     tcp-connect-prim tcp-listen-prim tcp-accept-prim
+                     tcp-accept-timeout-prim tcp-listener-port
+                     tcp-peer-address-prim tcp-send-bytes-prim
+                     tcp-recv-bytes-prim tcp-recv-bytes-timeout-prim
+                     tcp-close-prim tcp-close-listener
+                     ;; rackton/network/udp
+                     udp-open-prim udp-bind-prim udp-local-port-prim
+                     udp-send-to-bytes-prim udp-recv-from-bytes-prim
+                     udp-recv-from-timeout-prim udp-close-prim
                      ;; rackton/numeric/show (float formatters)
                      show-f-float show-e-float show-g-float)
 

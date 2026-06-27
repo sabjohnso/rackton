@@ -50,6 +50,8 @@
     ;; text
     rackton/text/bytes rackton/text/printf rackton/text/read
     rackton/text/show rackton/text/string
+    ;; network
+    rackton/network/tcp rackton/network/udp
     ;; unit
     rackton/unit/check rackton/unit/gen rackton/unit/laws
     rackton/unit/lazy rackton/unit/prng rackton/unit/property
