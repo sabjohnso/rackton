@@ -237,20 +237,36 @@
   (with-handlers
    ([exn:fail?
      (lambda (e) (format "error: ~a\n" (exn-message e)))])
-   (define name (gensym '$repl-type-))
    ;; Expand session macros in the expression so `,type (a-macro …)`
    ;; types the expansion; splice the result as syntax to keep its scopes.
    (define exp-stx (expand-session-macros state expr-datum))
-   (define synthetic (datum->syntax #f (list 'define name exp-stx)))
-   (define-values (env* _declared* compiled _final-st _parsed)
-     (elaborate-form state synthetic))
-   (define sch (env-ref-var env* name))
-   ;; Evaluate in the session namespace (without persisting the binding
-   ;; into the session env) so the value can be shown alongside the
-   ;; type, rendered the same way a bare expression result is.
-   (for ([c (in-list compiled)]) (eval-in state c))
-   (define value (eval-in state (datum->syntax #f name)))
-   (render-typed (value->doc value) (scheme->display-datum sch))))
+   (define datum (syntax->datum exp-stx))
+   (define env (rackton-repl-state-env state))
+   (cond
+     ;; Fast path: a bare name already bound as a value.  Report its
+     ;; STORED scheme (via the variadic-aware `binding-type-datum`, same
+     ;; as `,info`) rather than re-deriving it through a synthetic
+     ;; `(define $name <var>)`.  That synthetic binding has a non-lambda
+     ;; RHS, so a name whose scheme carries a deferred return-typed-method
+     ;; constraint (e.g. `(Monoid a) =>` from a `mempty` use) would trip
+     ;; the inferrer's intentional rejection of bare dict-bearing value
+     ;; bindings — even though this is only a type query.
+     [(and (symbol? datum) (env-ref-var env datum))
+      => (lambda (sch)
+           (define value (eval-in state (datum->syntax #f datum)))
+           (render-typed (value->doc value) (binding-type-datum env datum sch)))]
+     [else
+      (define name (gensym '$repl-type-))
+      (define synthetic (datum->syntax #f (list 'define name exp-stx)))
+      (define-values (env* _declared* compiled _final-st _parsed)
+        (elaborate-form state synthetic))
+      (define sch (env-ref-var env* name))
+      ;; Evaluate in the session namespace (without persisting the binding
+      ;; into the session env) so the value can be shown alongside the
+      ;; type, rendered the same way a bare expression result is.
+      (for ([c (in-list compiled)]) (eval-in state c))
+      (define value (eval-in state (datum->syntax #f name)))
+      (render-typed (value->doc value) (scheme->display-datum sch))])))
 
 ;; The workspace index (curated stdlib + installed user modules) as
 ;; (name . scheme) search candidates, computed once per process — the

@@ -47,6 +47,26 @@
     (drive-session '((unquote type (ann 42 (Exists (a) ((Show a) => a)))))))
   (check-regexp-match #rx"Exists" (car outs)))
 
+(test-case "REPL: ,type on a name using a return-typed method shows its type"
+  ;; A function whose body uses a return-typed class method (`mempty`)
+  ;; carries a deferred `Monoid` constraint.  Querying its type by name
+  ;; must report the stored scheme, not re-derive it through a synthetic
+  ;; bare value binding (which the inferrer intentionally rejects).
+  (define-values (_ outs)
+    (drive-session
+     '((define (mappend* . xs)
+         (let recur ([xs xs] [accum mempty])
+           (match xs
+             [(Cons x xs) (recur xs (mappend accum x))]
+             [Nil accum])))
+       (unquote type mappend*))))
+  (define type-out (cadr outs))
+  (check-regexp-match #rx"<lambda> :: " type-out)
+  (check-regexp-match #rx"Monoid" type-out)
+  ;; The variadic form survives the lookup.
+  (check-regexp-match #rx"\\.\\.\\." type-out)
+  (check-false (regexp-match? #rx"error" type-out)))
+
 (test-case "REPL: bare , is an accepted no-op"
   ;; A lone comma reads as `(unquote)`; it leaves the session untouched,
   ;; emits no output, and does not signal exit.
