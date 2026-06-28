@@ -87,14 +87,17 @@
 ;; ----- acceptance: higher-kinded signatures --------------------------
 
 (test-case "a higher-kinded function signature is accepted"
-  ;; A bare declaration exercises the kind checker (at the signature)
-  ;; without a body whose value type would also have to line up.
+  ;; The signature exercises the kind checker; the body is a bottom stub
+  ;; (`panic`, fully polymorphic) so the value side lines up trivially and
+  ;; the signature is not a dangling declaration.
   (check-accepts
-   (: ap (-> (-> a b) (-> (f a) (f b))))))
+   (: ap (-> (-> a b) (-> (f a) (f b))))
+   (define (ap g) (panic "kind-only"))))
 
 (test-case "the traverse shape (two * -> * variables) is accepted"
   (check-accepts
-   (: trav (-> (-> a (f b)) (-> (t a) (f (t b)))))))
+   (: trav (-> (-> a (f b)) (-> (t a) (f (t b)))))
+   (define (trav g) (panic "kind-only"))))
 
 ;; ----- acceptance: data types and the transformer stack --------------
 

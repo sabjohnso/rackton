@@ -2609,7 +2609,8 @@
 ;; monomorphization log (a newest-first list) is read out of the final st,
 ;; alongside the plan; the elaborator publishes it to the runtime.
 (define (infer-program+forms forms [env initial-env])
-  (define-values (env* _ forms* final-st) (infer-program/phases forms env (hasheq)))
+  (define-values (env* _ forms* final-st)
+    (infer-program/phases forms env (hasheq) #:report-dangling-decs? #t))
   (values env* forms*
           (codegen-plan (st-table final-st 'method-resolutions)
                         (st-table final-st 'method-dict-resolutions)
@@ -2627,7 +2628,8 @@
 ;; and the codegen-plan tables).  Batch callers start fresh; the REPL passes
 ;; the st it persists so its resolution tables accumulate across inputs.  The
 ;; final st is returned so the caller can read the plan tables out of it.
-(define (infer-program/phases forms env prior-declared [st0 (make-infer-state)])
+(define (infer-program/phases forms env prior-declared [st0 (make-infer-state)]
+                              #:report-dangling-decs? [report-dangling? #f])
   ;; ---- Phase A: type infrastructure ----
   (define-values (env-after-A declared)
     (run-phase-A env forms prior-declared))
@@ -2649,6 +2651,11 @@
   ;; superclass both resolve; only a genuinely undefined name — a typo,
   ;; or a non-class identifier — is flagged.
   (check-superclass-existence env-after-A forms*)
+  ;; ---- Dangling type signatures ----
+  ;; A `(: name τ)` with no matching definition is a typo; reject it.
+  ;; Whole-module callers opt in; the prelude and REPL do not (see
+  ;; `check-dangling-decs`).
+  (when report-dangling? (check-dangling-decs forms*))
   ;; ---- Phase B: pre-register def names ----
   (define-values (env-after-B def-tvars st1)
     (run-phase-B env-after-A declared forms* st0))
@@ -2688,6 +2695,34 @@
 ;; predicate is a constraint head but not a class (it is discharged by
 ;; unification, never by an instance), so it is skipped, exactly as the
 ;; entailment checker special-cases it.
+;; A top-level type signature `(: name τ)` (a `top:dec`) must have a
+;; matching definition somewhere in the same form list: a `(define name
+;; …)`, or a `foreign`/`foreign-c` host import that supplies the binding.
+;; A signature with no such definition is "dangling" — almost always a
+;; typo on the signature's or the define's name — and is rejected.
+;;
+;; Only top-level decs are checked: protocol method signatures parse as
+;; `method-sig` (inside `top:class`), not `top:dec`, so they are never
+;; flagged.  This runs only for whole-module compilation (opted in via
+;; `infer-program/phases`' `#:report-dangling-decs?`); the prelude (whose
+;; `mconcat`/`array-map`/`enum-from-to` are intentionally bare decs backed
+;; by `prelude-runtime`) and the REPL (where a `(: …)` may precede its
+;; define by several inputs) are exempt.
+(define (check-dangling-decs forms)
+  (define defined
+    (for/seteq ([f (in-list forms)]
+                #:when (or (top:def? f) (top:foreign? f) (top:foreign-c? f)))
+      (cond [(top:def? f)       (top:def-name f)]
+            [(top:foreign? f)   (top:foreign-name f)]
+            [else               (top:foreign-c-name f)])))
+  (for ([f (in-list forms)] #:when (top:dec? f)
+        #:unless (set-member? defined (top:dec-name f)))
+    (raise-syntax-error 'infer
+      (format (string-append "type signature for ~a has no matching definition"
+                             "\n  add a (define ~a …) or remove the signature")
+              (top:dec-name f) (top:dec-name f))
+      (top:dec-stx f))))
+
 (define (check-superclass-existence env forms)
   (for* ([f (in-list forms)] #:when (top:class? f)
          [s (in-list (top:class-supers f))]

@@ -199,3 +199,25 @@
      (eval #'(rackton
               (protocol (Same a b) (#:requires (~ a b)) (: same (-> a b))))
            (variable-reference->namespace (#%variable-reference))))))
+
+;; A top-level type signature `(: name τ)` with no matching definition is
+;; a dangling signature — almost always a typo (a misspelled name on the
+;; signature or the define).  It is rejected at compile time.
+(test-case "a dangling type signature is rejected"
+  (check-rackton-compile-error
+   (: toggle-status (-> Integer Integer))
+   (define (toogle-status x) x)))      ; note the typo: defines `toogle-status`
+
+(test-case "a lone type signature with no definition is rejected"
+  (check-rackton-compile-error
+   (: orphan (-> Integer Integer))))
+
+;; A signature paired with its definition is fine, and so is a definition
+;; with no signature — neither is dangling.
+(test-case "a signature paired with its definition compiles"
+  (check-not-exn
+   (lambda ()
+     (eval #'(rackton
+              (: ok (-> Integer Integer))
+              (define (ok x) (+ x 1)))
+           (variable-reference->namespace (#%variable-reference))))))

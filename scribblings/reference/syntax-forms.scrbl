@@ -80,6 +80,13 @@ order — top-level forms in a Rackton module are order-invariant
 (see @secref["values-and-types" #:doc '(lib "rackton/scribblings/guide/rackton-guide.scrbl")]
 for the full ordering story).
 
+A signature with no matching @racket[define] in the module — a
+@deftech{dangling signature}, usually a name misspelled on the
+signature or the @racket[define] — is a compile-time error.  (The
+interactive @secref["repl"] is exempt: there a @racket[:] declaration
+may precede its @racket[define] by several inputs, so a still-undefined
+signature is carried forward rather than rejected.)
+
 @racketblock[
 (: fact (-> Integer Integer))
 (define (fact n) (if (= n 0) 1 (* n (fact (- n 1)))))]}
