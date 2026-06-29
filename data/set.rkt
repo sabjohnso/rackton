@@ -34,6 +34,10 @@
 (define (set-from-list xs)
   (foldr (lambda (x s) (set-insert x s)) empty-set xs))
 
+;; Variadic constructor: (set x ...) gathers its arguments into a set.
+(: set (-> a ... (Set a)))
+(define (set . xs) (set-from-list xs))
+
 ;; s1 ∪ s2 — every element of s1 added to s2.
 (: set-union (-> (Set a) (-> (Set a) (Set a))))
 (define (set-union s1 s2)

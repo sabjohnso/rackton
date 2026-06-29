@@ -12,6 +12,11 @@
 (: s12 (Set Integer)) (define s12 (set-from-list (list 1 2 2 1)))
 (: sz Integer)        (define sz (set-size s12))
 
+(: v0 Integer)       (define v0 (set-size (ann (set) (Set Integer))))
+(: v3 Integer)       (define v3 (set-size (set 1 2 3)))
+(: v-mem Boolean)    (define v-mem (set-member? 2 (set 1 2 3)))
+(: v-dedup Integer)  (define v-dedup (set-size (set 1 2 2 1)))
+
 (: u-mem Boolean) (define u-mem (set-member? 3 (set-union (set-from-list (list 1 2))
                                                           (set-from-list (list 2 3)))))
 (: u-sz  Integer) (define u-sz (set-size (set-union (set-from-list (list 1 2))
@@ -50,6 +55,10 @@
        (all-checks
         (list (check-equal? emp0 #t) (check-equal? emp1 #f)
               (check-equal? sz 2))))
+   (it "variadic set constructor"
+       (all-checks
+        (list (check-equal? v0 0) (check-equal? v3 3)
+              (check-equal? v-mem #t) (check-equal? v-dedup 2))))
    (it "union / intersection / difference"
        (all-checks
         (list (check-equal? u-mem #t) (check-equal? u-sz 3)
