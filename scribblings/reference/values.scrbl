@@ -177,6 +177,53 @@ UTF-8 encode.}
 
 UTF-8 decode.  Returns @racket[None] on invalid bytes.}
 
+@section[#:tag "bitstrings"]{Bitstrings}
+
+A @racket[Bitstring] is an arbitrary-length sequence of bits — the
+value built and destructured by the Erlang-style @racketidfont{bits}
+form.  Unlike @racket[Bytes], a bitstring need not be a whole number of
+bytes: a 4-bit field, a 1-bit flag, and a 17-bit field are all
+first-class.
+
+The @racketidfont{bits} form works in both expression and pattern
+position.  Each segment is a clause @racketidfont{[subject size? type?
+flag…]}; @racketidfont{size} counts bits for @racketidfont{integer} and
+@racketidfont{bitstring} segments and bytes for @racketidfont{binary}
+segments, defaults are an unsigned big-endian 8-bit integer, and a
+trailing @racketidfont{_} size takes the rest.  In a pattern, a segment
+whose size is an earlier segment's variable reads a dependent width
+(e.g. a length prefix):
+
+@codeblock|{
+#lang rackton
+;; construct: 4-bit version, 4-bit IHL, 8-bit type-of-service
+(define header (bits [4 4] [5 4] [0 8]))      ; a 16-bit Bitstring
+
+;; destructure a length-prefixed frame
+(define (unframe b)
+  (match b
+    [(bits [len 8] [payload len binary]) (Some payload)]
+    [_ None]))
+}|
+
+A bits pattern matches only when the whole bitstring is consumed
+exactly (unless it ends in a @racketidfont{_} rest segment), and a
+@racketidfont{binary} segment matches only when its bits are
+byte-aligned; otherwise the clause falls through.
+
+@defproc[(bitstring-length [bs Bitstring]) Integer]{
+
+The length of @racket[bs], in @emph{bits}.}
+
+@defproc[(bytes->bitstring [b Bytes]) Bitstring]{
+
+The byte string @racket[b] as a byte-aligned bitstring.}
+
+@defproc[(bitstring->bytes [bs Bitstring]) (Maybe Bytes)]{
+
+The byte image of @racket[bs], or @racket[None] when its length is not a
+whole number of bytes.}
+
 @section[#:tag "symbols"]{Symbols}
 
 In addition to the @racket[Eq] / @racket[Ord] / @racket[Show] instances,

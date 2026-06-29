@@ -128,6 +128,10 @@
                      ;; codegen / match.rkt; never user-facing
                      rackton-tuple-make rackton-tuple-ref
                      rackton-array-take rackton-array-drop
+                     ;; bitstring construction helpers emitted by codegen;
+                     ;; never user-facing (the leaf read/slice ops the
+                     ;; match reader uses are not provided here at all)
+                     int->bitstring bitstring-concat empty-bitstring
                      ;; rackton/control/stm
                      new-tvar read-tvar write-tvar retry or-else atomically
                      stm-fmap stm-pure stm-ap stm-bind

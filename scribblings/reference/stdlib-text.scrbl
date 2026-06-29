@@ -139,6 +139,11 @@ and the char conversions live in the prelude.
 
 @defproc[(null-string? [s String]) Boolean]{Is the string empty?}
 
+@defproc[(string-append* [s String] ...) String]{
+  Variadic concatenation: join any number of strings.  Collapses what
+  would otherwise be a chain of nested binary @racket[string-append]
+  calls.}
+
 @defproc[(reverse-string [s String]) String]{Reverse the characters of a string.}
 
 @deftogether[(@defproc[(to-upper-string [s String]) String]

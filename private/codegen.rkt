@@ -369,6 +369,23 @@
                  (syntax/loc stx (rackton-tuple-make e ...)))
                st))]
 
+    [(e:bits segs stx)
+     ;; Build a Bitstring by folding the per-segment pieces together with
+     ;; bitstring-concat (the first segment in the most-significant bits).
+     ;; The bit primitives resolve via codegen's for-template prelude-runtime.
+     (let loop ([segs segs] [pieces '()] [st st])
+       (cond
+         [(null? segs)
+          (define folded
+            (for/fold ([acc (syntax/loc stx empty-bitstring)])
+                      ([p (in-list (reverse pieces))])
+              (quasisyntax/loc stx (bitstring-concat #,acc #,p))))
+          (values folded st)]
+         [else
+          (define sg (car segs))
+          (let-values ([(e st) (compile-expr (bit-seg-subject sg) ctx st)])
+            (loop (cdr segs) (cons (compile-bit-build-piece sg e) pieces) st))]))]
+
     [(e:tref tup idx stx)
      (let-values ([(t st) (compile-expr tup ctx st)])
        (values (with-syntax ([t t] [i idx])
@@ -481,6 +498,23 @@
                            #'[f v]))])
           (syntax/loc stx (struct-copy s r-stx field-clause ...)))
         st))]))
+
+;; One segment of a `bits` construction: turn the already-compiled
+;; subject `e` into its Bitstring piece, per the segment's type.
+(define (compile-bit-build-piece sg e)
+  (case (bit-seg-type sg)
+    [(integer)
+     (define w (bit-seg-size sg))
+     (unless (exact-nonnegative-integer? w)
+       (raise-syntax-error 'rackton
+         "an integer segment of a bits expression needs a literal width"
+         (bit-seg-stx sg)))
+     (with-syntax ([e e] [w w]) #'(int->bitstring e w))]
+    [(binary)    (with-syntax ([e e]) #'(bytes->bitstring e))]
+    [(bitstring) e]
+    [else (raise-syntax-error 'rackton
+            "unsupported bits segment type in a bits expression"
+            (bit-seg-stx sg))]))
 
 ;; ----- clause compilers (thread st through guards + bodies) ----------
 

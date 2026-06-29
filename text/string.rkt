@@ -21,6 +21,15 @@
 (: to-lower-string (-> String String))
 (define (to-lower-string s) (chars->string (fmap char-downcase (string->chars s))))
 
+;; --- concatenation -------------------------------------------------
+
+;; Variadic concatenation: `(string-append* a b c …)` joins any number
+;; of strings, collapsing what would otherwise be a chain of nested
+;; binary `string-append` calls.  (The prelude's `string-append` is the
+;; binary building block this folds over.)
+(: string-append* (-> String ... String))
+(define (string-append* . parts) (foldr string-append "" parts))
+
 ;; --- trimming whitespace -------------------------------------------
 
 (: strip-start (-> String String))

@@ -157,6 +157,10 @@
 
     (data Char)
     (data Bytes)
+    ;; An arbitrary-length sequence of bits — the value built and matched
+    ;; by the `bits` form (see BitSyntax.org).  Opaque; the runtime
+    ;; representation and the bit algebra live in bitstring-runtime.rkt.
+    (data Bitstring)
 
     (instance (Eq Char)   (define (== x y) (racket Boolean (x y) #f)))
     (instance (Ord Char)  (define (< x y) (racket Boolean (x y) #f)))
@@ -233,6 +237,15 @@
 
     (: bytes->string (-> Bytes (Maybe String)))
     (define (bytes->string b) (racket (Maybe String) (b) None))
+
+    ;; --- Bitstring (Erlang-style bit syntax) --------------------
+    ;; Runtime impls in prelude-runtime / bitstring-runtime.
+    (foreign bitstring-length (-> Bitstring Integer)
+             #:from rackton/private/prelude-runtime)
+    (foreign bytes->bitstring (-> Bytes Bitstring)
+             #:from rackton/private/prelude-runtime)
+    (foreign bitstring->bytes (-> Bitstring (Maybe Bytes))
+             #:from rackton/private/prelude-runtime)
 
     ;; --- Combinators --------------------------------------------
 

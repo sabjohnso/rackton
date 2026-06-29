@@ -85,7 +85,8 @@
          (prefix-in net: racket/udp)
          "adt.rkt"
          "dict.rkt"
-         "array-runtime.rkt")
+         "array-runtime.rkt"
+         "bitstring-runtime.rkt")
 
 (provide
  ;; Monomorphization log accessors — exported so the
@@ -241,6 +242,12 @@
  bytes-length bytes-ref make-bytes bytes-append
  bytes->list list->bytes
  string->bytes bytes->string
+
+ ;; Bitstring — user-facing API plus the codegen-emitted construction
+ ;; helpers (int->bitstring / bitstring-concat / empty-bitstring are
+ ;; internal; except-out in main.rkt keeps them out of user scope).
+ bitstring-length bytes->bitstring bitstring->bytes
+ int->bitstring bitstring-concat empty-bitstring
 
  ;; Symbol
  symbol->string string->symbol
@@ -817,6 +824,19 @@
 (define (bytes->string b)
   (with-handlers ([exn:fail:contract? (lambda (_) None)])
     (Some (rkt:bytes->string/utf-8 b))))
+
+;; ----- Bitstring (Erlang-style bit syntax) ---------------------
+;; The pure bit algebra lives in bitstring-runtime.rkt; here are the
+;; user-facing wrappers (bitstring-length / bitstring->bytes return
+;; through the Rackton Integer / Maybe vocabulary).  bytes->bitstring,
+;; int->bitstring, bitstring-concat, and empty-bitstring are re-provided
+;; verbatim (the latter three are emitted by codegen, not user-facing).
+
+(define (bitstring-length bs) (bitstring-len bs))
+
+(define (bitstring->bytes bs)
+  (define b (bitstring->bytes-exact bs))
+  (if b (Some b) None))
 
 ;; ----- IO monad ------------------------------------------------
 

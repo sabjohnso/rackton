@@ -502,7 +502,7 @@
 
 (define (parse-expr/form stx)
   (syntax-parse stx
-    #:datum-literals (lambda λ case-lambda case-λ let let& let% let+ letrec let* if cond else ann open match match* racket do proc delay <- update handle return describe context list tuple tref array build-array aref array-take array-drop array-split-at -> quote quasiquote unquote unquote-splicing)
+    #:datum-literals (lambda λ case-lambda case-λ let let& let% let+ letrec let* if cond else ann open match match* racket do proc delay <- update handle return describe context list tuple tref array build-array aref array-take array-drop array-split-at bits -> quote quasiquote unquote unquote-splicing)
     [n:number  (e:literal (syntax->datum #'n) stx)]
     [b:boolean (e:literal (syntax->datum #'b) stx)]
     [s:string  (e:literal (syntax->datum #'s) stx)]
@@ -659,6 +659,11 @@
     ;; (tuple e ...) — variadic heterogeneous product constructor.
     [(tuple elem ...)
      (e:tuple (map parse-expr (syntax->list #'(elem ...))) stx)]
+
+    ;; (bits seg ...) — Erlang-style binary constructor; builds a
+    ;; Bitstring from its segment clauses.
+    [(bits seg ...)
+     (e:bits (parse-bit-segments (syntax->list #'(seg ...)) parse-expr) stx)]
 
     ;; (tref t n) — indexed tuple access.  `n` MUST be a non-negative
     ;; integer literal so the index is known (and bounds-checkable)
@@ -1686,13 +1691,17 @@
 
 (define (parse-pattern/form stx)
   (syntax-parse stx
-    #:datum-literals (quote quasiquote unquote unquote-splicing list tuple)
+    #:datum-literals (quote quasiquote unquote unquote-splicing list tuple bits)
     [n:number  (p:lit (syntax->datum #'n) stx)]
     [b:boolean (p:lit (syntax->datum #'b) stx)]
     [s:string  (p:lit (syntax->datum #'s) stx)]
     ;; `(tuple p …)` — destructure a tuple of matching arity.
     [(tuple elem ...)
      (p:tuple (map parse-pattern (syntax->list #'(elem ...))) stx)]
+    ;; `(bits seg …)` — Erlang-style binary pattern; destructures a
+    ;; Bitstring segment by segment.
+    [(bits seg ...)
+     (p:bits (parse-bit-segments (syntax->list #'(seg ...)) parse-pattern) stx)]
     ;; Quotation builds list patterns (see `quote->pattern`): `'foo` is the
     ;; Symbol 'foo, `'(1 2 3)` matches that literal list, and quasiquote
     ;; adds `,sub` escapes.  An unquote outside a quasiquote is an error.
@@ -1717,6 +1726,92 @@
              (for/list ([a (in-list (syntax->list #'(arg ...)))])
                (parse-pattern a))
              stx)]))
+
+;; ----- bit syntax ---------------------------------------------------
+;;
+;; A `(bits seg …)` form, in either expression or pattern position, is a
+;; sequence of segment clauses `[subject size? type? flag…]` (see
+;; BitSyntax.org).  `parse-bit-segments` is shared by both positions; the
+;; only difference is `parse-subject` (parse-expr vs parse-pattern).
+
+(define bit-type-keywords '(integer float binary bitstring utf8 utf16 utf32))
+(define bit-flag-keywords '(signed unsigned big little))
+
+(define (parse-bit-segments seg-stxs parse-subject)
+  (define segs
+    (for/list ([seg-stx (in-list seg-stxs)])
+      (parse-one-bit-segment seg-stx parse-subject)))
+  ;; A `_` (rest) size may appear only on the final segment.
+  (let loop ([ss segs])
+    (cond
+      [(or (null? ss) (null? (cdr ss))) (void)]
+      [(eq? (bit-seg-size (car ss)) 'rest)
+       (raise-syntax-error 'rackton
+         "a `_` (rest) bits segment may appear only as the last segment"
+         (bit-seg-stx (car ss)))]
+      [else (loop (cdr ss))]))
+  segs)
+
+(define (parse-one-bit-segment seg-stx parse-subject)
+  (define parts (syntax->list seg-stx))
+  (unless (and parts (pair? parts))
+    (raise-syntax-error 'rackton
+      "a bits segment must be a `[subject size? type? flag…]` clause" seg-stx))
+  (define subject (parse-subject (car parts)))
+  ;; size — a nat literal (bits / bytes), `_` (rest), or a variable name
+  ;; (a dependent width); absent when the next token is a type/flag.
+  (define-values (size after-size)
+    (let ([tail (cdr parts)])
+      (cond
+        [(null? tail) (values #f '())]
+        [else
+         (define d (syntax->datum (car tail)))
+         (cond
+           [(exact-nonnegative-integer? d) (values d (cdr tail))]
+           [(eq? d '_)                     (values 'rest (cdr tail))]
+           [(and (symbol? d) (or (memq d bit-type-keywords)
+                                 (memq d bit-flag-keywords)))
+            (values #f tail)]
+           [(symbol? d)                    (values d (cdr tail))]
+           [else (raise-syntax-error 'rackton
+                   "bits segment size must be a literal, a variable, or `_`"
+                   (car tail))])])))
+  ;; type + flags
+  (let loop ([toks after-size] [type #f] [signed? #f] [endian #f])
+    (cond
+      [(null? toks)
+       (finish-bit-segment subject size type signed? endian seg-stx)]
+      [else
+       (define tok (car toks))
+       (case (syntax->datum tok)
+         [(integer binary bitstring)
+          (when type
+            (raise-syntax-error 'rackton "bits segment has two types" tok))
+          (loop (cdr toks) (syntax->datum tok) signed? endian)]
+         [(float utf8 utf16 utf32)
+          (raise-syntax-error 'rackton
+            "float/utf bits segments are not yet supported (phase 2)" tok)]
+         [(signed)   (loop (cdr toks) type #t endian)]
+         [(unsigned) (loop (cdr toks) type #f endian)]
+         [(big)      (loop (cdr toks) type signed? 'big)]
+         [(little)
+          (raise-syntax-error 'rackton
+            "little-endian bits segments are not yet supported (phase 2)" tok)]
+         [else (raise-syntax-error 'rackton
+                 "unknown bits segment specifier" tok)])])))
+
+;; Resolve segment defaults and reject contradictions.
+(define (finish-bit-segment subject size type signed? endian seg-stx)
+  (define ty (or type 'integer))
+  (define sz
+    (cond
+      [size size]
+      [(eq? ty 'integer) 8]     ; default integer width
+      [else 'rest]))            ; binary/bitstring with no size = the rest
+  (when (and (eq? ty 'integer) (eq? sz 'rest))
+    (raise-syntax-error 'rackton
+      "an integer bits segment needs a width" seg-stx))
+  (bit-seg subject sz ty (and signed? #t) (or endian 'big) seg-stx))
 
 ;; Side channel: every `(define (f params…) body)` form parsed via
 ;; `parse-fn-params+body` deposits its original `(params-stx body-stx)`

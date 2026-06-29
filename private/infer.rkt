@@ -855,6 +855,7 @@
     [(e:match* _ _ _ s) s]
     [(e:escape _ _ _ s) s]
     [(e:tuple _ s)      s]
+    [(e:bits _ s)       s]
     [(e:tref _ _ s)     s]
     [(e:array _ s)      s]
     [(e:build-array _ _ s) s]
@@ -1128,6 +1129,7 @@
     [(e:escape ty-ast vars _ stx)    (infer-escape/m ty-ast vars stx env)]
     [(e:update record updates stx)   (infer-update/m record updates stx env)]
     [(e:tuple elems stx)             (infer-tuple/m elems stx env)]
+    [(e:bits segs stx)               (infer-bits/m segs stx env)]
     [(e:tref te idx stx)             (infer-tref/m te idx stx env)]
     [(e:array elems stx)            (infer-array/m elems stx env)]
     [(e:build-array n proc stx)     (infer-build-array/m n proc stx env)]
@@ -1675,6 +1677,37 @@
            (loop (cdr elems) s-now (cons t-e tys-rev)
                  (apply-subst/env s-e env))))])))
 
+;; The Rackton type a bit-segment's subject must have, given its declared
+;; interpretation.  (Phase 1: integer / binary / bitstring.)
+(define (bit-seg-subject-type ty)
+  (case ty
+    [(integer)   t-int]
+    [(binary)    t-bytes]
+    [(bitstring) t-bitstring]
+    [else (error 'infer "unsupported bits segment type: ~a" ty)]))
+
+;; `(bits seg …)` — every segment's subject is checked against the type its
+;; interpretation demands; the whole form has type Bitstring.  A symbolic
+;; (dependent) size is a runtime width only — it does not constrain typing
+;; here — so segments are walked purely for their subject types.
+(define (infer-bits/m segs stx env)
+  (let loop ([segs segs] [s empty-subst])
+    (cond
+      [(null? segs) (infer-return (cons s t-bitstring))]
+      [else
+       (define sg (car segs))
+       (let/infer ([r (infer-expr/m (bit-seg-subject sg) (apply-subst/env s env))])
+         (let* ([s-e (car r)] [t-e (cdr r)]
+                [s-now (subst-compose s-e s)]
+                [expected (bit-seg-subject-type (bit-seg-type sg))]
+                [s-u (with-handlers
+                      ([exn:fail:unify?
+                        (lambda (_)
+                          (raise-type-mismatch! (expr-stx (bit-seg-subject sg))
+                            (apply-subst s-now expected) (apply-subst s-now t-e)))])
+                      (unify (apply-subst s-now t-e) (apply-subst s-now expected)))])
+           (loop (cdr segs) (subst-compose s-u s-now))))])))
+
 ;; Infer `(tref t n)`: the target must resolve to a concrete tuple type
 ;; (its arity must be known), and the literal `n` must be in bounds.
 ;; The result is the n-th element type.
@@ -2199,6 +2232,32 @@
                   (cons (car b) (apply-subst s-acc (cdr b))))
                 (apply-subst s-acc (tuple-type-of elem-tys))
                 all-hyps))))]
+    [(p:bits segs stx)
+     ;; A bits pattern is structural: each segment's subject is checked
+     ;; against the type its interpretation demands (integer→Integer,
+     ;; binary→Bytes, bitstring→Bitstring); the whole matches a Bitstring.
+     ;; A symbolic (dependent) size is a runtime width, resolved by an
+     ;; earlier segment's binding at codegen — it places no type constraint
+     ;; here.  Bindings accumulate left to right.
+     (let/infer ([acc (let loop ([segs segs] [bindings '()] [s empty-subst] [hyps '()])
+                        (cond
+                          [(null? segs) (infer-return (list bindings s hyps))]
+                          [else
+                           (define sg (car segs))
+                           (let/infer ([rp (infer-pattern/m (bit-seg-subject sg) env)])
+                             (let* ([bs (car rp)] [t (cadr rp)] [inner-hyps (caddr rp)]
+                                    [expected (bit-seg-subject-type (bit-seg-type sg))]
+                                    [s-u (unify (apply-subst s t) (apply-subst s expected))])
+                               (loop (cdr segs)
+                                     (append bindings bs)
+                                     (subst-compose s-u s)
+                                     (append hyps inner-hyps))))]))])
+       (let* ([all-bindings (car acc)] [s-acc (cadr acc)] [all-hyps (caddr acc)])
+         (infer-return
+          (list (for/list ([b (in-list all-bindings)])
+                  (cons (car b) (apply-subst s-acc (cdr b))))
+                t-bitstring
+                all-hyps))))]
     [(p:ctor name args stx)
      (define info (env-ref-data env name))
      (cond
@@ -2472,6 +2531,7 @@
     [(p:var n _)      (list n)]
     [(p:ctor _ as _)  (append-map pattern-vars as)]
     [(p:tuple es _)   (append-map pattern-vars es)]
+    [(p:bits segs _)  (append-map (lambda (sg) (pattern-vars (bit-seg-subject sg))) segs)]
     [_                '()]))
 
 (define (gather-variadic-calls forms env)
@@ -2551,6 +2611,7 @@
      (e:match* (map R scruts)
                (for/list ([c (in-list cs)]) (gv-clause* c vmap)) irr stx)]
     [(e:tuple es stx)        (e:tuple (map R es) stx)]
+    [(e:bits segs stx)       (e:bits (map (lambda (sg) (gv-bit-seg sg vmap)) segs) stx)]
     [(e:tref t i stx)        (e:tref (R t) i stx)]
     [(e:update rec ups stx)
      (e:update (R rec)
@@ -2565,6 +2626,12 @@
     ;; e:escape splices raw Racket — leave it untouched; e:literal /
     ;; e:var / type nodes have no nested expressions to rewrite.
     [_ e]))
+
+;; Rewrite variadic calls in a bit-segment's construction subject.
+(define (gv-bit-seg sg vmap)
+  (bit-seg (gv-expr (bit-seg-subject sg) vmap)
+           (bit-seg-size sg) (bit-seg-type sg)
+           (bit-seg-signed? sg) (bit-seg-endian sg) (bit-seg-stx sg)))
 
 ;; A `match` clause: the pattern's variables shadow in its guard and body.
 (define (gv-clause c vmap)
@@ -3907,6 +3974,8 @@
        (for ([u (in-list updates)]) (walk (cdr u) shadowed))]
       [(e:tuple elems _)
        (for ([el (in-list elems)]) (walk el shadowed))]
+      [(e:bits segs _)
+       (for ([sg (in-list segs)]) (walk (bit-seg-subject sg) shadowed))]
       [(e:tref t _ _) (walk t shadowed)]
       [(e:array elems _)
        (for ([el (in-list elems)]) (walk el shadowed))]
@@ -3935,6 +4004,9 @@
     [(p:tuple args _)
      (for/fold ([s (seteq)]) ([a (in-list args)])
        (set-union s (pattern-bound-names a)))]
+    [(p:bits segs _)
+     (for/fold ([s (seteq)]) ([sg (in-list segs)])
+       (set-union s (pattern-bound-names (bit-seg-subject sg))))]
     [_ (seteq)]))
 
 ;; Tarjan's algorithm.  Input: a node list and an adjacency list
@@ -5465,6 +5537,8 @@
             (walk (cdr u) shadowed? st))]
          [(e:tuple elems _)
           (for/fold ([st st]) ([el (in-list elems)]) (walk el shadowed? st))]
+         [(e:bits segs _)
+          (for/fold ([st st]) ([sg (in-list segs)]) (walk (bit-seg-subject sg) shadowed? st))]
          [(e:tref t _ _) (walk t shadowed? st)]
          [(e:array elems _)
           (for/fold ([st st]) ([el (in-list elems)]) (walk el shadowed? st))]
@@ -5489,6 +5563,8 @@
      (for/or ([a (in-list args)]) (pattern-binds-name? a name))]
     [(p:tuple args _)
      (for/or ([a (in-list args)]) (pattern-binds-name? a name))]
+    [(p:bits segs _)
+     (for/or ([sg (in-list segs)]) (pattern-binds-name? (bit-seg-subject sg) name))]
     [_ #f]))
 
 ;; After a top-level def's constraints have been reduced, walk every
@@ -5989,6 +6065,8 @@
       [(e:update? e) (visit (e:update-record e))
                      (for ([u (in-list (e:update-updates e))])
                        (visit (cdr u)))]
+      [(e:bits? e) (for ([sg (in-list (e:bits-segs e))])
+                     (visit (bit-seg-subject sg)))]
       [(e:escape? e) (visit (e:escape-body e))]
       [else (void)]))
   (visit expr)

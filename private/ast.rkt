@@ -98,6 +98,23 @@
 ;; the tuple's arity is fixed by its type.
 (struct p:tuple   (elems stx) #:transparent)
 
+;; Erlang-style bit syntax (see BitSyntax.org).  A `bits` form is a
+;; sequence of segments; each `bit-seg` describes one.
+;;   subject : an expression (in e:bits) or a pattern (in p:bits)
+;;   size    : 'rest (the `_` tail), a non-negative integer literal, or a
+;;             symbol naming an earlier-bound segment whose value is the
+;;             width (patterns only — a dependent width)
+;;   type    : 'integer | 'binary | 'bitstring  (phase 1; float/utf later)
+;;   signed? : #t for a signed integer segment, else #f
+;;   endian  : 'big (phase 1; 'little later)
+;; For 'integer / 'bitstring a literal size counts BITS; for 'binary it
+;; counts BYTES.
+(struct bit-seg   (subject size type signed? endian stx) #:transparent)
+;; A binary constructor: builds a Bitstring from its segments.
+(struct e:bits    (segs stx) #:transparent)
+;; A binary pattern: destructures a Bitstring segment by segment.
+(struct p:bits    (segs stx) #:transparent)
+
 ;; Fixed-size arrays (see private/array-runtime.rkt).
 ;; `(array e …)` — listing constructor; size is the element count.
 (struct e:array  (elems stx) #:transparent)
@@ -216,6 +233,8 @@
     [(p:lit v _)         (p:lit v new-stx)]
     [(p:ctor n args _)   (p:ctor n (map R args) new-stx)]
     [(p:tuple ps _)      (p:tuple (map R ps) new-stx)]
+    [(e:bits segs _)     (e:bits (map (lambda (sg) (remap-bit-seg sg R new-stx)) segs) new-stx)]
+    [(p:bits segs _)     (p:bits (map (lambda (sg) (remap-bit-seg sg R new-stx)) segs) new-stx)]
     [(ty:var n _)        (ty:var n new-stx)]
     [(ty:con n _)        (ty:con n new-stx)]
     [(ty:nat v _)        (ty:nat v new-stx)]
@@ -225,6 +244,16 @@
     [(ty:qual cs b _)
      (ty:qual (for/list ([c (in-list cs)]) (R c)) (R b) new-stx)]
     [(constraint c args _) (constraint c (map R args) new-stx)]))
+
+;; Re-anchor one bit-segment: recur into the subject (an expr in e:bits,
+;; a pattern in p:bits); the size/type/flags are inert data.
+(define (remap-bit-seg sg R new-stx)
+  (bit-seg (R (bit-seg-subject sg))
+           (bit-seg-size sg)
+           (bit-seg-type sg)
+           (bit-seg-signed? sg)
+           (bit-seg-endian sg)
+           new-stx))
 ;; Items inside a `protocol` body:
 (struct method-sig     (name type stx) #:transparent)
 (struct method-default (name expr stx) #:transparent)
