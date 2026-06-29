@@ -11,7 +11,7 @@
 ;; PHASE 2: `pack` — annotation-driven introduction.  Checking an
 ;; expression against an expected existential (here written
 ;; `(ann e (Exists …))`) unifies the witness type with the expression's
-;; type, discharges the `#:where` constraints at the pack site, and hides
+;; type, discharges the `:where` constraints at the pack site, and hides
 ;; the witness behind the existential.  (`open`, the eliminator, is
 ;; Phase 3 — so packed values still cannot be *used*, only constructed
 ;; and carried; the runtime value is the bare witness.)
@@ -152,7 +152,7 @@
   (check-equal? anything 42
                 "a packed value is runtime-transparent (the bare witness)")
 
-  ;; The `#:where` constraint is discharged at the pack site: packing a
+  ;; The `:where` constraint is discharged at the pack site: packing a
   ;; value of a ground type with no `Show` instance (a concrete function
   ;; type) is rejected.  (A *polymorphic* witness leaves the constraint
   ;; over a free var — deferred, not a hard error — so the witness here is

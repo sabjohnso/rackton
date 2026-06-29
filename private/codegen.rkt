@@ -706,6 +706,25 @@
                         (or (codegen-plan-return-typed-methods plan) (seteq)))
                 st))
 
+;; Rewrite a Rackton-only `require` sub-form into a Racket one.
+;; `(qualified-in p mod)` namespaces an import behind a colon prefix; it
+;; desugars to `(prefix-in p: mod)`, so the importee's `Cons` becomes
+;; `p:Cons` at the binding level — exactly the name the surface parser
+;; emits for the qualified reference.  Other sub-forms pass through.
+(define (translate-require-spec spec)
+  (define lst (and (pair? (syntax-e spec)) (syntax->list spec)))
+  (cond
+    [(and lst (= (length lst) 3)
+          (eq? (syntax->datum (car lst)) 'qualified-in))
+     (with-syntax ([pfx (datum->syntax
+                         spec
+                         (string->symbol
+                          (format "~a:" (syntax->datum (cadr lst))))
+                         spec)]
+                   [mp (caddr lst)])
+       (syntax/loc spec (prefix-in pfx mp)))]
+    [else spec]))
+
 ;; Returns (values syntax-or-#f st).  Only the def and instance arms touch st
 ;; (compile-expr / register-inlinable / exported-impls); the rest pass it
 ;; through unchanged.
@@ -804,7 +823,7 @@
      (compile-instance head methods stx ctx st)]
     [(top:require specs stx)
      (values
-      (with-syntax ([(s ...) specs])
+      (with-syntax ([(s ...) (map translate-require-spec specs)])
         (syntax/loc stx (require s ...)))
       st)]
     [(top:foreign name type mod-path racket-id stx)
@@ -1014,7 +1033,7 @@
     (for/fold ([acc '()]) ([m (in-list methods)])
       (match m
         [(top:def name expr _) (cons (cons name expr) acc)]
-        ;; #:type bindings are compile-time only — no
+        ;; :type bindings are compile-time only — no
         ;; runtime code is emitted for an associated-type binding.
         [(inst-type-fam _ _ _) acc])))
   ;; Filter out tcons at fundep-determined positions so the per-method
@@ -1521,7 +1540,7 @@
               "no tcon info for ~s when registering instance" head-tcon))
      (cond
        ;; Opaque type whose runtime values carry a declared dispatch tag
-       ;; (#:runtime-tag): register positional instance methods under it,
+       ;; (:runtime-tag): register positional instance methods under it,
        ;; matching what dispatch-tag returns for those host values.
        [(tcon-info-runtime-tag ti)
         (list (tcon-info-runtime-tag ti))]

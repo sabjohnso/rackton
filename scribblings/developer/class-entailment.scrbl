@@ -72,7 +72,7 @@ the implementation is direct and small.
 
 @section{Functional dependencies and consistency}
 
-When a class declares @racket[#:fundep a -> b], the entail module
+When a class declares @racket[:fundep a -> b], the entail module
 maintains the invariant that no two instances disagree about
 @racket[b] for the same @racket[a].  Adding a new instance triggers
 a check against every existing instance — if the new @racket[a]

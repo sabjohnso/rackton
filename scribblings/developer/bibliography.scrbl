@@ -51,7 +51,7 @@ with brief notes on where each idea lands in the codebase.
       Fundeps as constraints on instance resolution, plus the
       consistency rule (no two instances may disagree about the
       determined parameter).  Rackton's
-      @racket[(#:fundep a -> b)] follows this design.}
+      @racket[(:fundep a -> b)] follows this design.}
 
 @item{Sulzmann, Martin, Manuel M. T. Chakravarty, Simon Peyton
       Jones, and Kevin Donnelly.  @italic{System F with type

@@ -1,9 +1,9 @@
 #lang racket/base
 
 ;; Feature 9 / Phase 1: runnable law bundles generated from a protocol's
-;; `#:laws`.
+;; `:laws`.
 ;;
-;; A protocol that declares `#:laws` in a module that imports
+;; A protocol that declares `:laws` in a module that imports
 ;; `rackton/unit` auto-emits a `<Class>-laws` function: a normal binding
 ;; of type `(… (Show a) => (-> (Gen a) Test))`, one property per law,
 ;; whose failure message names the law and labels each binder by source
@@ -32,7 +32,7 @@
   ;; equation compare results without making Eq a superprotocol.
   (protocol (Combine a)
     (: combine (-> a (-> a a)))
-    #:laws
+    :laws
       ([associativity ((Eq a) =>
         (All ([x : a] [y : a] [z : a])
           (== (combine (combine x y) z)
@@ -108,7 +108,7 @@
       (compile-rackton
        (protocol (Gated a)
          (: op (-> a Boolean))
-         #:laws ([trivial (All ([x : a]) (op x))]))
+         :laws ([trivial (All ([x : a]) (op x))]))
        (define ignored Gated-laws)))))
 
 (ru:test-case "with unit import: the bundle is emitted and type-checks"
@@ -118,7 +118,7 @@
        (require "../unit.rkt")
        (protocol (Gated a)
          (: op (-> a Boolean))
-         #:laws ([trivial (All ([x : a]) (op x))]))
+         :laws ([trivial (All ([x : a]) (op x))]))
        (define ignored Gated-laws)))))
 
 ;; ----- cross-module: the generated bundle is exported and reused -----

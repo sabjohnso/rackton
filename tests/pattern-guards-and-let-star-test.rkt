@@ -11,8 +11,8 @@
   (: classify (-> (Maybe Integer) String))
   (define (classify m)
     (match m
-      [(Some x) #:when (> x 0) "positive"]
-      [(Some x) #:when (< x 0) "negative"]
+      [(Some x) :when (> x 0) "positive"]
+      [(Some x) :when (< x 0) "negative"]
       [(Some _)                 "zero"]
       [(None)                   "missing"]))
 
@@ -33,7 +33,7 @@
   (define (keep-pos xs)
     (match xs
       [(Nil) Nil]
-      [(Cons h rest) #:when (> h 0) (Cons h (keep-pos rest))]
+      [(Cons h rest) :when (> h 0) (Cons h (keep-pos rest))]
       [(Cons _ rest)                (keep-pos rest)]))
 
   (: filtered (List Integer))
@@ -90,4 +90,4 @@
 (test-case "guarded sole clause does not satisfy exhaustiveness"
   (check-rackton-compile-error
    (define x (match (Some 5)
-               [(Some _) #:when #t 1]))))
+               [(Some _) :when #t 1]))))

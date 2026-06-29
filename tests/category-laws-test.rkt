@@ -1,6 +1,6 @@
 #lang rackton
 
-;; Tests for the Category laws (prelude `#:laws`), both ways:
+;; Tests for the Category laws (prelude `:laws`), both ways:
 ;;
 ;;  - INTENSIONAL, via a test-local FREE category whose arrows ARE data
 ;;    (a sequence of generator labels) and so have decidable `Eq`.  The

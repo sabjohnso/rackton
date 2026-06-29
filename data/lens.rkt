@@ -4,7 +4,7 @@
 ;;
 ;; Moved out of the auto-prelude (Phase 2 slim): `(require
 ;; rackton/data/lens)` to use them, and likewise in any module that
-;; uses `#:deriving Lens` / `#:deriving Prism` (the generated code
+;; uses `:deriving Lens` / `:deriving Prism` (the generated code
 ;; refers to `Lens` / `Prism`).
 ;;
 ;; Simple (getter, setter) pair encoding.  Each `(Lens s a)` packs a
@@ -82,7 +82,7 @@
    (lambda (s) (Cons (view l s) Nil))
    (lambda (f) (lambda (s) (over l f s)))))
 
-;; `#:deriving Prism` on a constructor with N fields focuses a flat
+;; `:deriving Prism` on a constructor with N fields focuses a flat
 ;; N-tuple `(tuple x0 … xn)` — a variadic built-in tuple (the binary
 ;; case is a `Pair`), so there is no arity limit and no dedicated
 ;; `TupleK` focus types are needed.

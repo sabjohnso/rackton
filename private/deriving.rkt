@@ -1,6 +1,6 @@
 #lang racket/base
 
-;; Rackton — `#:deriving` instance synthesis.
+;; Rackton — `:deriving` instance synthesis.
 ;;
 ;; Given a data type's name, parameters, and constructors, build the
 ;; typed-core AST for a derived class instance (Eq, Ord, Show, Functor,

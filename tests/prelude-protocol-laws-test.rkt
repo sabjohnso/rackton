@@ -7,7 +7,7 @@
 ;; drive each RUNNABLE law as a native property over a concrete instance.
 ;; The type-check-only laws (Prod/Coprod β/η, the mtl and Apply/ComonadApply
 ;; laws, Bifunctor composition) are verified by the prelude/stdlib simply
-;; compiling — inference checks every `#:laws` body when prelude-env builds.
+;; compiling — inference checks every `:laws` body when prelude-env builds.
 ;;
 ;; Written in the native framework end to end: `run-suite` panics on any
 ;; failure so `raco test` reports non-zero.

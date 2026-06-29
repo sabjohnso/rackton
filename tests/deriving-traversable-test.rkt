@@ -1,6 +1,6 @@
 #lang rackton
 
-;; Regression coverage for `#:deriving Traversable` — which the rest of
+;; Regression coverage for `:deriving Traversable` — which the rest of
 ;; the suite never exercised (existing traversable tests use the
 ;; prelude's hand-written instances).  Covers each arity branch of the
 ;; synthesizer and a recursive type, traversing into the Maybe
@@ -13,11 +13,11 @@
 
 (require "../unit.rkt")
 
-(data (One a)   (MkOne a)       #:deriving Functor Foldable Traversable Eq Show)
-(data (Two a)   (MkTwo a a)     #:deriving Functor Foldable Traversable Eq Show)
-(data (Three a) (MkThree a a a) #:deriving Functor Foldable Traversable Eq Show)
+(data (One a)   (MkOne a)       :deriving Functor Foldable Traversable Eq Show)
+(data (Two a)   (MkTwo a a)     :deriving Functor Foldable Traversable Eq Show)
+(data (Three a) (MkThree a a a) :deriving Functor Foldable Traversable Eq Show)
 (data (Tree a)  (Leaf a) (Node (Tree a) (Tree a))
-  #:deriving Functor Foldable Traversable Eq Show)
+  :deriving Functor Foldable Traversable Eq Show)
 
 (: pos (-> Integer (Maybe Integer)))
 (define (pos n) (if (> n 0) (Some n) None))

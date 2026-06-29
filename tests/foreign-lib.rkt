@@ -7,7 +7,7 @@
 (provide (all-defined-out))
 
 (foreign contains? (-> String (-> String Boolean))
-         #:from racket/string #:as string-contains?)
+         :from racket/string :as string-contains?)
 
 (: mentions-rackton (-> String Boolean))
 (define (mentions-rackton s) (contains? s "rackton"))

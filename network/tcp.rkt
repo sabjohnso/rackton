@@ -37,7 +37,7 @@
 
 ;; connect host port: open a connection to a TCP server.
 (foreign connect (-> String (-> Integer (IO Socket)))
-         #:from rackton/private/prelude-runtime #:as tcp-connect-prim)
+         :from rackton/private/prelude-runtime :as tcp-connect-prim)
 
 ;; --- server --------------------------------------------------------
 
@@ -46,36 +46,36 @@
 ;; not `listen`, because the prelude's MonadWriter class already exports
 ;; `listen`; a bare `listen` here would clash on import.
 (foreign listen-on (-> Integer (IO Listener))
-         #:from rackton/private/prelude-runtime #:as tcp-listen-prim)
+         :from rackton/private/prelude-runtime :as tcp-listen-prim)
 
 ;; accept: block until a client connects, returning its Socket.
 (foreign accept (-> Listener (IO Socket))
-         #:from rackton/private/prelude-runtime #:as tcp-accept-prim)
+         :from rackton/private/prelude-runtime :as tcp-accept-prim)
 
 ;; accept-timeout listener ms: like accept, but give up after ms
 ;; milliseconds with None (0 ms = non-blocking poll).
 (foreign accept-timeout (-> Listener (-> Integer (IO (Maybe Socket))))
-         #:from rackton/private/prelude-runtime #:as tcp-accept-timeout-prim)
+         :from rackton/private/prelude-runtime :as tcp-accept-timeout-prim)
 
 ;; listener-port: the local port the listener is bound to.
 (foreign listener-port (-> Listener (IO Integer))
-         #:from rackton/private/prelude-runtime #:as tcp-listener-port)
+         :from rackton/private/prelude-runtime :as tcp-listener-port)
 
 ;; peer-address: the connected peer's (host, port).
 (foreign peer-address (-> Socket (IO (Tuple String Integer)))
-         #:from rackton/private/prelude-runtime #:as tcp-peer-address-prim)
+         :from rackton/private/prelude-runtime :as tcp-peer-address-prim)
 
 ;; --- transfer (bytes are the primitive) ----------------------------
 
 ;; send-bytes sock b: write the whole byte string and flush.
 (foreign send-bytes (-> Socket (-> Bytes (IO Unit)))
-         #:from rackton/private/prelude-runtime #:as tcp-send-bytes-prim)
+         :from rackton/private/prelude-runtime :as tcp-send-bytes-prim)
 
 ;; recv-bytes sock n: read up to n bytes as (Some b); None at end-of-file
 ;; (the peer closed).  Returns as soon as any data is available — it does
 ;; not wait to fill n.
 (foreign recv-bytes (-> Socket (-> Integer (IO (Maybe Bytes))))
-         #:from rackton/private/prelude-runtime #:as tcp-recv-bytes-prim)
+         :from rackton/private/prelude-runtime :as tcp-recv-bytes-prim)
 
 ;; recv-bytes-timeout sock n ms: recv-bytes with a deadline, reporting
 ;; timeout and peer-close distinctly (see RecvResult).  The host primitive
@@ -83,7 +83,7 @@
 ;; the ADT here.
 (foreign recv-bytes-timeout-prim
          (-> Socket (-> Integer (-> Integer (IO (Maybe (Maybe Bytes))))))
-         #:from rackton/private/prelude-runtime #:as tcp-recv-bytes-timeout-prim)
+         :from rackton/private/prelude-runtime :as tcp-recv-bytes-timeout-prim)
 
 (: recv-bytes-timeout (-> Socket (-> Integer (-> Integer (IO (RecvResult Bytes))))))
 (define (recv-bytes-timeout sock n ms)
@@ -119,10 +119,10 @@
 ;; --- closing -------------------------------------------------------
 
 (foreign close (-> Socket (IO Unit))
-         #:from rackton/private/prelude-runtime #:as tcp-close-prim)
+         :from rackton/private/prelude-runtime :as tcp-close-prim)
 
 (foreign close-listener (-> Listener (IO Unit))
-         #:from rackton/private/prelude-runtime #:as tcp-close-listener)
+         :from rackton/private/prelude-runtime :as tcp-close-listener)
 
 ;; with-connect host port action: connect, run the action, and close the
 ;; socket even if the action raises (the bracket pattern of

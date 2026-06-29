@@ -20,11 +20,11 @@
 ;; `make-lazy` is the target of the `delay` form; user code normally
 ;; writes `(delay e)` rather than calling it directly.
 (foreign make-lazy (-> (-> Unit a) (Lazy a))
-         #:from rackton/private/lazy-runtime)
+         :from rackton/private/lazy-runtime)
 
 ;; Force a Lazy, computing it the first time and caching thereafter.
 (foreign force (-> (Lazy a) a)
-         #:from rackton/private/lazy-runtime #:as lazy-force)
+         :from rackton/private/lazy-runtime :as lazy-force)
 
 ;; ----- Stream ------------------------------------------------------
 ;;

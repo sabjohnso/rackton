@@ -32,7 +32,7 @@
 
   (protocol (Box2 (f :: (-> * *)))
     (: map2 (-> (-> a b) (-> (f a) (f b))))
-    #:laws
+    :laws
       ([identity ((Eq (f a)) =>
          (All ([xs : (f a)]) (== (map2 (lambda (x) x) xs) xs)))]
        [composition ((Eq (f c)) =>
@@ -73,7 +73,7 @@
   (protocol (MyMonoid a)
     (: combine2 (-> a (-> a a)))
     (: unit2 a)                          ;; return-typed (dispatch by result)
-    #:laws
+    :laws
       ([assoc ((Eq a) =>
          (All ([x : a] [y : a] [z : a])
            (== (combine2 (combine2 x y) z)
@@ -122,7 +122,7 @@
        (require "../unit.rkt")
        (protocol (OnlyFun (f :: (-> * *)))
          (: omap (-> (-> a b) (-> (f a) (f b))))
-         #:laws
+         :laws
            ([only-composition ((Eq (f c)) =>
               (All ([g : (-> b c)] [h : (-> a b)] [xs : (f a)])
                 (== (omap (lambda (x) (g (h x))) xs)
@@ -135,7 +135,7 @@
        (require "../unit.rkt")
        (protocol (OnlyFun (f :: (-> * *)))
          (: omap (-> (-> a b) (-> (f a) (f b))))
-         #:laws
+         :laws
            ([only-composition ((Eq (f c)) =>
               (All ([g : (-> b c)] [h : (-> a b)] [xs : (f a)])
                 (== (omap (lambda (x) (g (h x))) xs)

@@ -10,8 +10,8 @@
 
 (require "../unit.rkt")
 
-(struct Point   [x : Integer] [y : Integer] #:deriving Eq Ord Show)
-(struct Segment [start : Point] [end : Point] #:deriving Eq Ord Show)
+(struct Point   [x : Integer] [y : Integer] :deriving Eq Ord Show)
+(struct Segment [start : Point] [end : Point] :deriving Eq Ord Show)
 
 (: s1 Segment) (define s1 (Segment (Point 1 2) (Point 3 4)))
 (: s2 Segment) (define s2 (Segment (Point 1 2) (Point 3 4)))

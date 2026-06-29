@@ -93,23 +93,23 @@ It will not synthesise it for you.
 @section{Existential types}
 
 Existentials appear on @italic{constructor} signatures, not function
-signatures, using a per-constructor @racket[#:forall] / @racket[#:where]
+signatures, using a per-constructor @racket[:forall] / @racket[:where]
 clause:
 
 @rackton-example[#:eval ev #:mode 'display]{
 (data Anything
-  (Wrap #:forall (a) a (-> a String)))
+  (Wrap :forall (a) a (-> a String)))
 }
 
 @racket[Wrap] takes a value of any type and a printer for that type;
 the type variable @racket[a] is hidden from the outside.  Add
-@racket[#:where] to require the existential to satisfy one or more
+@racket[:where] to require the existential to satisfy one or more
 protocol constraints — those constraints become hypotheses available
 inside any clause that matches the constructor:
 
 @rackton-example[#:eval ev #:mode 'defs]{
 (data ExistsShow
-  (PackShow #:forall (a) #:where (Show a) a))
+  (PackShow :forall (a) :where (Show a) a))
 }
 
 Pattern matching on an existential constructor introduces a fresh

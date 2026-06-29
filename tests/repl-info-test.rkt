@@ -60,9 +60,9 @@
   (define-values (_ outs)
     (drive-session
      '((protocol (Idempotent a)
-         (#:requires (Eq a))
+         (:requires (Eq a))
          (: op (-> a a))
-         #:laws
+         :laws
          ([idempotence (All ([x : a]) (== (op (op x)) (op x)))]))
        (unquote info Idempotent))))
   (define out (last outs))
@@ -97,12 +97,12 @@
     (check-false (regexp-match #rx"unbound" (info-output name)))))
 
 (test-case ",info marks a sealed type but keeps locally visible ctors"
-  ;; #:abstract hides constructors across module boundaries only; inside
+  ;; :abstract hides constructors across module boundaries only; inside
   ;; the defining session they are visible, so ,info lists them and adds
   ;; a `sealed` marker.
   (define-values (_ outs)
     (drive-session
-     '((data Hidden (MkHidden Integer) #:abstract)
+     '((data Hidden (MkHidden Integer) :abstract)
        (unquote info Hidden))))
   (define out (last outs))
   (check-regexp-match #rx"sealed" out)

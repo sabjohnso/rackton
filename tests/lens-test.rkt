@@ -10,7 +10,7 @@
 (struct Point
   [x : Integer]
   [y : Integer]
-  #:deriving Eq Show)
+  :deriving Eq Show)
 
 ;; Hand-written field lenses for Point.
 (: x-lens (Lens Point Integer))
@@ -41,7 +41,7 @@
 (struct Segment
   [start  : Point]
   [end    : Point]
-  #:deriving Eq Show)
+  :deriving Eq Show)
 
 (: start-lens (Lens Segment Point))
 (define start-lens

@@ -10,7 +10,7 @@
 ;; on an Integer determines the output type at compile time, so
 ;; downstream uses don't need ascriptions.
 (protocol (Convert a b)
-  (#:fundep a -> b)
+  (:fundep a -> b)
   (: convert (-> a b)))
 
 (instance (Convert Integer String)

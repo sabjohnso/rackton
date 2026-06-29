@@ -12,7 +12,7 @@
 
 ;; Low-level runtime primitive: success / failure as the prelude Either.
 (foreign raw-try (-> (IO a) (IO (Either String a)))
-         #:from rackton/private/prelude-runtime #:as try)
+         :from rackton/private/prelude-runtime :as try)
 
 ;; try: run an action, catching any raised error as (Err message).
 (: try (-> (IO a) (IO (Result String a))))
@@ -20,4 +20,4 @@
 
 ;; raise-io: throw an error with the given message.
 (foreign raise-io (-> String (IO a))
-         #:from rackton/private/prelude-runtime)
+         :from rackton/private/prelude-runtime)

@@ -1,7 +1,7 @@
 #lang rackton
 
 ;; Auto-derive field lenses for struct via
-;; `#:deriving Lens`.  Each field `f` of struct `T` gets a named
+;; `:deriving Lens`.  Each field `f` of struct `T` gets a named
 ;; `T-f-lens` definition.
 
 (require rackton/data/lens
@@ -12,7 +12,7 @@
 (struct Point
   [x : Integer]
   [y : Integer]
-  #:deriving Eq Show Lens)
+  :deriving Eq Show Lens)
 
 (: p0 Point)
 (define p0 (Point 3 7))
@@ -33,7 +33,7 @@
 
 (struct (Box a)
   [value : a]
-  #:deriving Eq Show Lens)
+  :deriving Eq Show Lens)
 
 (: b0 (Box String))
 (define b0 (Box "hi"))
@@ -49,7 +49,7 @@
 (struct Segment
   [start : Point]
   [end   : Point]
-  #:deriving Eq Show Lens)
+  :deriving Eq Show Lens)
 
 (: start-x-lens (Lens Segment Integer))
 (define start-x-lens (lens-compose Segment-start-lens Point-x-lens))

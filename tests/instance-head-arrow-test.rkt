@@ -11,7 +11,7 @@
 (require "../unit.rkt")
 
 (protocol (TwoP (cat :: (-> * (-> * *))) (p :: (-> * (-> * *))))
-  (#:fundep cat -> p)
+  (:fundep cat -> p)
   (: tp-first (-> (cat a b) (cat (p a c) (p b c)))))
 
 (instance (TwoP (->) Pair)

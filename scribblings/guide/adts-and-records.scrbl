@@ -41,6 +41,46 @@ type parameters @racket[a ...] are universally quantified — the same
 @racket[(Tree Integer)] machinery handles @racket[(Tree String)]
 without further work.
 
+@section{Named fields and keyword construction}
+
+A constructor's fields may be @emph{named}, written
+@racket[[field : type]] in place of a bare field type.  A named
+constructor can then be built with keyword arguments
+@racket[(Ctor :field value …)] in addition to the positional form
+@racket[(Ctor value …)] — both build the very same value:
+
+@rackton-example[#:eval ev #:mode 'value #:context? #t]{
+(data (Crate a)
+  (Packed [value : a])
+  Hollow)
+
+(match (Packed :value 3)
+  [(Packed v) v]
+  [Hollow     0])
+}
+
+Two rules keep naming consistent: within one @racket[data] declaration
+either every constructor that has fields names them or none does
+(nullary constructors like @racket[Hollow] are exempt), and a single
+constructor's fields are either all named or all positional.
+
+Keyword arguments must appear in the constructor's @emph{declared field
+order} — the labels document and check the call, they do not reorder it.
+A @racket[struct]'s fields are always named, so a @racket[struct] value
+may be built positionally or with keywords interchangeably:
+
+@rackton-example[#:eval ev #:mode 'value #:context? #t]{
+(struct Vec2
+  [x : Float]
+  [y : Float])
+
+(Vec2-y (Vec2 :x 3.0 :y 4.0))
+}
+
+Listing the labels out of order, omitting one, mixing keyword and
+positional arguments in a single call, or applying keywords to a
+positional constructor are all rejected at compile time.
+
 @section{Newtypes}
 
 @rackton-example[#:eval ev #:mode 'defs]{
@@ -92,14 +132,14 @@ Untouched fields are copied verbatim.  This is the only way to
 
 @section{Deriving common instances}
 
-Listing @racket[#:deriving] at the end of a @racket[data] or
+Listing @racket[:deriving] at the end of a @racket[data] or
 @racket[struct] synthesises the named protocol instances:
 
 @rackton-example[#:eval ev #:mode 'defs]{
 (data (Tree a)
   Leaf
   (Node (Tree a) a (Tree a))
-  #:deriving Eq Show Functor)
+  :deriving Eq Show Functor)
 }
 
 Available protocols for deriving include @racket[Eq], @racket[Ord]
@@ -108,13 +148,13 @@ Available protocols for deriving include @racket[Eq], @racket[Ord]
 @racket[Bifunctor], @racket[Semigroup], @racket[Monoid], plus the
 optics families: per-field @racket[Lens] on @racket[struct] and
 per-constructor @racket[Prism] on @racket[data].  Each derived
-instance picks up the appropriate context (so @racket[#:deriving Eq]
+instance picks up the appropriate context (so @racket[:deriving Eq]
 on @racket[(Tree a)] yields the qualified instance
 @racket[((Eq a) => (Eq (Tree a)))]).
 
 @section{Abstract types}
 
-Adding @racket[#:abstract] before the constructors hides them from
+Adding @racket[:abstract] before the constructors hides them from
 importing modules even when listed in a @racket[(provide …)] form.
 Inside the defining module the constructors work as usual; outside,
 only the type constructor is visible.  This is how @racket[IO] and

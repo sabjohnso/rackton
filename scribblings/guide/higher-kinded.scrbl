@@ -90,14 +90,14 @@ determined by others:
 
 @rackton-example[#:eval ev #:mode 'defs]{
 (protocol (Convert a b)
-  (#:fundep a -> b)
+  (:fundep a -> b)
   (: convert (-> a b)))
 
 (instance (Convert Integer String)
   (define (convert n) (show n)))
 }
 
-The @racket[#:fundep a -> b] clause says: @racket[a] determines
+The @racket[:fundep a -> b] clause says: @racket[a] determines
 @racket[b].  Rackton uses this to resolve ambiguity — if a call site
 fixes @racket[a] to @racket[Integer], the type checker can conclude
 @racket[b] must be @racket[String] without needing an ascription.  In

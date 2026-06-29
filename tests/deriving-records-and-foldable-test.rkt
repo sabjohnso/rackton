@@ -1,6 +1,6 @@
 #lang rackton
 
-;; `#:deriving` extended to records (via struct) and Foldable
+;; `:deriving` extended to records (via struct) and Foldable
 ;; derivation.  Also exercises newtype and parametric-ADT deriving as
 ;; regression coverage.
 
@@ -12,7 +12,7 @@
 (struct Point
   [x : Integer]
   [y : Integer]
-  #:deriving Eq Show Ord)
+  :deriving Eq Show Ord)
 
 (: same-pt Boolean)
 (define same-pt   (== (Point 1 2) (Point 1 2)))
@@ -30,7 +30,7 @@
 
 (struct (Box a)
   [value : a]
-  #:deriving Eq Show Functor Foldable)
+  :deriving Eq Show Functor Foldable)
 
 (: mapped-box (Box Integer))
 (define mapped-box (fmap (lambda (n) (+ n 1)) (Box 41)))
@@ -48,7 +48,7 @@
 
 (data (Pair2 a b)
   (MkPair2 a b)
-  #:deriving Eq Show)
+  :deriving Eq Show)
 
 (: pair2-eq Boolean)
 (define pair2-eq (== (MkPair2 1 "a") (MkPair2 1 "a")))
@@ -62,7 +62,7 @@
 (data (Tree a)
   Leaf
   (Branch (Tree a) a (Tree a))
-  #:deriving Eq Show Foldable)
+  :deriving Eq Show Foldable)
 
 (: example-tree (Tree Integer))
 (define example-tree
@@ -80,7 +80,7 @@
 ;; ----- 35.E newtype deriving (regression) --------------------
 
 (newtype Wrap (MkWrap Integer)
-  #:deriving Eq Show)
+  :deriving Eq Show)
 
 (: wrap-eq Boolean)
 (define wrap-eq   (== (MkWrap 1) (MkWrap 1)))
@@ -89,7 +89,7 @@
 (define wrap-show (show (MkWrap 42)))
 
 (newtype (Idiom a) (MkIdiom a)
-  #:deriving Eq Show Functor)
+  :deriving Eq Show Functor)
 
 (: id-mapped (Idiom Integer))
 (define id-mapped (fmap (lambda (n) (* n 2)) (MkIdiom 21)))

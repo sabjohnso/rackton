@@ -459,7 +459,7 @@
        (render-labeled-list "  instances:" insts))))
 
 ;; Render a type constructor for ,info: arity (and a `sealed` marker for
-;; #:abstract types), the constructors visible in the env with their
+;; :abstract types), the constructors visible in the env with their
 ;; schemes, and the instance heads that mention this type — the classes
 ;; the type "implements".  An imported abstract type's constructors don't
 ;; resolve in the env, so they drop out naturally; a locally defined one's
@@ -711,7 +711,7 @@
 ;; Parse + type-check + compile one top-form syntax under the
 ;; persisted parameters.  Returns updated env and the list of
 ;; compiled Racket-syntax forms (a single parsed entry may expand
-;; to multiple, e.g. #:deriving).
+;; to multiple, e.g. :deriving).
 ;; Returns (values env* declared* compiled final-st).  declared* is the
 ;; carried-forward signature map — this input's `(: foo …)` decs merged
 ;; in, definitions' consumed — which the caller must persist so a
@@ -736,7 +736,7 @@
     ;; REPL input is order-invariant just like a module body.  Pass the
     ;; persisted st so resolution tables accumulate; get the final st back.
     ;; infer-program/phases also returns the post-expansion form list
-    ;; (`#:derive-supers` instances replaced by the plain instances they
+    ;; (`:derive-supers` instances replaced by the plain instances they
     ;; synthesize); compile THAT so derived instances are lowered.
     (define-values (env* declared* parsed* final-st)
       (infer-program/phases parsed

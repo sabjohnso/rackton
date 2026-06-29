@@ -8,7 +8,7 @@
 ;; ----- heterogeneous Show ------------------------------
 
 (data ExistsShow
-  (PackShow #:forall (a) #:where (Show a) a))
+  (PackShow :forall (a) :where (Show a) a))
 
 ;; Construct a list of heterogeneous showable values.
 (: heterogeneous (List ExistsShow))
@@ -33,7 +33,7 @@
 ;; Pack a value with its own Eq witness; compare against itself.
 
 (data ExistsEq
-  (PackEq #:forall (a) #:where (Eq a) a))
+  (PackEq :forall (a) :where (Eq a) a))
 
 ;; Self-comparison: the bound value compared to itself is always
 ;; true (since the SAME existential witness is in scope).

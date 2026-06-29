@@ -2,7 +2,7 @@
 
 ;; Rackton — runnable law bundles (Feature 9).
 ;;
-;; Synthesize, from each protocol that declares `#:laws`, a `<Class>-laws`
+;; Synthesize, from each protocol that declares `:laws`, a `<Class>-laws`
 ;; function value that turns generators into a `Test` group of properties
 ;; — one per RUNNABLE law — driving each already-type-checked law body
 ;; over generated inputs and labeling every binder by source name on

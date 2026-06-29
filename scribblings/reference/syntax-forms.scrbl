@@ -12,6 +12,15 @@ and may appear inside any @racket[(rackton …)] block, inside a
 @seclink["sf-top"]{top-level declarations}, @seclink["sf-exprs"]{expressions},
 and @seclink["sf-patterns"]{patterns}.
 
+@margin-note{Rackton uses Common-Lisp-style keywords: a token beginning
+with a colon, such as @racket[:deriving] or @racket[:value], is a
+keyword (an option or argument label), never a value.  A single
+@emph{internal} colon marks a qualified reference, @racketidfont{mod:name}
+(see @racket[require]'s @racket[qualified-in]).  A lone @racket[:] remains
+the annotation separator (@racket[[x : Type]]) and @racket[::] the kind
+separator.  An ordinary identifier therefore contains no colon; trailing
+or repeated colons are a syntax error.}
+
 @section[#:tag "sf-top"]{Top-level declarations}
 
 @defform*[[(define name expr)
@@ -63,7 +72,7 @@ Multi-clause definitions are not restricted to module scope: the
 same combining applies to method definitions inside an
 @racket[instance], to default-method definitions inside a
 @racket[protocol], and to the @racket[define] forms in a
-@racket[#:derive] block.  So an instance method may dispatch over
+@racket[:derive] block.  So an instance method may dispatch over
 constructors with one clause per case rather than a single
 @racket[match] body.}
 
@@ -131,14 +140,25 @@ is never inferred.  See
          #:grammar
          [(param           a (a :: kind))
           (kind            * Nat (-> kind ...+) PromotedType (PromotedType kind ...))
-          (ctor-spec       bare-ctor (Ctor type ...))
+          (ctor-spec       bare-ctor (Ctor field ...))
           (bare-ctor       id)
-          (maybe-deriving  code:blank (code:line #:deriving protocol ...))]]{
+          (field           type [name : type])
+          (maybe-deriving  code:blank (code:line :deriving protocol ...))]]{
 
 Declares an algebraic data type @racket[Name] parameterised by
 @racket[param ...], with one or more constructors.  Each constructor is
 either a bare identifier (nullary) or a parenthesised form naming the
-constructor and its field types.
+constructor and its fields.
+
+A field is normally a bare @racket[type] (positional).  Written
+@racket[[name : type]] it is @emph{named}, which lets the constructor be
+applied with keyword arguments @racket[(Ctor :name value …)] as well as
+positionally.  Field naming must be uniform: within one declaration
+either every constructor that has fields names them or none does
+(nullary constructors are exempt), and a single constructor's fields are
+either all named or all positional.  Keyword arguments must be given in
+declared field order — see @secref["sf-exprs"] for keyword construction
+and @secref["sf-patterns"] for the matching keyword pattern.
 
 A parameter is normally a bare lowercase identifier whose kind is
 inferred from how the constructors use it.  It may instead be written
@@ -159,18 +179,18 @@ how you pin one to a specific kind:
 (code:comment "(Phantom SEmpty) is well-kinded; (Phantom Integer) is a kind error")
 ]
 
-The optional @racket[#:deriving] clause synthesises instances of the
+The optional @racket[:deriving] clause synthesises instances of the
 named protocols; see @racket[Eq], @racket[Ord], @racket[Show],
 @racket[Functor], @racket[Foldable], @racket[Traversable],
 @racket[Bifunctor], @racket[Semigroup], @racket[Monoid], and the
 auto-derived lens and prism families.
 
-A type may also be marked @racket[#:abstract] (before the constructors),
+A type may also be marked @racket[:abstract] (before the constructors),
 which hides its constructors from the type checker in importing
 modules even when listed in a @racket[(provide …)] form.
 
 A constructor may carry its own existential quantifier and constraint
-context via per-constructor @racket[#:forall] / @racket[#:where]
+context via per-constructor @racket[:forall] / @racket[:where]
 clauses (see
 @seclink["existentials" #:doc '(lib "rackton/scribblings/guide/rackton-guide.scrbl")]{the guide}),
 and may give a full type signature after a @racket[:] to assert a
@@ -181,7 +201,7 @@ the fields.  A field-less GADT constructor uses a non-arrow signature
 
 @racketblock[
 (data ExistsShow
-  (PackShow #:forall (a) #:where (Show a) a))]}
+  (PackShow :forall (a) :where (Show a) a))]}
 
 @defform[
          (newtype Name (MkName Type))]{
@@ -194,7 +214,7 @@ runtime overhead beyond a struct tag.  Equivalent to
           [(struct Name [field : type] ... maybe-deriving)
            (struct (Name a ...) [field : type] ... maybe-deriving)]
           #:grammar
-          ([maybe-deriving  code:blank (code:line #:deriving protocol ...)])]{
+          ([maybe-deriving  code:blank (code:line :deriving protocol ...)])]{
 
 Declares a single-constructor product type with typed named fields and
 auto-generated field accessors @racketidfont{Name}@racketidfont{-}@racket[_field].
@@ -206,7 +226,11 @@ have the appropriate polymorphic schemes.
 (define p (Point 3 4))
 (define px (Point-x p))]
 
-@racket[#:deriving] honours the same protocols as
+A @racket[struct]'s fields are always named, so its constructor accepts
+keyword arguments in declared field order as well as positional ones:
+@racket[(Point :x 3 :y 4)] builds the same value as @racket[(Point 3 4)].
+
+@racket[:deriving] honours the same protocols as
 @racket[data], including @racket[Foldable] and the auto-derived
 field-lens family.}
 
@@ -221,10 +245,10 @@ field-lens family.}
                           (ProtocolName type ...)]
            [method        (code:line (: method-name type))
                           (code:line (define (method-name p ...) body))
-                          (code:line #:requires constraint ...)
-                          (code:line #:fundep var ... -> var ...)
-                          (code:line #:laws (law ...))
-                          (code:line #:derive (derivation ...))]
+                          (code:line :requires constraint ...)
+                          (code:line :fundep var ... -> var ...)
+                          (code:line :laws (law ...))
+                          (code:line :derive (derivation ...))]
            [law           (law-name (quantifier (binder ...) body))
                           (law-name (constraint ... => (quantifier (binder ...) body)))]
            [quantifier    All ∀]
@@ -248,7 +272,7 @@ argument, so @racket[(b => (Convert a))] desugars to
 @racket[(Convert a b)].  Several bounds may be stacked on one
 parameter (@racket[(a => Num Ord)]).  A superprotocol that relates several
 parameters at once — and so cannot be attached to a single
-parameter — is written as a trailing @racket[#:requires] clause in the
+parameter — is written as a trailing @racket[:requires] clause in the
 body, listing the constraints directly.
 
 Every superprotocol must name a protocol that exists — defined in the same
@@ -269,10 +293,10 @@ superprotocol.  Kinds are written as @racket[*] for ordinary types or
 @racket[(-> k1 k2)] for type-constructor kinds.
 
 A protocol may declare one or more functional dependencies via
-@racket[#:fundep] clauses inside the body.
+@racket[:fundep] clauses inside the body.
 
 A protocol may document the algebraic laws its instances must satisfy
-with a @racket[#:laws] clause: a list of named, quantified equations.
+with a @racket[:laws] clause: a list of named, quantified equations.
 Each law is @racket[(law-name (All (binder ...) body))] — the quantifier
 may be written @racket[All] or @racket[∀], every @racket[binder] carries
 an explicit type annotation @racket[(var : type)], and @racket[body] is
@@ -296,7 +320,7 @@ associativity by assuming @racket[(Eq a)] for the law alone:
 @racketblock[
 (protocol (Semigroup a)
   (: mappend (-> a (-> a a)))
-  #:laws
+  :laws
   ([associativity ((Eq a) =>
      (All ([x : a] [y : a] [z : a])
        (== (mappend (mappend x y) z)
@@ -333,7 +357,7 @@ and run from another module.  See
 in the guide.  The law metadata itself is not serialized across module
 boundaries; the generated bundle value is.
 
-A single @racket[#:derive] keyword introduces a list of
+A single @racket[:derive] keyword introduces a list of
 @deftech{cross-protocol derivation}s, one bracketed
 @racket[(SuperProtocol (define …) ...)] clause per superprotocol.  Each
 clause gives canonical bodies that fill that @emph{superprotocol}'s methods
@@ -342,8 +366,8 @@ analogue of a default method.  For example, @racket[Monad] derives its
 @racket[Functor] and @racket[Applicative] superprotocols from
 @racket[flatmap] and @racket[pure].
 The bodies are consumed only when an instance opts in with
-@racket[#:derive-supers] (see @racket[instance]).  A
-@racket[#:derive] table is available within the module that declares the
+@racket[:derive-supers] (see @racket[instance]).  A
+@racket[:derive] table is available within the module that declares the
 protocol; it is not currently serialized across module boundaries, so a
 user-defined protocol's derivations apply only to instances written in the
 same file (the built-in monad stack works everywhere).}
@@ -351,8 +375,8 @@ same file (the built-in monad stack works everywhere).}
 @defform*[
           [(instance head method ...)
            (instance (qual ... => head) method ...)
-           (instance head #:derive-supers method ...)
-           (instance (qual ... => head) #:derive-supers method ...)]
+           (instance head :derive-supers method ...)
+           (instance (qual ... => head) :derive-supers method ...)]
           #:grammar
           ([head    (ProtocolName type ...)]
            [qual    (ProtocolName var ...)]
@@ -373,7 +397,7 @@ instance.  (The sole exception is an arity-0 return-typed method such as
 @racket[mempty]: alias it to a self-contained value, or define the
 aliased binding before the instance.)
 
-With @racket[#:derive-supers], the instance bundles only the
+With @racket[:derive-supers], the instance bundles only the
 irreducible primitives, and the compiler synthesizes the missing
 superprotocol instances from the protocol's @tech{cross-protocol derivation}
 table.  Writing a @racket[Monad] instance this way, for example, requires
@@ -386,7 +410,7 @@ cannot be derived from @racket[Monad] (none of @racket[fmap],
 bare @racket[a]), so it must always be supplied; omitting it is a
 compile-time error.
 
-Because @racket[#:derive-supers] auto-fills both a protocol's own
+Because @racket[:derive-supers] auto-fills both a protocol's own
 defaulted methods and its synthesized superprotocol methods, the two can
 form a loop that would only manifest as infinite recursion at runtime:
 the deriving protocol leaves a method to its default, that default calls a
@@ -510,25 +534,25 @@ to the handler.  Effects are not tracked in types; an operation
 invoked outside any handler is a runtime error.}
 
 @defform*[#:literals (=)
-          [(code:line #:type Family)
-           (code:line #:type (Family = T))]]{
+          [(code:line :type Family)
+           (code:line :type (Family = T))]]{
 
 Associated type family declaration and definition.
 
-A @racket[(#:type Family)] clause inside a @racket[protocol] body
+A @racket[(:type Family)] clause inside a @racket[protocol] body
 declares the family.  Each instance must supply a concrete type with a
-matching @racket[(#:type (Family = T))] clause inside its
+matching @racket[(:type (Family = T))] clause inside its
 @racket[instance] body, where @racket[T] is the type that the
 family resolves to for that instance head.
 
 @racketblock[
 (protocol (Container c)
-  (#:type Elem)
+  (:type Elem)
   (: empty? (-> c Boolean))
   (: head   (-> c (Maybe (Elem c)))))
 
 (instance (Container (List a))
-  (#:type (Elem = a))
+  (:type (Elem = a))
   (define (empty? xs) (match xs [(Nil) #t] [(Cons _ _) #f]))
   (define (head   xs) (match xs [(Nil) None] [(Cons h _) (Some h)])))]
 
@@ -542,9 +566,9 @@ table @racket[Γ] is encoded for a non-looping typed-assembly machine —
 one method-less instance per literal address.
 
 @racketblock[
-(protocol (CodeAt (n :: Nat)) (#:type ShapeAt))
-(instance (CodeAt 0) (#:type (ShapeAt = Integer)))
-(instance (CodeAt 1) (#:type (ShapeAt = Boolean)))]}
+(protocol (CodeAt (n :: Nat)) (:type ShapeAt))
+(instance (CodeAt 0) (:type (ShapeAt = Integer)))
+(instance (CodeAt 1) (:type (ShapeAt = Boolean)))]}
 
 @defform*[#:literals (:: =)
           [(type-family (F param ...) maybe-kind clause ...)
@@ -555,7 +579,7 @@ one method-less instance per literal address.
 
 A @deftech{standalone type family} — a top-level type-level function
 reduced during type checking, distinct from a protocol's associated
-@racket[#:type] family.
+@racket[:type] family.
 
 A @racket[type-family] @bold{with} clauses is @emph{closed}: its ordered
 equations are tried top-to-bottom, and the first whose left-hand-side
@@ -628,6 +652,17 @@ See @seclink["constraint-synonyms"]{the guide} for details.}
 
 @section[#:tag "sf-exprs"]{Expressions}
 
+A parenthesised form @racket[(head arg ...)] is function application
+(curried, so over-application chains).  When @racket[head] is a
+constructor declared with @seclink["adts-and-records" #:doc '(lib "rackton/scribblings/guide/rackton-guide.scrbl")]{named
+fields}, the arguments may instead be written as keyword pairs
+@racket[(Ctor :field value ...)]: @deftech{keyword construction}.  The
+labels must name the constructor's fields in declared order — they check
+and document the call without reordering it — so the call is otherwise
+identical to the positional one.  Mixing keyword and positional
+arguments in one call, naming a positional constructor's arguments, or
+using a label out of order is a compile-time error.
+
 @deftogether[(
   @defform[(lambda (p ...) body)]
   @defform[(λ (p ...) body)])]{
@@ -641,7 +676,7 @@ type @racket[(-> a (-> b c))], not a tupled domain.}
   @defform[(case-λ clause ...+)
            #:grammar
            [(clause  [(pattern ...) body]
-                     [(pattern ...) #:when guard body])]])]{
+                     [(pattern ...) :when guard body])]])]{
 
 Anonymous function that pattern-matches on @emph{all} of its arguments
 at once.  Each @racket[clause] leads with a parenthesised list of
@@ -654,7 +689,7 @@ The form desugars to a @racket[lambda] over @racket[match] on fresh
 argument names — @racket[(case-lambda [(p ...) body] ...)] is
 equivalent to @racket[(lambda (a ...) (match* (a ...) [(p ...) body]
 ...))] — so the same currying as @racket[lambda] applies and a clause
-may carry a @racket[#:when] @racket[guard] just as in @racket[match].
+may carry a @racket[:when] @racket[guard] just as in @racket[match].
 
 Because the first element of a clause is always the argument list, a
 single argument that is itself a constructor pattern needs its own
@@ -752,7 +787,7 @@ therefore a compile error.
          #:grammar
          [(clause  [pattern body]
                    [pattern (=> guard) body]
-                   [pattern #:when guard body])]]{
+                   [pattern :when guard body])]]{
 
 Pattern-matches @racket[scrutinee] against each @racket[pattern] in
 order, evaluating the first matching @racket[body].  Patterns may
@@ -768,7 +803,7 @@ out.}
 @defform[(match* (scrutinee ...) clause ...+)
          #:grammar
          [(clause  [(pattern ...) body]
-                   [(pattern ...) #:when guard body])]]{
+                   [(pattern ...) :when guard body])]]{
 
 The N-ary generalisation of @racket[match]: pattern-matches several
 @racket[scrutinee]s at once.  The parenthesised scrutinee list fixes
@@ -1124,6 +1159,11 @@ bindings — is one of:
 @item{@racket[(Ctor sub-pat ...)] — n-ary constructor pattern; matches
       only values built with @racket[Ctor] whose corresponding fields
       match the sub-patterns.}
+@item{@racket[(Ctor :field sub-pat ...)] — keyword field pattern, for a
+      constructor declared with @seclink["adts-and-records" #:doc '(lib "rackton/scribblings/guide/rackton-guide.scrbl")]{named
+      fields}; the labels must appear in declared field order and the
+      sub-patterns match positionally, exactly as in the bare-positional
+      form.}
 @item{@racket[(tuple sub-pat ...)] — tuple pattern; matches a
       @racket[(Tuple τ ...)] of the same arity, binding each element to
       its sub-pattern.  Irrefutable (a tuple always matches its one
@@ -1131,10 +1171,15 @@ bindings — is one of:
 
 @section{Module forms}
 
-@defform[(require spec ...)
+@defform[#:literals (only-in except-in rename-in prefix-in qualified-in)
+         (require spec ...)
          #:grammar
          [(spec  module-path
-                 (only-in module-path name ...))]]{
+                 (only-in module-path name ...)
+                 (except-in module-path name ...)
+                 (rename-in module-path [orig new] ...)
+                 (prefix-in prefix module-path)
+                 (qualified-in prefix module-path))]]{
 
 Imports bindings from another Rackton or Racket module.  When the
 target is a @hash-lang[] @racketmodfont{rackton} module (or any
@@ -1142,7 +1187,20 @@ module that emits a @racketmodfont{rackton-schemes} submodule), the
 type checker also recovers its schemes, data constructors, type
 constructors, protocols, and instances.  Plain Racket modules are
 imported at runtime only; their bindings are invisible to the type
-checker.}
+checker.
+
+The sub-forms @racket[only-in], @racket[except-in], @racket[rename-in],
+and @racket[prefix-in] select and rename imported schemes the same way
+they select and rename the runtime bindings, and they nest.
+@racket[(qualified-in prefix module-path)] imports @racket[module-path]'s
+@emph{term-level} names — values and data constructors — each behind a
+colon-separated @racket[prefix] (so @racket[foo] is referred to as
+@racketidfont{prefix:foo} and a constructor @racket[Foo] as
+@racketidfont{prefix:Foo}, in both expressions and patterns).  Type
+constructors and protocols keep their plain names, so an imported
+constructor's result type matches the type written in annotations.
+Instances are unaffected by every sub-form: module-level coherence makes
+them global, so they are always imported.}
 
 @defform[(provide spec ...)]{
 
@@ -1150,16 +1208,16 @@ Declares export specifications for the current module.  See
 @secref["provide-specs"] for the supported spec forms.}
 
 @defform*[#:literals (->)
-          [(foreign name type #:from module-path)
-           (foreign name type #:from module-path #:as racket-id)]]{
+          [(foreign name type :from module-path)
+           (foreign name type :from module-path :as racket-id)]]{
 
 Imports a host (Racket) binding and gives it a Rackton @racket[type], so
 Rackton code can use a primitive that the prelude does not surface (for
 example something from @racketmodname[racket/string] or
 @racketmodname[racket/set]).  @racket[module-path] is a Racket module
 path (a collection path like @racketmodname[racket/string], or a
-@racket[_string] for a relative file).  Without @racket[#:as] the Racket
-binding has the same name as @racket[name]; with @racket[#:as
+@racket[_string] for a relative file).  Without @racket[:as] the Racket
+binding has the same name as @racket[name]; with @racket[:as
 racket-id] the host binding @racket[racket-id] is bound to the Rackton
 @racket[name].
 
@@ -1173,13 +1231,13 @@ applying a strict host function will raise at runtime).
 
 @racketblock[
 (foreign string-contains? (-> String (-> String Boolean))
-         #:from racket/string)
+         :from racket/string)
 (foreign str-replace (-> String (-> String (-> String String)))
-         #:from racket/string #:as string-replace)]}
+         :from racket/string :as string-replace)]}
 
 @defform[#:literals (->)
-         (foreign-c name type #:lib lib #:symbol symbol
-                    #:sig (ctype ... -> ctype))]{
+         (foreign-c name type :lib lib :symbol symbol
+                    :sig (ctype ... -> ctype))]{
 
 Imports an external C function directly, lowering to
 @racket[get-ffi-obj] from @racketmodname[ffi/unsafe] (it is sugar for a
@@ -1187,7 +1245,7 @@ hand-written @racket[ffi/unsafe] shim imported via @racket[foreign]).
 @racket[lib] is the shared library: @racket[#f] for the running process
 (libc, and whatever it already links such as libm), or a @racket[_string]
 passed to @racket[ffi-lib].  @racket[symbol] is the C symbol name (a
-@racket[_string]).  @racket[#:sig] gives the C signature as type keywords
+@racket[_string]).  @racket[:sig] gives the C signature as type keywords
 (@racketidfont{double}, @racketidfont{int}, @racketidfont{string},
 @racketidfont{pointer}, @racketidfont{byte}, @racketidfont{void}) with a
 single @racket[->] splitting the argument types from the result.
@@ -1201,12 +1259,12 @@ a pure function.
 
 @racketblock[
 (foreign-c c-cbrt (-> Float Float)
-           #:lib #f #:symbol "cbrt" #:sig (double -> double))
+           :lib #f :symbol "cbrt" :sig (double -> double))
 (foreign-c c-getpid (IO Integer)
-           #:lib #f #:symbol "getpid" #:sig (-> int))]
+           :lib #f :symbol "getpid" :sig (-> int))]
 
 Like @racket[foreign] this is @bold{unsafe}: a wrong signature or library
 crashes the process.  Versioned shared-library sonames (e.g.
-@tt{libm.so.6}) are awkward to name with a single @racket[#:lib] string;
+@tt{libm.so.6}) are awkward to name with a single @racket[:lib] string;
 for those, prefer a @racket[get-ffi-obj] shim with a version list (see
 @racketmodname[rackton/foreign/c]) imported via @racket[foreign].}

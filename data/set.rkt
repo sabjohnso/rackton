@@ -10,13 +10,13 @@
 (provide (all-defined-out))
 
 (foreign set-member? (-> a (-> (Set a) Boolean))
-         #:from rackton/private/containers-runtime)
+         :from rackton/private/containers-runtime)
 (foreign set-delete (-> a (-> (Set a) (Set a)))
-         #:from rackton/private/containers-runtime)
+         :from rackton/private/containers-runtime)
 (foreign set-size (-> (Set a) Integer)
-         #:from rackton/private/containers-runtime)
+         :from rackton/private/containers-runtime)
 (foreign set-to-list (-> (Set a) (List a))
-         #:from rackton/private/containers-runtime)
+         :from rackton/private/containers-runtime)
 
 ;; ===== Data.Set parity =============================================
 ;;

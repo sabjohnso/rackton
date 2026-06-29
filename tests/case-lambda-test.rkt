@@ -39,11 +39,11 @@
   (define s1 (maybe-or-zero (Some 7)))
   (define s2 (maybe-or-zero None))
 
-  ;; Guard clause (`#:when`), as in `match`.
+  ;; Guard clause (`:when`), as in `match`.
   (define classify
     (case-lambda
-      [(n) #:when (> n 0)  1]
-      [(n) #:when (< n 0) -1]
+      [(n) :when (> n 0)  1]
+      [(n) :when (< n 0) -1]
       [(_)                 0]))
 
   (define g1 (classify 5))
@@ -61,7 +61,7 @@
   (check-equal? s1 7)
   (check-equal? s2 0))
 
-(test-case "case-lambda #:when guards"
+(test-case "case-lambda :when guards"
   (check-equal? g1 1)
   (check-equal? g2 -1)
   (check-equal? g3 0))

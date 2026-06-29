@@ -20,9 +20,9 @@
   ;; The shapes are ordinary `*`-kinded types (here Integer / Boolean stand
   ;; in for two distinct stack shapes), since a family result is kind `*`.
   (protocol (CodeAt (n :: Nat))
-    (#:type ShapeAt))
-  (instance (CodeAt 0) (#:type (ShapeAt = Integer)))
-  (instance (CodeAt 1) (#:type (ShapeAt = Boolean)))
+    (:type ShapeAt))
+  (instance (CodeAt 0) (:type (ShapeAt = Integer)))
+  (instance (CodeAt 1) (:type (ShapeAt = Boolean)))
 
   ;; A value indexed by its shape (stands in for the typed stack).
   (data (Cell s)

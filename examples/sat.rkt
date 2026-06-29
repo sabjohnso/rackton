@@ -30,7 +30,7 @@
 ;; A literal is a variable, possibly negated: `(Lit 3 #t)` is x3 and
 ;; `(Lit 3 #f)` is ¬x3.  Deriving Eq lets `simplify` test a literal for
 ;; membership and deletion with the prelude's `==`.
-(data Lit (Lit Integer Boolean) #:deriving Eq Show)
+(data Lit (Lit Integer Boolean) :deriving Eq Show)
 
 (define-alias Clause     (List Lit))        ; a disjunction of literals
 (define-alias Formula    (List Clause))     ; a conjunction of clauses (CNF)

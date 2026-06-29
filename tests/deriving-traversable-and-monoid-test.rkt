@@ -8,7 +8,7 @@
 ;; ----- Bifunctor on a custom two-tparam ADT -------------
 
 (data (Either2 a b) (Lft a) (Rgt b)
-  #:deriving Bifunctor Eq Show)
+  :deriving Bifunctor Eq Show)
 
 (: mapped-left  (Either2 Integer String))
 (define mapped-left  (bimap (lambda (n) (+ n 1)) (lambda (s) (mappend s "!")) (Lft 41)))
@@ -21,7 +21,7 @@
 (struct (Log a)
   [entries : (List a)]
   [tag     : String]
-  #:deriving Semigroup Eq Show)
+  :deriving Semigroup Eq Show)
 
 (: combined-logs (Log Integer))
 (define combined-logs
@@ -33,7 +33,7 @@
 (struct Counter
   [hits   : (List Integer)]
   [label  : String]
-  #:deriving Semigroup Monoid Eq Show)
+  :deriving Semigroup Monoid Eq Show)
 
 (: empty-counter Counter)
 (define empty-counter mempty)

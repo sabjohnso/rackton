@@ -78,7 +78,7 @@
 ;; `tyfams` maps a STANDALONE type-family name to its `tyfam-info`
 ;; (Feature 1): the ordered clauses of a closed family or the coherent
 ;; equation set of an open family.  Separate from `classes` (associated
-;; `#:type` families) so the two reduction mechanisms stay independent.
+;; `:type` families) so the two reduction mechanisms stay independent.
 ;; `constraint-syns` maps a constraint-synonym name to `(params . preds)`
 ;; — its parameters and the core predicates it abbreviates.  A `(C T…)`
 ;; constraint expands to those preds with params substituted by T….
@@ -111,12 +111,17 @@
 ;; type assigned to the constructor when used as a value.  `arity` is
 ;; the number of arguments the constructor takes.
 ;; `ex-tvars` lists the existentially-quantified tvars
-;; introduced by a `#:forall ... #:where ...` ctor.  These are the
+;; introduced by a `:forall ... :where ...` ctor.  These are the
 ;; tail of `scheme`'s quantifier list — at pattern-match time the
 ;; inferer skolemizes only these (the data type's tparams stay as
 ;; fresh tvars to unify with the scrutinee).  Empty for ordinary
 ;; constructors.
-(struct data-info (type-name ctor-name arity scheme ex-tvars) #:transparent)
+;; `field-names` is either #f (positional constructor) or a list of
+;; field-name symbols parallel to the constructor's fields, enabling
+;; keyword construction `(C :f v)` and keyword patterns.  Carried here
+;; (not just in the source AST) so importers recover it via the codec.
+(struct data-info (type-name ctor-name arity scheme ex-tvars field-names)
+  #:transparent)
 
 ;; A type-constructor's kinding information.  `ctors` lists every
 ;; data constructor that produces this type — used for exhaustiveness.
@@ -162,20 +167,20 @@
 ;;                   names whose return-typed methods need to be
 ;;                   passed as extra leading args at call sites.
 ;; `type-families` is the list of associated-type names declared by
-;; the class via `#:type Foo`.  Each instance must supply concrete
+;; the class via `:type Foo`.  Each instance must supply concrete
 ;; bindings for every declared family.
 ;;   super-derives : (HashEq superclass-name → (HashEq method-name →
 ;;                   surface-expr)) — cross-class derivation table.  For
-;;                   each `[Super …]` clause in the body's `#:derive` list,
+;;                   each `[Super …]` clause in the body's `:derive` list,
 ;;                   the canonical bodies that fill `Super`'s methods in
 ;;                   terms of this class's own methods.  Consumed when an
-;;                   instance opts into `#:derive-supers`.  Empty
+;;                   instance opts into `:derive-supers`.  Empty
 ;;                   for classes that declare no derivations.  Not
 ;;                   serialized (like `defaults`), so a USER class's
 ;;                   derivations are available only within its defining
 ;;                   module; the prelude monad stack works everywhere.
 ;;   laws        : (Listof class-law) — the named quantified equations
-;;                   declared by the body's `#:laws` clause, type-checked
+;;                   declared by the body's `:laws` clause, type-checked
 ;;                   at class elaboration.  Formal documentation of the
 ;;                   invariants instances must satisfy; carries no runtime
 ;;                   behaviour.  Not serialized (like `defaults`), so a

@@ -38,7 +38,7 @@
   ;; Quantified over the element type; the container is compared via an
   ;; assumed `(Eq (w …))`.  All three are property-runnable (no arrow
   ;; binder, no return-typed method).
-  #:laws
+  :laws
     ([extract-duplicate ((Eq (w a)) =>
        (All ([c : (w a)]) (== (extract (duplicate c)) c)))]
      [fmap-extract-duplicate ((Eq (w a)) =>
@@ -51,14 +51,14 @@
 ;; (Haskell's `<@>`) defaulting to the `FunctorApply` `apply`.  Instances
 ;; whose zip is cheaper to write directly may override it.
 (protocol (ComonadApply (w :: (-> * *)))
-  (#:requires (Comonad w) (FunctorApply w))
+  (:requires (Comonad w) (FunctorApply w))
   (: coapply (-> (w (-> a b)) (-> (w a) (w b))))
   (define (coapply ff fx) (apply ff fx))
   ;; `coapply` must agree with the inherited `FunctorApply` `apply`: an
   ;; instance that overrides the default for a cheaper zip stays
   ;; consistent with it.  Quantified over a container of functions, so it
   ;; type-checks as the specification (no generator for `(w (-> …))`).
-  #:laws
+  :laws
     ([coapply-apply ((Eq (w b)) =>
        (All ([ff : (w (-> a b))] [fx : (w a)])
          (== (coapply ff fx) (apply ff fx))))]))

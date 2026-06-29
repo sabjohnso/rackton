@@ -100,12 +100,12 @@
    (define (pair-id f) (Pair (f 7) (f "hi")))
    (define bad (pair-id (lambda (x) (+ x 1))))))
 
-(test-case "associated type: instance missing #:type binding is rejected"
+(test-case "associated type: instance missing :type binding is rejected"
   (check-rackton-compile-error
    (protocol (Sized (c :: *))
-     (#:type Index)
+     (:type Index)
      (: size-of (-> c (Index c))))
-   ;; No (#:type (Index = ...)) — instance is incomplete.
+   ;; No (:type (Index = ...)) — instance is incomplete.
    (instance (Sized (List a))
      (define (size-of xs) (length xs)))))
 
@@ -128,13 +128,13 @@
    (instance (Ord Foo)
      (define (< x y) #f))))
 
-(test-case "instance missing a #:requires superclass is rejected"
+(test-case "instance missing a :requires superclass is rejected"
   (check-rackton-compile-error
    (data (Box a) (MkBox a))
    (protocol (Pointed (w :: (-> * *)))
-     (#:requires (Functor w))
+     (:requires (Functor w))
      (: point (-> a (w a))))
-   ;; No (instance (Functor Box)) — the #:requires constraint fails.
+   ;; No (instance (Functor Box)) — the :requires constraint fails.
    (instance (Pointed Box)
      (define (point x) (MkBox x)))))
 
@@ -170,10 +170,10 @@
    (protocol (Foo (t => Functr))
      (: foo (-> (t a) (t a))))))
 
-(test-case "an undefined #:requires superprotocol is rejected"
+(test-case "an undefined :requires superprotocol is rejected"
   (check-rackton-compile-error
    (protocol (Bar a)
-     (#:requires (Nonesuch a))
+     (:requires (Nonesuch a))
      (: bar (-> a a)))))
 
 (test-case "a forward-referenced superprotocol is fine"
@@ -197,7 +197,7 @@
   (check-not-exn
    (lambda ()
      (eval #'(rackton
-              (protocol (Same a b) (#:requires (~ a b)) (: same (-> a b))))
+              (protocol (Same a b) (:requires (~ a b)) (: same (-> a b))))
            (variable-reference->namespace (#%variable-reference))))))
 
 ;; A top-level type signature `(: name τ)` with no matching definition is

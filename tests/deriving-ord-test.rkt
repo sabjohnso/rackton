@@ -1,12 +1,12 @@
 #lang rackton
 
-;; `#:deriving Ord` synthesises an Ord instance with lexicographic
+;; `:deriving Ord` synthesises an Ord instance with lexicographic
 ;; comparison on fields and ctor-index comparison across constructors.
 ;; Ord implies Eq, so Ord-deriving also derives Eq.
 
 (require "../unit.rkt")
 
-(data Color Red Green Blue #:deriving Ord Show)
+(data Color Red Green Blue :deriving Ord Show)
 
 (define c1 (< Red Green))    ; #t  (Red comes first)
 (define c2 (< Blue Green))   ; #f
@@ -16,7 +16,7 @@
 ;; Parametric data type with Ord-comparable contents
 (data (Pair2 a)
   (MkPair2 a a)
-  #:deriving Ord)
+  :deriving Ord)
 
 (define p-less (< (MkPair2 1 2) (MkPair2 1 3)))    ; #t (second field)
 (define p-eq   (== (MkPair2 1 2) (MkPair2 1 2)))   ; #t

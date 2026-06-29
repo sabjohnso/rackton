@@ -6,16 +6,16 @@
 
 ;; pure, 1-arg
 (foreign-c c-cbrt2 (-> Float Float)
-           #:lib #f #:symbol "cbrt" #:sig (double -> double))
+           :lib #f :symbol "cbrt" :sig (double -> double))
 ;; pure, 2-arg
 (foreign-c c-hypot2 (-> Float (-> Float Float))
-           #:lib #f #:symbol "hypot" #:sig (double double -> double))
+           :lib #f :symbol "hypot" :sig (double double -> double))
 ;; pure int, default (process) library
 (foreign-c c-abs2 (-> Integer Integer)
-           #:lib #f #:symbol "abs" #:sig (int -> int))
+           :lib #f :symbol "abs" :sig (int -> int))
 ;; effectful, 0-arg -> IO value
 (foreign-c c-getpid (IO Integer)
-           #:lib #f #:symbol "getpid" #:sig (-> int))
+           :lib #f :symbol "getpid" :sig (-> int))
 
 (: r1 Float)   (define r1 (c-cbrt2 27.0))
 (: r2 Float)   (define r2 (c-hypot2 3.0 4.0))

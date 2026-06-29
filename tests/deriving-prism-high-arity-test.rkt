@@ -13,7 +13,7 @@
 
  (data Huge
    (H8 Integer Integer Integer Integer Integer Integer Integer Integer)
-   #:deriving Prism)
+   :deriving Prism)
 
  ;; preview yields the flat 8-tuple; pull its last element via tref.
  (: eighth Integer)

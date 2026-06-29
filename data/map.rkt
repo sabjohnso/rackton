@@ -10,17 +10,17 @@
 (provide (all-defined-out))
 
 (foreign map-lookup (-> k (-> (Map k v) (Maybe v)))
-         #:from rackton/private/containers-runtime)
+         :from rackton/private/containers-runtime)
 (foreign map-delete (-> k (-> (Map k v) (Map k v)))
-         #:from rackton/private/containers-runtime)
+         :from rackton/private/containers-runtime)
 (foreign map-keys (-> (Map k v) (List k))
-         #:from rackton/private/containers-runtime)
+         :from rackton/private/containers-runtime)
 (foreign map-values (-> (Map k v) (List v))
-         #:from rackton/private/containers-runtime)
+         :from rackton/private/containers-runtime)
 (foreign map-size (-> (Map k v) Integer)
-         #:from rackton/private/containers-runtime)
+         :from rackton/private/containers-runtime)
 (foreign map-fold (-> (-> k (-> v (-> b b))) (-> b (-> (Map k v) b)))
-         #:from rackton/private/containers-runtime)
+         :from rackton/private/containers-runtime)
 
 ;; group-by — bucket a list by a key function (pure Rackton over the
 ;; foreign map ops).

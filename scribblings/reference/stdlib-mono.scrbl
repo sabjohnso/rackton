@@ -21,7 +21,7 @@ carries it with no special checker support.
 
 @defproc[(leq [x a] [y a]) Boolean]{
   The @racket[Poset] method: a partial order on @racket[a] (@racket[Poset]
-  requires @racket[Eq]).  Its @racket[#:laws] are reflexivity,
+  requires @racket[Eq]).  Its @racket[:laws] are reflexivity,
   antisymmetry, and transitivity.  The runnable bundle is
   @racket[Poset-laws].
 }
@@ -45,7 +45,7 @@ carries it with no special checker support.
   @defthing[JoinSemilattice-laws (-> (Gen a) Test)]
 )]{
   Runnable property bundles auto-generated from each protocol's
-  @racket[#:laws]; apply to a generator to get a @racket[Test] that checks
+  @racket[:laws]; apply to a generator to get a @racket[Test] that checks
   an instance against every law.  (@racket[BoundedJoinSemilattice]'s only
   law uses the return-typed @racket[bot], which the bundle generator skips,
   so it has no bundle — its law is still checked at definition.)
@@ -58,7 +58,7 @@ carries it with no special checker support.
 
 @defidform[#:kind "type" Mono]{
   A monotone map @racket[(Mono a b)].  Its constructor is @emph{sealed}
-  (@racket[#:abstract]), so the only way to build one is the combinators
+  (@racket[:abstract]), so the only way to build one is the combinators
   below — each a monotone map that also preserves its arguments'
   monotonicity, so every @racket[Mono] you can construct is monotone.
 }

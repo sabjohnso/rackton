@@ -1,7 +1,7 @@
 #lang rackton
 
 ;; End-to-end: refs in IO, file I/O, list helpers, sort, pair
-;; helpers, and `#:deriving Functor`.
+;; helpers, and `:deriving Functor`.
 
 (require rackton/data/list
          rackton/data/tuple
@@ -38,11 +38,11 @@
 (define p-snd (snd p))
 (define p-sw  (swap p))
 
-;; #:deriving Functor on a single-tparam tree
+;; :deriving Functor on a single-tparam tree
 (data (Tree a)
   Leaf
   (Node (Tree a) a (Tree a))
-  #:deriving Functor Eq Show)
+  :deriving Functor Eq Show)
 
 (define t1     (Node Leaf 1 (Node Leaf 2 (Node Leaf 3 Leaf))))
 (define t1-x2  (fmap (lambda (n) (* n 2)) t1))

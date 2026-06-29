@@ -2,8 +2,8 @@
 
 ;; Associated types (type families).
 ;;
-;; A class may declare a `#:type FamilyName`; each instance supplies
-;; a concrete rhs via `#:type (FamilyName = T)`.  Type applications
+;; A class may declare a `:type FamilyName`; each instance supplies
+;; a concrete rhs via `:type (FamilyName = T)`.  Type applications
 ;; like `(FamilyName c)` reduce eagerly to the instance's rhs once
 ;; `c` is concrete enough for instance selection.
 
@@ -11,12 +11,12 @@
 
 ;; ----- 53.A Sized class with associated Index type -----------
 (protocol (Sized (c :: *))
-  (#:type Index)
+  (:type Index)
   (: size-of (-> c (Index c))))
 
 ;; Concrete List instance: Index resolves to Integer.
 (instance (Sized (List a))
-  (#:type (Index = Integer))
+  (:type (Index = Integer))
   (define (size-of xs) (length xs)))
 
 (: r-list-size Integer)
@@ -26,7 +26,7 @@
 (data MyMap (MkMap Integer))
 
 (instance (Sized MyMap)
-  (#:type (Index = MyMap))
+  (:type (Index = MyMap))
   (define (size-of m) m))
 
 (: r-map-self MyMap)

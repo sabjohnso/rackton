@@ -155,7 +155,7 @@
                                         (car (exn:fail:syntax-exprs e))))))
                           (exn-message e))])
          (eval #'(rackton
-                  (data ExistsShow (PackShow #:forall (a) #:where (Show a) a))
+                  (data ExistsShow (PackShow :forall (a) :where (Show a) a))
                   (: bad (-> ExistsShow String))
                   (define (bad e)
                     (match e

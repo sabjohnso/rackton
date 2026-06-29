@@ -6,10 +6,10 @@
 
 (provide (all-defined-out))
 
-(data (Widget a) #:runtime-tag $widget)
+(data (Widget a) :runtime-tag $widget)
 
-(foreign make-widget (-> a (Widget a)) #:from "opaque-tag-rt.rkt")
-(foreign widget-get  (-> (Widget a) a) #:from "opaque-tag-rt.rkt")
+(foreign make-widget (-> a (Widget a)) :from "opaque-tag-rt.rkt")
+(foreign widget-get  (-> (Widget a) a) :from "opaque-tag-rt.rkt")
 
 (instance (Functor Widget)
   (define (fmap f w) (make-widget (f (widget-get w)))))

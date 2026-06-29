@@ -88,18 +88,24 @@
         (data-info-ctor-name di)
         (data-info-arity di)
         (scheme->sexp (data-info-scheme di))
-        (data-info-ex-tvars di)))
+        (data-info-ex-tvars di)
+        ;; field-names: a list of symbols or #f (positional ctor),
+        ;; both directly serializable.
+        (data-info-field-names di)))
 
 (define (decode-data-info datum)
   (match datum
     [(list type-name ctor-name arity scheme-sexp)
      ;; Backwards-compatible with older sidecars: missing
-     ;; ex-tvars defaults to empty.
+     ;; ex-tvars defaults to empty, field-names to #f.
      (data-info type-name ctor-name arity
-                (sexp->scheme scheme-sexp) '())]
+                (sexp->scheme scheme-sexp) '() #f)]
     [(list type-name ctor-name arity scheme-sexp ex-tvars)
      (data-info type-name ctor-name arity
-                (sexp->scheme scheme-sexp) ex-tvars)]))
+                (sexp->scheme scheme-sexp) ex-tvars #f)]
+    [(list type-name ctor-name arity scheme-sexp ex-tvars field-names)
+     (data-info type-name ctor-name arity
+                (sexp->scheme scheme-sexp) ex-tvars field-names)]))
 
 (define (encode-tcon-info ti)
   (list (tcon-info-name ti)
@@ -378,9 +384,9 @@
         (encode-defaults (class-info-defaults ci))))
 
 ;; `defaults` now cross modules (decoded into the `defaults` field below);
-;; super-derives still does not (it holds the `#:derive` cross-class
+;; super-derives still does not (it holds the `:derive` cross-class
 ;; bodies) — every decoded class gets an empty super-derives table, so an
-;; imported user class's `#:derive` clauses don't cross modules.  The
+;; imported user class's `:derive` clauses don't cross modules.  The
 ;; prelude monad stack lives in prelude-env, available everywhere, so
 ;; deriving the standard superclasses works regardless.
 (define (decode-class-info datum)

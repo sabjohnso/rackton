@@ -34,7 +34,7 @@
 ;; `Use`'s default for `use` calls the return-typed superclass method
 ;; `make` over the still-abstract carrier `f`.
 (protocol (Use (f :: (-> * *)))
-  (#:requires (Make f))
+  (:requires (Make f))
   (: use (-> a (f a)))
   (define (use x) (make x)))
 

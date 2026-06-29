@@ -136,7 +136,7 @@
 (define (mark-done-from xs target i)
   (match xs
     [(Nil) (Err (mappend "no such item: #" (integer->string target)))]
-    [(Cons (Item _ text) rest) #:when (== i target)
+    [(Cons (Item _ text) rest) :when (== i target)
      (Ok (Cons (Item #t text) rest))]
     [(Cons h rest)
      (match (mark-done-from rest target (+ i 1))

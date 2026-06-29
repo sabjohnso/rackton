@@ -445,7 +445,7 @@
           ;; instances we do have for this class, so the user can see
           ;; whether they hit a typo, a missing instance for their
           ;; specific type, or a class that's missing all instances.
-          ;; Also suggest `#:deriving Class` when the class is
+          ;; Also suggest `:deriving Class` when the class is
           ;; auto-derivable and the missing-instance type is locally
           ;; defined (so the user can add the clause).
           (define cls (pred-class p))
@@ -475,7 +475,7 @@
           (raise-constraint-error
            (render-doc msg-doc (current-type-columns)))])])))
 
-;; Suggest `#:deriving Class` when (a) Class is one of
+;; Suggest `:deriving Class` when (a) Class is one of
 ;; the auto-derivable classes and (b) the missing-instance type's
 ;; head is a known data type.  Returns a formatted hint or "".
 (define derivable-classes
@@ -495,7 +495,7 @@
              [_ #f]))))
      (cond
        [(and head-tcon (env-ref-tcon env head-tcon))
-        (format "\n  hint: add #:deriving ~s to the data declaration for ~s"
+        (format "\n  hint: add :deriving ~s to the data declaration for ~s"
                 cls head-tcon)]
        [else ""])]))
 

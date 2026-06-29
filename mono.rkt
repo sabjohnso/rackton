@@ -5,7 +5,7 @@
 ;; Tenets / what this provides:
 ;;   - The order-theory protocols a monotone computation needs — `Poset`,
 ;;     `JoinSemilattice`, `BoundedJoinSemilattice` — each with algebraic
-;;     `#:laws` (so an instance is machine-checkable against them) and a
+;;     `:laws` (so an instance is machine-checkable against them) and a
 ;;     runnable `<Class>-laws` bundle for property-testing a user's own
 ;;     instance.
 ;;   - (added in later layers of this file) a SEALED monotone-map type
@@ -25,7 +25,7 @@
          ;; Auto-generated runnable law bundles.  BoundedJoinSemilattice's
          ;; only law uses the return-typed `bot`, which the bundle generator
          ;; skips (as for Monoid's `mempty`), so no bundle is emitted for it
-         ;; — its `#:laws` still type-check at definition, and bot-identity
+         ;; — its `:laws` still type-check at definition, and bot-identity
          ;; is property-tested directly in tests/mono-test.rkt.
          Poset-laws
          JoinSemilattice-laws
@@ -40,9 +40,9 @@
 
 ;; A partial order: a reflexive, antisymmetric, transitive `leq`.
 (protocol (Poset a)
-  (#:requires (Eq a))
+  (:requires (Eq a))
   (: leq (-> a a Boolean))
-  #:laws
+  :laws
     ([reflexive     (All ([x : a]) (leq x x))]
      [antisymmetric (All ([x : a] [y : a])
                       (if (leq x y) (if (leq y x) (== x y) #t) #t))]
@@ -52,9 +52,9 @@
 ;; A join-semilattice: a commutative, associative, idempotent least-upper-
 ;; bound `lub`, consistent with the order (x ⊑ x ⊔ y).
 (protocol (JoinSemilattice a)
-  (#:requires (Poset a))
+  (:requires (Poset a))
   (: lub (-> a a a))
-  #:laws
+  :laws
     ([commutative      (All ([x : a] [y : a]) (== (lub x y) (lub y x)))]
      [associative      (All ([x : a] [y : a] [z : a])
                          (== (lub (lub x y) z) (lub x (lub y z))))]
@@ -65,9 +65,9 @@
 ;; seed for least-fixpoint iteration.  `bot` is return-typed (like `mempty`)
 ;; — re-exportable across modules as of Rackton 1.1.
 (protocol (BoundedJoinSemilattice a)
-  (#:requires (JoinSemilattice a))
+  (:requires (JoinSemilattice a))
   (: bot a)
-  #:laws
+  :laws
     ([bot-identity (All ([x : a]) (== (lub bot x) x))]))
 
 ;; ===== a base instance: Boolean is the 2-point lattice ================
@@ -81,12 +81,12 @@
   (define bot #f))
 
 ;; ===== the sealed monotone arrow ======================================
-;; `Mono a b` is a monotone map.  Its constructor is `#:abstract`, so the
+;; `Mono a b` is a monotone map.  Its constructor is `:abstract`, so the
 ;; only way to obtain one is the closed combinator set below — each a
 ;; monotone map that ALSO preserves its arguments' monotonicity, so every
 ;; constructible `Mono` is monotone BY CONSTRUCTION.
 
-(data (Mono a b) (MkMono (-> a b)) #:abstract)
+(data (Mono a b) (MkMono (-> a b)) :abstract)
 
 (: run-mono (-> (Mono a b) (-> a b)))           ; the underlying function
 (define (run-mono m) (match m [(MkMono f) f]))

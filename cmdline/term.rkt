@@ -36,10 +36,10 @@
 
 ;; ----- the applicative ---------------------------------------------
 
-;; #:derive-supers synthesizes the Functor Term superclass from the
+;; :derive-supers synthesizes the Functor Term superclass from the
 ;; prelude derivation `fmap f = fapply (pure f)`, so we supply only the
 ;; two irreducible methods.
-(instance (Applicative Term) #:derive-supers
+(instance (Applicative Term) :derive-supers
   ;; pure declares nothing and ignores the parsed command line.
   (define (pure x) (Term Nil (lambda (c) (Ok x))))
 

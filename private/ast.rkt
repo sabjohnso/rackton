@@ -21,6 +21,13 @@
 (struct e:literal (value stx) #:transparent)
 (struct e:var     (name stx) #:transparent)
 (struct e:lam     (params body stx) #:transparent)
+;; Keyword construction `(C :f v …)` desugars to an ordinary `e:app`:
+;; because keyword arguments must appear in the constructor's declared
+;; field order, the value sequence is already the positional argument
+;; sequence.  The labels ride along as a `'rackton:kw-labels` syntax
+;; property on `stx` (a list of field-name symbols) so inference can
+;; verify they match the constructor's declared fields; codegen ignores
+;; the property and emits the positional call.
 (struct e:app     (head args stx) #:transparent)
 ;; Functional record update.  `record-expr` evaluates to a
 ;; record value; each `update` element is (cons field-name value-expr),
@@ -136,7 +143,7 @@
 ;; NOT re-exported to importing modules.  The type-name itself is.
 (struct top:data     (name params ctors stx abstract? runtime-tag) #:transparent)
 ;; A data ctor may carry its own existential quantifier
-;; via `#:forall (a) #:where (Cls a) ...` keywords between the ctor
+;; via `:forall (a) :where (Cls a) ...` keywords between the ctor
 ;; name and the field types.  `extra-tvars` lists the existentially
 ;; quantified tvars; `extra-context` lists the constraints over them.
 ;; Existing (non-existential) ctors use empty lists for both.
@@ -144,26 +151,36 @@
 ;; `(T tparams)` shape) or a ty-AST giving the ctor's specific
 ;; result type for GADTs (declared via `: (-> ft … RT)`, where the
 ;; final arrow type is the result and the leading types are fields).
+;; `field-names` is either #f (positional ctor — fields named by index
+;; only) or a list of field-name symbols parallel to `field-types`
+;; (declared via the named-field form `(C [f : t] …)`), enabling
+;; keyword construction `(C :f v)` and keyword patterns.
 (struct data-ctor    (name field-types stx extra-tvars extra-context
-                      result-type)
+                      result-type field-names)
   #:transparent)
 
-;; Helper: build a non-existential data-ctor (most common case).
+;; Helper: build a non-existential, positional data-ctor (most common case).
 (define (data-ctor-plain name field-types stx)
-  (data-ctor name field-types stx '() '() #f))
+  (data-ctor name field-types stx '() '() #f #f))
+
+;; Helper: build a non-existential data-ctor with named fields.
+;; `field-pairs` is a list of (name . type) in declaration order.
+(define (data-ctor-named name field-pairs stx)
+  (data-ctor name (map cdr field-pairs) stx '() '() #f
+             (map car field-pairs)))
 ;; A class declaration carries an explicit list of parameters with kinds
 ;; (defaulting to *), the optional superclass list, the head class name,
 ;; and the body (signatures + defaults).
 (struct top:class    (supers head methods stx) #:transparent)
 (struct top:instance (context head methods stx) #:transparent)
-;; An instance written with `#:derive-supers`: the user bundles
+;; An instance written with `:derive-supers`: the user bundles
 ;; only the irreducible primitives (e.g. `pure` and `flatmap`) and the
 ;; compiler synthesizes the missing superclass instances from the
 ;; deriving class's cross-class derivation table.  Expanded into plain
 ;; `top:instance` forms by `expand-derive-instances` in infer.rkt before
 ;; any other phase sees it.  Same shape as `top:instance`.
 (struct top:derive-instance (context head methods stx) #:transparent)
-;; A `[Super (define …) …]` clause from the `#:derive (… …)` list in a
+;; A `[Super (define …) …]` clause from the `:derive (… …)` list in a
 ;; `protocol` body: canonical bodies that fill superclass `super`'s methods
 ;; in terms of this class's own methods.  `methods` is a list of
 ;; `method-default`.
@@ -257,18 +274,18 @@
 ;; Items inside a `protocol` body:
 (struct method-sig     (name type stx) #:transparent)
 (struct method-default (name expr stx) #:transparent)
-;; A functional dependency declaration: `(#:fundep lhs … -> rhs …)`
+;; A functional dependency declaration: `(:fundep lhs … -> rhs …)`
 ;; appearing in a class body says that, in every instance, the
 ;; rhs-positioned types are uniquely determined by the lhs-positioned
 ;; ones.  `lhs` and `rhs` are lists of parameter-name symbols.
 (struct class-fundep   (lhs rhs stx) #:transparent)
-;; A `#:type FamilyName` declaration inside a class body.
+;; A `:type FamilyName` declaration inside a class body.
 ;; The family is a one-parameter type-level function whose argument
 ;; is the class's parameter; each instance supplies a concrete rhs.
 (struct class-type-fam  (name stx) #:transparent)
 
 ;; A STANDALONE type family (Feature 1), distinct from the associated
-;; `#:type` families above.  `(type-family (F p …) [::k] clause …)`:
+;; `:type` families above.  `(type-family (F p …) [::k] clause …)`:
 ;;   `params` are the family's parameter names;
 ;;   `kind` is the surface kind AST after `::`, or #f to infer;
 ;;   `clauses` is a list of `tyfam-clause` — non-empty ⇒ CLOSED (ordered
@@ -303,7 +320,7 @@
 ;; One clause `[pat … = constraint …]`: `pats` are the per-parameter LHS
 ;; type patterns, `constraints` the RHS constraint list (possibly empty).
 (struct cfam-clause       (pats constraints stx) #:transparent)
-;; One named law from a `#:laws ([name (ctx … => (All …))] …)` clause in
+;; One named law from a `:laws ([name (ctx … => (All …))] …)` clause in
 ;; a class body: a quantified equation documenting an invariant the
 ;; class's instances must satisfy.  `name` is the law's identifier;
 ;; `context` is a list of `constraint`s assumed only while type-checking
@@ -315,14 +332,14 @@
 (struct class-law      (name context binders body stx) #:transparent)
 ;; One `[var : type]` quantifier binder of a `class-law`.
 (struct law-binder     (name type stx) #:transparent)
-;; A `#:type (FamilyName = Type)` clause inside an instance
+;; A `:type (FamilyName = Type)` clause inside an instance
 ;; body, binding the named family to a concrete type for this
 ;; instance.
 (struct inst-type-fam   (name type stx) #:transparent)
 ;; A multi-file import: `(require "file.rkt" ...)` inside a rackton form.
 ;; Specs are the raw require specs (passed verbatim to Racket's require).
 (struct top:require    (specs stx) #:transparent)
-;; A foreign (host) import: `(foreign name τ #:from M [#:as rkt-id])`.
+;; A foreign (host) import: `(foreign name τ :from M [:as rkt-id])`.
 ;; Declares the Rackton-typed binding `name` of type `type`, backed by
 ;; the Racket binding `racket-id` from module path `module-path`.  The
 ;; declared type is the trust boundary (unchecked — FFI-style).  Like a
@@ -330,7 +347,7 @@
 ;; plus a Racket-level `require` emitted by codegen for the binding.
 (struct top:foreign    (name type module-path racket-id stx) #:transparent)
 ;; An inline C-function import:
-;;   (foreign-c name τ #:lib L #:symbol S #:sig (cty ... -> cty))
+;;   (foreign-c name τ :lib L :symbol S :sig (cty ... -> cty))
 ;; Binds `name` of Rackton type `type` to the C function `symbol` in
 ;; shared library `lib` (a string, or #f for the running process), with
 ;; the C signature given by `arg-tags` / `result-tag` (ctype keywords:

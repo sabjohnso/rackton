@@ -1196,7 +1196,7 @@
 
 ;; STM Functor / Applicative / Monad method impls.  The instances now
 ;; live in rackton/control/stm, which foreign-imports these and
-;; registers them under STM's #:runtime-tag ('$stm) — so no dispatch
+;; registers them under STM's :runtime-tag ('$stm) — so no dispatch
 ;; registration here.  register-pure-impl! '$stm stays (the witness-based
 ;; pure table, used by needs-dict transformer code over an STM inner).
 
@@ -1673,7 +1673,7 @@
 ;; copyFile: copy contents, replacing an existing destination.  Named
 ;; copy-file-io (not copy-file) so prelude-runtime doesn't re-provide a
 ;; racket/base name into modules that import both; the Rackton-facing
-;; name `copy-file` is bound via the foreign decl's #:as.
+;; name `copy-file` is bound via the foreign decl's :as.
 (define/curried (copy-file-io src dst)
   ($io (lambda () (rkt:copy-file src dst #t) Unit)))
 

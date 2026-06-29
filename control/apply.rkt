@@ -32,7 +32,7 @@
   ;; no `pure`).  Quantified over containers of functions, so it type-
   ;; checks as the specification rather than running through the generic
   ;; bundle (no generator for `(f (-> …))`).
-  #:laws
+  :laws
     ([composition ((Eq (f c)) =>
        (All ([u : (f (-> b c))] [v : (f (-> a b))] [w : (f a)])
          (== (apply (apply (fmap (lambda (g) (lambda (h) (lambda (x) (g (h x))))) u) v) w)

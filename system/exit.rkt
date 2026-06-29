@@ -17,7 +17,7 @@
 ;; returns, so the result type is free (Haskell's `exitWith :: ExitCode
 ;; -> IO a`).
 (foreign exit-with-code (-> Integer (IO a))
-         #:from rackton/private/prelude-runtime)
+         :from rackton/private/prelude-runtime)
 
 ;; exitWith: terminate with the status named by an ExitCode.
 (: exit-with (-> ExitCode (IO a)))

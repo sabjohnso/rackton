@@ -97,7 +97,7 @@ exported.
 A @racket[provide] body may also contain a bare identifier, which
 exports the named value binding, data constructor, type constructor, or
 protocol.  Data constructors exported this way are exported both as a
-runtime value and (when their owning type is not @racket[#:abstract])
+runtime value and (when their owning type is not @racket[:abstract])
 as a type-checker entry.
 
 @racketblock[

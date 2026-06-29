@@ -23,11 +23,11 @@
 (test-case "quickstart fact example"
   (check-equal? fact-result 120))
 
-;; ----- advanced-types.scrbl: existential with #:forall / #:where ---
+;; ----- advanced-types.scrbl: existential with :forall / :where ---
 
 (rackton
   (data ExistsShow1
-    (PackShow1 #:forall (a) #:where (Show a) a))
+    (PackShow1 :forall (a) :where (Show a) a))
 
   (: exhibit (List ExistsShow1))
   (define exhibit
@@ -46,16 +46,16 @@
 (test-case "advanced-types existential example"
   (check-equal? rendered (Cons "42" (Cons "\"hi\"" Nil))))
 
-;; ----- advanced-types.scrbl: associated type with #:type clauses ---
+;; ----- advanced-types.scrbl: associated type with :type clauses ---
 
 (rackton
   (protocol (Container1 c)
-    (#:type Elem1)
+    (:type Elem1)
     (: empty1? (-> c Boolean))
     (: head1   (-> c (Maybe (Elem1 c)))))
 
   (instance (Container1 (List a))
-    (#:type (Elem1 = a))
+    (:type (Elem1 = a))
     (define (empty1? xs) (match xs [(Nil) #t] [(Cons _ _) #f]))
     (define (head1   xs) (match xs [(Nil) None] [(Cons h _) (Some h)])))
 
@@ -72,7 +72,7 @@
   (struct DocPoint
     [x : Integer]
     [y : Integer]
-    #:deriving Lens)
+    :deriving Lens)
 
   (: p0 DocPoint)
   (define p0 (DocPoint 3 4))
@@ -95,7 +95,7 @@
   (data DocOpt
     DocAbsent
     (DocPresent Integer)
-    #:deriving Prism)
+    :deriving Prism)
 
   (: preview-present (Maybe Integer))
   (define preview-present (preview DocOpt-DocPresent-prism (DocPresent 7)))
@@ -168,7 +168,7 @@
 
 (rackton
   (foreign str-replace (-> String (-> String (-> String String)))
-           #:from racket/string #:as string-replace)
+           :from racket/string :as string-replace)
 
   (: slashify (-> String String))
   (define (slashify s) (str-replace s "." "/"))

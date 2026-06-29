@@ -308,7 +308,7 @@
     [(texists? expected-ty)
      ;; PACK — the dual of the tforall skolemize branch.  Instantiate the
      ;; hidden vars with fresh UNIFICATION tvars (the witness solves them),
-     ;; check `expr` against the body, and emit the `#:where` constraints
+     ;; check `expr` against the body, and emit the `:where` constraints
      ;; as pending preds so they are discharged at this site against the
      ;; concrete witness.  The result type is the existential itself — the
      ;; witness is hidden (it appears nowhere in `expected-ty`).
@@ -1251,7 +1251,42 @@
 ;; SPECIFIC arg.  If the head's arrow domain is a `tforall`, switch to
 ;; bidirectional check-mode (rank-N) — the arg is checked against the
 ;; polymorphic type, not inferred and unified, via `check-expr/m`.
+;; When an application carries `'rackton:kw-labels` (it came from keyword
+;; construction `(C :f v …)`), verify the head is a constructor with named
+;; fields and that the labels match those fields exactly and in declared
+;; order.  The arguments are already positional (the values in source
+;; order), so a passing check means the ordinary application logic below
+;; types it correctly.
+(define (validate-kw-labels-for-ctor! ctor-name labels stx env)
+  (define info (and ctor-name (env-ref-data env ctor-name)))
+  (cond
+    [(not info)
+     (raise-syntax-error 'rackton
+       "keyword fields require a constructor with named fields"
+       stx)]
+    [(not (data-info-field-names info))
+     (raise-syntax-error 'rackton
+       (format "constructor ~a has positional fields; keyword fields are not allowed"
+               ctor-name)
+       stx)]
+    [(not (equal? labels (data-info-field-names info)))
+     (raise-syntax-error 'rackton
+       (format "keyword fields for ~a must be ~a in declared order, got ~a"
+               ctor-name
+               (map (lambda (f) (string->symbol (format ":~a" f)))
+                    (data-info-field-names info))
+               (map (lambda (f) (string->symbol (format ":~a" f))) labels))
+       stx)]))
+
+;; Verify the labels recorded on an application's stx (from keyword
+;; construction) against the head constructor's declared fields.
+(define (validate-kw-labels! head labels stx env)
+  (validate-kw-labels-for-ctor!
+   (and (e:var? head) (e:var-name head)) labels stx env))
+
 (define (infer-app/m head args stx env)
+  (let ([kw-labels (and (syntax? stx) (syntax-property stx 'rackton:kw-labels))])
+    (when kw-labels (validate-kw-labels! head kw-labels stx env)))
   (let/infer ([rh (infer-expr/m head env)])
     (let* ([s-head (car rh)] [t-head (cdr rh)])
       (let loop ([args args] [s s-head] [head-ty t-head] [env (apply-subst/env s-head env)])
@@ -1404,7 +1439,7 @@
   (cond
     ;; An existential annotation is a PACK: hand off to the bidirectional
     ;; checker, which instantiates the hidden vars, checks `expr` against
-    ;; the body, and discharges the `#:where` constraints (see the
+    ;; the body, and discharges the `:where` constraints (see the
     ;; `texists?` branch of `check-expr/m`).
     [(texists? resolved)
      (check-expr/m expr env resolved)]
@@ -2279,6 +2314,12 @@
                   name (data-info-arity info) (length args) field-hint)
           stx)]
        [else
+        ;; A keyword pattern `(C :f p …)` records its labels on stx;
+        ;; verify they match the constructor's declared fields in order.
+        (let ([kw-labels (and (syntax? stx)
+                              (syntax-property stx 'rackton:kw-labels))])
+          (when kw-labels
+            (validate-kw-labels-for-ctor! name kw-labels stx env)))
         ;; Universal data tparams → fresh tvars (unify with scrutinee);
         ;; existential ex-tvars → fresh SKOLEMS; the ctor's qual context
         ;; becomes hypotheses the pattern proves.
@@ -2663,7 +2704,7 @@
                  (handle-return-stx r)))
 
 ;; Like `infer-program`, but also returns the post-expansion form list
-;; (with every `#:derive-supers` instance replaced by the plain
+;; (with every `:derive-supers` instance replaced by the plain
 ;; instances it synthesized).  The elaborator drives codegen off THIS
 ;; list so the synthesized superclass instances are lowered too.
 ;; Run inference and also produce the codegen-plan: the tables codegen
@@ -2702,7 +2743,7 @@
     (run-phase-A env forms prior-declared))
   ;; ---- Cross-class derivation expansion ----
   ;; Now that every class (prelude, local, imported) is in env, rewrite
-  ;; each `#:derive-supers` instance into the plain instances it
+  ;; each `:derive-supers` instance into the plain instances it
   ;; synthesizes.  Every later phase — and codegen — runs over `forms*`.
   (define forms*0 (expand-derive-instances forms env-after-A))
   ;; ---- Variadic-call gathering ----
@@ -2736,7 +2777,7 @@
   ;; the subclass instance that needs it.
   (check-superclass-obligations env-after-C forms*)
   ;; ---- Protocol laws ----
-  ;; Type-check each protocol's `#:laws` now that every class AND
+  ;; Type-check each protocol's `:laws` now that every class AND
   ;; instance is in env, so a law may compare results at concrete types
   ;; (e.g. `(Num Integer)`) or rely on derived instances.
   (check-class-laws env-after-C forms*)
@@ -2810,7 +2851,7 @@
 ;; a candidate instance's head variables, treating the target as ground,
 ;; so the obligation reads "for all the instance's variables, the
 ;; superclass holds" — exactly the coherence requirement.
-;; Type-check every protocol's `#:laws` against the fully-elaborated
+;; Type-check every protocol's `:laws` against the fully-elaborated
 ;; env.  Run after instance registration so a law may compare results at
 ;; concrete element types — `(Num Integer)`, `(Eq (List Integer))` — and
 ;; rely on derived instances.  The class's parameters and superclass
@@ -2849,10 +2890,10 @@
 
 ;; ----- cross-class derivation expansion ----------------------------
 ;;
-;; A `#:derive-supers` instance bundles only the irreducible
+;; A `:derive-supers` instance bundles only the irreducible
 ;; primitives (e.g. `pure` + `flatmap`).  Rewrite it into plain
 ;; `top:instance` forms: one synthesized instance per MISSING superclass
-;; (filling its methods from the deriving class's `#:derive` table and
+;; (filling its methods from the deriving class's `:derive` table and
 ;; the bundled primitives), plus the base instance carrying only the
 ;; deriving class's own methods.  Superclasses that already have an
 ;; instance — hand-written or imported — are left untouched, so the two
@@ -2918,7 +2959,7 @@
   (define cinfo (env-ref-class env C #f))
   (unless cinfo
     (raise-syntax-error 'derive-supers
-      (format "#:derive-supers on an instance of unknown protocol ~a" C)
+      (format ":derive-supers on an instance of unknown protocol ~a" C)
       stx))
   (define closure (superclass-name-closure env C))
   (define merged  (merged-derive-table env C closure))
@@ -3427,7 +3468,7 @@
         [_ (demand-star env t tvar-kinds)]))))
 
 ;; A standalone surface constraint (instance head/context, class
-;; superclass, #:requires) — its free type variables get fresh kvars.
+;; superclass, :requires) — its free type variables get fresh kvars.
 (define (kind-check-constraint-surface env c)
   (unless (eq? (current-kind-check) 'off)
     (kc-constraint env c (make-hasheq))))
@@ -3797,7 +3838,8 @@
       (env-extend-data e (data-ctor-name c)
                        (data-info tname (data-ctor-name c)
                                   (length field-tys) sch
-                                  extra-tvars)))))
+                                  extra-tvars
+                                  (data-ctor-field-names c))))))
 
 ;; ----- data families: instance constructor registration -------------
 
@@ -3824,7 +3866,8 @@
                      (data-info fname (data-ctor-name c)
                                 (length field-tys)
                                 (scheme quant ctor-fn-type)
-                                '()))))
+                                '()
+                                (data-ctor-field-names c)))))
 
 ;; Batch pass: register every data-instance's constructors.  Runs with
 ;; resolve-data-ctors (Phase A7), the type-level env complete.
@@ -4295,7 +4338,7 @@
 ;; takes the prior st and returns the next.
 (define (infer-program-step form env declared st)
   (cond
-    ;; A `#:derive-supers` instance expands into several plain
+    ;; A `:derive-supers` instance expands into several plain
     ;; instances; register each so the REPL behaves like batch mode.
     [(top:derive-instance? form)
      (for/fold ([e env] [d declared] [st st] #:result (values e d st))
@@ -4714,12 +4757,13 @@
          (env-extend-data e (data-ctor-name c)
                           (data-info tname (data-ctor-name c)
                                      (length field-tys) sch
-                                     extra-tvars))))
+                                     extra-tvars
+                                     (data-ctor-field-names c)))))
      (values env** declared))
 
 ;; ----- class / instance elaboration --------------------------------
 
-;; Type-check one `#:laws` entry of a protocol.  A law must hold for an
+;; Type-check one `:laws` entry of a protocol.  A law must hold for an
 ;; arbitrary instance, so each class parameter is skolemized to a rigid
 ;; constant and the class head plus its superclasses are assumed as
 ;; hypotheses; the law's own `=>` context (e.g. `(Eq a)`) is assumed too,
@@ -5018,19 +5062,19 @@
         [(null? reqs) acc]
         [else (hash-set acc method-name reqs)])))
   ;; Collect declared associated-type names so each
-  ;; instance can be checked for matching #:type bindings.
+  ;; instance can be checked for matching :type bindings.
   (define type-families
     (for/list ([m (in-list methods)] #:when (class-type-fam? m))
       (class-type-fam-name m)))
   ;; Cross-class derivation table: superclass-name → (method-name → expr),
-  ;; built from each `[Super (define …) …]` clause in the body's `#:derive` list.
+  ;; built from each `[Super (define …) …]` clause in the body's `:derive` list.
   (define super-derives
     (for/fold ([acc (hasheq)]) ([m (in-list methods)] #:when (class-super-derive? m))
       (define inner
         (for/fold ([h (hasheq)]) ([d (in-list (class-super-derive-methods m))])
           (hash-set h (method-default-name d) (method-default-expr d))))
       (hash-set acc (class-super-derive-super m) inner)))
-  ;; Named, quantified law declarations from the body's `#:laws` clause.
+  ;; Named, quantified law declarations from the body's `:laws` clause.
   (define laws
     (for/list ([m (in-list methods)] #:when (class-law? m)) m))
   (define info (class-info class-name class-params class-kinds
@@ -5135,32 +5179,46 @@
            ;; identity, so a plain require is unchanged.  Instances carry
            ;; no name and stay global (coherence), so they are not filtered.
            (define xform (require-spec->name-transform (syntax->datum spec-stx)))
+           ;; `qualified-in` namespaces only term-level names (values and
+           ;; data constructors): type constructors and classes keep their
+           ;; plain names so a constructor's result type stays consistent
+           ;; with the type it builds.  For every other sub-form the type
+           ;; and term transforms coincide.
+           (define type-xform
+             (require-spec->type-name-transform (syntax->datum spec-stx)))
            (define e1
              (fold-imported xform e bindings
                (lambda (acc nm enc) (env-extend-var acc nm (sexp->scheme enc)))))
            (define e2
              (fold-imported xform e1 data-ctors
                (lambda (acc nm enc) (env-extend-data acc nm (decode-data-info enc)))))
+           ;; A type constructor's `ctors` list names term-level data
+           ;; constructors, which the term `xform` renames; rewrite the
+           ;; list so the type's notion of its constructors matches the
+           ;; names they are actually bound under (keeps exhaustiveness
+           ;; checking and `qualified-in` patterns in agreement).
            (define e3
-             (fold-imported xform e2 tcons
-               (lambda (acc nm enc) (env-extend-tcon acc nm (decode-tcon-info enc)))))
+             (fold-imported type-xform e2 tcons
+               (lambda (acc nm enc)
+                 (env-extend-tcon acc nm
+                   (rename-tcon-info-ctors (decode-tcon-info enc) xform)))))
            (define e4
-             (fold-imported xform e3 classes
+             (fold-imported type-xform e3 classes
                (lambda (acc nm enc) (env-extend-class acc nm (decode-class-info enc)))))
            (define e5
-             (fold-imported xform e4 promoted
+             (fold-imported type-xform e4 promoted
                (lambda (acc nm enc)
                  (env-extend-promoted-ctor acc nm (decode-kind-scheme enc)))))
            (define e6
-             (fold-imported xform e5 tyfams
+             (fold-imported type-xform e5 tyfams
                (lambda (acc nm enc) (env-extend-tyfam acc nm (decode-tyfam-info enc)))))
            (define e7
-             (fold-imported xform e6 constraint-syns
+             (fold-imported type-xform e6 constraint-syns
                (lambda (acc nm enc)
                  (define syn (decode-constraint-syn enc))
                  (env-extend-constraint-syn acc nm (car syn) (cdr syn)))))
            (define e8
-             (fold-imported xform e7 constraint-fams
+             (fold-imported type-xform e7 constraint-fams
                (lambda (acc nm enc)
                  (env-extend-constraint-fam acc nm (decode-constraint-fam-info enc)))))
            (define e9
@@ -5226,7 +5284,7 @@
     [(pair? d)
      (case (car d)
        [(only-in except-in rename-in) (require-spec-base-datum (cadr d))]
-       [(prefix-in)                   (require-spec-base-datum (caddr d))]
+       [(prefix-in qualified-in)      (require-spec-base-datum (caddr d))]
        [else #f])]
     [else #f]))
 
@@ -5258,10 +5316,39 @@
         (lambda (n)
           (let ([m (inner n)])
             (and m (string->symbol (string-append pfx (symbol->string m))))))]
+       ;; `qualified-in` is `prefix-in` with a colon-suffixed prefix:
+       ;; `(qualified-in p mod)` imports each `name` as `p:name`, matching
+       ;; the codegen rewrite to `(prefix-in p: mod)`.
+       [(qualified-in)
+        (define inner (require-spec->name-transform (caddr d)))
+        (define pfx (format "~a:" (cadr d)))
+        (lambda (n)
+          (let ([m (inner n)])
+            (and m (string->symbol (string-append pfx (symbol->string m))))))]
        ;; An unhandled wrapper imports nothing (its module path is #f too).
        [else (lambda (n) #f)])]
     ;; A bare module reference imports every name unchanged.
     [else (lambda (n) n)]))
+
+;; The transform a require spec imposes on TYPE-level names (type
+;; constructors, classes, type families).  It matches the term-level
+;; transform for every sub-form except `qualified-in`, which prefixes
+;; only term-level names: types keep their plain names, so an imported
+;; constructor's result type still names the same (unprefixed) type the
+;; importer writes in annotations.
+(define (require-spec->type-name-transform d)
+  (cond
+    [(and (pair? d) (eq? (car d) 'qualified-in))
+     (require-spec->name-transform (caddr d))]
+    [else (require-spec->name-transform d)]))
+
+;; Rewrite a tcon-info's `ctors` list through the term-level name
+;; transform `xform`, so the type's constructors are named as they are
+;; bound in the importing env (a constructor dropped by the transform is
+;; removed from the list).
+(define (rename-tcon-info-ctors ti xform)
+  (struct-copy tcon-info ti
+    [ctors (filter values (map xform (tcon-info-ctors ti)))]))
 
 ;; Index a require clause list (only-in / rename-in) by importee name.  A
 ;; bare `id` keeps its name; a `[orig new]` clause renames `orig` to `new`.
@@ -6139,12 +6226,12 @@
        (string-join (map symbol->string cyc) " → "))
       stx)))
 
-;; Cross-class default/derived cycle check for a `#:derive-supers`
+;; Cross-class default/derived cycle check for a `:derive-supers`
 ;; instance.  `check-instance-default-cycle` above is intra-class: it
 ;; only sees edges between methods of ONE class, so it cannot detect a
 ;; loop that runs between a deriving-class method (left to its class
 ;; default) and a superclass method whose body comes from the deriving
-;; class's `#:derive` table.  That is exactly the loop the user can write
+;; class's `:derive` table.  That is exactly the loop the user can write
 ;; by leaving both ends to be auto-filled, e.g. Comonad's `extend`
 ;; (default `(fmap … (duplicate …))`) and a derived `fmap`
 ;; (`(extend … …)`): each is synthesized, neither is user-written, so a
@@ -6165,7 +6252,7 @@
   (define all-methods (append* (map class-methods classes)))
   (define name-set (for/hasheq ([m (in-list all-methods)]) (values m #t)))
   ;; the body that fills method `m` of class `K` when the user did not
-  ;; write it: a `#:derive`-table entry (superclass methods only) else the
+  ;; write it: a `:derive`-table entry (superclass methods only) else the
   ;; owning class's intra-class default; #f when neither exists.
   (define (filled-body K m)
     (or (and (not (eq? K C))
@@ -6320,7 +6407,7 @@
   (for ([fam (in-list (class-info-type-families cinfo))])
     (unless (hash-has-key? type-family-bindings fam)
       (raise-syntax-error 'infer
-        (format "instance ~s missing #:type binding for associated type ~s"
+        (format "instance ~s missing :type binding for associated type ~s"
                 (pred->datum head-pred-raw) fam)
         stx)))
   ;; Register the instance (with empty method bodies, full

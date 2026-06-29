@@ -52,11 +52,11 @@
 ;; Integer (negative = full), so the wrappers map the Maybe to it.
 
 (foreign show-f-float (-> Integer (-> Float String))
-         #:from rackton/private/prelude-runtime)
+         :from rackton/private/prelude-runtime)
 (foreign show-e-float (-> Integer (-> Float String))
-         #:from rackton/private/prelude-runtime)
+         :from rackton/private/prelude-runtime)
 (foreign show-g-float (-> Integer (-> Float String))
-         #:from rackton/private/prelude-runtime)
+         :from rackton/private/prelude-runtime)
 
 (: prec->int (-> (Maybe Integer) Integer))
 (define (prec->int p) (match p [(None) -1] [(Some n) n]))

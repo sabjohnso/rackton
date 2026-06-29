@@ -32,7 +32,7 @@
   (define (assoc key xs)
     (let loop ([xs xs])
       (match xs
-        [(Cons (Pair k v) _) #:when (== k key) (Some (Pair k v))]
+        [(Cons (Pair k v) _) :when (== k key) (Some (Pair k v))]
         [(Cons _ xs) (loop xs)]
         [Nil None])))
 
@@ -127,12 +127,12 @@
   (check-false o-false))
 
 ;; ----- Piece 5: existential-constructor `match` arm ---------------
-;; A data constructor that packs `#:where (Eq a)` brings that given into
+;; A data constructor that packs `:where (Eq a)` brings that given into
 ;; the matching arm; an inner loop in the arm may assume it.
 
 (rackton
   (data EqBox
-    (PackEq #:forall (a) #:where (Eq a) (Pair a a)))
+    (PackEq :forall (a) :where (Eq a) (Pair a a)))
 
   (: box-same (-> EqBox Boolean))
   (define (box-same e)
@@ -152,7 +152,7 @@
 (test-case "inner loop under an existential-ctor arm's packed Eq: unequal"
   (check-false m-false))
 
-;; ----- Piece 6: `#:laws` body -------------------------------------
+;; ----- Piece 6: `:laws` body -------------------------------------
 ;; A law's `=>` context is skolemized as a given while the law body is
 ;; checked.  An inner loop in the law body may assume it.  The law
 ;; type-checks but produces no runtime value, so assert that the block
@@ -164,7 +164,7 @@
      (compile-rackton
       (protocol (MySemi a)
         (: combine (-> a (-> a a)))
-        #:laws
+        :laws
           ([self-same ((Eq a) =>
             (All ([x : a])
               (let loop ([z x]) (== z x))))]))))))

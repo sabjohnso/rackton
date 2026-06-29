@@ -50,13 +50,13 @@ multi-parameter protocol bounds each parameter in turn
 protocol needs more arguments, supply them and let the parameter fill the
 last slot: @racket[[b => (Convert a)]] desugars to @racket[(Convert a b)].
 A superprotocol that genuinely relates several parameters at once is
-written instead as a trailing @racket[(#:requires (C …))] clause in the
+written instead as a trailing @racket[(:requires (C …))] clause in the
 body.
 
 The older head-prefix form, which listed superprotocols before the
 protocol head as @racket[(protocol ((Eq a) => (Ord a)) …)], has been
 retired and is now a syntax error.  Restate each superprotocol as a
-parameter bound or a @racket[#:requires] clause.  (This is distinct from
+parameter bound or a @racket[:requires] clause.  (This is distinct from
 an @italic{instance} context, @racket[((Eq a) => (Eq (Maybe a)))], which
 is unchanged — see below.)
 

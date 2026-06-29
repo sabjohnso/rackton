@@ -278,7 +278,7 @@
     (parameterize ([current-hygiene? (unbox had-macros?-box)])
       (parse-toplevel-list expanded-forms)))
   ;; Splice in any auto-generated `<Class>-laws` bundles (Feature 9):
-  ;; ordinary `top:def`s synthesized from each lawful protocol's `#:laws`,
+  ;; ordinary `top:def`s synthesized from each lawful protocol's `:laws`,
   ;; gated on this module importing rackton/unit.  They flow through
   ;; inference + codegen like user code.
   (define parsed
@@ -295,7 +295,7 @@
   ;; exported-impls that codegen writes thread through cg-st.  No parameters.
   (let ()
     ;; infer-program also returns the post-expansion form list — every
-    ;; `#:derive-supers` instance replaced by the plain instances it
+    ;; `:derive-supers` instance replaced by the plain instances it
     ;; synthesized.  Codegen and export resolution run over THIS list so
     ;; the synthesized superclass instances are lowered and escape.
     ;;
@@ -657,7 +657,7 @@
                #:when (env-ref-var env local #f)
                #:unless (env-ref-var prelude-env local #f))
       (cons external (scheme->sexp (env-ref-var env local)))))
-  ;; Omit ctors whose owning type was declared with the #:abstract
+  ;; Omit ctors whose owning type was declared with the :abstract
   ;; flag — importers can still mention the TYPE in signatures
   ;; (it's exported via the tcons table) but they can't construct or
   ;; pattern-match.

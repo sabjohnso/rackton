@@ -37,8 +37,10 @@
               [cname    gen:tcon-name]
               [arity    (gen:integer-in 0 4)]
               [sch      (gen:scheme 3)]
-              [ex-tvars (gen:list gen:tvar-name #:max-length 2)])
-      (data-info tname cname arity sch ex-tvars)))
+              [ex-tvars (gen:list gen:tvar-name #:max-length 2)]
+              [fnames   (gen:choice (gen:const #f)
+                                    (gen:list gen:tvar-name #:max-length 4))])
+      (data-info tname cname arity sch ex-tvars fnames)))
 
   ;; ----- round-trip properties ---------------------------------------
 

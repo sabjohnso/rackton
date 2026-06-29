@@ -168,10 +168,10 @@ constructors under their bare names, functions as @racketresultfont{<lambda>}).
 prints what @racket[_name] is bound to in the current environment.  A
 value or data constructor prints its scheme on one line.  A protocol lists
 its parameters, superprotocols, methods (each with its scheme), its
-declared @racket[#:laws] (each as written, with any @racket[=>] law
+declared @racket[:laws] (each as written, with any @racket[=>] law
 context), and known instances; a type constructor lists its arity, its
 constructors, and the protocols it has instances of.  A type declared
-@racket[#:abstract] is marked @litchar{sealed}.
+@racket[:abstract] is marked @litchar{sealed}.
 
 @verbatim|{
 λ> ,info Eq

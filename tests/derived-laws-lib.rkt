@@ -16,7 +16,7 @@
 
 (protocol (Merge a)
   (: merge (-> a (-> a a)))
-  #:laws
+  :laws
     ([associativity ((Eq a) =>
       (All ([x : a] [y : a] [z : a])
         (== (merge (merge x y) z)

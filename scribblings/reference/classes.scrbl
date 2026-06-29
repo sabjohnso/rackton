@@ -193,7 +193,7 @@ Render @racket[x] for display.}
 Built-in instances: @racket[Integer], @racket[Float], @racket[Rational],
 @racket[Complex], @racket[ComplexExact], @racket[Boolean],
 @racket[String], @racket[Char], @racket[Bytes].  Derived @racket[Show]
-is available on any @racket[data] via @racket[#:deriving Show].}
+is available on any @racket[data] via @racket[:deriving Show].}
 
 @section{Functor hierarchy}
 
@@ -268,7 +268,7 @@ Type constructors that can be folded down to a summary.
 @racket[to-list] have default implementations derived from it.}
 
 Built-in instances: @racket[List], @racket[Maybe].  Derived via
-@racket[#:deriving Foldable] on @racket[data].}
+@racket[:deriving Foldable] on @racket[data].}
 
 @defidform[#:kind "protocol" Traversable]{
 
@@ -279,7 +279,7 @@ Containers that can be walked applicatively.
 The @racket[f] in the result must satisfy @racket[Applicative].}
 
 Built-in instances: @racket[List], @racket[Maybe].  Derived via
-@racket[#:deriving Traversable].}
+@racket[:deriving Traversable].}
 
 @defidform[#:kind "protocol" Bifunctor]{
 
@@ -295,7 +295,7 @@ two-sided map.
 @racket[bimap].}
 
 Built-in instances: @racket[Pair], @racket[Either].  Derived via
-@racket[#:deriving Bifunctor].}
+@racket[:deriving Bifunctor].}
 
 @section{Category and Arrow}
 
@@ -461,7 +461,7 @@ The semigroup operation.}
 
 Built-in instances: @racket[String] (concatenation), @racket[List]
 (append), @racket[Sum] (addition), @racket[Product] (multiplication).
-Derived via @racket[#:deriving Semigroup].}
+Derived via @racket[:deriving Semigroup].}
 
 @defidform[#:kind "protocol" Monoid]{
 
@@ -473,7 +473,7 @@ The identity element.  Return-typed; use @racket[ann] when
 ambiguous.}
 
 Built-in instances: @racket[String], @racket[List], @racket[Sum],
-@racket[Product].  Derived via @racket[#:deriving Monoid].}
+@racket[Product].  Derived via @racket[:deriving Monoid].}
 
 @section{MTL-style monadic protocols}
 

@@ -25,16 +25,16 @@
 
 ;; --- standard handles ----------------------------------------------
 
-(foreign stdin  Handle #:from rackton/private/prelude-runtime)
-(foreign stdout Handle #:from rackton/private/prelude-runtime)
-(foreign stderr Handle #:from rackton/private/prelude-runtime)
+(foreign stdin  Handle :from rackton/private/prelude-runtime)
+(foreign stdout Handle :from rackton/private/prelude-runtime)
+(foreign stderr Handle :from rackton/private/prelude-runtime)
 
 ;; --- opening / closing ---------------------------------------------
 
 ;; The host primitive takes an integer mode code; open-file maps the
 ;; IOMode to it so callers work with the typed constructors.
 (foreign open-file-with-mode (-> String (-> Integer (IO Handle)))
-         #:from rackton/private/prelude-runtime)
+         :from rackton/private/prelude-runtime)
 
 (: open-file (-> String (-> IOMode (IO Handle))))
 (define (open-file path mode)
@@ -45,30 +45,30 @@
       [(AppendMode) 2])))
 
 (foreign h-close (-> Handle (IO Unit))
-         #:from rackton/private/prelude-runtime)
+         :from rackton/private/prelude-runtime)
 
 ;; --- writing -------------------------------------------------------
 
 (foreign h-put-str (-> Handle (-> String (IO Unit)))
-         #:from rackton/private/prelude-runtime)
+         :from rackton/private/prelude-runtime)
 
 (foreign h-put-str-ln (-> Handle (-> String (IO Unit)))
-         #:from rackton/private/prelude-runtime)
+         :from rackton/private/prelude-runtime)
 
 (foreign h-flush (-> Handle (IO Unit))
-         #:from rackton/private/prelude-runtime)
+         :from rackton/private/prelude-runtime)
 
 ;; --- reading -------------------------------------------------------
 
 ;; hGetContents: the rest of the handle's input as one String.
 (foreign h-get-contents (-> Handle (IO String))
-         #:from rackton/private/prelude-runtime)
+         :from rackton/private/prelude-runtime)
 
 ;; hGetLine: the next line as (Some line), or None at end-of-file.
 ;; (Haskell's hGetLine throws at EOF; returning Maybe is safer and
 ;; matches the prelude's getenv convention.)
 (foreign h-get-line (-> Handle (IO (Maybe String)))
-         #:from rackton/private/prelude-runtime)
+         :from rackton/private/prelude-runtime)
 
 ;; getContents: the rest of standard input as one String.
 (: get-contents (IO String))

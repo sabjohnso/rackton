@@ -145,7 +145,7 @@ checks that the supplied identity is a left and right unit.
 @section[#:tag "protocol-laws-bundles"]{Running a protocol's own laws}
 
 The bundles above restate each equation by hand.  When you write the laws
-once, in a protocol's @racket[#:laws] clause (see
+once, in a protocol's @racket[:laws] clause (see
 @secref["type-classes"]), and the module also
 imports @racket[rackton/unit], Rackton generates a runnable bundle for
 you automatically: a function @racketidfont{@racketvarfont{Protocol}-laws}
@@ -160,7 +160,7 @@ failing case names the law and labels every binder by its source name.
 ;; the laws are written once, on the protocol
 (protocol (Combine a)
   (: combine (-> a (-> a a)))
-  #:laws
+  :laws
     ([associativity ((Eq a) =>
        (All ([x : a] [y : a] [z : a])
          (== (combine (combine x y) z)
@@ -178,7 +178,7 @@ failing case names the law and labels every binder by its source name.
 
 (define gen-max (fmap (lambda (n) (MkMax n)) (int-range 0 100)))
 
-;; Combine-laws is generated from the #:laws clause above
+;; Combine-laws is generated from the :laws clause above
 (define _ (run-io (run-tests (Combine-laws gen-max))))
 }
 

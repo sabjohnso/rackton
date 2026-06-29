@@ -35,7 +35,13 @@
 
          current-hygiene?
          emit-id
-         lowercase-id?)
+         lowercase-id?
+         classify-id
+         keyword-id?
+         keyword-id->name
+         qualified-id?
+         qualified-id-prefix
+         qualified-id-name)
 
 (require syntax/parse
          racket/match
@@ -74,6 +80,58 @@
   (or (uppercase-id? sym) (eq? sym '~)))
 
 (define (wildcard-symbol? sym) (eq? sym '_))
+
+;; ----- colon classification -----------------------------------------
+;; A whitespace-delimited identifier token now carries structure in its
+;; colons.  `classify-id` reports which of the five shapes a symbol has:
+;;
+;;   (plain      sym)            no colon — an ordinary unqualified name
+;;   (operator   sym)            the reserved `:` / `::` annotation/kind ops
+;;   (keyword    name)          `:name`  — a label / option marker
+;;   (qualified  prefix name)   `prefix:name` — a namespaced reference
+;;   (illegal    sym)            trailing or repeated colons — rejected
+;;
+;; The reader still produces ordinary symbols; this is purely a spelling
+;; interpretation, mirroring `lowercase-id?`.
+(define (classify-id sym)
+  (if (not (symbol? sym))
+      (list 'illegal sym)
+      (let* ([s (symbol->string sym)]
+             [n (string-length s)]
+             [colons (for/list ([c (in-string s)] [i (in-naturals)]
+                                #:when (char=? c #\:))
+                       i)]
+             [k (length colons)])
+        (cond
+          [(zero? k) (list 'plain sym)]
+          ;; all-colon tokens: only `:` and `::` are reserved operators.
+          [(= k n) (if (or (= n 1) (= n 2))
+                       (list 'operator sym)
+                       (list 'illegal sym))]
+          ;; leading colon → keyword: exactly one colon, nonempty rest.
+          [(char=? (string-ref s 0) #\:)
+           (if (= k 1)
+               (list 'keyword (string->symbol (substring s 1)))
+               (list 'illegal sym))]
+          ;; one internal colon, not leading, not trailing → qualified.
+          [(and (= k 1)
+                (let ([p (car colons)]) (and (> p 0) (< p (sub1 n)))))
+           (define p (car colons))
+           (list 'qualified
+                 (string->symbol (substring s 0 p))
+                 (string->symbol (substring s (add1 p))))]
+          [else (list 'illegal sym)]))))
+
+(define (illegal-colon-id? sym) (eq? (car (classify-id sym)) 'illegal))
+;; Shared message for a malformed colon name (trailing or repeated
+;; colons): a colon may only lead a keyword or separate one qualifier.
+(define malformed-colon-message
+  "malformed name: a colon may only lead a keyword (:name) or separate a single qualifier (mod:name)")
+(define (keyword-id? sym)     (eq? (car (classify-id sym)) 'keyword))
+(define (keyword-id->name sym) (cadr (classify-id sym)))
+(define (qualified-id? sym)   (eq? (car (classify-id sym)) 'qualified))
+(define (qualified-id-prefix sym) (cadr (classify-id sym)))
+(define (qualified-id-name sym)   (caddr (classify-id sym)))
 
 ;; ----- expressions --------------------------------------------------
 
@@ -823,6 +881,17 @@
                     (cons (syntax->datum #'name) (parse-expr #'v))]))
                stx)]
 
+    ;; A bare keyword `:foo` is a syntactic marker, never a value.
+    [x:id
+     #:when (keyword-id? (syntax->datum #'x))
+     (raise-syntax-error 'rackton
+       (format "keyword :~a is not an expression; it can only label a constructor argument"
+               (keyword-id->name (syntax->datum #'x)))
+       #'x)]
+    [x:id
+     #:when (illegal-colon-id? (syntax->datum #'x))
+     (raise-syntax-error 'rackton malformed-colon-message #'x)]
+
     [x:id  (e:var (resolve-id #'x) stx)]
 
     ;; ----- infix notation (see the syntax classes above) -----
@@ -868,11 +937,50 @@
      (e:app (parse-expr #'head)
             (list (e:var 'Unit stx))
             stx)]
+    ;; Keyword construction `(C :f1 v1 :f2 v2 …)`.  Recognised when the
+    ;; first argument is a keyword token; every argument must then be a
+    ;; `:label value` pair (no mixing with positional).  Keyword fields
+    ;; must appear in declared order, so the values are already the
+    ;; positional argument sequence: desugar to an `e:app`, recording the
+    ;; labels as a property for inference to verify against the head
+    ;; constructor's declared fields.
+    [(head karg ...+)
+     #:when (keyword-token? (car (syntax->list #'(karg ...))))
+     (define labels+vals (parse-keyword-args (syntax->list #'(karg ...))))
+     (e:app (parse-expr #'head)
+            (map cdr labels+vals)
+            (syntax-property stx 'rackton:kw-labels (map car labels+vals)))]
     [(head arg ...+)
      (e:app (parse-expr #'head)
             (for/list ([a (in-list (syntax->list #'(arg ...)))])
               (parse-expr a))
             stx)]))
+
+;; Is `stx` a keyword token `:label`?
+(define (keyword-token? stx)
+  (and (identifier? stx) (keyword-id? (syntax->datum stx))))
+
+;; Parse a `:label value …` sequence into a list of (field-name . expr).
+;; Enforces strict label/value alternation: a positional argument in a
+;; label position, or a trailing label with no value, is an error.
+(define (parse-keyword-args args)
+  (let loop ([args args] [acc '()])
+    (cond
+      [(null? args) (reverse acc)]
+      [(not (keyword-token? (car args)))
+       (raise-syntax-error 'rackton
+         "keyword construction must use :label value pairs throughout"
+         (car args))]
+      [(null? (cdr args))
+       (raise-syntax-error 'rackton
+         (format "keyword :~a is missing its value"
+                 (keyword-id->name (syntax->datum (car args))))
+         (car args))]
+      [else
+       (loop (cddr args)
+             (cons (cons (keyword-id->name (syntax->datum (car args)))
+                         (parse-expr (cadr args)))
+                   acc))])))
 
 ;; Parse a sequence of cond clauses, desugaring to nested if forms.
 ;; The final clause is required to be `[else body]`.
@@ -892,13 +1000,13 @@
 
 ;; Parse one `match` clause.  Two shapes are accepted:
 ;;   [pat body]
-;;   [pat #:when guard body]
+;;   [pat :when guard body]
 ;; The guard, when present, is a Boolean-typed expression evaluated
 ;; after the pattern's variable bindings are in scope.  If the guard
 ;; fails, the next clause is tried.
 (define (parse-match-clause stx)
   (syntax-parse stx
-    [[pat #:when guard body]
+    [[pat (~datum :when) guard body]
      (parameterize ([current-rename-env
                      (extend-rename-env (pattern-binder-ids #'pat))])
        (clause (parse-pattern #'pat)
@@ -1005,7 +1113,7 @@
 ;; parenthesized list of patterns rather than a single pattern.
 (define (parse-case-lambda-clause who stx)
   (syntax-parse stx
-    [[(pat ...) #:when guard body]
+    [[(pat ...) (~datum :when) guard body]
      (parameterize ([current-rename-env
                      (extend-rename-env
                       (append-map pattern-binder-ids (syntax->list #'(pat ...))))])
@@ -1025,7 +1133,7 @@
      (raise-syntax-error
       who
       (format
-       "malformed ~a clause: expected [(pat ...) body] or [(pat ...) #:when guard body]"
+       "malformed ~a clause: expected [(pat ...) body] or [(pat ...) :when guard body]"
        who)
       stx)]))
 
@@ -1717,15 +1825,53 @@
      (define name (syntax->datum #'x))
      (cond
        [(wildcard-symbol? name) (p:wild stx)]
+       [(illegal-colon-id? name)
+        (raise-syntax-error 'rackton malformed-colon-message #'x)]
+       ;; A qualified reference `mod:Ctor` is a (nullary) constructor,
+       ;; never a fresh pattern variable, even if lowercase-initial.
+       [(qualified-id? name)    (p:ctor name '() stx)]
        [(lowercase-id? name)    (p:var (resolve-id #'x) stx)]
        [else                    (p:ctor name '() stx)])]
     [(ctor:id arg ...)
-     #:fail-unless (not (lowercase-id? (syntax->datum #'ctor)))
-     "constructor pattern head must be a non-lowercase identifier"
-     (p:ctor (syntax->datum #'ctor)
-             (for/list ([a (in-list (syntax->list #'(arg ...)))])
-               (parse-pattern a))
-             stx)]))
+     #:fail-unless (or (qualified-id? (syntax->datum #'ctor))
+                       (not (lowercase-id? (syntax->datum #'ctor))))
+     "constructor pattern head must be a constructor or qualified name"
+     (define args (syntax->list #'(arg ...)))
+     (cond
+       ;; Keyword pattern `(C :f1 p1 :f2 p2 …)`: like keyword
+       ;; construction, fields must be in declared order, so the
+       ;; sub-patterns are already positional.  Desugar to a positional
+       ;; p:ctor, recording the labels for inference to verify.
+       [(and (pair? args) (keyword-token? (car args)))
+        (define labels+pats (parse-keyword-patterns args))
+        (p:ctor (syntax->datum #'ctor)
+                (map cdr labels+pats)
+                (syntax-property stx 'rackton:kw-labels (map car labels+pats)))]
+       [else
+        (p:ctor (syntax->datum #'ctor)
+                (map parse-pattern args)
+                stx)])]))
+
+;; Parse a `:label pattern …` sequence into a list of (field-name .
+;; pattern).  Mirrors `parse-keyword-args` for pattern position.
+(define (parse-keyword-patterns args)
+  (let loop ([args args] [acc '()])
+    (cond
+      [(null? args) (reverse acc)]
+      [(not (keyword-token? (car args)))
+       (raise-syntax-error 'rackton
+         "keyword pattern must use :label pattern pairs throughout"
+         (car args))]
+      [(null? (cdr args))
+       (raise-syntax-error 'rackton
+         (format "keyword :~a is missing its pattern"
+                 (keyword-id->name (syntax->datum (car args))))
+         (car args))]
+      [else
+       (loop (cddr args)
+             (cons (cons (keyword-id->name (syntax->datum (car args)))
+                         (parse-pattern (cadr args)))
+                   acc))])))
 
 ;; ----- bit syntax ---------------------------------------------------
 ;;
@@ -1931,9 +2077,15 @@
      (build-arrow-type (syntax->list #'(arg ...)) stx)]
     [x:id
      (define name (syntax->datum #'x))
-     (if (lowercase-id? name)
-         (ty:var name stx)
-         (ty:con name stx))]
+     (cond
+       [(illegal-colon-id? name)
+        (raise-syntax-error 'rackton malformed-colon-message #'x)]
+       ;; A qualified reference `mod:Name` is always a type constructor,
+       ;; even when its name part is lowercase — qualification overrides
+       ;; the lowercase-means-type-variable rule.
+       [(qualified-id? name) (ty:con name stx)]
+       [(lowercase-id? name) (ty:var name stx)]
+       [else                 (ty:con name stx)])]
     [(head arg ...+)
      (ty:app (parse-type #'head)
              (for/list ([a (in-list (syntax->list #'(arg ...)))])
@@ -2100,16 +2252,16 @@
 ;; result-tag) on the single `->`.  `(-> int)` yields no args.
 (define (split-c-sig parts stx)
   (unless (list? parts)
-    (raise-syntax-error 'foreign-c "#:sig must be a list (cty ... -> cty)" stx))
+    (raise-syntax-error 'foreign-c ":sig must be a list (cty ... -> cty)" stx))
   (let loop ([xs parts] [args '()])
     (cond
       [(null? xs)
-       (raise-syntax-error 'foreign-c "#:sig must contain ->" stx)]
+       (raise-syntax-error 'foreign-c ":sig must contain ->" stx)]
       [(eq? (car xs) '->)
        (define after (cdr xs))
        (unless (and (pair? after) (null? (cdr after)))
          (raise-syntax-error 'foreign-c
-                             "#:sig must have exactly one result type after ->" stx))
+                             ":sig must have exactly one result type after ->" stx))
        (values (reverse args) (car after))]
       [else (loop (cdr xs) (cons (car xs) args))])))
 
@@ -2175,21 +2327,21 @@
                         (map parse-data-ctor (syntax->list #'(ctor ...)))
                         stx)]
 
-    ;; (foreign name τ #:from M)            — racket-id = name
-    ;; (foreign name τ #:from M #:as rkt-id) — renamed
+    ;; (foreign name τ :from M)            — racket-id = name
+    ;; (foreign name τ :from M :as rkt-id) — renamed
     ;; M is a module path (collection id like racket/string, or a
     ;; relative "file.rkt" string).
-    [(foreign name:id ty #:from mod #:as rkt:id)
+    [(foreign name:id ty (~datum :from) mod (~datum :as) rkt:id)
      (top:foreign (syntax->datum #'name) (parse-type #'ty)
                   (syntax->datum #'mod) (syntax->datum #'rkt) stx)]
-    [(foreign name:id ty #:from mod)
+    [(foreign name:id ty (~datum :from) mod)
      (top:foreign (syntax->datum #'name) (parse-type #'ty)
                   (syntax->datum #'mod) (syntax->datum #'name) stx)]
 
-    ;; (foreign-c name τ #:lib L #:symbol S #:sig (cty ... -> cty))
+    ;; (foreign-c name τ :lib L :symbol S :sig (cty ... -> cty))
     ;; Inline C-function import.  L is a string or #f; S a string; the
     ;; sig is C type keywords with a single `->` splitting args / result.
-    [(foreign-c name:id ty #:lib lib #:symbol sym #:sig sig)
+    [(foreign-c name:id ty (~datum :lib) lib (~datum :symbol) sym (~datum :sig) sig)
      (let*-values ([(t)             (parse-type #'ty)]
                    [(arg-tags res)  (split-c-sig (syntax->datum #'sig) #'sig)])
        (top:foreign-c (syntax->datum #'name) t
@@ -2297,13 +2449,13 @@
                       stx
                       #'tname)]
 
-    ;; (newtype Name (Wrap T) [#:deriving Cls ...])
-    ;; (newtype (Name a ...) (Wrap T) [#:deriving Cls ...])
+    ;; (newtype Name (Wrap T) [:deriving Cls ...])
+    ;; (newtype (Name a ...) (Wrap T) [:deriving Cls ...])
     ;; Sugar over data for the common "one ctor, one field"
     ;; case.  A nominal wrapper around an existing type.  At runtime
     ;; the wrapper is a plain ADT — the "zero-cost" of a newtype is
     ;; documentary, not a perf optimization.  A trailing
-    ;; `#:deriving Cls ...` flows through to parse-data-form.
+    ;; `:deriving Cls ...` flows through to parse-data-form.
     [(newtype (tname:id binder ...) (ctor:id ftype) rest ...)
      #:fail-unless (not (lowercase-id? (syntax->datum #'tname)))
      "newtype name must be a non-lowercase identifier"
@@ -2358,7 +2510,7 @@
                         #'sname)]
 
     ;; A protocol: `(Name binder …)`, with superclasses expressed as
-    ;; per-parameter `=>` bounds on the binders and/or `(#:requires …)`
+    ;; per-parameter `=>` bounds on the binders and/or `(:requires …)`
     ;; clauses in the body.  The prefix form `((Super x) … => (Name …))`
     ;; has been retired.
     [(protocol head body ...)
@@ -2371,19 +2523,19 @@
                 methods
                 stx)]
 
-    ;; Opt-in cross-class derivation.  `#:derive-supers` directly
+    ;; Opt-in cross-class derivation.  `:derive-supers` directly
     ;; after the head bundles the irreducible primitives; the compiler
     ;; synthesizes the missing superclass instances.  These two clauses
     ;; must precede the plain instance clauses so the keyword is consumed
     ;; here rather than captured as the first body item.
-    [(instance (ctx ...+ => head) #:derive-supers body ...)
+    [(instance (ctx ...+ => head) (~datum :derive-supers) body ...)
      (top:derive-instance (for/list ([c (in-list (syntax->list #'(ctx ...)))])
                             (parse-constraint c))
                           (parse-constraint #'head)
                           (for/list ([m (in-list (syntax->list #'(body ...)))])
                             (parse-instance-method m))
                           stx)]
-    [(instance head #:derive-supers body ...)
+    [(instance head (~datum :derive-supers) body ...)
      (top:derive-instance '()
                           (parse-constraint #'head)
                           (for/list ([m (in-list (syntax->list #'(body ...)))])
@@ -2493,10 +2645,10 @@
              (append* super-lists))]))
 
 ;; Split a protocol body into superclass constraints contributed by
-;; `(#:requires c …)` clauses and the remaining method items.  Keyword
-;; clauses self-quote in syntax-parse, like `#:fundep` / `#:type`.
+;; `(:requires c …)` clauses and the remaining method items.  Keyword
+;; clauses self-quote in syntax-parse, like `:fundep` / `:type`.
 ;;
-;; A bare `#:derive` keyword is special: it consumes the *following* item,
+;; A bare `:derive` keyword is special: it consumes the *following* item,
 ;; a parenthesized list of `[Super (define …) …]` derivation clauses, and
 ;; turns each into a `class-super-derive` node kept inside the methods list
 ;; (the class handler in infer.rkt separates them from real methods).
@@ -2507,7 +2659,7 @@
       [(derive-keyword? (car items))
        (when (null? (cdr items))
          (raise-syntax-error
-          #f "#:derive must be followed by a list of [Super (define …) …] clauses"
+          #f ":derive must be followed by a list of [Super (define …) …] clauses"
           (car items)))
        (loop (cddr items)
              supers
@@ -2515,7 +2667,7 @@
       [(laws-keyword? (car items))
        (when (null? (cdr items))
          (raise-syntax-error
-          #f "#:laws must be followed by a list of [name (All …)] clauses"
+          #f ":laws must be followed by a list of [name (All …)] clauses"
           (car items)))
        (loop (cddr items)
              supers
@@ -2523,7 +2675,7 @@
       [else
        (define item (car items))
        (syntax-parse item
-         [(#:requires c ...+)
+         [((~datum :requires) c ...+)
           (loop (cdr items)
                 (append (reverse (for/list ([cs (in-list (syntax->list #'(c ...)))])
                                    (parse-constraint cs)))
@@ -2531,11 +2683,11 @@
                 methods)]
          [_ (loop (cdr items) supers (cons (parse-class-method item) methods))])])))
 
-;; Is `stx` the bare `#:laws` keyword?
+;; Is `stx` the bare `:laws` keyword?
 (define (laws-keyword? stx)
-  (eq? (syntax-e stx) '#:laws))
+  (eq? (syntax-e stx) ':laws))
 
-;; Parse the parenthesized list following a bare `#:laws` keyword: one or
+;; Parse the parenthesized list following a bare `:laws` keyword: one or
 ;; more `[name (All …)]` clauses, each producing a `class-law`.
 (define (parse-law-list stx)
   (syntax-parse stx
@@ -2543,9 +2695,9 @@
      (for/list ([c (in-list (syntax->list #'(clause ...)))])
        (parse-class-law c))]
     [_ (raise-syntax-error
-        #f "#:laws expects a non-empty list of [name (All …)] clauses" stx)]))
+        #f ":laws expects a non-empty list of [name (All …)] clauses" stx)]))
 
-;; Parse one law clause from a `#:laws` list into a `class-law`.  A law
+;; Parse one law clause from a `:laws` list into a `class-law`.  A law
 ;; is `[law-name (All ([v : t] …) body)]`, optionally prefixed with a
 ;; `=>` constraint context assumed only while checking the law:
 ;; `[law-name ((Eq a) … => (All …))]`.  The context lets the equation
@@ -2601,11 +2753,11 @@
     [_ (raise-syntax-error
         #f "a law binder must be annotated as [variable : type]" stx)]))
 
-;; Is `stx` the bare `#:derive` keyword?
+;; Is `stx` the bare `:derive` keyword?
 (define (derive-keyword? stx)
-  (eq? (syntax-e stx) '#:derive))
+  (eq? (syntax-e stx) ':derive))
 
-;; Parse the list following a bare `#:derive` keyword: one or more
+;; Parse the list following a bare `:derive` keyword: one or more
 ;; `[Super (define …) …]` clauses, each producing a `class-super-derive`.
 (define (parse-derive-list stx)
   (syntax-parse stx
@@ -2613,7 +2765,7 @@
      (for/list ([c (in-list (syntax->list #'(clause ...)))])
        (parse-derive-clause c))]
     [_ (raise-syntax-error
-        #f "#:derive expects a non-empty list of [Super (define …) …] clauses"
+        #f ":derive expects a non-empty list of [Super (define …) …] clauses"
         stx)]))
 
 ;; A single `[Super (define …) …]` derivation clause: canonical bodies that
@@ -2622,7 +2774,7 @@
   (syntax-parse stx
     [(super:id m ...+)
      #:fail-unless (uppercase-id? (syntax->datum #'super))
-     "superprotocol in #:derive must begin with an uppercase letter"
+     "superprotocol in :derive must begin with an uppercase letter"
      (class-super-derive
       (syntax->datum #'super)
       (for/list ([md (in-list (syntax->list #'(m ...)))])
@@ -2631,7 +2783,7 @@
 
 ;; A method form inside `protocol`: either a `(: name type)` signature,
 ;; a `(define ...)` providing a default implementation, or a functional
-;; dependency `(#:fundep lhs … -> rhs …)`.
+;; dependency `(:fundep lhs … -> rhs …)`.
 (define (parse-class-method stx)
   (syntax-parse stx
     #:datum-literals (: define ->)
@@ -2652,21 +2804,21 @@
                         stx)])]
     [(define x:id e)
      (method-default (syntax->datum #'x) (parse-expr #'e) stx)]
-    [(#:fundep lhs:id ...+ -> rhs:id ...+)
+    [((~datum :fundep) lhs:id ...+ -> rhs:id ...+)
      (class-fundep (map syntax->datum (syntax->list #'(lhs ...)))
                    (map syntax->datum (syntax->list #'(rhs ...)))
                    stx)]
-    [(#:type name:id)
+    [((~datum :type) name:id)
      #:fail-unless (not (lowercase-id? (syntax->datum #'name)))
      "associated-type name must be a non-lowercase identifier"
      (class-type-fam (syntax->datum #'name) stx)]))
 
-;; An instance method must be a `define`, or a `#:type` binding for
+;; An instance method must be a `define`, or a `:type` binding for
 ;; an associated type declared by the class.
 (define (parse-instance-method stx)
   (syntax-parse stx
     #:datum-literals (define =)
-    [(#:type (name:id = ty))
+    [((~datum :type) (name:id = ty))
      #:fail-unless (not (lowercase-id? (syntax->datum #'name)))
      "associated-type name must be a non-lowercase identifier"
      (inst-type-fam (syntax->datum #'name) (parse-type #'ty) stx)]
@@ -2687,7 +2839,7 @@
      (top:def (syntax->datum #'x) (parse-expr #'e) stx)]))
 
 ;; Split a data body into constructor specs and an optional
-;; `#:deriving Cls ...` tail.  Returns a list of top-level forms:
+;; `:deriving Cls ...` tail.  Returns a list of top-level forms:
 ;; the top:data and any synthesized top:instance entries.
 ;;
 ;; For the synthesized instances we use the syntax handle of the *first
@@ -2718,16 +2870,34 @@
           (for/list ([n (in-list names)] [k (in-list kinds)] #:when k)
             (cons n k))))
 
+;; Enforce that, across a data type's constructors, field naming is
+;; uniform: every constructor that has fields either names all of them
+;; or none of them.  Nullary constructors carry no fields and are skipped.
+(define (check-uniform-field-naming ctors stx)
+  (define fielded
+    (filter (lambda (c) (pair? (data-ctor-field-types c))) ctors))
+  (define named   (filter data-ctor-field-names fielded))
+  (define unnamed (filter (lambda (c) (not (data-ctor-field-names c))) fielded))
+  (when (and (pair? named) (pair? unnamed))
+    (raise-syntax-error
+     'data
+     "a data type's constructors must either all name their fields or all be positional"
+     stx)))
+
 (define (parse-data-form tname tparams items stx
                          [tname-stx #f] [param-kinds '()])
-  ;; Peel off the `#:abstract` flag (it may appear
-  ;; alongside `#:deriving` in any order before the ctor list ends).
+  ;; Peel off the `:abstract` flag (it may appear
+  ;; alongside `:deriving` in any order before the ctor list ends).
   (define-values (items-1 abstract?) (split-abstract items))
   (define-values (items-2 runtime-tag) (split-runtime-tag items-1))
   (define-values (ctor-stxs deriving-classes)
     (split-deriving items-2))
   (define ctors
     (for/list ([c (in-list ctor-stxs)]) (parse-data-ctor c)))
+  ;; A data type's fielded constructors must agree: either every
+  ;; constructor with fields names them, or none does.  Nullary ctors
+  ;; (no fields) are exempt and need no names.
+  (check-uniform-field-naming ctors stx)
   ;; Stash any explicit param-kind annotations on the form's stx (the
   ;; same channel `protocol` uses for `'rackton:kind`); the kind checker
   ;; reads them to seed the declared kinds.
@@ -2750,25 +2920,25 @@
                                 'data))]))
 
 ;; A newtype's `rest` after `(ctor ftype)` is permitted only if it
-;; is either empty or starts with the `#:deriving` keyword.  Reject
+;; is either empty or starts with the `:deriving` keyword.  Reject
 ;; anything else (extra ctor specs, stray items) at parse time.
 (define (newtype-rest-ok? rest-stx)
   (define rest (syntax->list rest-stx))
   (or (null? rest)
-      (eq? (syntax->datum (car rest)) '#:deriving)))
+      (eq? (syntax->datum (car rest)) ':deriving)))
 
-;; Peel off a `#:abstract` flag anywhere it appears in a
+;; Peel off a `:abstract` flag anywhere it appears in a
 ;; data/struct body items list.  Returns (values rest abstract?)
 ;; where abstract? is #t iff the keyword was found.
 (define (split-abstract items)
   (let loop ([rem items] [acc '()] [abs? #f])
     (cond
       [(null? rem) (values (reverse acc) abs?)]
-      [(eq? (syntax->datum (car rem)) '#:abstract)
+      [(eq? (syntax->datum (car rem)) ':abstract)
        (loop (cdr rem) acc #t)]
       [else (loop (cdr rem) (cons (car rem) acc) abs?)])))
 
-;; Peel off a `#:runtime-tag tag` pair from a data body items list.
+;; Peel off a `:runtime-tag tag` pair from a data body items list.
 ;; Returns (values rest tag-symbol-or-#f).  The tag names the dispatch
 ;; tag the type's opaque runtime values carry (see tcon-info runtime-tag
 ;; in env.rkt); used for foreign-backed opaque types with instances.
@@ -2776,15 +2946,15 @@
   (let loop ([rem items] [acc '()])
     (cond
       [(null? rem) (values (reverse acc) #f)]
-      [(eq? (syntax->datum (car rem)) '#:runtime-tag)
+      [(eq? (syntax->datum (car rem)) ':runtime-tag)
        (when (null? (cdr rem))
-         (raise-syntax-error 'data "#:runtime-tag must be followed by a tag"
+         (raise-syntax-error 'data ":runtime-tag must be followed by a tag"
                              (car rem)))
        (values (append (reverse acc) (cddr rem))
                (syntax->datum (cadr rem)))]
       [else (loop (cdr rem) (cons (car rem) acc))])))
 
-;; Split the trailing `#:deriving Cls ...` clause off a list of body
+;; Split the trailing `:deriving Cls ...` clause off a list of body
 ;; items.  Returns (values items-before deriving-classes).  Shared
 ;; by data, newtype, and struct so all three
 ;; honor the same deriving menu.
@@ -2792,7 +2962,7 @@
   (let loop ([rem items] [acc '()])
     (cond
       [(null? rem) (values (reverse acc) '())]
-      [(eq? (syntax->datum (car rem)) '#:deriving)
+      [(eq? (syntax->datum (car rem)) ':deriving)
        (values (reverse acc)
                (for/list ([c (in-list (cdr rem))])
                  (syntax->datum c)))]
@@ -2864,10 +3034,10 @@
 ;; ----- records: struct ---------------------------------------
 
 (define (parse-struct-form name tparams field-stxs stx tname-stx)
-  ;; Split off a trailing `#:deriving Cls ...` clause before
+  ;; Split off a trailing `:deriving Cls ...` clause before
   ;; parsing field specs — the deriving classes are routed through the
   ;; shared synthesize-deriving helper.
-  ;; Also peel off `#:abstract` from anywhere in the body.
+  ;; Also peel off `:abstract` from anywhere in the body.
   (define-values (field-stxs-1 abstract?) (split-abstract field-stxs))
   (define-values (field-only-stxs deriving-classes)
     (split-deriving field-stxs-1))
@@ -2875,7 +3045,10 @@
     (for/list ([fs (in-list field-only-stxs)]) (parse-field-spec fs)))
   (define field-names (map car field-pairs))
   (define field-types (map cdr field-pairs))
-  (define ctor (data-ctor-plain name field-types stx))
+  ;; A struct's fields are always named, so its constructor carries the
+  ;; names — enabling keyword construction `(S :f v …)` while positional
+  ;; `(S v …)` keeps working.
+  (define ctor (data-ctor-named name field-pairs stx))
   (define data-form (top:data name tparams (list ctor) stx abstract? #f))
   (define accessor-defs
     (for/list ([fname (in-list field-names)]
@@ -2998,9 +3171,9 @@
      #:fail-unless (not (lowercase-id? (syntax->datum #'name)))
      "data constructor name must be a non-lowercase identifier"
      (data-ctor-plain (syntax->datum #'name) '() stx)]
-    ;; Existential ctor with #:forall and #:where clauses.
-    [(name:id (~datum #:forall) (tv:id ...+)
-              (~datum #:where) ctx ...
+    ;; Existential ctor with :forall and :where clauses.
+    [(name:id (~datum :forall) (tv:id ...+)
+              (~datum :where) ctx ...
               ft ...+)
      #:fail-unless (not (lowercase-id? (syntax->datum #'name)))
      "data constructor name must be a non-lowercase identifier"
@@ -3011,6 +3184,7 @@
                 (map syntax->datum (syntax->list #'(tv ...)))
                 (for/list ([c (in-list (syntax->list #'(ctx ...)))])
                   (parse-constraint c))
+                #f
                 #f)]
     ;; GADT ctor with `: SIG` clause giving the ctor's full type
     ;; signature.  When SIG is an arrow `(-> ft … RT)` the leading
@@ -3025,14 +3199,43 @@
                 stx
                 '()
                 '()
-                (parse-type result-stx))]
+                (parse-type result-stx)
+                #f)]
+    ;; Positional `(C t …)` or named `(C [f : t] …)` fields.  Fields
+    ;; must be uniformly named or uniformly positional within a ctor.
     [(name:id ft ...+)
      #:fail-unless (not (lowercase-id? (syntax->datum #'name)))
      "data constructor name must be a non-lowercase identifier"
-     (data-ctor-plain (syntax->datum #'name)
-                      (for/list ([t (in-list (syntax->list #'(ft ...)))])
-                        (parse-type t))
-                      stx)]))
+     (parse-ctor-fields (syntax->datum #'name)
+                        (syntax->list #'(ft ...)) stx)]))
+
+;; Classify one ctor field syntax: a named field `[f : t]` yields
+;; (cons name-sym type-ast); a positional field `t` yields
+;; (cons #f type-ast).  A field-spec is recognised by the `id : type`
+;; shape with a lowercase field name (which no type expression has).
+(define (parse-ctor-field f)
+  (syntax-parse f
+    #:datum-literals (:)
+    [(fname:id : t)
+     #:when (lowercase-id? (syntax->datum #'fname))
+     (cons (syntax->datum #'fname) (parse-type #'t))]
+    [_ (cons #f (parse-type f))]))
+
+;; Build a data-ctor from its field syntaxes, enforcing the all-named /
+;; all-positional rule within the constructor.
+(define (parse-ctor-fields name field-stxs stx)
+  (define parsed (map parse-ctor-field field-stxs))
+  (define names (map car parsed))
+  (cond
+    [(andmap values names)
+     (data-ctor-named name parsed stx)]
+    [(andmap not names)
+     (data-ctor-plain name (map cdr parsed) stx)]
+    [else
+     (raise-syntax-error
+      'data
+      "constructor fields must be either all named `[f : t]` or all positional"
+      stx)]))
 
 (define (parse-toplevel-list stx-or-list)
   (define forms
@@ -3045,7 +3248,7 @@
   (define raw
     (parameterize ([current-fn-clauses-record record])
       ;; A single surface form may parse to multiple AST entries (e.g.
-      ;; `(data … #:deriving Eq Show)` desugars to the data plus
+      ;; `(data … :deriving Eq Show)` desugars to the data plus
       ;; the two synthesized instances).  Flatten if so.
       (apply append
              (for/list ([f (in-list forms)])
@@ -3055,7 +3258,7 @@
 
 ;; Walk the parsed top-form list, then descend into every nested
 ;; method list (instances, derived instances, protocol defaults, and
-;; `#:derive` superclass blocks) and combine multi-clause function
+;; `:derive` superclass blocks) and combine multi-clause function
 ;; definitions there too.  A `define` is a `define` wherever it sits:
 ;; equational, Haskell-style definitions work in any of these scopes,
 ;; not just at the top level.
@@ -3068,7 +3271,7 @@
 ;; Recurse into a single combined top-form, combining the multi-clause
 ;; definitions held in any method lists it carries.  Method lists hold
 ;; `top:def`s (instances) or `method-default`s (protocol defaults);
-;; `#:derive` clauses (`class-super-derive`) nest a further default
+;; `:derive` clauses (`class-super-derive`) nest a further default
 ;; list.  Non-method forms pass through untouched.
 (define (combine-in-form f record)
   (cond
@@ -3092,7 +3295,7 @@
 
 ;; Protocol method lists mix signatures, fundeps, associated types,
 ;; `class-super-derive` blocks, and `method-default`s.  Combine the
-;; defaults at this level, then recurse into each `#:derive` block's
+;; defaults at this level, then recurse into each `:derive` block's
 ;; own default list.
 (define (combine-class-methods methods record)
   (define combined

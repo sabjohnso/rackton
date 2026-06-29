@@ -42,12 +42,12 @@
 ;; A category whose morphisms can be tensored: `par f g` runs f and g on the
 ;; two components of the product independently (Haskell's `f *** g`).
 (protocol (Tensored (cat :: (-> * (-> * *))))
-  (#:requires (Category cat))
+  (:requires (Category cat))
   (: par (-> (cat a b) (-> (cat c d) (cat (Ten cat a c) (Ten cat b d))))))
 
 ;; A tensored category with a symmetry: `braid` swaps the two components.
 (protocol (Symmetric (cat :: (-> * (-> * *))))
-  (#:requires (Tensored cat))
+  (:requires (Tensored cat))
   (: braid (cat (Ten cat a b) (Ten cat b a))))
 
 ;; Derived combinators, as plain functions (not default methods, so they
@@ -89,12 +89,12 @@
 
 ;; Copyable: a comonoid comultiplication — duplicate a wire (the diagonal).
 (protocol (Copyable (cat :: (-> * (-> * *))))
-  (#:requires (Symmetric cat))
+  (:requires (Symmetric cat))
   (: dup (cat a (Ten cat a a))))
 
 ;; Discardable: a counit — drop a wire to the monoidal unit `Unit`.
 (protocol (Discardable (cat :: (-> * (-> * *))))
-  (#:requires (Symmetric cat))
+  (:requires (Symmetric cat))
   (: discard (cat a Unit)))
 
 ;; A cartesian arrow has symmetry AND copy AND discard.

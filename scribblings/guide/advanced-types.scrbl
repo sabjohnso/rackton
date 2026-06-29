@@ -13,12 +13,12 @@ associated type families.
 @section[#:tag "existentials"]{Existential types}
 
 An existential parameter on a constructor lets the constructor hide a
-type from the outside world.  Use a per-constructor @racket[#:forall]
+type from the outside world.  Use a per-constructor @racket[:forall]
 clause to introduce the hidden variable:
 
 @rackton-example[#:eval ev #:mode 'display]{
 (data Anything
-  (Wrap #:forall (a) a (-> a String)))
+  (Wrap :forall (a) a (-> a String)))
 
 (define many
   (Cons (Wrap 42 show)
@@ -28,13 +28,13 @@ clause to introduce the hidden variable:
 
 Each @racket[Wrap] inside @racket[many] has a different @racket[a],
 but they all coexist in @racket[(List Anything)].  Add a
-@racket[#:where] clause to require the existential to satisfy protocol
+@racket[:where] clause to require the existential to satisfy protocol
 constraints — those become hypotheses inside any clause that matches
 the constructor:
 
 @rackton-example[#:eval ev #:mode 'defs]{
 (data ExistsShow
-  (PackShow #:forall (a) #:where (Show a) a))
+  (PackShow :forall (a) :where (Show a) a))
 }
 
 Pattern matching introduces a fresh skolem for each clause; the
@@ -235,7 +235,7 @@ runtime cost.  Recursive aliases are rejected with a clear error.
 
 @section{Sealed abstract types}
 
-Adding @racket[#:abstract] to a @racket[data] hides the
+Adding @racket[:abstract] to a @racket[data] hides the
 constructors from the type checker in any module that doesn't define
 the type:
 
@@ -243,7 +243,7 @@ the type:
 #lang rackton
 (provide (data-out Counter) make-counter increment count)
 
-(data Counter #:abstract
+(data Counter :abstract
   (Counter Integer))
 
 (: make-counter (-> Counter))
@@ -264,22 +264,22 @@ encapsulation boundary.
 
 @section{Associated type families}
 
-A protocol may declare an associated type via a @racket[#:type] clause
+A protocol may declare an associated type via a @racket[:type] clause
 inside its body:
 
 @rackton-example[#:eval ev #:mode 'defs #:context? #t]{
 (protocol (Container c)
-  (#:type Elem)
+  (:type Elem)
   (: empty? (-> c Boolean))
   (: head   (-> c (Maybe (Elem c)))))
 }
 
 Each instance supplies a concrete type for the family with
-@racket[(#:type (Family = T))]:
+@racket[(:type (Family = T))]:
 
 @rackton-example[#:eval ev #:mode 'defs #:context? #t]{
 (instance (Container (List a))
-  (#:type (Elem = a))
+  (:type (Elem = a))
   (define (empty? xs) (match xs [(Nil) #t] [(Cons _ _) #f]))
   (define (head   xs) (match xs [(Nil) None] [(Cons h _) (Some h)])))
 }

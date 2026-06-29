@@ -24,7 +24,7 @@
 ;; pair per token, covering the whole input (concatenating the texts
 ;; reproduces the source).  Pure: same string in, same tokens out.
 (foreign racket-tokenize (-> String (List (Pair String String)))
-         #:from rackton/private/lexer-prim)
+         :from rackton/private/lexer-prim)
 
 ;; ====== Step 1: lex — raw pairs -> typed tokens ====================
 ;; STATUS: red.  `lex` is stubbed; the token round-trip fails.

@@ -15,7 +15,7 @@ positions.
 @section{Lenses}
 
 A @racket[(Lens s a)] is a getter/setter pair for an @racket[a]
-inside an @racket[s].  Add @racket[#:deriving Lens] to a
+inside an @racket[s].  Add @racket[:deriving Lens] to a
 @racket[struct] to synthesise one lens per field, named
 @racketidfont{T}@racketidfont{-}@racket[_field]@racketidfont{-lens}:
 
@@ -23,7 +23,7 @@ inside an @racket[s].  Add @racket[#:deriving Lens] to a
 (require rackton/data/lens)
 
 (struct Point [x : Integer] [y : Integer]
-  #:deriving Lens Show)
+  :deriving Lens Show)
 
 (define p (Point 3 4))
 
@@ -33,7 +33,7 @@ inside an @racket[s].  Add @racket[#:deriving Lens] to a
   (over Point-x-lens (lambda (n) (+ n 1)) p))
 }
 
-Without @racket[#:deriving Lens] no lenses are generated — you can
+Without @racket[:deriving Lens] no lenses are generated — you can
 still write them by hand with @racket[Lens] (see below).
 
 Compose lenses with @racket[lens-compose] to drill into nested
@@ -42,8 +42,8 @@ structure:
 @rackton-example[#:eval ev #:mode 'value]{
 (require rackton/data/lens)
 
-(struct Address [city : String] [zip : Integer] #:deriving Lens Show)
-(struct Person  [name : String] [addr : Address] #:deriving Lens Show)
+(struct Address [city : String] [zip : Integer] :deriving Lens Show)
+(struct Person  [name : String] [addr : Address] :deriving Lens Show)
 
 (define alice (Person "Alice" (Address "NYC" 10001)))
 
@@ -67,7 +67,7 @@ You can also construct a lens directly with @racket[Lens]:
 @section{Prisms}
 
 A @racket[(Prism s a)] is a pattern: either it extracts an @racket[a]
-from an @racket[s] or it doesn't.  Add @racket[#:deriving Prism] to a
+from an @racket[s] or it doesn't.  Add @racket[:deriving Prism] to a
 @racket[data] to synthesise one prism per constructor.
 
 @rackton-example[#:eval ev #:mode 'defs]{
@@ -76,10 +76,10 @@ from an @racket[s] or it doesn't.  Add @racket[#:deriving Prism] to a
 (data Opt
   Absent
   (Present Integer)
-  #:deriving Prism)
+  :deriving Prism)
 }
 
-@racket[#:deriving Prism] generates a prism for each constructor,
+@racket[:deriving Prism] generates a prism for each constructor,
 named @racketidfont{T}@racketidfont{-}@racket[_Ctor]@racketidfont{-prism}:
 
 @rackton-example[#:eval ev #:mode 'value]{
@@ -88,7 +88,7 @@ named @racketidfont{T}@racketidfont{-}@racket[_Ctor]@racketidfont{-prism}:
 (data Opt
   Absent
   (Present Integer)
-  #:deriving Prism Show)
+  :deriving Prism Show)
 
 (tuple
   (preview Opt-Present-prism (Present 7))
@@ -114,7 +114,7 @@ variadic @racket[Tuple], so there is no arity limit.
   (Circle Integer)
   (Rect   Integer Integer)
   (Tri    Integer Integer Integer)
-  #:deriving Prism Show)
+  :deriving Prism Show)
 
 (tuple
   (preview Shape-Rect-prism (Rect 3 4))
@@ -150,7 +150,7 @@ Convert a lens to a single-element traversal with
 (require rackton/data/lens)
 
 (struct Point [x : Integer] [y : Integer]
-  #:deriving Lens Show)
+  :deriving Lens Show)
 
 (define point-x-traversal (lens-as-traversal Point-x-lens))
 (to-list-of point-x-traversal (Point 3 4))

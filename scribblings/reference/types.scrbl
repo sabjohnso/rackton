@@ -162,7 +162,7 @@ elem ...)] and read an element with @racket[(tref t n)] (the index
 @racket[n] is a literal, bounds-checked at compile time).  A
 @racket[(Tuple a b)] of arity two is a @racket[Pair].  There is no arity
 limit, so @racket[Tuple] supersedes the old fixed @tt{Tuple3}…@tt{Tuple7}
-focus types for multi-field @racket[#:deriving Prism].
+focus types for multi-field @racket[:deriving Prism].
 
 @racket[(Tuple τ ...)] has @racket[Eq], @racket[Ord], and @racket[Show]
 whenever every element type @racket[τ] does.}

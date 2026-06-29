@@ -19,11 +19,11 @@
 ;; random-integer lo hi: a uniform random Integer in the half-open
 ;; range [lo, hi) (hi exclusive; hi must be greater than lo).
 (foreign random-integer (-> Integer (-> Integer (IO Integer)))
-         #:from rackton/private/prelude-runtime)
+         :from rackton/private/prelude-runtime)
 
 ;; random-float: a uniform random Float in [0, 1).
 (foreign random-float (IO Float)
-         #:from rackton/private/prelude-runtime)
+         :from rackton/private/prelude-runtime)
 
 ;; random-r-integer lo hi: uniform Integer in the INCLUSIVE range
 ;; [lo, hi] (Haskell randomRIO), built on the half-open primitive.

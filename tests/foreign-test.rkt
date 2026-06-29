@@ -9,7 +9,7 @@
 
 ;; string-contains? lives in racket/string, not racket/base or the
 ;; Rackton prelude.  Declared 2-ary (curried type, n-ary call).
-(foreign string-contains? (-> String (-> String Boolean)) #:from racket/string)
+(foreign string-contains? (-> String (-> String Boolean)) :from racket/string)
 
 (: has-ell Boolean)
 (define has-ell (string-contains? "hello" "ell"))
@@ -17,10 +17,10 @@
 (: has-zee Boolean)
 (define has-zee (string-contains? "hello" "zzz"))
 
-;; #:as renames: bind the Rackton name `str-replace` to racket/string's
+;; :as renames: bind the Rackton name `str-replace` to racket/string's
 ;; string-replace (3-ary; curried type, n-ary call).
 (foreign str-replace (-> String (-> String (-> String String)))
-         #:from racket/string #:as string-replace)
+         :from racket/string :as string-replace)
 
 (: dashed String)
 (define dashed (str-replace "a b c" " " "-"))
@@ -32,7 +32,7 @@
        (all-checks
         (list (check-true  has-ell)
               (check-false has-zee))))
-   (it "foreign import with #:as rename"
+   (it "foreign import with :as rename"
        (check-equal? dashed "a-b-c"))))
 
 (: main Unit)

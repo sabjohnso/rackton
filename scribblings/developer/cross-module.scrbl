@@ -34,7 +34,7 @@ s-expressions:
       @racket[freshen-ast], so the placeholder syntax a decoded node
       carries is always replaced; a default that names a binding private
       to the protocol's module is the one thing that will not resolve
-      across the boundary.  The @racket[#:derive] cross-class bodies
+      across the boundary.  The @racket[:derive] cross-class bodies
       (@racket[super-derives]) are still not carried.}
 @item{@racket[instances] — full instance table (always — instances
       ignore @racket[provide]).}

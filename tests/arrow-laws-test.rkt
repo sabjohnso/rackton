@@ -1,7 +1,7 @@
 #lang rackton
 
 ;; Extensional tests for the Arrow-family laws (stated intensionally as
-;; `#:laws` on the protocols).  No shipped arrow type has decidable arrow
+;; `:laws` on the protocols).  No shipped arrow type has decidable arrow
 ;; equality, so we verify the laws EXTENSIONALLY: compose concrete arrows
 ;; and compare their OUTPUTS on sampled inputs.  Arrow / ArrowChoice /
 ;; ArrowApply are checked on the strict `(->)` arrow (product `Pair`,

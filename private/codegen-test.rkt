@@ -101,6 +101,6 @@
   (test-case "a data type lowers to per-constructor define-data-ctor"
     (define d (lower-top
                (top:data 'Color '()
-                         (list (data-ctor 'Red '() h '() '() #f))
+                         (list (data-ctor 'Red '() h '() '() #f #f))
                          h #f #f)))
     (check-equal? d '(begin (define-data-ctor Red 0)))))

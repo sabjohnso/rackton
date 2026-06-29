@@ -18,7 +18,7 @@
                   empty-map map-insert empty-set set-insert)
          (only-in "dict.rkt" define/curried))
 
-;; Re-export the promoted primitives too, so any `#:from
+;; Re-export the promoted primitives too, so any `:from
 ;; containers-runtime` reference to them keeps resolving.
 (provide empty-map map-insert map-lookup map-delete
          map-keys map-values map-size map-fold

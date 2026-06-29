@@ -2,7 +2,7 @@
 
 ;; The Functor Widget instance must dispatch correctly even though Widget
 ;; is opaque (no Rackton ctors) — its instance registers under the
-;; declared #:runtime-tag, matching the runtime struct's dispatch-tag.
+;; declared :runtime-tag, matching the runtime struct's dispatch-tag.
 
 (require rackunit
          "../main.rkt")
@@ -19,5 +19,5 @@
   (: result Integer)
   (define result (widget-get w2)))
 
-(test-case "fmap dispatches on an opaque type via #:runtime-tag"
+(test-case "fmap dispatches on an opaque type via :runtime-tag"
   (check-equal? result 105))

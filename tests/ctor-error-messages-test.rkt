@@ -6,7 +6,7 @@
 ;;   1. Constructor arity errors include the struct's field names,
 ;;      so a mis-arity on a `struct` ctor tells the user
 ;;      which fields are missing.
-;;   2. "No instance" errors suggest `#:deriving X` when X is one
+;;   2. "No instance" errors suggest `:deriving X` when X is one
 ;;      of the derivable classes (Eq, Ord, Show, Functor, etc.).
 
 (require rackunit
@@ -37,18 +37,18 @@
      (define (peek t) (match t [(Tri x y) x]))))
   (check-regexp-match #rx"fields: a, b, c" msg))
 
-;; ----- 59.2 no-instance suggests #:deriving ---------------------
+;; ----- 59.2 no-instance suggests :deriving ---------------------
 
-(test-case "missing Eq instance suggests #:deriving Eq"
+(test-case "missing Eq instance suggests :deriving Eq"
   (define msg
     (catch-rackton-error
      (data Box (MkBox Integer))
      (define same (== (MkBox 1) (MkBox 2)))))
-  (check-regexp-match #rx"#:deriving Eq" msg))
+  (check-regexp-match #rx":deriving Eq" msg))
 
-(test-case "missing Show instance suggests #:deriving Show"
+(test-case "missing Show instance suggests :deriving Show"
   (define msg
     (catch-rackton-error
      (data Box (MkBox Integer))
      (define shown (show (MkBox 1)))))
-  (check-regexp-match #rx"#:deriving Show" msg))
+  (check-regexp-match #rx":deriving Show" msg))

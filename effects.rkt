@@ -56,7 +56,7 @@
 ;; row is always an honest record of the effects actually used.  Internal
 ;; rep: a result-or-error plus a String log.
 
-(data (Eff row a) (MkEff (Pair (Either String a) (List String))) #:abstract)
+(data (Eff row a) (MkEff (Pair (Either String a) (List String))) :abstract)
 
 (: run-rep (-> (Eff row a) (Pair (Either String a) (List String))))
 (define (run-rep e) (match e [(MkEff p) p]))

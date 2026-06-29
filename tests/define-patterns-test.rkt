@@ -12,7 +12,7 @@
   (struct Point
     [x : Float]
     [y : Float]
-    #:deriving Show Eq Ord)
+    :deriving Show Eq Ord)
 
   (: distance (-> Point Point Float))
   (define (distance (Point px py) (Point qx qy))
@@ -83,7 +83,7 @@
 ;; ----- Piece 3: multi-clause defines inside instances ---------
 
 (rackton
-  (data (NL a) (Kons a (NL a)) (Sole a) #:deriving Eq Show)
+  (data (NL a) (Kons a (NL a)) (Sole a) :deriving Eq Show)
 
   (protocol (Head (w :: (-> * *)))
     (: hd (-> (w a) a)))
@@ -117,7 +117,7 @@
 ;; ----- Piece 4: multi-clause defines as protocol defaults -----
 
 (rackton
-  (data (NLb a) (Konsb a (NLb a)) (Soleb a) #:deriving Eq Show)
+  (data (NLb a) (Konsb a (NLb a)) (Soleb a) :deriving Eq Show)
 
   ;; The default for `pick` is written equationally; the instance
   ;; provides nothing, so the multi-clause default must dispatch.
@@ -140,7 +140,7 @@
 (test-case "multi-clause protocol default: second clause reachable"
   (check-equal? pd2 3))
 
-;; ----- Piece 5: end-to-end Comonad (instance + defaults + #:derive)
+;; ----- Piece 5: end-to-end Comonad (instance + defaults + :derive)
 
 (rackton
   (protocol (Comonad (w :: (-> * *)))
@@ -149,14 +149,14 @@
     (: extend    (-> (-> (w a) b) (w a) (w b)))
     (define (duplicate wa) (extend id wa))
     (define (extend f wa)  (fmap f (duplicate wa)))
-    #:derive
+    :derive
     ((Functor
       (define (fmap f wa) (extend (compose f extract) wa)))))
 
   (data (Nonempty-List a)
     (Konsn a (Nonempty-List a))
     (Solen a)
-    #:deriving Eq Show)
+    :deriving Eq Show)
 
   (instance (Functor Nonempty-List)
     (define (fmap f xs)

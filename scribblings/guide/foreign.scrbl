@@ -29,15 +29,15 @@ example something from @racketmodname[racket/string] or
 
 @rackton-example[#:eval ev #:mode 'defs]{
 (foreign str-replace (-> String (-> String (-> String String)))
-         #:from racket/string #:as string-replace)
+         :from racket/string :as string-replace)
 
 (: slashify (-> String String))
 (define (slashify s) (str-replace s "." "/"))
 }
 
-@racket[#:from] names the Racket module (a collection path, or a
-string for a relative file).  Without @racket[#:as] the host binding
-has the same name as the Rackton one; @racket[#:as string-replace]
+@racket[:from] names the Racket module (a collection path, or a
+string for a relative file).  Without @racket[:as] the host binding
+has the same name as the Rackton one; @racket[:as string-replace]
 binds Racket's @racket[string-replace] to the Rackton name
 @racket[str-replace] (handy when the host name collides with a prelude
 name).  The type is curried as usual, but calls must still match the
@@ -53,16 +53,16 @@ a hand-written @racketmodname[ffi/unsafe] shim imported via
 
 @rackton-example[#:eval ev #:mode 'defs]{
 (foreign-c c-cbrt (-> Float Float)
-           #:lib #f #:symbol "cbrt" #:sig (double -> double))
+           :lib #f :symbol "cbrt" :sig (double -> double))
 
 (foreign-c c-getpid (IO Integer)
-           #:lib #f #:symbol "getpid" #:sig (-> int))
+           :lib #f :symbol "getpid" :sig (-> int))
 }
 
-@racket[#:lib] is the shared library — @racket[#f] for the running
+@racket[:lib] is the shared library — @racket[#f] for the running
 process (libc, and whatever it already links, such as libm) or a
-string passed to @racket[ffi-lib].  @racket[#:symbol] is the C symbol
-name.  @racket[#:sig] gives the C signature as keywords
+string passed to @racket[ffi-lib].  @racket[:symbol] is the C symbol
+name.  @racket[:sig] gives the C signature as keywords
 (@racketidfont{double}, @racketidfont{int}, @racketidfont{string},
 @racketidfont{pointer}, @racketidfont{byte}, @racketidfont{void}) with
 one @racket[->] splitting argument types from the result.
@@ -73,7 +73,7 @@ from the Rackton type: if the result sits in @racket[IO] it is an
 @racket[c-cbrt] is a pure @racket[(-> Float Float)] while
 @racket[c-getpid] is an @racket[(IO Integer)] you run with
 @racket[run-io].  Versioned sonames like @tt{libm.so.6} are awkward to
-name with a single @racket[#:lib]; for those, prefer a
+name with a single @racket[:lib]; for those, prefer a
 @racket[get-ffi-obj] shim imported via @racket[foreign] (see
 @racketmodname[rackton/foreign/c], which binds a curated set of libm
 functions this way).

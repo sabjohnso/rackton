@@ -673,7 +673,7 @@ Composable optics for functional access and update: @racket[Lens] (a
 getter/setter pair focusing on exactly one part), @racket[Prism]
 (focusing on a single sum-type constructor), and @racket[Traversal]
 (focusing on zero-or-more parts). Required separately from the prelude;
-any module using @racket[#:deriving Lens]/@racket[#:deriving Prism] must
+any module using @racket[:deriving Lens]/@racket[:deriving Prism] must
 require this module too.
 
 @deftogether[(
@@ -736,7 +736,7 @@ require this module too.
 @defproc[(lens-as-traversal [l (Lens s a)]) (Traversal s a)]{
   Promotes a lens to a traversal with a single focus.}
 
-A multi-field @racket[#:deriving Prism] focuses the flat variadic
+A multi-field @racket[:deriving Prism] focuses the flat variadic
 @racket[Tuple] of the constructor's fields (the binary case is a
 @racket[Pair]), so there is no arity limit and no dedicated
 @racketidfont{TupleK} focus types.

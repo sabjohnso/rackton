@@ -13,7 +13,7 @@
 (data (Opt a)
   Absent
   (Present a)
-  #:deriving Prism Eq Show)
+  :deriving Prism Eq Show)
 
 (: prev-absent-on-absent (Maybe Unit))
 (define prev-absent-on-absent (preview Opt-Absent-prism Absent))
@@ -40,7 +40,7 @@
 (data (Either2 e a)
   (Lft e)
   (Rgt a)
-  #:deriving Prism Eq Show)
+  :deriving Prism Eq Show)
 
 (: prev-lft-on-lft (Maybe String))
 (define prev-lft-on-lft (preview Either2-Lft-prism (Lft "err")))
@@ -59,7 +59,7 @@
 (data Tri
   Empty
   (One Integer)
-  #:deriving Prism Eq Show)
+  :deriving Prism Eq Show)
 
 (: prev-empty-on-empty (Maybe Unit))
 (define prev-empty-on-empty (preview Tri-Empty-prism Empty))
@@ -75,7 +75,7 @@
   (Circle Integer)                      ; arity 1 → Integer
   (Rect   Integer Integer)              ; arity 2 → (Pair Integer Integer)
   (Tri3   Integer Integer Integer)      ; arity 3 → (Tuple Integer Integer Integer)
-  #:deriving Prism Eq Show)
+  :deriving Prism Eq Show)
 
 (: prev-rect (Maybe (Pair Integer Integer)))
 (define prev-rect (preview Shape-Rect-prism (Rect 3 4)))

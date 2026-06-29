@@ -93,7 +93,8 @@
                         (scheme '(a) (make-arrow (tvar 'a)
                                                  (make-tapp (tcon 'Maybe)
                                                             (list (tvar 'a)))))
-                        '()))
+                        '()
+                        '(value)))
   (check-equal? (decode-data-info (encode-data-info di)) di))
 
 (test-case "data-info with existential tvars round-trips"
@@ -101,7 +102,8 @@
                         'PackShow
                         1
                         (scheme '() (tcon 'ExistsShow))
-                        '(a)))
+                        '(a)
+                        #f))
   (check-equal? (decode-data-info (encode-data-info di)) di))
 
 (test-case "tcon-info round-trips"

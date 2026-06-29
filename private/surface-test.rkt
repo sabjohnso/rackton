@@ -5,6 +5,7 @@
 
 (module+ test
   (require rackunit
+           racket/list
            "surface.rkt")
 
   ;; ----- helpers ----------------------------------------------------
@@ -71,7 +72,8 @@
                                              #f
                                              (data-ctor-extra-tvars c)
                                              (data-ctor-extra-context c)
-                                             (data-ctor-result-type c)))
+                                             (data-ctor-result-type c)
+                                             (data-ctor-field-names c)))
                                 #f
                                 (top:data-abstract? v)
                                 (top:data-runtime-tag v))]
@@ -170,10 +172,10 @@
            (clause* (list (p:ctor 'Some (list (p:var 'x #f)) #f))
                     #f (e:var 'x #f) #f))))
 
-  ;; A clause may carry a `#:when` guard, just like `match`.
+  ;; A clause may carry a `:when` guard, just like `match`.
   (let ([v (pe '(case-lambda
-                  [(x) #:when (> x 0) x]
-                  [(_)               0]))])
+                  [(x) :when (> x 0) x]
+                  [(_)              0]))])
     (define body (e:lam-body v))
     (check-pred e:match*? body)
     (check-equal?
@@ -235,10 +237,10 @@
            (clause* (list (p:ctor 'Some (list (p:var 'x #f)) #f))
                     #f (e:var 'x #f) #f))))
 
-  ;; A clause may carry a `#:when` guard, just like `match`.
+  ;; A clause may carry a `:when` guard, just like `match`.
   (let ([v (pe '(match* (x)
-                  [(k) #:when (> k 0) k]
-                  [(_)               0]))])
+                  [(k) :when (> k 0) k]
+                  [(_)              0]))])
     (check-pred e:match*? v)
     (check-equal?
      (e:match*-clauses v)
@@ -381,18 +383,18 @@
 
   (check-equal? (ptop '(data (Maybe a) None (Some a)))
                 (top:data 'Maybe '(a)
-                          (list (data-ctor 'None '() #f '() '() #f)
+                          (list (data-ctor 'None '() #f '() '() #f #f)
                                 (data-ctor 'Some
                                            (list (ty:var 'a #f))
-                                           #f '() '() #f))
+                                           #f '() '() #f #f))
                           #f
                           #f
                           #f))
 
   (check-equal? (ptop '(data Bool True False))
                 (top:data 'Bool '()
-                          (list (data-ctor 'True '() #f '() '() #f)
-                                (data-ctor 'False '() #f '() '() #f))
+                          (list (data-ctor 'True '() #f '() '() #f #f)
+                                (data-ctor 'False '() #f '() '() #f #f))
                           #f
                           #f
                           #f))
@@ -483,9 +485,9 @@
                                     (arr (ty:var 'b #f) (ty:var 'a #f)) #f))
                   #f))
 
-  ;; Trailing `#:requires` clause for a relational superclass.
+  ;; Trailing `:requires` clause for a relational superclass.
   (check-equal? (ptop '(protocol (BiConvert a b)
-                         (#:requires (Convert a b))
+                         (:requires (Convert a b))
                          (: backward (-> b a))))
                 (top:class
                   (list (constraint 'Convert
@@ -583,4 +585,124 @@
   (check-exn exn:fail:syntax?
              (lambda () (parse-type (datum->syntax #f
                          '((foo a) => (-> a a)))))
-             "a lowercase constraint head is still rejected"))
+             "a lowercase constraint head is still rejected")
+
+  ;; ----- colon classification --------------------------------------
+  ;; A whitespace-delimited identifier token is classified by where its
+  ;; colons are: plain (none), the reserved operators `:`/`::`, a leading
+  ;; colon keyword `:name`, a single internal colon qualified `prefix:name`,
+  ;; or illegal (trailing / repeated colons).
+
+  (check-equal? (classify-id 'reverse) '(plain reverse))
+  (check-equal? (classify-id '->)      '(plain ->))
+
+  (check-equal? (classify-id ':)  '(operator :))
+  (check-equal? (classify-id '::) '(operator ::))
+
+  (check-equal? (classify-id ':value)    '(keyword value))
+  (check-equal? (classify-id ':deriving) '(keyword deriving))
+
+  (check-equal? (classify-id 'my:Cons)    '(qualified my Cons))
+  (check-equal? (classify-id 'my:reverse) '(qualified my reverse))
+
+  ;; Illegal shapes.
+  (check-equal? (car (classify-id 'foo:))   'illegal)   ; trailing colon
+  (check-equal? (car (classify-id 'a:b:c))  'illegal)   ; nested qualification
+  (check-equal? (car (classify-id ':a:b))   'illegal)   ; keyword with extra colon
+  (check-equal? (car (classify-id 'a::b))   'illegal)   ; doubled internal colon
+  (check-equal? (car (classify-id ':::))    'illegal)   ; three+ colons
+
+  ;; Thin predicates.
+  (check-true  (keyword-id? ':value))
+  (check-false (keyword-id? 'value))
+  (check-false (keyword-id? ':))
+  (check-equal? (keyword-id->name ':value) 'value)
+
+  (check-true  (qualified-id? 'my:Cons))
+  (check-false (qualified-id? 'Cons))
+  (check-false (qualified-id? ':value))
+  (check-equal? (qualified-id-prefix 'my:Cons) 'my)
+  (check-equal? (qualified-id-name   'my:Cons) 'Cons)
+
+  ;; ----- CL-style :keyword surface --------------------------------
+  ;; match guards use :when, not #:when.
+  (let ([m (parse-expr (datum->syntax #f '(match x [y :when (g y) y] [_ x])))])
+    (check-pred e:match? m)
+    (check-true (and (clause-guard (car (e:match-clauses m))) #t)
+                "the :when clause carries a guard"))
+  (check-exn exn:fail:syntax?
+             (lambda () (parse-expr (datum->syntax #f
+                          '(match x [y #:when (g y) y] [_ x]))))
+             "the old #:when guard is rejected")
+
+  ;; data deriving uses :deriving.
+  (check-equal? (length (parse-toplevel-list
+                         (list (datum->syntax #f
+                                '(data (Foo) Bar :deriving Eq Show)))))
+                3
+                "data + derived Eq + derived Show")
+  (check-exn exn:fail?
+             (lambda () (parse-toplevel-list
+                         (list (datum->syntax #f
+                                '(data (Foo) Bar #:deriving Eq)))))
+             "the old #:deriving is rejected")
+
+  ;; foreign uses :from / :as.
+  (check-pred top:foreign?
+              (parse-top (datum->syntax #f
+                          '(foreign foo (-> Integer Integer) :from racket/base))))
+  (check-exn exn:fail:syntax?
+             (lambda () (parse-top (datum->syntax #f
+                          '(foreign foo (-> Integer Integer) #:from racket/base))))
+             "the old #:from is rejected")
+
+  ;; protocol :requires superclass clause.
+  (check-pred top:class?
+              (parse-top (datum->syntax #f
+                          '(protocol (Iso a b)
+                             (:requires (Convert a b))
+                             (: to (-> a b))))))
+
+  ;; ----- named data fields ----------------------------------------
+  ;; A named-field ctor stores its field names; nullary/positional store #f.
+  (let* ([forms (parse-toplevel-list
+                 (list (datum->syntax #f
+                        '(data (Maybe a) (Some [value : a]) None))))]
+         [d  (car forms)]
+         [cs (top:data-ctors d)])
+    (check-equal? (data-ctor-field-names (car cs))  '(value) "Some names its field")
+    (check-equal? (data-ctor-field-names (cadr cs)) #f       "None is fieldless"))
+
+  ;; A struct's constructor carries its field names in order.
+  (let* ([forms (parse-toplevel-list
+                 (list (datum->syntax #f
+                        '(struct Point [x : Float] [y : Float]))))]
+         [d (findf top:data? forms)])
+    (check-equal? (data-ctor-field-names (car (top:data-ctors d))) '(x y)))
+
+  ;; A positional ctor stays positional (field-names #f).
+  (let* ([forms (parse-toplevel-list
+                 (list (datum->syntax #f '(data (Pair a b) (MkPair a b)))))]
+         [d (car forms)])
+    (check-equal? (data-ctor-field-names (car (top:data-ctors d))) #f))
+
+  ;; Mixing named and positional fields within one ctor is rejected.
+  (check-exn exn:fail?
+             (lambda () (parse-toplevel-list
+                         (list (datum->syntax #f '(data (P a) (Q [x : a] a)))))))
+  ;; Mixing named and positional ctors within one data type is rejected.
+  (check-exn exn:fail?
+             (lambda () (parse-toplevel-list
+                         (list (datum->syntax #f
+                                '(data (E a) (A [x : a]) (B a)))))))
+
+  ;; ----- malformed colon names are rejected -----------------------
+  ;; Trailing / repeated colons are illegal in every reference position.
+  (check-exn exn:fail:syntax?
+             (lambda () (parse-expr (datum->syntax #f 'a:b:c))))
+  (check-exn exn:fail:syntax?
+             (lambda () (parse-expr (datum->syntax #f 'foo:))))
+  (check-exn exn:fail:syntax?
+             (lambda () (parse-type (datum->syntax #f 'a:b:c))))
+  (check-exn exn:fail:syntax?
+             (lambda () (parse-pattern (datum->syntax #f 'a:b:c)))))

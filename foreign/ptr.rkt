@@ -29,57 +29,57 @@
 
 ;; --- sizes (bytes) -------------------------------------------------
 
-(foreign size-of-int    Integer #:from rackton/private/ffi-runtime)
-(foreign size-of-double Integer #:from rackton/private/ffi-runtime)
-(foreign size-of-ptr    Integer #:from rackton/private/ffi-runtime)
+(foreign size-of-int    Integer :from rackton/private/ffi-runtime)
+(foreign size-of-double Integer :from rackton/private/ffi-runtime)
+(foreign size-of-ptr    Integer :from rackton/private/ffi-runtime)
 
 ;; --- allocation / lifetime -----------------------------------------
 
 ;; malloc n raw bytes; release with free-ptr (never garbage-collected).
 (foreign malloc-bytes (-> Integer (IO (Ptr a)))
-         #:from rackton/private/ffi-runtime)
+         :from rackton/private/ffi-runtime)
 
 (foreign free-ptr (-> (Ptr a) (IO Unit))
-         #:from rackton/private/ffi-runtime)
+         :from rackton/private/ffi-runtime)
 
 ;; --- null + arithmetic ---------------------------------------------
 
 (foreign null-ptr (Ptr a)
-         #:from rackton/private/ffi-runtime)
+         :from rackton/private/ffi-runtime)
 
 (foreign ptr-null? (-> (Ptr a) Boolean)
-         #:from rackton/private/ffi-runtime)
+         :from rackton/private/ffi-runtime)
 
 ;; offset a pointer by a number of bytes.
 (foreign ptr-plus (-> (Ptr a) (-> Integer (Ptr a)))
-         #:from rackton/private/ffi-runtime)
+         :from rackton/private/ffi-runtime)
 
 ;; --- typed peek / poke ---------------------------------------------
 
 (foreign peek-int (-> (Ptr Integer) (IO Integer))
-         #:from rackton/private/ffi-runtime)
+         :from rackton/private/ffi-runtime)
 (foreign poke-int (-> (Ptr Integer) (-> Integer (IO Unit)))
-         #:from rackton/private/ffi-runtime)
+         :from rackton/private/ffi-runtime)
 
 (foreign peek-double (-> (Ptr Float) (IO Float))
-         #:from rackton/private/ffi-runtime)
+         :from rackton/private/ffi-runtime)
 (foreign poke-double (-> (Ptr Float) (-> Float (IO Unit)))
-         #:from rackton/private/ffi-runtime)
+         :from rackton/private/ffi-runtime)
 
 (foreign peek-byte (-> (Ptr Integer) (IO Integer))
-         #:from rackton/private/ffi-runtime)
+         :from rackton/private/ffi-runtime)
 (foreign poke-byte (-> (Ptr Integer) (-> Integer (IO Unit)))
-         #:from rackton/private/ffi-runtime)
+         :from rackton/private/ffi-runtime)
 
 ;; --- C strings -----------------------------------------------------
 
 ;; copy a String into a freshly malloc'd, NUL-terminated buffer.
 (foreign string->c-string (-> String (IO CString))
-         #:from rackton/private/ffi-runtime)
+         :from rackton/private/ffi-runtime)
 
 ;; read a NUL-terminated UTF-8 C string back into a String.
 (foreign c-string->string (-> CString (IO String))
-         #:from rackton/private/ffi-runtime)
+         :from rackton/private/ffi-runtime)
 
 ;; --- Storable instances --------------------------------------------
 ;; The polymorphic peek / poke (declared in the prelude) over the

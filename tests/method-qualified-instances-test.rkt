@@ -12,7 +12,7 @@
 (data (Tree a)
   Leaf
   (Branch (Tree a) a (Tree a))
-  #:deriving Eq Show)
+  :deriving Eq Show)
 
 ;; A small curried helper that re-builds Branch — auto-curry
 ;; would help if we called `Branch` directly, but passing it
@@ -45,7 +45,7 @@
 ;; ----- 39.B derived Traversable on a simpler ADT ------------
 
 (data (Box a) (MkBox a)
-  #:deriving Functor Foldable Traversable Eq Show)
+  :deriving Functor Foldable Traversable Eq Show)
 
 (: derived-trav-ok (Maybe (Box Integer)))
 (define derived-trav-ok (traverse positive? (MkBox 5)))

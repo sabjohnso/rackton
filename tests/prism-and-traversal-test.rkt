@@ -49,7 +49,7 @@
 (struct Point
   [x : Integer]
   [y : Integer]
-  #:deriving Eq Show Lens)
+  :deriving Eq Show Lens)
 
 (: x-trav (Traversal Point Integer))
 (define x-trav (lens-as-traversal Point-x-lens))

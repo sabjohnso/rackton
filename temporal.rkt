@@ -28,7 +28,7 @@
 
 ;; ===== ▷ : the "later" modality, a memoizing delayed cell =============
 
-(data (Later a) (MkLater (Lazy a)) #:abstract)
+(data (Later a) (MkLater (Lazy a)) :abstract)
 
 (: next (-> a (Later a)))                       ; a, available next step
 (define (next x) (MkLater (make-lazy (lambda (u) x))))

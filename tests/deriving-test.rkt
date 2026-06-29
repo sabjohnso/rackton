@@ -1,13 +1,13 @@
 #lang rackton
 
-;; `#:deriving Eq Show` on an ADT auto-generates the matching instances.
+;; `:deriving Eq Show` on an ADT auto-generates the matching instances.
 
 (require "../unit.rkt")
 
 (data (Tree a)
   Leaf
   (Node (Tree a) a (Tree a))
-  #:deriving Eq Show)
+  :deriving Eq Show)
 
 (define t1 (Node Leaf 1 (Node Leaf 2 Leaf)))
 (define t2 (Node Leaf 1 (Node Leaf 2 Leaf)))

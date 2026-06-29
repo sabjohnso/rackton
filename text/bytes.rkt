@@ -15,7 +15,7 @@
 ;; @racket[bytes->string] (-> Bytes (Maybe String)); useful when a String
 ;; rendering is wanted even for not-quite-text input.
 (foreign bytes->string-lossy (-> Bytes String)
-         #:from rackton/private/prelude-runtime)
+         :from rackton/private/prelude-runtime)
 
 ;; the empty byte string.
 (: bytes-empty Bytes)

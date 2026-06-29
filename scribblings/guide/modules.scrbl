@@ -88,6 +88,43 @@ selects @racket[tree-sum] and then prefixes it to @racket[t:tree-sum].
 Instances are unaffected by these sub-forms: module-level coherence
 makes them global, so they are always imported.
 
+@section{Qualified imports}
+
+@racket[(qualified-in prefix module)] imports @racket[module]'s
+@emph{term-level} names — values and data constructors — each behind a
+colon-separated @racket[prefix].  A value @racket[depth] from the module
+is then written @racketidfont{st:depth}, and a constructor @racket[Push]
+is written @racketidfont{st:Push} in both expressions and patterns.
+This disambiguates imports whose names would otherwise collide, letting
+two modules that each export, say, @racket[Cons] and @racket[Nil]
+coexist under different prefixes.
+
+@rackton-example[#:eval ev #:mode 'display]{
+;; stack.rkt
+#lang rackton
+(provide (data-out Stack) depth)
+(data (Stack a) Empty (Push a (Stack a)))
+(: depth (-> (Stack a) Integer))
+(define (depth s)
+  (match s [Empty 0] [(Push _ rest) (+ 1 (depth rest))]))
+
+;; main.rkt
+#lang rackton
+(require (qualified-in st "stack.rkt"))
+(: s (Stack Integer))
+(define s (st:Push 1 (st:Push 2 st:Empty)))
+(: n Integer)
+(define n (st:depth s))
+}
+
+Type constructors and protocols keep their @emph{plain} names — the type
+above is written @racket[Stack], not @racketidfont{st:Stack} — so an
+imported constructor's result type stays consistent with the type you
+write in annotations.  A qualified reference uses exactly one colon: a
+@emph{leading} colon (as in @racket[:value]) marks a keyword, not a
+qualifier, and a name with a trailing or repeated colon is a syntax
+error.
+
 @section{Cross-file protocols and instances}
 
 @hash-lang[] @racketmodfont{rackton} modules also export their protocol

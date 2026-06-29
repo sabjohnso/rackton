@@ -32,6 +32,7 @@ identifiers) bind in the body's scope.
           (list @racket[#\A]          "character literal")
           (list @racket[None]         "nullary constructor")
           (list @racket[(Some x)]     "n-ary constructor with sub-patterns")
+          (list @racket[(Some :value x)] "keyword field pattern (named-field ctor)")
           (list @racket[(Cons h t)]   "Cons of two patterns")
           (list @racket[(list a b c)] "fixed-length list pattern")
           (list @racket['(1 2 3)]     "quoted literal list pattern"))]
@@ -43,6 +44,23 @@ Sub-patterns nest arbitrarily:
   [(Cons (Some 0) rest) (length rest)]
   [_                    -1])
 }
+
+@section{Keyword field patterns}
+
+A constructor declared with @seclink["adts-and-records"]{named fields}
+can be taken apart with the same keyword form used to build it:
+
+@rackton-example[#:eval ev #:mode 'value #:context? #t]{
+(data (Crate a) (Packed [value : a]) Hollow)
+
+(match (Packed :value 5)
+  [(Packed :value x) x]
+  [Hollow            0])
+}
+
+As in construction, the labels must appear in declared field order —
+they check and document the pattern rather than reorder it — and the
+positional form @racket[(Packed x)] remains available.
 
 @section[#:tag "list-patterns"]{Quoted and @racket[list] patterns}
 
@@ -108,8 +126,8 @@ Guards see the bound pattern variables:
 
 @rackton-example[#:eval ev #:mode 'value]{
 (match 7
-  [k #:when (> k 0) "positive"]
-  [k #:when (< k 0) "negative"]
+  [k :when (> k 0) "positive"]
+  [k :when (< k 0) "negative"]
   [_                "zero"])
 }
 
@@ -177,12 +195,12 @@ parentheses:
   (f (Some 5)))
 }
 
-Clauses may carry a @racket[#:when] guard, just as in @racket[match]:
+Clauses may carry a @racket[:when] guard, just as in @racket[match]:
 
 @rackton-example[#:eval ev #:mode 'value]{
 (let ([f (case-lambda
-           [(n) #:when (> n 0)  1]
-           [(n) #:when (< n 0) -1]
+           [(n) :when (> n 0)  1]
+           [(n) :when (< n 0) -1]
            [(_)                 0])])
   (f 42))
 }

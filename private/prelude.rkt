@@ -28,7 +28,7 @@
       ;; `==` is an equivalence relation.  Each law is phrased as an
       ;; implication (`if cond then … else #t`) so it stays Boolean
       ;; without having to compare two Boolean results.
-      #:laws
+      :laws
         ([reflexivity  (All ([x : a]) (== x x))]
          [symmetry     (All ([x : a] [y : a]) (if (== x y) (== y x) #t))]
          [transitivity (All ([x : a] [y : a] [z : a])
@@ -52,7 +52,7 @@
       (define (max x y) (if (< x y) y x))
       ;; `<=` is a total order: reflexive, antisymmetric, transitive, and
       ;; total.  Antisymmetry compares with `==` from the Eq superclass.
-      #:laws
+      :laws
         ([reflexivity  (All ([x : a]) (<= x x))]
          [antisymmetry (All ([x : a] [y : a])
                          (if (<= x y) (if (<= y x) (== x y) #t) #t))]
@@ -74,7 +74,7 @@
       ;; `negate` is the additive inverse witnessed by `-`.  Stating the
       ;; equations needs equality, so the laws assume `(Eq a)` without
       ;; making it a superclass of Num.
-      #:laws
+      :laws
         ([add-commutative  ((Eq a) => (All ([x : a] [y : a]) (== (+ x y) (+ y x))))]
          [add-associative  ((Eq a) => (All ([x : a] [y : a] [z : a])
                              (== (+ (+ x y) z) (+ x (+ y z)))))]
@@ -144,13 +144,13 @@
     (data (Map k v))
     (data (Set a))
     (foreign empty-map (Map k v)
-             #:from rackton/private/prelude-runtime)
+             :from rackton/private/prelude-runtime)
     (foreign map-insert (-> k (-> v (-> (Map k v) (Map k v))))
-             #:from rackton/private/prelude-runtime)
+             :from rackton/private/prelude-runtime)
     (foreign empty-set (Set a)
-             #:from rackton/private/prelude-runtime)
+             :from rackton/private/prelude-runtime)
     (foreign set-insert (-> a (-> (Set a) (Set a)))
-             #:from rackton/private/prelude-runtime)
+             :from rackton/private/prelude-runtime)
 
     ;; --- Char and Bytes primitives (opaque ADTs; values come from
     ;; Racket's reader as `#\A` and `#"…"`) -----------------------
@@ -241,11 +241,11 @@
     ;; --- Bitstring (Erlang-style bit syntax) --------------------
     ;; Runtime impls in prelude-runtime / bitstring-runtime.
     (foreign bitstring-length (-> Bitstring Integer)
-             #:from rackton/private/prelude-runtime)
+             :from rackton/private/prelude-runtime)
     (foreign bytes->bitstring (-> Bytes Bitstring)
-             #:from rackton/private/prelude-runtime)
+             :from rackton/private/prelude-runtime)
     (foreign bitstring->bytes (-> Bitstring (Maybe Bytes))
-             #:from rackton/private/prelude-runtime)
+             :from rackton/private/prelude-runtime)
 
     ;; --- Combinators --------------------------------------------
 
@@ -278,7 +278,7 @@
       ;; that is not a class parameter (`a`, `b`, `c`) is skolemized, and
       ;; the container is compared via an assumed `(Eq (f a))` / `(Eq (f
       ;; c))` rather than pinning the element to a concrete type.
-      #:laws
+      :laws
         ([identity ((Eq (f a)) =>
            (All ([xs : (f a)]) (== (fmap (lambda (x) x) xs) xs)))]
          [composition ((Eq (f c)) =>
@@ -307,16 +307,16 @@
       ;; argument and threw an arity error.  See ISSUES.org.
       (define (product x y) (liftA2 (lambda (a) (lambda (b) (Pair a b))) x y))
       ;; Cross-class derivation of the Functor superclass: an Applicative
-      ;; instance written with `#:derive-supers` (supplying `pure`
+      ;; instance written with `:derive-supers` (supplying `pure`
       ;; and `fapply`) gets `Functor` for free via `fmap f = pure f <*>`.
-      #:derive
+      :derive
       ([Functor
         (define (fmap f x) (fapply (pure f) x))])
       ;; The applicative laws, universally quantified over the element
       ;; types.  `pure` is return-typed; where it appears in result
       ;; position the surrounding `fapply` does not pin, its container is
       ;; fixed to the law's instance with an `(ann … (f …))`.
-      #:laws
+      :laws
         ([identity ((Eq (f a)) =>
            (All ([v : (f a)]) (== (fapply (pure (lambda (x) x)) v) v)))]
          [homomorphism ((Eq (f b)) =>
@@ -336,7 +336,7 @@
     ;; ordering matches `flip (>>=)` from Haskell.
     ;; Monad also carries cross-class derivations for its Applicative and
     ;; Functor superclasses: an instance written with
-    ;; `#:derive-supers` need only supply `pure` (the irreducible
+    ;; `:derive-supers` need only supply `pure` (the irreducible
     ;; Applicative primitive) and one of `flatmap`/`join`; `fmap` and the
     ;; Applicative combinators are synthesized from these.
     (protocol (Monad [m => Applicative])
@@ -349,7 +349,7 @@
       ;; forward-references a class registered after it.  `liftA2` is
       ;; provided too (not left to its default, which would call `fmap`);
       ;; `product` then derives from `liftA2`.
-      #:derive
+      :derive
       ([Functor
         (define (fmap f x) (flatmap (lambda (a) (pure (f a))) x))]
        [Applicative
@@ -365,7 +365,7 @@
       ;; `pure x >>= k = k x` rather than a `(+1)` specialization.  A
       ;; monadic value supplied by `pure` in a position the surrounding
       ;; `flatmap` does not pin gets an `(ann … (m a))`.
-      #:laws
+      :laws
         ([left-identity ((Eq (m b)) =>
            (All ([k : (-> a (m b))] [x : a])
              (== (flatmap k (ann (pure x) (m a))) (k x))))]
@@ -471,7 +471,7 @@
       ;; via an assumed `(Eq (p …))`.  Only `identity` is property-runnable
       ;; (the others quantify over function binders, for which there is no
       ;; generator); the rest type-check as the specification.
-      #:laws
+      :laws
         ([identity ((Eq (p a b)) =>
            (All ([x : (p a b)]) (== (bimap id id x) x)))]
          [composition ((Eq (p e k)) =>
@@ -522,7 +522,7 @@
       ;; constructed product, and re-pairing the projections of a product
       ;; recovers it.  `mk-prod` is return-typed, so these type-check as
       ;; the specification rather than running through the generic bundle.
-      #:laws
+      :laws
         ([fst-beta ((Eq a) =>
            (All ([x : a] [y : b]) (== (prod-fst (ann (mk-prod x y) (p a b))) x)))]
          [snd-beta ((Eq b) =>
@@ -539,7 +539,7 @@
       ;; matching branch, and eliminating with the injections themselves is
       ;; the identity.  `inj-left`/`inj-right` are return-typed, so the eta
       ;; law pins them with `ann`; these type-check as the specification.
-      #:laws
+      :laws
         ([left-beta ((Eq c) =>
            (All ([f : (-> a c)] [g : (-> b c)] [x : a])
              (== (co-elim f g (ann (inj-left x) (s a b))) (f x))))]
@@ -577,7 +577,7 @@
       ;; tests/category-laws-test.rkt, which also checks `(->)`
       ;; extensionally).  `ident` is return-typed, so it is pinned with
       ;; `ann` at the object it must take.
-      #:laws
+      :laws
         ([left-identity  ((Eq (cat a b)) =>
            (All ([f : (cat a b)]) (== (comp (ann ident (cat b b)) f) f)))]
          [right-identity ((Eq (cat a b)) =>
@@ -589,8 +589,8 @@
     ;; Arrow over a product `p` (determined by the arrow via the fundep).
     ;; Signatures use `(p a c)` in place of the old `(Pair a c)`.
     (protocol (Arrow (cat :: (-> * (-> * *))) (p :: (-> * (-> * *))))
-      (#:requires (Category cat) (Prod p))
-      (#:fundep cat -> p)
+      (:requires (Category cat) (Prod p))
+      (:fundep cat -> p)
       ;; Minimal complete definition: `arr` plus EITHER `on-first` OR
       ;; `split` — they derive from each other (an Applicative-style
       ;; default cycle, broken by defining one).  The swap/dup helpers
@@ -629,7 +629,7 @@
       ;; and `ident` are pinned with `ann`; the law checker improves the
       ;; product `p` (underdetermined by `arr`) against the protocol's own
       ;; hypotheses.
-      #:laws
+      :laws
         ([arr-identity ((Eq (cat a a)) =>
            (All ([z : a])
              (== (ann (arr (lambda (x) x)) (cat a a))
@@ -667,8 +667,8 @@
     (protocol (ArrowChoice (cat :: (-> * (-> * *)))
                            (p :: (-> * (-> * *)))
                            (s :: (-> * (-> * *))))
-      (#:requires (Arrow cat p) (Coprod s))
-      (#:fundep cat -> p s)
+      (:requires (Arrow cat p) (Coprod s))
+      (:fundep cat -> p s)
       ;; Minimal complete definition: EITHER `on-left` OR `fork` — the
       ;; coproduct analog of Arrow's on-first/split cycle.  The
       ;; mirror/untag helpers are built from the coproduct tensor
@@ -702,7 +702,7 @@
       ;; The return-typed `arr` / `inj-left` / `inj-right` resolve their
       ;; product/coproduct parameters by improvement against the protocol's
       ;; hypotheses.
-      #:laws
+      :laws
         ([left-arr ((Eq (cat (s a x) (s b x))) =>
            (All ([f : (-> a b)])
              (== (on-left (arr f))
@@ -725,14 +725,14 @@
     ;; ArrowApply makes the arrow a first-class value fed in with its
     ;; argument.  `arrow-app` is return-typed (a constant arrow).
     (protocol (ArrowApply (cat :: (-> * (-> * *))) (p :: (-> * (-> * *))))
-      (#:requires (Arrow cat p))
-      (#:fundep cat -> p)
+      (:requires (Arrow cat p))
+      (:fundep cat -> p)
       (: arrow-app (cat (p (cat a b) a) b))
       ;; ArrowApply's characterizing law: pairing a value with a fixed
       ;; arrow `f` and then applying recovers `f` —
       ;; `app . arr (\a -> (f, a)) = f`.  Return-typed `arrow-app` / `arr`
       ;; / `mk-prod` resolve by improvement against the hypotheses.
-      #:laws
+      :laws
         ([apply-pairing ((Eq (cat a b)) =>
            (All ([f : (cat a b)])
              (== (comp arrow-app (arr (lambda (av) (mk-prod f av)))) f)))]))
@@ -747,15 +747,15 @@
     ;; plain function is correctly a type error.  An arrow with a lazy
     ;; product (see rackton/data/lazy's lazy-function arrow) can define one.
     (protocol (ArrowLoop (cat :: (-> * (-> * *))) (p :: (-> * (-> * *))))
-      (#:requires (Arrow cat p))
-      (#:fundep cat -> p)
+      (:requires (Arrow cat p))
+      (:fundep cat -> p)
       (: arrow-loop (-> (cat (p a c) (p b c)) (cat a b)))
       ;; ArrowLoop's left-tightening law: a pure-on-first stage before the
       ;; loop body slides out of the loop —
       ;; `loop (first h >>> f) = h >>> loop f`.  (`(->)` has no ArrowLoop
       ;; instance — tying the knot needs laziness — so this is verified
       ;; extensionally on the lazy-function arrow.)
-      #:laws
+      :laws
         ([left-tightening ((Eq (cat a b)) =>
            (All ([h : (cat a e)] [f : (cat (p e c) (p b c))])
              (== (arrow-loop (comp f (on-first h)))
@@ -789,7 +789,7 @@
       ;; and `length` agrees with the length of that list.  Quantified
       ;; over the element type `a`: the list comparison is via an assumed
       ;; `(Eq (List a))`, the count via the prelude's `(Eq Integer)`.
-      #:laws
+      :laws
         ([to-list-folds ((Eq (List a)) =>
            (All ([xs : (t a)])
              (== (to-list xs) (foldr (lambda (x acc) (Cons x acc)) Nil xs))))]
@@ -830,7 +830,7 @@
       ;; a))`, which follows from an assumed `(Eq (t a))`.  (`Maybe`
       ;; stands in as the applicative because the prelude has no
       ;; `Identity` functor.)
-      #:laws
+      :laws
         ([identity-maybe ((Eq (t a)) =>
            (All ([xs : (t a)])
              (== (traverse (lambda (x) (Some x)) xs) (Some xs))))]))
@@ -860,7 +860,7 @@
       ;; `mappend` is associative.  Equality is needed only to state the
       ;; law, so it is assumed via `(Eq a)` rather than required of every
       ;; Semigroup instance.
-      #:laws
+      :laws
         ([associativity ((Eq a) =>
            (All ([x : a] [y : a] [z : a])
              (== (mappend (mappend x y) z)
@@ -871,7 +871,7 @@
       ;; `mempty` is a two-sided identity for `mappend`.  Its type is
       ;; return-typed but pinned here by `mappend`'s argument, so the law
       ;; resolves it to the law's own (skolem) instance.
-      #:laws
+      :laws
         ([left-identity  ((Eq a) => (All ([x : a]) (== (mappend mempty x) x)))]
          [right-identity ((Eq a) => (All ([x : a]) (== (mappend x mempty) x)))]))
 
@@ -959,7 +959,7 @@
       ;; index by `enum->integer`.  The comparison is between `Integer`s,
       ;; whose `Eq`/`Num` instances are already in scope, so no law
       ;; context is needed.
-      #:laws
+      :laws
         ([succ-step (All ([x : a])
                       (== (enum->integer (succ x)) (+ (enum->integer x) 1)))]
          [pred-step (All ([x : a])
@@ -1022,7 +1022,7 @@
     ;; ----- MonadState -------------------------------------------
 
     (protocol (MonadState s [m => Monad])
-      (#:fundep m -> s)
+      (:fundep m -> s)
       (: get-st    (m s))
       (: put-st    (-> s (m Unit)))
       (: modify-st (-> (-> s s) (m Unit)))
@@ -1032,7 +1032,7 @@
       ;; Equality is on monadic actions, assumed via `(Eq (m …))`; `pure`
       ;; is return-typed so it is pinned with `ann`.  (`get-put` is closed,
       ;; so it carries an unused binder to satisfy the quantifier.)
-      #:laws
+      :laws
         ([put-put ((Eq (m Unit)) =>
            (All ([s1 : s] [s2 : s])
              (== (flatmap (lambda (z) (put-st s2)) (ann (put-st s1) (m Unit)))
@@ -1061,7 +1061,7 @@
     ;; ----- MonadEnv (Reader) ------------------------------------
 
     (protocol (MonadEnv r [m => Monad])
-      (#:fundep m -> r)
+      (:fundep m -> r)
       (: ask-en   (m r))
       (: local-en (-> (-> r r) (-> (m a) (m a))))
       ;; The MonadEnv (Reader) laws: `local f` modifies the environment
@@ -1069,7 +1069,7 @@
       ;; environment transformer (running `local f` outside `local g` sees
       ;; `g (f r)`).  Equality on actions assumed via `(Eq (m …))`; `pure`
       ;; pinned with `ann`.
-      #:laws
+      :laws
         ([local-ask ((Eq (m r)) =>
            (All ([f : (-> r r)])
              (== (local-en f ask-en) (fmap f (ann ask-en (m r))))))]
@@ -1092,7 +1092,7 @@
     ;; ----- MonadWriter ------------------------------------------
 
     (protocol (MonadWriter [w => Monoid] [m => Monad])
-      (#:fundep m -> w)
+      (:fundep m -> w)
       (: tell-w (-> w (m Unit)))
       (: listen (-> (m a) (m (Pair a w))))
       (: censor (-> (-> w w) (-> (m a) (m a))))
@@ -1101,7 +1101,7 @@
       ;; on actions assumed via `(Eq (m Unit))`.  (The `listen` laws need
       ;; `Pair`/return-typed pieces and are left to the deferred hand-
       ;; written bundle.)
-      #:laws
+      :laws
         ([tell-tell ((Eq (m Unit)) =>
            (All ([w1 : w] [w2 : w])
              (== (flatmap (lambda (z) (tell-w w2)) (ann (tell-w w1) (m Unit)))
@@ -1121,13 +1121,13 @@
     ;; ----- MonadError -------------------------------------------
 
     (protocol (MonadError e [m => Monad])
-      (#:fundep m -> e)
+      (:fundep m -> e)
       (: throw-e (-> e (m a)))
       (: catch-e (-> (m a) (-> (-> e (m a)) (m a))))
       ;; MonadError laws: catching a thrown error runs the handler on it,
       ;; and a thrown error is a left-zero for `flatmap` (the continuation
       ;; never runs).  Equality on actions assumed via `(Eq (m …))`.
-      #:laws
+      :laws
         ([catch-throw ((Eq (m a)) =>
            (All ([err : e] [h : (-> e (m a))])
              (== (catch-e (throw-e err) h) (h err))))]
@@ -1232,7 +1232,7 @@
       ;; (distributes over the bind).  Equality on actions assumed via
       ;; `(Eq (m …))`; the `pure`s — one in `IO`, one in `m` — are pinned
       ;; with `ann`.
-      #:laws
+      :laws
         ([lift-pure ((Eq (m a)) =>
            (All ([x : a])
              (== (ann (lift-io (ann (pure x) (IO a))) (m a)) (ann (pure x) (m a)))))]
@@ -1527,7 +1527,7 @@
       ;; guarded by testing `y` against the additive zero `(- y y)`, so
       ;; no polymorphic numeric literal is needed.  Equality is assumed
       ;; via `(Eq a)` rather than required of every Integral instance.
-      #:laws
+      :laws
         ([quot-rem ((Eq a) =>
            (All ([x : a] [y : a])
              (if (== y (- y y)) #t
@@ -1554,7 +1554,7 @@
       ;; to-rational x + to-rational y`) is deliberately omitted: it fails
       ;; under floating-point rounding.  Needs `Ord` on both `a` (a
       ;; superclass) and `Rational` (in scope), so no extra law context.
-      #:laws
+      :laws
         ([monotone (All ([x : a] [y : a])
            (if (<= x y) (<= (to-rational x) (to-rational y)) #t))]))
 
