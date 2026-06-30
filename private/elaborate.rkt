@@ -260,7 +260,7 @@
 ;;   (values compiled-syntax-list provide-stx
 ;;           bindings-data data-ctors-data tcons-data classes-data instances-data
 ;;           impls macros defs promoted-data tyfams-data constraint-syns-data
-;;           constraint-fams-data variadics-data mono-log inline-log)
+;;           constraint-fams-data variadics-data requires-data mono-log inline-log)
 ;; `provide-stx` is a syntax object for a single Racket-level
 ;; `(provide ...)` form (or #f when nothing is exported).
 (define-for-syntax (rackton-elaborate forms-stx)
@@ -333,10 +333,10 @@
     (define inline-log (cg-st-inlined-sites final-cgst))
     ;; Pass the logs + the generated exported-impl names (from the final cg-st)
     ;; alongside the compiled forms.
-    (define-values (final-compiled prov-stx bs dcs tcs cls insts impls macs defs prom tfs csyns cfams vrds)
+    (define-values (final-compiled prov-stx bs dcs tcs cls insts impls macs defs prom tfs csyns cfams vrds reqs)
       (elaborate-finish parsed* env compiled (unbox macros-box)
                         (cg-st-exported-impls final-cgst)))
-    (values final-compiled prov-stx bs dcs tcs cls insts impls macs defs prom tfs csyns cfams vrds
+    (values final-compiled prov-stx bs dcs tcs cls insts impls macs defs prom tfs csyns cfams vrds reqs
             mono-log inline-log)))
 
 ;; ----- export resolution ----------------------------------------------
@@ -765,13 +765,21 @@
     (for/list ([(local external) (in-hash export-vars)]
                #:when (env-ref-variadic env local #f))
       (cons external (env-ref-variadic env local))))
+  ;; The module's own `(require …)` specs, as plain datums and in source
+  ;; order — the raw text the user wrote, so a tool can report "this
+  ;; module imports M" without re-reading the source.  Unlike the tables
+  ;; above this is a description of the module, not a typing artifact, so
+  ;; it is published verbatim and never folded into an importer's env.
+  (define export-requires
+    (append-map (lambda (f) (map syntax->datum (top:require-specs f)))
+                (filter top:require? parsed)))
   (values compiled prov-stx
           export-bindings export-data-ctors-encoded
           export-tcons-encoded export-classes-encoded export-instances
           exported-impls export-macros-encoded export-defs-encoded
           export-promoted-encoded export-tyfams-encoded
           export-constraint-syns-encoded export-constraint-fams-encoded
-          export-variadics-encoded))
+          export-variadics-encoded export-requires))
 
 ;; `(rackton form ...)` — embeddable form.  Splices the compiled forms
 ;; but does NOT emit a sidecar schemes submodule, so multiple
@@ -779,7 +787,7 @@
 (define-syntax (rackton stx)
   (syntax-parse stx
     [(_ form ...)
-     (define-values (compiled prov-stx _b _d _t _c _i _impls _macs _defs _prom _tfs _csyns _cfams _vrds
+     (define-values (compiled prov-stx _b _d _t _c _i _impls _macs _defs _prom _tfs _csyns _cfams _vrds _reqs
                               mono-log inline-log)
        (rackton-elaborate #'(form ...)))
      (define out-forms
@@ -799,7 +807,7 @@
 (define-syntax (rackton/main stx)
   (syntax-parse stx
     [(_ form ...)
-     (define-values (compiled prov-stx bs dcs tcs cls insts impls macs defs prom tfs csyns cfams vrds
+     (define-values (compiled prov-stx bs dcs tcs cls insts impls macs defs prom tfs csyns cfams vrds reqs
                               _mono _inline)
        (rackton-elaborate #'(form ...)))
      (define at-module-level?
@@ -820,7 +828,8 @@
                    [tyfams       (datum->syntax stx tfs)]
                    [constraint-syns (datum->syntax stx csyns)]
                    [constraint-fams (datum->syntax stx cfams)]
-                   [variadics    (datum->syntax stx vrds)])
+                   [variadics    (datum->syntax stx vrds)]
+                   [requires     (datum->syntax stx reqs)])
        (cond
          [at-module-level?
           (syntax/loc stx
@@ -839,7 +848,8 @@
                          rackton-tyfams
                          rackton-constraint-syns
                          rackton-constraint-fams
-                         rackton-variadics)
+                         rackton-variadics
+                         rackton-requires)
                 (define rackton-bindings        'bindings)
                 (define rackton-data-ctors      'data-ctors)
                 (define rackton-tcons           'tcons)
@@ -852,6 +862,7 @@
                 (define rackton-tyfams          'tyfams)
                 (define rackton-constraint-syns 'constraint-syns)
                 (define rackton-constraint-fams 'constraint-fams)
-                (define rackton-variadics       'variadics))))]
+                (define rackton-variadics       'variadics)
+                (define rackton-requires        'requires))))]
          [else
           (syntax/loc stx (begin out ...))]))]))

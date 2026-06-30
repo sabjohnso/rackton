@@ -230,6 +230,36 @@ append :: (All (a) (-> (List a) (-> (List a) (List a))))
 sum :: (All (t) ((Foldable t) => (-> (t Integer) Integer)))
 }|}
 
+@deftogether[(@defidform[#:kind "REPL command" module]
+              @defidform[#:kind "REPL command" mod])]{
+
+@litchar{,module} @racket[_module-path] (or @litchar{,mod}
+@racket[_module-path]) reports a Rackton module's interface without
+importing it: what it @emph{requires} (the module's own
+@racket[require] specs) and what it @emph{provides}, grouped into type
+constructors, protocols, data constructors, and value bindings — each
+binding and constructor shown with its type — followed by a count of
+the instances it contributes.  The information is read from the
+module's @racket[rackton-schemes] sidecar, so the answer is exactly
+what a @racket[(require @racket[_module-path])] would bring into scope.
+
+@verbatim|{
+λ> ,module rackton/data/cokleisli
+rackton/data/cokleisli
+
+requires:
+  rackton/control/comonad
+
+provides:
+  types:
+    Cokleisli
+  constructors:
+    Cokleisli :: (All (w a b) (-> (-> (w a) b) (Cokleisli w a b)))
+  values:
+    run-cokleisli :: (All (a b w) (-> (Cokleisli w a b) (w a) b))
+  instances: 8
+}|}
+
 @deftogether[(@defidform[#:kind "REPL command" search]
               @defidform[#:kind "REPL command" returns])]{
 

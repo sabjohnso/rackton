@@ -25,7 +25,11 @@
          rackton/data/list
          rackton/data/tuple
          rackton/data/map
-         rackton/data/set
+         ;; data/set's variadic `set` constructor clashes with data/lens's
+         ;; `set` (the view/set/over setter).  In the umbrella the lens
+         ;; setter keeps the bare name; the Set constructor is re-exported
+         ;; as `make-set`.  Both standalone modules are unchanged.
+         (rename-in rackton/data/set [set make-set])
          rackton/control/applicative
          rackton/control/monad
          rackton/control/stm
@@ -66,7 +70,11 @@
          (all-from-out rackton/data/list)
          (all-from-out rackton/data/tuple)
          (all-from-out rackton/data/map)
+         ;; `(all-from-out rackton/data/set)` re-exports data/set's names
+         ;; under their original names, so it cannot carry the renamed
+         ;; `set` → `make-set`; name the renamed constructor explicitly.
          (all-from-out rackton/data/set)
+         make-set
          (all-from-out rackton/control/applicative)
          (all-from-out rackton/control/monad)
          (all-from-out rackton/control/stm)

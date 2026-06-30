@@ -14,7 +14,7 @@ recovers the information.
 Every @hash-lang[] @racketmodfont{rackton} (and every
 @racket[(module @#,racketidfont{name} rackton …)]) emits a
 @racketmodfont{rackton-schemes} submodule alongside the user's code.
-This submodule contains five tables, serialised as plain
+This submodule contains several tables, serialised as plain
 s-expressions:
 
 @itemlist[
@@ -45,7 +45,12 @@ s-expressions:
       importer's kind checker enforce a promoted index (e.g. reject
       @racket[(Mem TInt g)] when @racket[Mem]'s first parameter has kind
       @racket[Stack] but @racket[TInt] has kind @racket[Ty]) rather than
-      treat it as a fresh, anything-goes kind.}]
+      treat it as a fresh, anything-goes kind.}
+@item{@racket[requires] — the module's own @racket[require] specs, as
+      plain datums in source order.  Unlike the other tables this is a
+      description of the module rather than a typing artifact: it is
+      never folded into an importer's environment, but lets a tool (the
+      REPL's @litchar{,module} command) report what a module imports.}]
 
 @section{The codec}
 

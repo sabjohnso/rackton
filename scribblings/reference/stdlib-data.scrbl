@@ -1,6 +1,6 @@
 #lang scribble/manual
 @require[scribble/manual
-         (for-label (except-in rackton apply) rackton/data/bits rackton/data/bool rackton/data/char rackton/data/complex rackton/data/either rackton/data/result rackton/data/foldable rackton/data/function rackton/data/functor rackton/data/lazy rackton/data/nestream rackton/data/istream rackton/data/arrow-lazy rackton/data/kleisli rackton/data/cokleisli rackton/data/lens rackton/data/list rackton/data/list/nonempty rackton/data/map rackton/data/maybe rackton/data/monoid rackton/data/ord rackton/data/ratio rackton/data/semigroup rackton/data/set rackton/data/traversable rackton/data/tuple rackton/control/apply rackton/control/comonad)
+         (for-label (except-in rackton apply) rackton/data/bits rackton/data/bool rackton/data/char rackton/data/complex rackton/data/either rackton/data/result rackton/data/foldable rackton/data/function rackton/data/functor rackton/data/lazy rackton/data/nestream rackton/data/istream rackton/data/arrow-lazy rackton/data/kleisli rackton/data/cokleisli rackton/data/lens rackton/data/list rackton/data/list/nonempty rackton/data/map rackton/data/maybe rackton/data/monoid rackton/data/ord rackton/data/ratio rackton/data/semigroup (except-in rackton/data/set set) rackton/data/traversable rackton/data/tuple rackton/control/apply rackton/control/comonad)
          "../rackton-eval.rkt"]
 @(define ev (make-rackton-eval))
 

@@ -27,6 +27,7 @@
          racket/format
          racket/list
          racket/string
+         (only-in racket/set list->seteq set-member?)
          (only-in racket/port with-output-to-string)
          (only-in racket/pretty pretty-format)
          (only-in "ast.rkt" class-law-name class-law-stx)
@@ -40,6 +41,7 @@
          "prelude.rkt"
          "env.rkt"
          "types.rkt"
+         (only-in "scheme-codec.rkt" sexp->scheme decode-data-info)
          (only-in "nat-solve.rkt" deep-normalize-nats)
          (only-in "array-runtime.rkt"
                   rackton-array? rackton-array-length rackton-array-ref)
@@ -180,6 +182,8 @@
     [(list 'unquote 'src    name) (values state (show-source state name))]
     [(list 'unquote 'accepts ty)  (values state (show-accepts state ty))]
     [(list 'unquote 'a       ty)  (values state (show-accepts state ty))]
+    [(list 'unquote 'module spec) (values state (show-module (arg 2)))]
+    [(list 'unquote 'mod    spec) (values state (show-module (arg 2)))]
     [(list 'unquote 'search q)    (values state (show-search state q 'signature))]
     [(list 'unquote 'returns ty)  (values state (show-search state ty 'returns))]
     [(list 'unquote 'complete pfx) (values state (show-completions state pfx))]
@@ -216,6 +220,7 @@
    ",info NAME   show what's bound to NAME\n"
    ",source NAME show the form that defined NAME\n"
    ",accepts TYPE list functions accepting an argument of TYPE\n"
+   ",module MOD  show what MOD provides and what it requires\n"
    ",search SIG   search by whole signature; a string searches names\n"
    ",returns TYPE list functions returning TYPE\n"
    ",complete PFX list names completing PFX (editor transport)\n"
@@ -349,6 +354,92 @@
                   (render-typed (name-doc (car m))
                                 (binding-type-datum (rackton-repl-state-env state)
                                                     (car m) (cdr m)))))])])))
+
+;; ,module MOD — report a Rackton module's interface without importing
+;; it: what it requires and what it provides.  Both are read from the
+;; module's `rackton-schemes` sidecar — the same tables a real `(require
+;; MOD)` would fold in — so the answer matches what an importer sees.
+;; The `requires` list is the module's own `(require …)` specs, recorded
+;; verbatim by the sidecar; an older sidecar that predates that field
+;; degrades to "none recorded" rather than failing.
+(define (show-module spec)
+  (define spec-datum (if (syntax? spec) (syntax->datum spec) spec))
+  (define spec-stx   (if (syntax? spec) spec (datum->syntax #f spec)))
+  ;; Resolve to the importee's `rackton-schemes` submodule path.  A
+  ;; string path is anchored at `current-directory` (the REPL has no
+  ;; source file to anchor it the way the compiler's resolver does, so
+  ;; `require-spec->module-path` would raise on the form's non-path
+  ;; source); a collection path goes through the shared resolver.  Any
+  ;; failure degrades to #f rather than escaping and killing the kernel.
+  (define submod
+    (with-handlers ([exn:fail? (lambda (_) #f)])
+      (cond
+        [(string? spec-datum)
+         (define full (path->complete-path spec-datum (current-directory)))
+         (and (file-exists? full)
+              `(submod (file ,(path->string full)) rackton-schemes))]
+        [else (require-spec->submod-spec spec-stx)])))
+  (define (table name fallback)
+    (with-handlers ([exn:fail? (lambda (_) fallback)])
+      (dynamic-require submod name)))
+  (cond
+    [(not submod)
+     (format "~s is not a module path I can resolve\n" spec-datum)]
+    ;; rackton-bindings is present in every Rackton sidecar; its absence
+    ;; means the path names no module, or not a Rackton one.
+    [(not (table 'rackton-bindings #f))
+     (format "no Rackton module found for ~s\n" spec-datum)]
+    [else
+     (define bindings   (table 'rackton-bindings '()))
+     (define data-ctors (table 'rackton-data-ctors '()))
+     (define tcons      (table 'rackton-tcons '()))
+     (define classes    (table 'rackton-classes '()))
+     (define instances  (table 'rackton-instances '()))
+     (define requires   (table 'rackton-requires '()))
+     ;; Constructors carry their scheme in the data-ctors table; plain
+     ;; values in the bindings table.  Keep them apart (a constructor is
+     ;; not normally a binding too, but guard against the overlap so a
+     ;; name never lists twice).
+     (define ctor-names (list->seteq (map car data-ctors)))
+     (define ctor-entries
+       (for/list ([dc (in-list data-ctors)])
+         (cons (car dc) (data-info-scheme (decode-data-info (cdr dc))))))
+     (define value-entries
+       (for/list ([b (in-list bindings)] #:unless (set-member? ctor-names (car b)))
+         (cons (car b) (sexp->scheme (cdr b)))))
+     (string-append
+      (format "~s\n" spec-datum)
+      "\nrequires:\n"
+      (if (null? requires)
+          "  (none)\n"
+          (apply string-append
+                 (for/list ([r (in-list requires)]) (format "  ~s\n" r))))
+      "\nprovides:\n"
+      (module-name-section "types" (sort (map car tcons) symbol<?))
+      (module-name-section "classes" (sort (map car classes) symbol<?))
+      (module-typed-section "constructors" ctor-entries)
+      (module-typed-section "values" value-entries)
+      (if (null? instances)
+          ""
+          (format "  instances: ~a\n" (length instances))))]))
+
+;; A `provides` subsection listing bare names under a 2-space heading.
+(define (module-name-section label names)
+  (if (null? names)
+      ""
+      (apply string-append
+             (format "  ~a:\n" label)
+             (for/list ([n (in-list names)]) (format "    ~s\n" n)))))
+
+;; A `provides` subsection listing `name :: type` lines, sorted by name;
+;; each entry is a (name . scheme) pair.
+(define (module-typed-section label entries)
+  (if (null? entries)
+      ""
+      (apply string-append
+             (format "  ~a:\n" label)
+             (for/list ([e (in-list (sort entries symbol<? #:key car))])
+               (render-typed-line 4 (car e) (scheme->pretty-datum (cdr e)))))))
 
 ;; Play back the input form(s) that bound `name`: the definition first,
 ;; then — for a class — the live instances the session has seen.
