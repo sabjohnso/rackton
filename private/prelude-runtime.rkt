@@ -374,10 +374,15 @@
 ;; ----- tuples -----------------------------------------------------
 ;; The representation interface for variadic tuples.  Codegen emits
 ;; `rackton-tuple-make` / `rackton-tuple-ref`, and match.rkt destructures
-;; the same shape; the backing layout (currently a Racket vector) lives
-;; HERE and nowhere else, so it can be swapped without touching codegen.
+;; the same shape; the backing layout (currently an IMMUTABLE Racket
+;; vector) lives HERE and nowhere else, so it can be swapped without
+;; touching codegen.  Immutable (not a plain mutable vector) because a
+;; tuple is a pure value: nothing mutates one, `match`/`dispatch-tag`
+;; treat mutable and immutable vectors alike, and immutability makes a
+;; tuple of Tier-V elements serialization- and place-eligible (see the
+;; "Runtime-representation tiers" section of the developer guide).
 
-(define (rackton-tuple-make . elems) (list->vector elems))
+(define (rackton-tuple-make . elems) (apply vector-immutable elems))
 (define (rackton-tuple-ref t i) (vector-ref t i))
 (define (rackton-tuple-length t) (vector-length t))
 
@@ -1361,8 +1366,16 @@
 ;; lines up with Rackton structural == (no Eq dict is threaded).
 ;; group-by and the rest of Data.Map / Data.Set remain in
 ;; rackton/data/map + rackton/data/set.
-(struct $map (h) #:transparent)
-(struct $set (h) #:transparent)
+;;
+;; Prefab (not transparent) so the wrapper has a single global type
+;; identity — recognised across module instantiations and surviving a
+;; reload — and so a Map/Set of Tier-V keys/values is itself Tier V:
+;; serialization- and place-eligible, its backing already an immutable
+;; hash (see the "Runtime-representation tiers" section of the developer
+;; guide).  Structural `equal?` and name-based dispatch are unchanged
+;; from transparent.
+(struct $map (h) #:prefab)
+(struct $set (h) #:prefab)
 (define empty-map ($map (hash)))
 (define empty-set ($set (hash)))
 (define/curried (map-insert k v m) ($map (hash-set ($map-h m) k v)))

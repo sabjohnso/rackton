@@ -41,15 +41,25 @@
 ;; transparent struct would not be.
 (struct rkt-array (vec) #:prefab)
 
+;; The SOLE constructor.  It freezes the backing vector immutable, so an
+;; Array is a pure Tier-V value: nothing mutates it (no array-set!
+;; exists), and an Array of Tier-V elements is serialization- and
+;; place-eligible (see the "Runtime-representation tiers" section of the
+;; developer guide).  Prefab structs cannot carry a coercing `#:guard`,
+;; so the invariant lives here; every
+;; array-building operation below routes through this (directly or via
+;; `rackton-array-from-list`).
+(define (array-of vec) (rkt-array (vector->immutable-vector vec)))
+
 ;; A predicate on the opaque handle (for display / dispatch), without
 ;; exposing the constructor or accessor.
 (define (rackton-array? v) (rkt-array? v))
 
 (define (rackton-array-from-list elems)
-  (rkt-array (list->vector elems)))
+  (array-of (list->vector elems)))
 
 (define (rackton-array-make n f)
-  (rkt-array (build-vector n f)))
+  (array-of (build-vector n f)))
 
 (define (rackton-array-ref a i)
   (vector-ref (rkt-array-vec a) i))

@@ -3,7 +3,16 @@
 ;; Rackton — algebraic-data-type runtime.
 ;;
 ;; `(define-data-ctor name arity)` emits, for a constructor `name`:
-;;   - a transparent struct `$ctor:name` with `arity` fields
+;;   - a prefab struct `$ctor:name` with `arity` fields.  Prefab (not a
+;;     plain transparent struct) so the type has a single global identity:
+;;     a value built in one module instantiation — e.g. the REPL's eval
+;;     namespace, or a module reloaded via dynamic-rerequire — is still
+;;     recognised by the constructor's predicate and match pattern in
+;;     another.  This is sound because Rackton keys constructors by bare
+;;     name globally (see the "Runtime-representation tiers" section of
+;;     the developer guide); prefab's by-name identity matches that
+;;     model.  Structural `equal?`, `struct->vector`
+;;     display, and name-based dispatch are all unchanged from transparent.
 ;;   - a value binding `$val:name`:
 ;;       * for arity 0, the singleton instance
 ;;       * for arity > 0, the struct constructor procedure
@@ -74,7 +83,7 @@
        (cond
          [(zero? n)
           #'(begin
-              (struct $ctor () #:transparent)
+              (struct $ctor () #:prefab)
               (define $val ($ctor))
               (define-match-expander name
                 (lambda (mstx)
@@ -85,7 +94,7 @@
                     [_:id #'$val]))))]
          [else
           #'(begin
-              (struct $ctor (field ...) #:transparent)
+              (struct $ctor (field ...) #:prefab)
               (define $val $ctor)
               (define-match-expander name
                 (lambda (mstx)
