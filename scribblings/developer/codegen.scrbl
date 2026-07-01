@@ -30,8 +30,11 @@ A @racket[data] form expands to a series of
 @racket[name] of arity @racket[N]:
 
 @itemlist[#:style 'ordered
-@item{Declares a transparent Racket @racket[struct] @racketidfont{$ctor:}@racket[_name]
-      with @racket[N] fields.}
+@item{Declares a prefab Racket @racket[struct] @racketidfont{$ctor:}@racket[_name]
+      with @racket[N] fields.  Prefab (rather than transparent) gives the
+      type one global identity across module instantiations and reloads;
+      see @secref["representation-tiers"] for why this is sound and what it
+      enables.}
 @item{Binds @racketidfont{$val:}@racket[_name] to either the
       singleton struct instance (for @racket[N=0]) or the raw struct
       constructor procedure (for @racket[N>0]).}

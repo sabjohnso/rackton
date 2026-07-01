@@ -25,6 +25,7 @@ precise signatures.
 @include-section["unification.scrbl"]
 @include-section["class-entailment.scrbl"]
 @include-section["codegen.scrbl"]
+@include-section["representation-tiers.scrbl"]
 @include-section["cross-module.scrbl"]
 @include-section["prelude-internals.scrbl"]
 @include-section["repl-internals.scrbl"]
