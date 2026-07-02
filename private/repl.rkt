@@ -27,6 +27,7 @@
          racket/format
          racket/list
          racket/string
+         (only-in racket/rerequire dynamic-rerequire)
          (only-in racket/set list->seteq set-member?)
          (only-in racket/port with-output-to-string)
          (only-in racket/pretty pretty-format)
@@ -77,7 +78,8 @@
        nsp
        expr-counter
        macros
-       quit?)
+       required                          ; file-path module specs required
+       quit?)                            ; this session, for a bare ,reload
   #:transparent)
 
 (define (rackton-repl-init)
@@ -102,7 +104,8 @@
                       (make-infer-state)
                       ns
                       0
-                      '()
+                      '()      ; macros
+                      '()      ; required
                       #f))
 
 ;; ----- dispatch ----------------------------------------------------
@@ -184,6 +187,8 @@
     [(list 'unquote 'a       ty)  (values state (show-accepts state ty))]
     [(list 'unquote 'module spec) (values state (show-module (arg 2)))]
     [(list 'unquote 'mod    spec) (values state (show-module (arg 2)))]
+    [(list 'unquote 'reload spec) (do-reload state (arg 2))]
+    [(list 'unquote 'reload)      (do-reload-all state)]
     [(list 'unquote 'search q)    (values state (show-search state q 'signature))]
     [(list 'unquote 'returns ty)  (values state (show-search state ty 'returns))]
     [(list 'unquote 'complete pfx) (values state (show-completions state pfx))]
@@ -221,6 +226,7 @@
    ",source NAME show the form that defined NAME\n"
    ",accepts TYPE list functions accepting an argument of TYPE\n"
    ",module MOD  show what MOD provides and what it requires\n"
+   ",reload [MOD] reload an edited module (or every required module)\n"
    ",search SIG   search by whole signature; a string searches names\n"
    ",returns TYPE list functions returning TYPE\n"
    ",complete PFX list names completing PFX (editor transport)\n"
@@ -708,16 +714,24 @@
                             (rackton-repl-state-sources state)
                             (syntax->datum stx)
                             parsed)]))
+   (define datum (syntax->datum stx))
+   ;; Give `dynamic-rerequire` ownership of any on-disk module this require
+   ;; pulls in, BEFORE the plain runtime import below — a later `,reload`
+   ;; can only reload a module whose lifecycle rerequire has owned since its
+   ;; first load (see do-reload).
+   (register-reloadable-requires! datum (rackton-repl-state-nsp base))
    ;; Run the compiled forms (including a `require`'s runtime import)
    ;; before pulling in any exported macros, so a macro that expands into
    ;; the library's runtime bindings finds them already loaded.
    (for ([c (in-list compiled)])
      (eval-in base c))
-   (define datum (syntax->datum stx))
    (define state*
      (if (and (pair? datum) (eq? (car datum) 'require))
          (struct-copy rackton-repl-state base
-                      [macros (import-session-macros base stx)])
+                      [macros (import-session-macros base stx)]
+                      [required (remove-duplicates
+                                 (append (rackton-repl-state-required base)
+                                         (filter string? (cdr datum))))])
          base))
    (values state*
            (format-top-result datum
@@ -748,6 +762,62 @@
        (for/fold ([macros macros]) ([entry (in-list entries)])
          (eval-in state (datum->syntax #f (cdr entry)))
          (cons (car entry) macros))])))
+
+;; Establish `dynamic-rerequire` ownership of a require's on-disk (file
+;; path) modules in the session namespace.  `dynamic-rerequire` reloads
+;; only modules whose lifecycle it has owned since their first load; a
+;; module first pulled in by a plain `require` is never reloaded (verified
+;; by spike).  So the first time the session requires a file module, load
+;; it once through `dynamic-rerequire` here — at its current (pre-edit)
+;; timestamp — so a later `,reload` detects the edit.  Collection/symbol
+;; specs are not file modules and are left to the plain require.
+(define (register-reloadable-requires! datum nsp)
+  (when (and (pair? datum) (eq? (car datum) 'require))
+    (parameterize ([current-namespace nsp])
+      (for ([spec (in-list (cdr datum))])
+        (when (string? spec)
+          (with-handlers ([exn:fail? void])
+            (dynamic-rerequire (build-path (current-directory) spec)
+                               #:verbosity 'none)))))))
+
+;; ,reload SPEC — pick up an edited-on-disk module without restarting the
+;; session.  Both channels must run under the session namespace `nsp`:
+;; `dynamic-rerequire` re-instantiates the changed module (and its
+;; dependencies) there, and re-elaborating a `(require SPEC)` under the same
+;; namespace makes inference read the FRESH `rackton-schemes` sidecar —
+;; folding the new types over the old (name-keyed env tables overwrite) and
+;; re-importing the new runtime bindings and macros.  Running under `nsp` is
+;; what defeats the `dynamic-require` cache: the recompiled sidecar is
+;; instantiated here for the first time in this namespace (see the spike in
+;; InteractiveDevelopment.org §3.7).  A binding *removed* from the module
+;; lingers until `,clear` (the fold overwrites, never deletes) — that, and
+;; coherence-on-reload, are deferred (Milestone 4).
+(define (do-reload state spec-in)
+  (define spec (if (syntax? spec-in) (syntax->datum spec-in) spec-in))
+  (with-handlers
+   ([exn:fail?
+     (lambda (e) (values state (format "reload failed: ~a\n" (exn-message e))))])
+   (parameterize ([current-namespace (rackton-repl-state-nsp state)])
+     (define modpath
+       (if (string? spec) (build-path (current-directory) spec) spec))
+     (dynamic-rerequire modpath #:verbosity 'none)
+     (define-values (state* _out)
+       (handle-top-input state (repl-input->syntax (list 'require spec))))
+     (values state* (format "reloaded ~a\n"
+                            (if (string? spec) (format "~s" spec) spec))))))
+
+;; ,reload with no argument — reload every on-disk module required this
+;; session, in require order, threading state through each.
+(define (do-reload-all state)
+  (define specs (rackton-repl-state-required state))
+  (cond
+    [(null? specs) (values state "no modules required this session\n")]
+    [else
+     (for/fold ([st state] [outs '()]
+                #:result (values st (apply string-append (reverse outs))))
+               ([spec (in-list specs)])
+       (define-values (st* o) (do-reload st spec))
+       (values st* (cons o outs)))]))
 
 (define (format-top-result input pre-env post-env)
   (match input
