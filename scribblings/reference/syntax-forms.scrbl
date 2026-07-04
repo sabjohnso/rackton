@@ -1200,7 +1200,14 @@ colon-separated @racket[prefix] (so @racket[foo] is referred to as
 constructors and protocols keep their plain names, so an imported
 constructor's result type matches the type written in annotations.
 Instances are unaffected by every sub-form: module-level coherence makes
-them global, so they are always imported.}
+them global, so they are always imported.
+
+The module @racketmodname[rackton/prelude] re-exports the whole implicit
+prelude as an importable module, so it can be qualified —
+@racket[(require (qualified-in p rackton/prelude))] makes every prelude
+item available as @racketidfont{p:Cons}, @racketidfont{p:fmap}, and so
+on.  This reaches prelude names that a local definition has shadowed.
+See @secref["qualifying-the-prelude"] in the guide.}
 
 @defform[(provide spec ...)]{
 

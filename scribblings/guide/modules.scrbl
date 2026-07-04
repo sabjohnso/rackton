@@ -125,6 +125,41 @@ write in annotations.  A qualified reference uses exactly one colon: a
 qualifier, and a name with a trailing or repeated colon is a syntax
 error.
 
+@section[#:tag "qualifying-the-prelude"]{Qualifying the prelude}
+
+The prelude is normally implicit — @racket[Cons], @racket[fmap],
+@racket[+], and the rest are in scope in every module with no
+@racket[require].  When a module defines its @emph{own} binding that
+shadows a prelude name — say a non-empty list with its own @racket[Cons]
+constructor — the prelude's version is hidden.  The module
+@racketmodname[rackton/prelude] makes the whole prelude importable, so a
+qualifier reaches the shadowed names:
+
+@rackton-example[#:eval ev #:mode 'display]{
+#lang rackton
+(require (qualified-in p rackton/prelude))
+
+;; this module's own Cons — a Nonempty-List constructor
+(data (Nonempty-List a) (Sole a) (Cons a (Nonempty-List a)))
+
+(: ne (Nonempty-List Integer))
+(define ne (Cons 1 (Sole 2)))          (code:comment "our Cons")
+
+(: pl (List Integer))
+(define pl (p:Cons 10 (p:Cons 20 p:Nil)))   (code:comment "the prelude's Cons / Nil")
+
+(: total Integer)
+(define total (p:length pl))
+}
+
+Everything the prelude exports is available under the prefix —
+@racketidfont{p:Cons}, @racketidfont{p:Nil}, @racketidfont{p:fmap},
+@racketidfont{p:filter}, and so on — with the same types they have
+unprefixed.  @racket[prefix-in] works too (@racket[(prefix-in p
+rackton/prelude)] gives @racketidfont{pCons}); @racket[qualified-in]'s
+colon form is the idiomatic choice.  Type constructors, protocols, and
+instances are unaffected, exactly as for any qualified import.
+
 @section{Cross-file protocols and instances}
 
 @hash-lang[] @racketmodfont{rackton} modules also export their protocol
