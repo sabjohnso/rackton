@@ -652,10 +652,16 @@
                            (method-dispatch-symbol local)))
   ;; Sidecar bindings — filtered by export-vars, with renames
   ;; reflected in the published name.
+  ;; A name inherited from the prelude is omitted (every importer already
+  ;; has it); but a name this module LOCALLY redefines must cross even when
+  ;; it shadows a prelude name — otherwise importers fall back to the
+  ;; prelude binding of the same name.  Hence each `prelude` guard is
+  ;; conjoined with "and not locally defined".
   (define export-bindings
     (for/list ([(local external) (in-hash export-vars)]
                #:when (env-ref-var env local #f)
-               #:unless (env-ref-var prelude-env local #f))
+               #:unless (and (env-ref-var prelude-env local #f)
+                             (not (hash-ref local-vars local #f))))
       (cons external (scheme->sexp (env-ref-var env local)))))
   ;; Omit ctors whose owning type was declared with the :abstract
   ;; flag — importers can still mention the TYPE in signatures
@@ -664,7 +670,8 @@
   (define export-data-ctors-encoded
     (for/list ([(local external) (in-hash export-data-ctors)]
                #:when (env-ref-data env local #f)
-               #:unless (env-ref-data prelude-env local #f)
+               #:unless (and (env-ref-data prelude-env local #f)
+                             (not (hash-ref local-data-ctors local #f)))
                #:unless
                (let ([di (env-ref-data env local)])
                  (let ([ti (env-ref-tcon env (data-info-type-name di))])
@@ -673,12 +680,14 @@
   (define export-tcons-encoded
     (for/list ([(local external) (in-hash export-tcons)]
                #:when (env-ref-tcon env local #f)
-               #:unless (env-ref-tcon prelude-env local #f))
+               #:unless (and (env-ref-tcon prelude-env local #f)
+                             (not (hash-ref local-tcons local #f))))
       (cons external (encode-tcon-info (env-ref-tcon env local)))))
   (define export-classes-encoded
     (for/list ([(local external) (in-hash export-classes)]
                #:when (env-ref-class env local #f)
-               #:unless (env-ref-class prelude-env local #f))
+               #:unless (and (env-ref-class prelude-env local #f)
+                             (not (hash-ref local-classes local #f))))
       (cons external (encode-class-info (env-ref-class env local)))))
   ;; Instances always escape.
   (define export-instances
@@ -731,7 +740,8 @@
     (for/list ([(local external) (in-hash export-data-ctors)]
                #:when (env-ref-promoted-ctor env local #f)
                #:when (env-ref-data env local #f)
-               #:unless (env-ref-data prelude-env local #f)
+               #:unless (and (env-ref-data prelude-env local #f)
+                             (not (hash-ref local-data-ctors local #f)))
                #:unless
                (let ([di (env-ref-data env local)])
                  (let ([ti (env-ref-tcon env (data-info-type-name di))])
