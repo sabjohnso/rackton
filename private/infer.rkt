@@ -1155,10 +1155,28 @@
 ;; side-effecting calls (instantiate/subst, record-*) stay direct — during
 ;; the transition they act on the boxes/tables, monadified at the flip.
 (define (infer-var/m x stx env)
+     ;; A name tagged by literal sugar (bracket / dotted-pair / map / set
+     ;; literal, variadic gathering, quoted data) resolves to its prelude
+     ;; binding through a reserved env key, so a module shadowing that
+     ;; name does not capture the sugar (see ast.rkt `mark-sugar-ref`).
+     ;; The reserved key may name a value (e.g. `map-insert`) or a data
+     ;; constructor (e.g. `Pair`), so consult both tables.
+     ;; If a marked name's reserved key is not registered (a name that is
+     ;; not actually a prelude binding), fall back to ordinary resolution.
+     (define reserved-key
+       (and (sugar-ref-marked? stx)
+            (let ([k (sugar-reserved-key x)])
+              (and k (or (env-ref-var env k #f) (env-ref-data env k #f)) k))))
      (define sch
-       (or (env-ref-var env x)
-           (let ([info (env-ref-data env x)])
-             (and info (data-info-scheme info)))))
+       (cond
+         [reserved-key
+          (or (env-ref-var env reserved-key)
+              (let ([info (env-ref-data env reserved-key)])
+                (and info (data-info-scheme info))))]
+         [else
+          (or (env-ref-var env x)
+              (let ([info (env-ref-data env x)])
+                (and info (data-info-scheme info))))]))
      (cond
        [sch
         (define owner-class (env-ref-method-class env x))
@@ -2294,7 +2312,17 @@
                 t-bitstring
                 all-hyps))))]
     [(p:ctor name args stx)
-     (define info (env-ref-data env name))
+     ;; Literal-sugar patterns (`[a b]`, `[a . b]`, quoted data) tag their
+     ;; constructor (`Cons` / `Nil` / `Pair`) so it resolves to the
+     ;; prelude through a reserved env key, immune to a local shadowing of
+     ;; those names — the pattern dual of the `infer-var/m` redirect.  The
+     ;; node keeps its name, so exhaustiveness (keyed on the name) is
+     ;; unaffected.
+     (define reserved-key
+       (and (sugar-ref-marked? stx)
+            (let ([k (sugar-reserved-key name)])
+              (and k (env-ref-data env k #f) k))))
+     (define info (env-ref-data env (or reserved-key name)))
      (cond
        [(not info)
         (raise-syntax-error 'infer
@@ -2560,10 +2588,13 @@
 (define (hash-remove* h keys)
   (for/fold ([h h]) ([k (in-list keys)]) (hash-remove h k)))
 
-;; Build the AST of a list literal `(Cons e₀ … (Cons e_n Nil))`.
+;; Build the AST of a list literal `(Cons e₀ … (Cons e_n Nil))`.  The
+;; `Cons` / `Nil` references are tagged as list sugar so they resolve to
+;; the prelude List even where the module shadows those constructor names.
 (define (build-cons-list elems stx)
-  (foldr (lambda (el acc) (e:app (e:var 'Cons stx) (list el acc) stx))
-         (e:var 'Nil stx)
+  (define m (mark-sugar-ref stx))
+  (foldr (lambda (el acc) (e:app (e:var 'Cons m) (list el acc) stx))
+         (e:var 'Nil m)
          elems))
 
 ;; Names bound by a core pattern.
@@ -6523,7 +6554,19 @@
           ;; rather than the protocol's abstract class parameter.
           ;; Hand the freshened AST to codegen so the syntax
           ;; handles the method resolutions are keyed by agree.
-          (define fresh-body (freshen-ast default-expr stx))
+          ;; Mark the default body's references to sugar-reserved prelude
+          ;; names (sibling methods, prelude ctors/functions) so they
+          ;; resolve to the class's meaning even when THIS instance's
+          ;; module shadows one of those names.  Skipped during prelude
+          ;; construction: the reserved `$sugar:*` keys are only added to
+          ;; the env after the prelude is built, and the prelude's own
+          ;; instances face no shadowing, so marking there would redirect
+          ;; to not-yet-registered keys.
+          (define freshened (freshen-ast default-expr stx))
+          (define fresh-body
+            (if (current-prelude-build?)
+                freshened
+                (mark-sugar-refs-in-ast freshened)))
           (values fresh-body
                   (st-table-put st 'instance-default-bodies
                                 (list class-name head-tcon method-name)

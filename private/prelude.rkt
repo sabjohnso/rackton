@@ -1718,7 +1718,26 @@
     ))
 
 (define prelude-env
-  (parameterize ([current-prelude-build? #t])
-    (let ([forms (for/list ([f (in-list prelude-source-forms)])
-                   (parse-top (datum->syntax #f f)))])
-      (infer-program forms initial-env))))
+  (let ([base (parameterize ([current-prelude-build? #t])
+                (let ([forms (for/list ([f (in-list prelude-source-forms)])
+                               (parse-top (datum->syntax #f f)))])
+                  (infer-program forms initial-env)))])
+    ;; Reserved, unshadowable aliases of the prelude names that literal
+    ;; sugar references (Cons/Nil/Pair, empty-map/map-insert,
+    ;; empty-set/set-insert, append).  Bracket / dotted-pair / map / set
+    ;; literals, quoted data, and variadic rest-gathering tag their
+    ;; references and resolve them through these keys, so a module that
+    ;; locally shadows one of those names does not capture the sugar (see
+    ;; ast.rkt `mark-sugar-ref`).  A user cannot bind a `$`-prefixed name,
+    ;; so these can never be overwritten.  Constructors register in the
+    ;; data-ctor table (patterns need them there); plain functions in the
+    ;; value table.
+    (for/fold ([e base]) ([entry (in-list sugar-reserved-keys)])
+      (define name (car entry))
+      (define key  (cdr entry))
+      (cond
+        [(env-ref-data base name #f)
+         => (lambda (di) (env-extend-data e key di))]
+        [(env-ref-var base name #f)
+         => (lambda (sch) (env-extend-var e key sch))]
+        [else e]))))

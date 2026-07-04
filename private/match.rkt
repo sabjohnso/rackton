@@ -29,7 +29,18 @@
          ;; code's phase, not at this module's phase, so they are imported
          ;; for-template — exactly as codegen.rkt does for racket/base.
          (for-template racket/base
-                       "bitstring-runtime.rkt"))
+                       "bitstring-runtime.rkt"
+                       ;; The prelude List/Pair match-expanders, so a
+                       ;; literal-sugar pattern (`[a b]`, `[a . b]`, quoted
+                       ;; data) matches the prelude constructor even where
+                       ;; the user module shadows the name (see the
+                       ;; `sugar-ref-marked?` branch below).
+                       (only-in "prelude-runtime.rkt" Cons Nil Pair)))
+
+;; Prelude-scoped match-expander identifiers for the constructors that
+;; literal-sugar patterns reference.  Written as literals so they carry
+;; the for-template prelude-runtime context.
+(define sugar-ctor-ids (hasheq 'Cons #'Cons 'Nil #'Nil 'Pair #'Pair))
 
 (define (compile-pattern p)
   (match p
@@ -43,7 +54,15 @@
     [(p:lit v stx)
      (datum->syntax stx v stx)]
     [(p:ctor name args stx)
-     (define name-stx (datum->syntax stx name stx))
+     ;; A literal-sugar constructor pattern resolves through the
+     ;; prelude-scoped match-expander (imported for-template above), so it
+     ;; matches the prelude constructor regardless of a user shadow.
+     (define sugar-id
+       (and (sugar-ref-marked? stx) (hash-ref sugar-ctor-ids name #f)))
+     (define name-stx
+       (if sugar-id
+           (datum->syntax sugar-id (syntax-e sugar-id) stx)
+           (datum->syntax stx name stx)))
      (define arg-stxs (map compile-pattern args))
      (datum->syntax stx (cons name-stx arg-stxs) stx)]
     ;; A tuple pattern matches the tuple's hidden representation.  The

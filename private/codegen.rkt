@@ -241,6 +241,41 @@
   (cond [(or (zero? n) (null? xs)) xs]
         [else (drop-prefix (cdr xs) (sub1 n))]))
 
+;; Prelude-scoped identifiers for the prelude names that literal sugar
+;; references.  Written as literals so they carry codegen's for-template
+;; prelude-runtime context (`append` etc. are excepted from the
+;; for-template racket/base above, so these resolve unambiguously to the
+;; prelude bindings).  A reference tagged by `mark-sugar-ref` (ast.rkt)
+;; emits one of THESE, so the emitted call/constructor resolves to the
+;; prelude binding even where the user module shadows the name.
+(define sugar-runtime-ids
+  (hasheq 'Cons #'Cons 'Nil #'Nil 'Pair #'Pair
+          'empty-map #'empty-map 'map-insert #'map-insert
+          'empty-set #'empty-set 'set-insert #'set-insert
+          'append #'append
+          ;; Method dispatchers for the do/let& /let% /let+ notations.
+          'flatmap #'flatmap 'fmap #'fmap 'product #'product
+          ;; POSITIONAL arrow methods (dispatch on an argument) have a
+          ;; plain runtime generic.  The return-typed arrow methods (arr,
+          ;; ident, arrow-app, mk-prod, inj-left, inj-right) have NO plain
+          ;; value binding — codegen already routes them through the
+          ;; shadow-immune $dispatch tables — so they are absent here.
+          'comp #'comp 'fanout #'fanout 'fanin #'fanin
+          'arrow-loop #'arrow-loop 'prod-fst #'prod-fst 'prod-snd #'prod-snd
+          ;; deriving bodies: positional methods + constructors (pure /
+          ;; mempty are return-typed, routed through $dispatch, so absent).
+          'foldr #'foldr 'fapply #'fapply 'traverse #'traverse
+          'bimap #'bimap 'mappend #'mappend
+          'Some #'Some 'None #'None))
+
+;; emit-id, but a tagged literal-sugar reference resolves through the
+;; prelude-scoped identifier above (with the source srcloc preserved).
+(define (emit-sugar-id name stx)
+  (cond
+    [(and (sugar-ref-marked? stx) (hash-ref sugar-runtime-ids name #f))
+     => (lambda (id) (datum->syntax id (syntax-e id) stx))]
+    [else (emit-id name stx)]))
+
 ;; Lower one expression.  Returns (values syntax st): the read-only ctx flows
 ;; down; the working/log state `st` threads through every child left-to-right.
 (define (compile-expr e ctx st)
@@ -275,7 +310,7 @@
                        [(d ...) (for/list ([sym (in-list dict-impls)])
                                   (compile-dict-impl sym stx ctx))])
            (syntax/loc stx (head d ...)))]
-        [else (emit-id (or resolved name) stx)])
+        [else (emit-sugar-id (or resolved name) stx)])
       st)]
 
     [(e:lam params body stx)

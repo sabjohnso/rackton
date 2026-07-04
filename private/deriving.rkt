@@ -233,9 +233,9 @@
      (e:app (e:var 'f (fresh-stx stx)) (list arg-var) (fresh-stx stx))]
     ;; field is a recursive use of the same data type — recurse via fmap
     [(ty:app (ty:con t _) _ _) #:when (eq? t tname)
-     (e:app (e:var 'fmap (fresh-stx stx)) (list (e:var 'f (fresh-stx stx)) arg-var) (fresh-stx stx))]
+     (e:app (e:var 'fmap (mark-sugar-ref (fresh-stx stx))) (list (e:var 'f (fresh-stx stx)) arg-var) (fresh-stx stx))]
     [(ty:con t _) #:when (eq? t tname)
-     (e:app (e:var 'fmap (fresh-stx stx)) (list (e:var 'f (fresh-stx stx)) arg-var) (fresh-stx stx))]
+     (e:app (e:var 'fmap (mark-sugar-ref (fresh-stx stx))) (list (e:var 'f (fresh-stx stx)) arg-var) (fresh-stx stx))]
     ;; otherwise leave the field unchanged
     [_ arg-var]))
 
@@ -291,7 +291,7 @@
                 (eq? (ty:con-name (ty:app-head ft)) tname))
            (and (ty:con? ft)
                 (eq? (ty:con-name ft) tname)))
-       (e:app (e:var 'foldr (fresh-stx stx))
+       (e:app (e:var 'foldr (mark-sugar-ref (fresh-stx stx)))
               (list (e:var 'f (fresh-stx stx)) acc arg)
               (fresh-stx stx))]
       ;; otherwise the field carries no `a`, skip.
@@ -348,21 +348,21 @@
   (define arity (length field-types))
   (cond
     [(zero? arity)
-     (e:app (e:var 'pure (fresh-stx stx)) (list (e:var ctor-name (fresh-stx stx))) (fresh-stx stx))]
+     (e:app (e:var 'pure (mark-sugar-ref (fresh-stx stx))) (list (e:var ctor-name (fresh-stx stx))) (fresh-stx stx))]
     [(= arity 1)
-     (e:app (e:var 'fmap (fresh-stx stx))
+     (e:app (e:var 'fmap (mark-sugar-ref (fresh-stx stx)))
             (list (e:var ctor-name (fresh-stx stx)) (car lifted-fields))
             (fresh-stx stx))]
     [else
      ;; arity ≥ 3: Ctor <$> l0 <*> l1 <*> … <*> l_{N-1}, with Ctor
      ;; curried so each fmap/fapply supplies exactly one field (a bare
      ;; n-ary Ctor would arity-mismatch — liftA2 only reaches arity 2).
-     (for/fold ([acc (e:app (e:var 'fmap (fresh-stx stx))
+     (for/fold ([acc (e:app (e:var 'fmap (mark-sugar-ref (fresh-stx stx)))
                             (list (curried-ctor-lambda ctor-name arity stx)
                                   (car lifted-fields))
                             (fresh-stx stx))])
                ([lf (in-list (cdr lifted-fields))])
-       (e:app (e:var 'fapply (fresh-stx stx)) (list acc lf) (fresh-stx stx)))]))
+       (e:app (e:var 'fapply (mark-sugar-ref (fresh-stx stx))) (list acc lf) (fresh-stx stx)))]))
 
 (define (transform-traverse-field ft arg-name fparam tname stx)
   (define arg (e:var arg-name (fresh-stx stx)))
@@ -374,9 +374,9 @@
               (eq? (ty:con-name (ty:app-head ft)) tname))
          (and (ty:con? ft)
               (eq? (ty:con-name ft) tname)))
-     (e:app (e:var 'traverse (fresh-stx stx)) (list (e:var 'f (fresh-stx stx)) arg) (fresh-stx stx))]
+     (e:app (e:var 'traverse (mark-sugar-ref (fresh-stx stx))) (list (e:var 'f (fresh-stx stx)) arg) (fresh-stx stx))]
     [else
-     (e:app (e:var 'pure (fresh-stx stx)) (list arg) (fresh-stx stx))]))
+     (e:app (e:var 'pure (mark-sugar-ref (fresh-stx stx))) (list arg) (fresh-stx stx))]))
 
 ;; ----- Bifunctor deriving ----------------------------
 ;; For an ADT with at least TWO tparams.  The penultimate is the
@@ -441,7 +441,7 @@
               (eq? (ty:con-name (ty:app-head ft)) tname))
          (and (ty:con? ft)
               (eq? (ty:con-name ft) tname)))
-     (e:app (e:var 'bimap (fresh-stx stx))
+     (e:app (e:var 'bimap (mark-sugar-ref (fresh-stx stx)))
             (list (e:var 'f (fresh-stx stx)) (e:var 'g (fresh-stx stx)) arg)
             (fresh-stx stx))]
     [else arg]))
@@ -469,7 +469,7 @@
       [else
        (e:app (e:var ctor-name (fresh-stx stx))
               (for/list ([i (in-range arity)])
-                (e:app (e:var 'mappend (fresh-stx stx))
+                (e:app (e:var 'mappend (mark-sugar-ref (fresh-stx stx)))
                        (list (e:var (a-name i) (fresh-stx stx))
                              (e:var (b-name i) (fresh-stx stx)))
                        (fresh-stx stx)))
@@ -510,7 +510,7 @@
       [else
        (e:app (e:var ctor-name (fresh-stx stx))
               (for/list ([i (in-range arity)])
-                (e:var 'mempty (fresh-stx stx)))
+                (e:var 'mempty (mark-sugar-ref (fresh-stx stx))))
               (fresh-stx stx))]))
   (top:instance ctx head
                 (list (top:def 'mempty empty-body stx))
@@ -544,7 +544,7 @@
            (e:match
             (e:var 's (fresh-stx ctx-stx))
             (list (clause (p:ctor ctor-name '() ctx-stx) #f
-                          (e:app (e:var 'Some (fresh-stx ctx-stx))
+                          (e:app (e:var 'Some (mark-sugar-ref (fresh-stx ctx-stx)))
                                  (list (e:var 'Unit (fresh-stx ctx-stx)))
                                  (fresh-stx ctx-stx))
                           ctx-stx)
@@ -552,7 +552,7 @@
                   ;; type has just one ctor — keeps the match
                   ;; well-formed without consulting exhaustiveness.
                   (clause (p:wild ctx-stx) #f
-                          (e:var 'None (fresh-stx ctx-stx))
+                          (e:var 'None (mark-sugar-ref (fresh-stx ctx-stx)))
                           ctx-stx))
             #f ctx-stx)
            (fresh-stx ctx-stx)))
@@ -561,7 +561,7 @@
            (e:var ctor-name (fresh-stx ctx-stx))
            (fresh-stx ctx-stx)))
   (top:def lens-name
-           (e:app (e:var 'Prism (fresh-stx ctx-stx))
+           (e:app (e:var 'Prism (mark-sugar-ref (fresh-stx ctx-stx)))
                   (list extractor builder)
                   (fresh-stx ctx-stx))
            ctx-stx))
@@ -574,12 +574,12 @@
             (e:var 's (fresh-stx ctx-stx))
             (list (clause (p:ctor ctor-name (list (p:var 'x ctx-stx))
                                   ctx-stx) #f
-                          (e:app (e:var 'Some (fresh-stx ctx-stx))
+                          (e:app (e:var 'Some (mark-sugar-ref (fresh-stx ctx-stx)))
                                  (list (e:var 'x (fresh-stx ctx-stx)))
                                  (fresh-stx ctx-stx))
                           ctx-stx)
                   (clause (p:wild ctx-stx) #f
-                          (e:var 'None (fresh-stx ctx-stx))
+                          (e:var 'None (mark-sugar-ref (fresh-stx ctx-stx)))
                           ctx-stx))
             #f ctx-stx)
            (fresh-stx ctx-stx)))
@@ -587,7 +587,7 @@
   ;; `(Foo x)` and `Foo` interchangeable for arity-1 ctors.
   (define builder (e:var ctor-name (fresh-stx ctx-stx)))
   (top:def lens-name
-           (e:app (e:var 'Prism (fresh-stx ctx-stx))
+           (e:app (e:var 'Prism (mark-sugar-ref (fresh-stx ctx-stx)))
                   (list extractor builder)
                   (fresh-stx ctx-stx))
            ctx-stx))
@@ -609,14 +609,14 @@
             (list (clause (p:ctor ctor-name
                                   (for/list ([v (in-list vars)]) (p:var v ctx-stx))
                                   ctx-stx) #f
-                          (e:app (e:var 'Some (fresh-stx ctx-stx))
+                          (e:app (e:var 'Some (mark-sugar-ref (fresh-stx ctx-stx)))
                                  (list (e:tuple
                                         (for/list ([v (in-list vars)]) (e:var v (fresh-stx ctx-stx)))
                                         (fresh-stx ctx-stx)))
                                  (fresh-stx ctx-stx))
                           ctx-stx)
                   (clause (p:wild ctx-stx) #f
-                          (e:var 'None (fresh-stx ctx-stx))
+                          (e:var 'None (mark-sugar-ref (fresh-stx ctx-stx)))
                           ctx-stx))
             #f ctx-stx)
            (fresh-stx ctx-stx)))
@@ -634,7 +634,7 @@
             #t ctx-stx)
            (fresh-stx ctx-stx)))
   (top:def lens-name
-           (e:app (e:var 'Prism (fresh-stx ctx-stx))
+           (e:app (e:var 'Prism (mark-sugar-ref (fresh-stx ctx-stx)))
                   (list extractor builder)
                   (fresh-stx ctx-stx))
            ctx-stx))

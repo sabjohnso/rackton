@@ -16,6 +16,81 @@
 
 (provide (all-defined-out))
 
+;; ----- literal-sugar marker ------------------------------------------
+;;
+;; Built-in literal sugar — bracket lists `[…]`, the dotted-pair literal
+;; `[a . b]`, map/set literals `{…}` / `#{…}`, quoted/quasiquoted data,
+;; and variadic rest-arg gathering — desugars to references to prelude
+;; bindings (`Cons` / `Nil` / `Pair` / `empty-map` / `map-insert` /
+;; `empty-set` / `set-insert` / `append`).  A module may locally SHADOW
+;; any of those names, so the sugar tags the `e:var` / `p:ctor` stx it
+;; emits with this property.  Inference resolves a tagged reference
+;; against the prelude binding regardless of the shadow, via the reserved
+;; `$sugar:…` env entries.  The NAME on the node stays the original, so
+;; codegen (bare names, prefab-keyed at runtime) and exhaustiveness
+;; (keyed on the pattern name) are unaffected — only type resolution is
+;; redirected.
+
+(define sugar-ref-property 'rackton:sugar-ref)
+
+;; Prelude names the sugar references, paired with the reserved,
+;; unshadowable env key each resolves through (users cannot bind a
+;; `$`-prefixed name).
+;; Cons/Nil/Pair/empty-map/…/append are referenced by LITERAL sugar
+;; (bracket / dotted-pair / map / set literals, quoted data).  flatmap /
+;; fmap / product are the type-class METHODS the `do` / `let&` / `let%` /
+;; `let+` notations dispatch through — tagged for the same reason, so the
+;; notation binds to the method rather than a same-named local shadow.
+(define sugar-reserved-keys
+  '((Cons       . |$sugar:Cons|)
+    (Nil        . |$sugar:Nil|)
+    (Pair       . |$sugar:Pair|)
+    (empty-map  . |$sugar:empty-map|)
+    (map-insert . |$sugar:map-insert|)
+    (empty-set  . |$sugar:empty-set|)
+    (set-insert . |$sugar:set-insert|)
+    (append     . |$sugar:append|)
+    (flatmap    . |$sugar:flatmap|)
+    (fmap       . |$sugar:fmap|)
+    (product    . |$sugar:product|)
+    ;; Category / Arrow / Product / Coproduct methods the `proc` notation
+    ;; desugars to — tagged for the same reason as the monadic notations.
+    (arr        . |$sugar:arr|)
+    (comp       . |$sugar:comp|)
+    (fanout     . |$sugar:fanout|)
+    (fanin      . |$sugar:fanin|)
+    (ident      . |$sugar:ident|)
+    (arrow-app  . |$sugar:arrow-app|)
+    (arrow-loop . |$sugar:arrow-loop|)
+    (mk-prod    . |$sugar:mk-prod|)
+    (prod-fst   . |$sugar:prod-fst|)
+    (prod-snd   . |$sugar:prod-snd|)
+    (inj-left   . |$sugar:inj-left|)
+    (inj-right  . |$sugar:inj-right|)
+    ;; Methods and constructors referenced by generated `deriving` bodies.
+    (foldr      . |$sugar:foldr|)
+    (fapply     . |$sugar:fapply|)
+    (traverse   . |$sugar:traverse|)
+    (bimap      . |$sugar:bimap|)
+    (mappend    . |$sugar:mappend|)
+    (pure       . |$sugar:pure|)
+    (mempty     . |$sugar:mempty|)
+    (Some       . |$sugar:Some|)
+    (None       . |$sugar:None|)))
+
+;; Tag `stx` as a literal-sugar reference.  A non-syntax handle (a
+;; synthetic node) gets a fresh placeholder so the tag always lands.
+(define (mark-sugar-ref stx)
+  (syntax-property (if (syntax? stx) stx (datum->syntax #f 'sugar))
+                   sugar-ref-property #t))
+
+(define (sugar-ref-marked? stx)
+  (and (syntax? stx) (syntax-property stx sugar-ref-property) #t))
+
+;; The reserved key a tagged `name` resolves through, else #f.
+(define (sugar-reserved-key name)
+  (cond [(assq name sugar-reserved-keys) => cdr] [else #f]))
+
 ;; ----- AST -----------------------------------------------------------
 
 (struct e:literal (value stx) #:transparent)
@@ -201,6 +276,31 @@
 
 (define (freshen-ast node anchor)
   (remap-ast-stx node (lambda (_) (fresh-stx anchor))))
+
+;; A node's syntax handle (always the last field of these transparent
+;; structs).
+(define (ast-node-handle n)
+  (define v (struct->vector n))
+  (vector-ref v (sub1 (vector-length v))))
+
+;; Tag every `e:var` / `p:ctor` reference to a sugar-reserved prelude name
+;; (Cons/Nil/Pair/fmap/foldr/mappend/…) so it resolves to the prelude
+;; binding rather than a local shadow.  Applied to a class DEFAULT method
+;; body before it is elaborated for an instance: a default is
+;; class-defining code, so its references to sibling methods and prelude
+;; functions must resolve to the class's meaning even in an instance
+;; module that shadows those names.
+(define (mark-sugar-refs-in-ast node)
+  (remap-ast-stx node
+    (lambda (n)
+      (define name
+        (cond [(e:var? n)  (e:var-name n)]
+              [(p:ctor? n) (p:ctor-name n)]
+              [else #f]))
+      (define old (ast-node-handle n))
+      (if (and name (sugar-reserved-key name) (syntax? old))
+          (mark-sugar-ref old)
+          old))))
 
 ;; Rebuild `node`, replacing each node's syntax handle with `(mk old)`.
 (define (remap-ast-stx node mk)

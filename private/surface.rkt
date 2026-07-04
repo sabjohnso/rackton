@@ -135,12 +135,20 @@
 
 ;; ----- expressions --------------------------------------------------
 
+;; A prelude reference emitted by literal sugar (bracket / dotted-pair /
+;; map / set literal, quoted data): tagged so it resolves to the prelude
+;; binding even where the module shadows the name (see `mark-sugar-ref`
+;; in ast.rkt).
+(define (sugar-ref name stx) (e:var name (mark-sugar-ref stx)))
+(define (list-cons-ref stx) (sugar-ref 'Cons stx))
+(define (list-nil-ref  stx) (sugar-ref 'Nil  stx))
+
 ;; Build the Cons/Nil list AST from a list of already-parsed element
 ;; expressions.  Used by the variadic `describe`/`context` desugaring.
 (define (build-list-ast elems stx)
   (cond
-    [(null? elems) (e:var 'Nil stx)]
-    [else (e:app (e:var 'Cons stx)
+    [(null? elems) (list-nil-ref stx)]
+    [else (e:app (list-cons-ref stx)
                  (list (car elems) (build-list-ast (cdr elems) stx))
                  stx)]))
 
@@ -185,7 +193,7 @@
   (when (pair? (syntax-e cdr-stx))
     (raise-syntax-error 'rackton
       "dotted pair literal must have the form [a . b]" stx))
-  (e:app (e:var 'Pair stx)
+  (e:app (sugar-ref 'Pair stx)
          (list (parse-expr (car e)) (parse-expr cdr-stx))
          stx))
 
@@ -198,12 +206,12 @@
     (raise-syntax-error 'rackton
       "map literal {..} needs an even number of forms: {key value ...}"
       stx))
-  (let loop ([elems elems] [acc (e:var 'empty-map stx)])
+  (let loop ([elems elems] [acc (sugar-ref 'empty-map stx)])
     (cond
       [(null? elems) acc]
       [else
        (loop (cddr elems)
-             (e:app (e:var 'map-insert stx)
+             (e:app (sugar-ref 'map-insert stx)
                     (list (parse-expr (car elems))
                           (parse-expr (cadr elems))
                           acc)
@@ -212,12 +220,12 @@
 ;; #{m1 ... mn} => nested set-insert; duplicate members collapse.
 (define (parse-set-literal stx)
   (let loop ([elems (vector->list (syntax-e stx))]
-             [acc (e:var 'empty-set stx)])
+             [acc (sugar-ref 'empty-set stx)])
     (cond
       [(null? elems) acc]
       [else
        (loop (cdr elems)
-             (e:app (e:var 'set-insert stx)
+             (e:app (sugar-ref 'set-insert stx)
                     (list (parse-expr (car elems)) acc)
                     stx))])))
 
@@ -244,10 +252,10 @@
 ;; Nil))` — how a non-escaping unquote / quasiquote keyword survives as
 ;; data at a deeper nesting level.
 (define (quote-data-form sym inner stx)
-  (e:app (e:var 'Cons stx)
+  (e:app (list-cons-ref stx)
          (list (e:literal sym stx)
-               (e:app (e:var 'Cons stx)
-                      (list inner (e:var 'Nil stx))
+               (e:app (list-cons-ref stx)
+                      (list inner (list-nil-ref stx))
                       stx))
          stx))
 
@@ -260,12 +268,12 @@
     (raise-syntax-error 'rackton
       "quoted map literal {..} needs an even number of forms: {key value ...}"
       stx))
-  (let loop ([elems elems] [acc (e:var 'empty-map stx)])
+  (let loop ([elems elems] [acc (sugar-ref 'empty-map stx)])
     (cond
       [(null? elems) acc]
       [else
        (loop (cddr elems)
-             (e:app (e:var 'map-insert stx)
+             (e:app (sugar-ref 'map-insert stx)
                     (list (quote->ast (car elems) level stx)
                           (quote->ast (cadr elems) level stx)
                           acc)
@@ -274,12 +282,12 @@
 ;; #{m1 ... mn} under quote/quasiquote => nested set-insert, recursing
 ;; through `quote->ast` at the current level; duplicate members collapse.
 (define (quote-set elems level stx)
-  (let loop ([elems elems] [acc (e:var 'empty-set stx)])
+  (let loop ([elems elems] [acc (sugar-ref 'empty-set stx)])
     (cond
       [(null? elems) acc]
       [else
        (loop (cdr elems)
-             (e:app (e:var 'set-insert stx)
+             (e:app (sugar-ref 'set-insert stx)
                     (list (quote->ast (car elems) level stx) acc)
                     stx))])))
 
@@ -328,14 +336,14 @@
   (when (pair? (syntax-e b-stx))
     (raise-syntax-error 'rackton
       "a dotted pair must have the form (a . b)" stx b-stx))
-  (e:app (e:var 'Pair stx)
+  (e:app (sugar-ref 'Pair stx)
          (list (quote->ast a-stx level stx) (quote->ast b-stx level stx))
          stx))
 
 ;; Build a quoted list, splicing `,@e` elements positionally.
 (define (quote-list elems level stx)
   (cond
-    [(null? elems) (e:var 'Nil stx)]
+    [(null? elems) (list-nil-ref stx)]
     [else
      (syntax-parse (car elems)
        #:datum-literals (unquote-splicing)
@@ -345,17 +353,17 @@
            (raise-syntax-error 'rackton "unquote-splicing not in quasiquote"
                                stx (car elems))]
           [(= level 1)
-           (e:app (e:var 'append stx)
+           (e:app (sugar-ref 'append stx)
                   (list (parse-expr #'e) (quote-list (cdr elems) level stx))
                   stx)]
           [else
-           (e:app (e:var 'Cons stx)
+           (e:app (list-cons-ref stx)
                   (list (quote-data-form 'unquote-splicing
                                          (quote->ast #'e (sub1 level) stx) stx)
                         (quote-list (cdr elems) level stx))
                   stx)])]
        [_
-        (e:app (e:var 'Cons stx)
+        (e:app (list-cons-ref stx)
                (list (quote->ast (car elems) level stx)
                      (quote-list (cdr elems) level stx))
                stx)])]))
@@ -1286,8 +1294,10 @@
      (values rhs (p:var name stx))]
     [else
      (define-values (rest-ast rest-pat) (gather-product (cdr binds) stx))
-     (values (e:app (e:var 'product stx) (list rhs rest-ast) stx)
-             (p:ctor 'Pair (list (p:var name stx) rest-pat) stx))]))
+     (values (e:app (sugar-ref 'product stx) (list rhs rest-ast) stx)
+             ;; `product` returns a prelude Pair, so its destructuring
+             ;; pattern is the prelude Pair too (shadow-proof).
+             (sugar-pat 'Pair (list (p:var name stx) rest-pat) stx))]))
 
 ;; Build `(combiner (lambda (p) (match p [pattern body])) gathered)` for
 ;; let% (combiner = 'flatmap) and let+ (combiner = 'fmap).  A single
@@ -1297,13 +1307,13 @@
     [(null? (cdr binds))
      (define name (car (car binds)))
      (define rhs  (cdr (car binds)))
-     (e:app (e:var combiner stx)
+     (e:app (sugar-ref combiner stx)
             (list (e:lam (list name) body-ast stx) rhs)
             stx)]
     [else
      (define-values (gathered pat) (gather-product binds stx))
      (define p (gensym '$let))
-     (e:app (e:var combiner stx)
+     (e:app (sugar-ref combiner stx)
             (list (e:lam (list p)
                          (e:match (e:var p stx)
                                   (list (clause pat #f body-ast stx))
@@ -1333,7 +1343,7 @@
     [else
      (define name (car (car binds)))
      (define rhs  (cdr (car binds)))
-     (e:app (e:var 'flatmap stx)
+     (e:app (sugar-ref 'flatmap stx)
             (list (e:lam (list name)
                          (build-sequential-let (cdr binds) body-ast stx)
                          stx)
@@ -1375,7 +1385,7 @@
         ;; for the rest of the chain and the body.
         (define rhs (parse-expr #'expr))
         (parameterize ([current-rename-env (extend-rename-env (list #'v))])
-          (e:app (e:var 'flatmap stx)
+          (e:app (sugar-ref 'flatmap stx)
                  (list (e:lam (list (resolve-id #'v))
                               (parse-do (cdr stmts) body-stx stx)
                               stx)
@@ -1387,7 +1397,7 @@
         ;; same shape as `[_fresh <- expr]` but with a fresh
         ;; identifier so the wildcard isn't a binder.
         (define fresh (gensym '_do))
-        (e:app (e:var 'flatmap stx)
+        (e:app (sugar-ref 'flatmap stx)
                (list (e:lam (list fresh)
                             (parse-do (cdr stmts) body-stx stx)
                             stx)
@@ -1425,27 +1435,27 @@
 ;; would make their resolutions collide.  `fresh-op-stx` mints a distinct
 ;; object per reference while preserving the source location for errors.
 (define (fresh-op-stx ctx) (datum->syntax ctx 'arrow-op ctx))
-(define (arrow-arr g stx)      (e:app (e:var 'arr (fresh-op-stx stx))   (list g) stx))
+(define (arrow-arr g stx)      (e:app (sugar-ref 'arr (fresh-op-stx stx))   (list g) stx))
 ;; `comp` is standard (right-to-left) composition: `(comp g f)` runs `f`
 ;; then `g`.  A `proc` pipeline reads left-to-right ("do `a`, then `b`"),
 ;; so the two arrows are passed to `comp` in reverse: `(comp b a)`.
-(define (arrow-comp a b stx)   (e:app (e:var 'comp (fresh-op-stx stx))  (list b a) stx))
-(define (arrow-fanout a b stx) (e:app (e:var 'fanout (fresh-op-stx stx))(list a b) stx))
-(define (arrow-fanin a b stx)  (e:app (e:var 'fanin (fresh-op-stx stx)) (list a b) stx))
-(define (arrow-ident stx)      (e:var 'ident (fresh-op-stx stx)))
-(define (arrow-app-ref stx)    (e:var 'arrow-app (fresh-op-stx stx)))
-(define (arrow-loop a stx)     (e:app (e:var 'arrow-loop (fresh-op-stx stx)) (list a) stx))
+(define (arrow-comp a b stx)   (e:app (sugar-ref 'comp (fresh-op-stx stx))  (list b a) stx))
+(define (arrow-fanout a b stx) (e:app (sugar-ref 'fanout (fresh-op-stx stx))(list a b) stx))
+(define (arrow-fanin a b stx)  (e:app (sugar-ref 'fanin (fresh-op-stx stx)) (list a b) stx))
+(define (arrow-ident stx)      (sugar-ref 'ident (fresh-op-stx stx)))
+(define (arrow-app-ref stx)    (sugar-ref 'arrow-app (fresh-op-stx stx)))
+(define (arrow-loop a stx)     (e:app (sugar-ref 'arrow-loop (fresh-op-stx stx)) (list a) stx))
 ;; Product / coproduct intro + projection, expressed through the
 ;; tensor-class methods (Prod / Coprod) rather than the strict
 ;; `Pair` / `Either` constructors.  This keeps the whole proc translation
 ;; polymorphic in the arrow's product and coproduct: over `(->)` these
 ;; resolve to `Pair` / `Either` (identical behavior), and over a lazy
 ;; arrow they resolve to its lazy product / coproduct.
-(define (mk-prod-e a b stx)    (e:app (e:var 'mk-prod (fresh-op-stx stx))   (list a b) stx))
-(define (prod-fst-e v stx)     (e:app (e:var 'prod-fst (fresh-op-stx stx))  (list v) stx))
-(define (prod-snd-e v stx)     (e:app (e:var 'prod-snd (fresh-op-stx stx))  (list v) stx))
-(define (inj-left-e v stx)     (e:app (e:var 'inj-left (fresh-op-stx stx))  (list v) stx))
-(define (inj-right-e v stx)    (e:app (e:var 'inj-right (fresh-op-stx stx)) (list v) stx))
+(define (mk-prod-e a b stx)    (e:app (sugar-ref 'mk-prod (fresh-op-stx stx))   (list a b) stx))
+(define (prod-fst-e v stx)     (e:app (sugar-ref 'prod-fst (fresh-op-stx stx))  (list v) stx))
+(define (prod-snd-e v stx)     (e:app (sugar-ref 'prod-snd (fresh-op-stx stx))  (list v) stx))
+(define (inj-left-e v stx)     (e:app (sugar-ref 'inj-left (fresh-op-stx stx))  (list v) stx))
+(define (inj-right-e v stx)    (e:app (sugar-ref 'inj-right (fresh-op-stx stx)) (list v) stx))
 
 ;; Right-nest a non-empty list of items into binary pairs via `mk`:
 ;; [a b c] → (mk a (mk b c)).  Used to build the recursive-binding tuple
@@ -1507,9 +1517,9 @@
        [(rec [p <- c] ...+)
         (define ps (map parse-pattern (syntax->list #'(p ...))))
         (define cs (syntax->list #'(c ...)))
-        (define r-pat (nest-right ps (lambda (a b) (p:ctor 'Pair (list a b) stx))))
+        (define r-pat (nest-right ps (lambda (a b) (sugar-pat 'Pair (list a b) stx))))
         ;; inside the loop each command sees env extended with R.
-        (define inner-pat (p:ctor 'Pair (list env-pat r-pat) stx))
+        (define inner-pat (sugar-pat 'Pair (list env-pat r-pat) stx))
         (define branch-arrs
           (for/list ([ci (in-list cs)]) (translate-proc-cmd ci inner-pat stx)))
         (define fanout-tree
@@ -1521,14 +1531,14 @@
         (define loopbody (arrow-comp fanout-tree dup stx))
         (define looped (arrow-loop loopbody stx))
         ;; extend the outer env with the produced bindings, then continue.
-        (define env-pat* (p:ctor 'Pair (list r-pat env-pat) stx))
+        (define env-pat* (sugar-pat 'Pair (list r-pat env-pat) stx))
         (arrow-comp (arrow-fanout looped (arrow-ident stx) stx)
                     (translate-proc-seq (cdr cmds) env-pat* stx)
                     stx)]
        ;; [p <- cmd] — run cmd, bind its output to pattern p, continue.
        [[p <- c]
         (define c-arr (translate-proc-cmd #'c env-pat stx))
-        (define env-pat* (p:ctor 'Pair (list (parse-pattern #'p) env-pat) stx))
+        (define env-pat* (sugar-pat 'Pair (list (parse-pattern #'p) env-pat) stx))
         (arrow-comp (arrow-fanout c-arr (arrow-ident stx) stx)
                     (translate-proc-seq (cdr cmds) env-pat* stx)
                     stx)]
@@ -1551,13 +1561,13 @@
                  (arrow-ident stx)
                  es))
         (define env-pat*
-          (foldr (lambda (v acc) (p:ctor 'Pair (list (p:var v stx) acc) stx))
+          (foldr (lambda (v acc) (sugar-pat 'Pair (list (p:var v stx) acc) stx))
                  env-pat vs))
         (arrow-comp ext-arr (translate-proc-seq (cdr cmds) env-pat* stx) stx)]
        ;; bare command — run it for effect, discard its output, continue.
        [_
         (define c-arr (translate-proc-cmd s env-pat stx))
-        (define env-pat* (p:ctor 'Pair (list (p:wild stx) env-pat) stx))
+        (define env-pat* (sugar-pat 'Pair (list (p:wild stx) env-pat) stx))
         (arrow-comp (arrow-fanout c-arr (arrow-ident stx) stx)
                     (translate-proc-seq (cdr cmds) env-pat* stx)
                     stx)])]))
@@ -1663,7 +1673,7 @@
   ;; scrutinee half.
   (define branch-arrs
     (for/list ([p (in-list pats)] [c (in-list cmd-stxs)])
-      (translate-proc-cmd c (p:ctor 'Pair (list p env-pat) stx) stx)))
+      (translate-proc-cmd c (sugar-pat 'Pair (list p env-pat) stx) stx)))
   ;; Single branch: no choice, just the routing + the one branch.
   ;; Otherwise fold a right-nested fanin over the branch arrows.
   (define consumer
@@ -1675,23 +1685,30 @@
 
 ;; ----- patterns -----------------------------------------------------
 
+;; Marked prelude-List constructor PATTERNS — the pattern dual of
+;; `list-cons-ref` / `list-nil-ref`, so list-pattern sugar matches the
+;; prelude List even where the module shadows those constructor names.
+(define (sugar-pat name args stx) (p:ctor name args (mark-sugar-ref stx)))
+(define (list-cons-pat args stx) (sugar-pat 'Cons args stx))
+(define (list-nil-pat  stx)      (sugar-pat 'Nil  '()  stx))
+
 ;; A list pattern is Cons/Nil, the dual of `build-list-ast`: fold `pats`
 ;; into nested `(Cons p rest)` constructor patterns, ending at `tail`
 ;; (`Nil` for a fixed-arity list, or a rest-binder for a `… ...` tail).
 (define (build-cons-pattern pats tail stx)
   (cond
     [(null? pats) tail]
-    [else (p:ctor 'Cons
-                  (list (car pats) (build-cons-pattern (cdr pats) tail stx))
-                  stx)]))
+    [else (list-cons-pat
+           (list (car pats) (build-cons-pattern (cdr pats) tail stx))
+           stx)]))
 
 ;; The literal-data form of a deep-nested quasiquote keyword in a pattern:
 ;; `(sym inner)` as a Cons/Nil pattern.  Mirrors `quote-data-form`.
 (define (quote-data-pattern sym inner stx)
-  (p:ctor 'Cons
-          (list (p:lit sym stx)
-                (p:ctor 'Cons (list inner (p:ctor 'Nil '() stx)) stx))
-          stx))
+  (list-cons-pat
+   (list (p:lit sym stx)
+         (list-cons-pat (list inner (list-nil-pat stx)) stx))
+   stx))
 
 ;; The pattern dual of `quote->ast`: convert a quoted/quasiquoted datum to
 ;; a pattern.  `level` tracks quasiquote nesting exactly as on the
@@ -1734,15 +1751,15 @@
      (build-cons-pattern
       (for/list ([e (in-list (syntax->list #'(elem ...)))])
         (quote->pattern e level stx))
-      (p:ctor 'Nil '() stx) stx)]
+      (list-nil-pat stx) stx)]
     ;; '(a . b) as a pattern (proper lists matched above) => Pair pattern.
     [(a . b)
      (when (pair? (syntax-e #'b))
        (raise-syntax-error 'rackton
          "a dotted pair must have the form (a . b)" stx #'b))
-     (p:ctor 'Pair
-             (list (quote->pattern #'a level stx) (quote->pattern #'b level stx))
-             stx)]
+     (sugar-pat 'Pair
+                (list (quote->pattern #'a level stx) (quote->pattern #'b level stx))
+                stx)]
     [_ (raise-syntax-error 'rackton "unsupported quoted pattern" stx d)]))
 
 ;; A literal `...` token (the ellipsis identifier).
@@ -1773,7 +1790,7 @@
      (raise-syntax-error 'rackton
                          "`...` must be the final element of a list pattern" stx)]
     [else
-     (build-cons-pattern (map parse-pattern elems) (p:ctor 'Nil '() stx) stx)]))
+     (build-cons-pattern (map parse-pattern elems) (list-nil-pat stx) stx)]))
 
 (define (parse-pattern stx)
   ;; A `[p ...]` list pattern parallels the `[v ...]` expression literal,
@@ -1795,7 +1812,7 @@
   (when (pair? (syntax-e cdr-stx))
     (raise-syntax-error 'rackton
       "dotted pair pattern must have the form [a . b]" stx))
-  (p:ctor 'Pair (list (parse-pattern (car e)) (parse-pattern cdr-stx)) stx))
+  (sugar-pat 'Pair (list (parse-pattern (car e)) (parse-pattern cdr-stx)) stx))
 
 (define (parse-pattern/form stx)
   (syntax-parse stx
