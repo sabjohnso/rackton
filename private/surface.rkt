@@ -3188,9 +3188,11 @@
      #:fail-unless (not (lowercase-id? (syntax->datum #'name)))
      "data constructor name must be a non-lowercase identifier"
      (data-ctor-plain (syntax->datum #'name) '() stx)]
-    ;; Existential ctor with :forall and :where clauses.
+    ;; Existential ctor with a :forall clause and an optional :where
+    ;; clause.  Without :where the hidden type carries no protocol
+    ;; constraint (extra-context is simply '()).
     [(name:id (~datum :forall) (tv:id ...+)
-              (~datum :where) ctx ...
+              (~optional (~seq (~datum :where) ctx ...) #:defaults ([(ctx 1) '()]))
               ft ...+)
      #:fail-unless (not (lowercase-id? (syntax->datum #'name)))
      "data constructor name must be a non-lowercase identifier"
@@ -3199,7 +3201,7 @@
                   (parse-type t))
                 stx
                 (map syntax->datum (syntax->list #'(tv ...)))
-                (for/list ([c (in-list (syntax->list #'(ctx ...)))])
+                (for/list ([c (in-list (attribute ctx))])
                   (parse-constraint c))
                 #f
                 #f)]
