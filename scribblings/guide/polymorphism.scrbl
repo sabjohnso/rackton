@@ -96,7 +96,7 @@ Existentials appear on @italic{constructor} signatures, not function
 signatures, using a per-constructor @racket[:forall] / @racket[:where]
 clause:
 
-@rackton-example[#:eval ev #:mode 'display]{
+@rackton-example[#:eval ev #:mode 'defs #:context? #t]{
 (data Anything
   (Wrap :forall (a) a (-> a String)))
 }
@@ -115,7 +115,7 @@ inside any clause that matches the constructor:
 Pattern matching on an existential constructor introduces a fresh
 skolem inside the clause:
 
-@rackton-example[#:eval ev #:mode 'display]{
+@rackton-example[#:eval ev #:mode 'defs #:context? #t]{
 (: describe (-> Anything String))
 (define (describe x)
   (match x [(Wrap v print) (print v)]))

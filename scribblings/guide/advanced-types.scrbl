@@ -16,7 +16,7 @@ An existential parameter on a constructor lets the constructor hide a
 type from the outside world.  Use a per-constructor @racket[:forall]
 clause to introduce the hidden variable:
 
-@rackton-example[#:eval ev #:mode 'display]{
+@rackton-example[#:eval ev #:mode 'defs #:context? #t]{
 (data Anything
   (Wrap :forall (a) a (-> a String)))
 
@@ -40,13 +40,14 @@ the constructor:
 Pattern matching introduces a fresh skolem for each clause; the
 skolem cannot escape its clause:
 
-@rackton-example[#:eval ev #:mode 'display]{
+@rackton-example[#:eval ev #:mode 'defs #:context? #t]{
 (: describe-each (-> (List Anything) (List String)))
 (define (describe-each xs)
   (match xs
     [(Nil) Nil]
     [(Cons (Wrap v print) rest)
-     (Cons (print v)               (code:comment "OK: print and v share a skolem")
+     ;; OK: print and v share a skolem
+     (Cons (print v)
            (describe-each rest))]))
 }
 
