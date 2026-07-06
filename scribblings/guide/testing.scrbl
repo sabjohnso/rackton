@@ -27,9 +27,12 @@ provides three layers that share one runner:
 
 Bring it all into scope with a single import:
 
-@rackton-example[#:eval ev #:mode 'display]{
+@rackton-example[#:eval ev]{
 #lang rackton
 (require rackton/unit)
+
+(: sane Assertion)
+(define sane (check-equal? (+ 1 1) 2))
 }
 
 A consumer should @racketidfont{require} only @tt{rackton/unit} (not the

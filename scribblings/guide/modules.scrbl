@@ -135,7 +135,7 @@ constructor — the prelude's version is hidden.  The module
 @racketmodname[rackton/prelude] makes the whole prelude importable, so a
 qualifier reaches the shadowed names:
 
-@rackton-example[#:eval ev #:mode 'display]{
+@rackton-example[#:eval ev]{
 #lang rackton
 (require (qualified-in p rackton/prelude))
 
@@ -143,10 +143,10 @@ qualifier reaches the shadowed names:
 (data (Nonempty-List a) (Sole a) (Cons a (Nonempty-List a)))
 
 (: ne (Nonempty-List Integer))
-(define ne (Cons 1 (Sole 2)))          (code:comment "our Cons")
+(define ne (Cons 1 (Sole 2)))          ;; our Cons
 
 (: pl (List Integer))
-(define pl (p:Cons 10 (p:Cons 20 p:Nil)))   (code:comment "the prelude's Cons / Nil")
+(define pl (p:Cons 10 (p:Cons 20 p:Nil)))   ;; the prelude's Cons / Nil
 
 (: total Integer)
 (define total (p:length pl))

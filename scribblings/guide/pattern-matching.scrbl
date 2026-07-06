@@ -105,10 +105,13 @@ any constructor of an ADT scrutinee, omits @racket[#t] or @racket[#f]
 on a @racket[Boolean] scrutinee, or lacks a catchall on an
 unconstrained scrutinee.
 
-@rackton-example[#:eval ev #:mode 'display]{
-;; Compile error: missing case (None)
-(match m
-  [(Some x) x])
+@rackton-example[#:eval ev #:mode 'error]{
+(: m (Maybe Integer))
+(define m (Some 9))
+(: result Integer)
+(define result
+  (match m
+    [(Some x) x]))
 }
 
 To opt out, add a wildcard or variable pattern:
@@ -166,11 +169,14 @@ The number of patterns in the argument list fixes the arity, and every
 clause must share it.  The form above is equivalent to a two-argument
 @racket[lambda] over @racket[match]:
 
-@rackton-example[#:eval ev #:mode 'display]{
-(lambda (a b)
-  (match* (a b)
-    [((Some x) (Some y)) (Some (+ x y))]
-    [(_ _)               None]))
+@rackton-example[#:eval ev #:mode 'value]{
+(define g
+  (lambda (a b)
+    (match* (a b)
+      [((Some x) (Some y)) (Some (+ x y))]
+      [(_ _)               None])))
+
+((g (Some 3)) (Some 4))
 }
 
 That @racket[match*] is a real form in its own right — the N-ary

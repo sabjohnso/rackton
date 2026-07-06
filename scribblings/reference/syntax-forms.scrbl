@@ -38,10 +38,10 @@ Each parameter @racket[p] is either a bare identifier (binds a
 plain parameter) or a parenthesised pattern (destructures the
 argument):
 
-@rackton-example[#:eval ev #:mode 'display]{
+@rackton-example[#:eval ev #:mode 'defs]{
 (struct Point [x : Float] [y : Float])
 (define (distance (Point px py) (Point qx qy))
-  (sqrt (+ (sqr (- px qx)) (sqr (- py qy)))))
+  (sqrt (+ (* (- px qx) (- px qx)) (* (- py qy) (- py qy)))))
 }
 
 A single-form definition with a destructuring pattern desugars

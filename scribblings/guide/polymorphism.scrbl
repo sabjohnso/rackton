@@ -29,9 +29,9 @@ what's added to the environment.
 Function-parameter bindings are NOT generalised — they have plain
 monomorphic types:
 
-@rackton-example[#:eval ev #:mode 'display]{
-(lambda (f)
-  (Pair (f 1) (f "hi")))    ;; TYPE ERROR: f used at two types
+@rackton-example[#:eval ev #:mode 'error]{
+(define (bad f)
+  (Pair (f 1) (f "hi")))
 }
 
 This is the @italic{value restriction} as it appears in HM with
@@ -43,7 +43,9 @@ below.
 A function with a declared polymorphic scheme can call itself at a
 different instantiation than the enclosing call:
 
-@rackton-example[#:eval ev #:mode 'display]{
+@rackton-example[#:eval ev #:mode 'defs]{
+(data (Tree a) Leaf (Node (Tree a) a (Tree a)))
+
 (: depth (-> (Tree a) Integer))
 (define (depth t)
   (match t

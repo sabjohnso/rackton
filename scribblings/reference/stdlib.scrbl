@@ -95,9 +95,12 @@ sugar over.
 For convenience, @racketmodname[rackton/batteries] re-exports the whole
 standard library — every family above — in one import:
 
-@rackton-example[#:eval ev #:mode 'display]{
+@rackton-example[#:eval ev]{
 #lang rackton
 (require rackton/batteries)
+
+(: evens (List Integer))
+(define evens (filter (lambda (n) (== (mod n 2) 0)) (list 1 2 3 4 5 6)))
 }
 
 Prefer the specific module imports in library code (they make

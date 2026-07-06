@@ -49,9 +49,12 @@ and compile times down:
 For scripts and exploration, @racketmodname[rackton/batteries]
 re-exports the whole library in one import:
 
-@rackton-example[#:eval ev #:mode 'display]{
+@rackton-example[#:eval ev]{
 #lang rackton
 (require rackton/batteries)
+
+(: evens (List Integer))
+(define evens (filter (lambda (n) (== (mod n 2) 0)) (list 1 2 3 4 5 6)))
 }
 
 @section{@tt{data} — containers and structures}

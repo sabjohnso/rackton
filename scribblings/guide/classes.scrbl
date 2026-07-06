@@ -138,13 +138,14 @@ An instance must define at least one of @racket[flatmap] or
 @racket[join]; the other is derived.  Defining neither would loop at
 runtime, so Rackton rejects such an instance at compile time:
 
-@rackton-example[#:eval ev #:mode 'display]{
-(instance (Monad MyType))   ;; → instance is incomplete:
-                            ;;   methods (flatmap join) form a
-                            ;;   cyclic default chain
-                            ;;   (flatmap → join → flatmap); at
-                            ;;   least one must be defined directly
-                            ;;   to break the cycle.
+@rackton-example[#:eval ev #:mode 'error]{
+(data (MyType a) (MkMyType a))
+(instance (Functor MyType)
+  (define (fmap f s) (match s [(MkMyType x) (MkMyType (f x))])))
+(instance (Applicative MyType)
+  (define (pure x) (MkMyType x))
+  (define (fapply sf sx) (match sf [(MkMyType f) (fmap f sx)])))
+(instance (Monad MyType))
 }
 
 @racket[Applicative] is a 3-cycle (@racket[fapply] ← @racket[product]

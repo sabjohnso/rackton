@@ -62,7 +62,7 @@ under the same handler.
 
 @subsection{Counter — peek-and-bump}
 
-@rackton-example[#:eval ev #:mode 'display]{
+@rackton-example[#:eval ev #:mode 'defs]{
 (define-effect Counter
   (peek -> Integer)
   (bump -> Unit))
@@ -70,24 +70,24 @@ under the same handler.
 (: run-counter (-> Integer (-> Unit a) a))
 (define (run-counter start prog)
   (letrec
-    ([loop (lambda (n)
-             (handle (prog Unit)
-               [peek () k -> ((loop n) (k n))]
-               [bump () k -> ((loop (+ n 1)) (k Unit))]
+    ([loop (lambda (n comp)
+             (handle comp
+               [peek () k -> (loop n (k n))]
+               [bump () k -> (loop (+ n 1) (k Unit))]
                [return v -> v]))])
-    (loop start)))
+    (loop start (prog Unit))))
 }
 
 @subsection{Exception — abort with a fallback}
 
-@rackton-example[#:eval ev #:mode 'display]{
+@rackton-example[#:eval ev #:mode 'defs]{
 (define-effect Exn
   (raise-e -> Integer))
 
 (: run-exn (-> Integer (-> Unit Integer) Integer))
 (define (run-exn fallback prog)
   (handle (prog Unit)
-    [raise-e () _ -> fallback]      (code:comment "don't resume; return fallback")
+    [raise-e () _ -> fallback]      ;; don't resume; return fallback
     [return v     -> v]))
 }
 

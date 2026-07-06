@@ -180,8 +180,9 @@ type error, reported as the ordinary unification failure it is.  Here the
 leading symbol @racket[Pair] fixes the element type to @racket[Symbol], so
 the @racket[String] @racket["abc"] does not fit:
 
-@rackton-example[#:eval ev #:mode 'display]{
-'(Pair "abc" 1 2 3)   ;; type error: expected Symbol, got String
+@rackton-example[#:eval ev #:mode 'error]{
+(: bad (List Symbol))
+(define bad '(Pair "abc" 1 2 3))
 }
 
 @subsection{Quasiquotation}

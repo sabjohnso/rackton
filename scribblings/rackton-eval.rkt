@@ -28,8 +28,15 @@
 ;;                    show its captured output.
 ;;         'module  — auto-selected when <code> begins with `#lang rackton`;
 ;;                    evaluate the whole module and show its output.
-;;         'display — render only, never evaluate (genuine fragments and
-;;                    deliberate error demonstrations).
+;;         'error   — the code is expected to fail; run it, catch the
+;;                    exception, and show its real message.  If it
+;;                    compiles/runs without error, the build fails —
+;;                    a stale error claim must not sit undetected.
+;;         'display — render only, never evaluate.  Reserved for genuine
+;;                    syntax fragments (grammar templates using `...` as
+;;                    a metavariable) that are not runnable code at all;
+;;                    an example that is real code, even one demonstrating
+;;                    an error, belongs in 'defs/'value/'io/'error instead.
 ;;
 ;; Isolation/side effects: each example evaluates the page program in a
 ;; fresh sandbox with CPU/memory limits, so a runaway snippet cannot hang
@@ -154,6 +161,17 @@
                      (define _rackton-result (run-io ,expr))))
         (remember! defs)
         (list 'output (get-output s))]
+       [(error)
+        (define s (fresh-sandbox ev))
+        (define failure
+          (with-handlers ([exn:fail? exn-message])
+            (s `(rackton ,@(program datums)))
+            #f))
+        (unless failure
+          (error 'rackton-example
+                 "example tagged #:mode 'error compiled/ran without error:\n~a"
+                 src))
+        (list 'error failure)]
        [else (error 'rackton-example "unknown mode: ~s" mode)])]))
 
 ;; ---------------------------------------------------------------------------
@@ -171,6 +189,9 @@
      (if (string=? out "")
          '()
          (list (nested #:style 'inset (verbatim out))))]
+    [(eq? (car outcome) 'error)
+     (list (nested #:style 'inset
+                   (verbatim (string-append "✗ " (cadr outcome)))))]
     [else '()]))
 
 ;; rendered : the codeblock element; src : its source text.

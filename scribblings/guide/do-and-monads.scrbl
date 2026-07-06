@@ -18,7 +18,7 @@ This chapter assumes you've read @secref["type-classes"] and
 A @racket[Monad] is a higher-kinded protocol providing @racket[flatmap]
 (the function-first cousin of Haskell's @tt{>>=}):
 
-@rackton-example[#:eval ev #:mode 'display]{
+@rackton-example[#:eval ev #:mode 'defs]{
 (protocol (Monad [m => Applicative])
   (: flatmap (-> (-> a (m b)) (-> (m a) (m b)))))
 }
@@ -135,8 +135,8 @@ a signature.
 The inferred path only fires when the right-hand side is a lambda.  A
 bare value binding such as
 
-@rackton-example[#:eval ev #:mode 'display]{
-(define x (pure 5))   (code:comment "rejected: ambiguous use of pure")
+@rackton-example[#:eval ev #:mode 'error]{
+(define x (pure 5))
 }
 
 is still rejected at compile time --- ascribe it
@@ -148,16 +148,16 @@ The four MTL protocols — @racket[MonadState], @racket[MonadEnv],
 @racket[MonadWriter], @racket[MonadError] — let you write a single
 function body that runs against any monad supporting the effect:
 
-@rackton-example[#:eval ev #:mode 'display]{
+@rackton-example[#:eval ev #:mode 'defs]{
 (require rackton/control/monad/state)
 
 (: count-down ((MonadState Integer m) => (m (List Integer))))
-(define (count-down)
+(define count-down
   (do [n <- get-st]
     (if (<= n 0)
         (pure Nil)
         (do (put-st (- n 1))
-            [rest <- (count-down)]
+            [rest <- count-down]
           (pure (Cons n rest))))))
 }
 
