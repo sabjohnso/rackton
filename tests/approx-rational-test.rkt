@@ -25,18 +25,18 @@
 (: suite (List Test))
 (define suite
   (list
-   (it "simplest within tolerance"
-       (all-checks
-        (list (check-equal? half-n 1)  (check-equal? half-d 2)
-              (check-equal? third-n 1) (check-equal? third-d 3))))
-   (it "negative input"
-       (all-checks
-        (list (check-equal? neg-n -1)
-              (check-equal? neg-d 4))))
-   (it "harder value stays within eps with a small denominator"
-       (all-checks
-        (list (check-true (< (abs (- pi-approx 3.14159)) 0.01))
-              (check-true (<= pi-den 50)))))))
+    (it "simplest within tolerance"
+        (all-checks
+          (list (check-equal? half-n 1)  (check-equal? half-d 2)
+                (check-equal? third-n 1) (check-equal? third-d 3))))
+    (it "negative input"
+        (all-checks
+          (list (check-equal? neg-n -1)
+                (check-equal? neg-d 4))))
+    (it "harder value stays within eps with a small denominator"
+        (all-checks
+          (list (check-true (< (abs (- pi-approx 3.14159)) 0.01))
+                (check-true (<= pi-den 50)))))))
 
-(: main Unit)
-(define main (run-io (run-suite "approx-rational" suite)))
+(: test-main (IO Unit))
+(define test-main (run-suite "approx-rational" suite))

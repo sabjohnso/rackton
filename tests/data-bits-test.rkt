@@ -27,26 +27,26 @@
 (: suite (List Test))
 (define suite
   (list
-   (it "logical ops"
-       (all-checks
-        (list (check-equal? r-and 8)    ; 1100 & 1010 = 1000
-              (check-equal? r-or  14)   ; 1100 | 1010 = 1110
-              (check-equal? r-xor 6)    ; 1100 ^ 1010 = 0110
-              (check-equal? r-not -1)))) ; complement of 0 (two's complement)
-   (it "shifts"
-       (all-checks
-        (list (check-equal? r-shl 16)
-              (check-equal? r-shr 4))))
-   (it "test / set / clear"
-       (all-checks
-        (list (check-true  r-test-t)
-              (check-false r-test-f)
-              (check-equal? r-set 8)     ; set bit 3 of 0
-              (check-equal? r-clear 14)))) ; clear bit 0 of 1111
-   (it "popcount"
-       (all-checks
-        (list (check-equal? r-count 3)
-              (check-equal? r-count0 0))))))
+    (it "logical ops"
+        (all-checks
+          (list (check-equal? r-and 8)    ; 1100 & 1010 = 1000
+                (check-equal? r-or  14)   ; 1100 | 1010 = 1110
+                (check-equal? r-xor 6)    ; 1100 ^ 1010 = 0110
+                (check-equal? r-not -1)))) ; complement of 0 (two's complement)
+    (it "shifts"
+        (all-checks
+          (list (check-equal? r-shl 16)
+                (check-equal? r-shr 4))))
+    (it "test / set / clear"
+        (all-checks
+          (list (check-true  r-test-t)
+                (check-false r-test-f)
+                (check-equal? r-set 8)     ; set bit 3 of 0
+                (check-equal? r-clear 14)))) ; clear bit 0 of 1111
+    (it "popcount"
+        (all-checks
+          (list (check-equal? r-count 3)
+                (check-equal? r-count0 0))))))
 
-(: main Unit)
-(define main (run-io (run-suite "data-bits" suite)))
+(: test-main (IO Unit))
+(define test-main (run-suite "data-bits" suite))

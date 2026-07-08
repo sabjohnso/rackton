@@ -11,8 +11,8 @@
 (require "../unit.rkt")
 
 (protocol (TwoP (cat :: (-> * (-> * *))) (p :: (-> * (-> * *))))
-  (:fundep cat -> p)
-  (: tp-first (-> (cat a b) (cat (p a c) (p b c)))))
+          (:fundep cat -> p)
+          (: tp-first (-> (cat a b) (cat (p a c) (p b c)))))
 
 (instance (TwoP (->) Pair)
   (define (tp-first f)
@@ -29,5 +29,5 @@
   (list (it "(->)-headed multi-param instance compiles and dispatches"
             (check-equal? r (Pair 4 100)))))
 
-(: main Unit)
-(define main (run-io (run-suite "instance-head-arrow" suite)))
+(: test-main (IO Unit))
+(define test-main (run-suite "instance-head-arrow" suite))

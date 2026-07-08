@@ -67,9 +67,9 @@
 (: example-tree (Tree Integer))
 (define example-tree
   (Branch
-   (Branch Leaf 1 (Branch Leaf 2 Leaf))
-   3
-   (Branch Leaf 4 Leaf)))
+    (Branch Leaf 1 (Branch Leaf 2 Leaf))
+    3
+    (Branch Leaf 4 Leaf)))
 
 (: tree-sum  Integer)
 (define tree-sum  (foldr + 0 example-tree))
@@ -80,7 +80,7 @@
 ;; ----- 35.E newtype deriving (regression) --------------------
 
 (newtype Wrap (MkWrap Integer)
-  :deriving Eq Show)
+         :deriving Eq Show)
 
 (: wrap-eq Boolean)
 (define wrap-eq   (== (MkWrap 1) (MkWrap 1)))
@@ -89,7 +89,7 @@
 (define wrap-show (show (MkWrap 42)))
 
 (newtype (Idiom a) (MkIdiom a)
-  :deriving Eq Show Functor)
+         :deriving Eq Show Functor)
 
 (: id-mapped (Idiom Integer))
 (define id-mapped (fmap (lambda (n) (* n 2)) (MkIdiom 21)))
@@ -97,30 +97,30 @@
 (: suite (List Test))
 (define suite
   (list
-   (it "non-parametric record derives Eq/Show/Ord"
-       (all-checks
-        (list (check-true  same-pt)
-              (check-false diff-pt)
-              (check-true  lt-pt)
-              (check-equal? shown-pt "(Point 7 9)"))))
-   (it "parametric record derives Functor + Foldable"
-       (all-checks
-        (list (check-equal? mapped-box (Box 42))
-              (check-equal? summed-box 100)
-              (check-equal? listed-box (Cons 5 Nil)))))
-   (it "parametric ADT Eq + Show with constraint propagation"
-       (all-checks
-        (list (check-true   pair2-eq)
-              (check-equal? pair2-show "(MkPair2 7 \"x\")"))))
-   (it "recursive ADT Foldable"
-       (all-checks
-        (list (check-equal? tree-sum  10)
-              (check-equal? tree-list (Cons 1 (Cons 2 (Cons 3 (Cons 4 Nil))))))))
-   (it "newtype deriving (Eq/Show/Functor)"
-       (all-checks
-        (list (check-true   wrap-eq)
-              (check-equal? wrap-show "(MkWrap 42)")
-              (check-equal? id-mapped (MkIdiom 42)))))))
+    (it "non-parametric record derives Eq/Show/Ord"
+        (all-checks
+          (list (check-true  same-pt)
+                (check-false diff-pt)
+                (check-true  lt-pt)
+                (check-equal? shown-pt "(Point 7 9)"))))
+    (it "parametric record derives Functor + Foldable"
+        (all-checks
+          (list (check-equal? mapped-box (Box 42))
+                (check-equal? summed-box 100)
+                (check-equal? listed-box (Cons 5 Nil)))))
+    (it "parametric ADT Eq + Show with constraint propagation"
+        (all-checks
+          (list (check-true   pair2-eq)
+                (check-equal? pair2-show "(MkPair2 7 \"x\")"))))
+    (it "recursive ADT Foldable"
+        (all-checks
+          (list (check-equal? tree-sum  10)
+                (check-equal? tree-list (Cons 1 (Cons 2 (Cons 3 (Cons 4 Nil))))))))
+    (it "newtype deriving (Eq/Show/Functor)"
+        (all-checks
+          (list (check-true   wrap-eq)
+                (check-equal? wrap-show "(MkWrap 42)")
+                (check-equal? id-mapped (MkIdiom 42)))))))
 
-(: main Unit)
-(define main (run-io (run-suite "deriving records + Foldable" suite)))
+(: test-main (IO Unit))
+(define test-main (run-suite "deriving records + Foldable" suite))

@@ -18,15 +18,15 @@
 (: suite (List Test))
 (define suite
   (list
-   (it "single-argument libm"
-       (all-checks
-        (list (check-true (< (abs (- r-cbrt 3.0)) 1e-9))
-              (check-true (< (abs (- r-expm1 0.0)) 1e-9))
-              (check-true (< (abs (- r-log1p 0.0)) 1e-9))
-              (check-true (< (abs (- r-tgamma 24.0)) 1e-9))
-              (check-true (< (abs (- r-erf 0.0)) 1e-9)))))
-   (it "two-argument libm"
-       (check-true (< (abs (- r-hypot 5.0)) 1e-9)))))
+    (it "single-argument libm"
+        (all-checks
+          (list (check-true (< (abs (- r-cbrt 3.0)) 1e-9))
+                (check-true (< (abs (- r-expm1 0.0)) 1e-9))
+                (check-true (< (abs (- r-log1p 0.0)) 1e-9))
+                (check-true (< (abs (- r-tgamma 24.0)) 1e-9))
+                (check-true (< (abs (- r-erf 0.0)) 1e-9)))))
+    (it "two-argument libm"
+        (check-true (< (abs (- r-hypot 5.0)) 1e-9)))))
 
-(: main Unit)
-(define main (run-io (run-suite "foreign-c" suite)))
+(: test-main (IO Unit))
+(define test-main (run-suite "foreign-c" suite))

@@ -41,7 +41,7 @@
 (: pair-str (-> Integer Integer String))
 (define (pair-str a b)
   (string-append "(" (string-append (integer->string a)
-    (string-append ", " (string-append (integer->string b) ")")))))
+                                    (string-append ", " (string-append (integer->string b) ")")))))
 
 (: lin-out (-> (Ten Lin Integer Integer) String))
 (define (lin-out t) (match t [(LinTen a b) (pair-str a b)]))
@@ -52,21 +52,19 @@
   (match t [(FnTen a u) (string-append "(" (string-append (integer->string a) ", ())"))]))
 
 ;; ===== run =========================================================
-(: main Unit)
-(define main
-  (run-io
-   (do [_ <- (println "Wiring diagrams with rackton/linear")]
-       [_ <- (println "")]
-       [_ <- (println "LINEAR (route / permute / transform — never copy or drop):")]
-       [_ <- (println (string-append "  braid >>> (inc *** dbl)  on (3, 5)  =  "
-               (lin-out (at cross-transform (LinTen 3 5)))))]
-       [_ <- (println "")]
-       [_ <- (println "CARTESIAN (additionally copy via dup, drop via discard):")]
-       [_ <- (println (string-append "  fanout (inc &&& dbl)     on 5       =  "
-               (fn-out (at-fn fanout 5))))]
-       [_ <- (println (string-append "  keep-first (drop 2nd)    on (7, 9)  =  "
-               (drop-out (at-fn keep-first (FnTen 7 9)))))]
-       [_ <- (println "")]
-       [_ <- (println "fanout and keep-first need dup / discard, which Lin")]
-       [_ <- (println "does not provide — they are type errors on a linear wire.")]
-     (pure Unit))))
+(: main (IO Unit))
+(define main (do [_ <- (println "Wiring diagrams with rackton/linear")]
+               [_ <- (println "")]
+               [_ <- (println "LINEAR (route / permute / transform — never copy or drop):")]
+               [_ <- (println (string-append "  braid >>> (inc *** dbl)  on (3, 5)  =  "
+                                             (lin-out (at cross-transform (LinTen 3 5)))))]
+               [_ <- (println "")]
+               [_ <- (println "CARTESIAN (additionally copy via dup, drop via discard):")]
+               [_ <- (println (string-append "  fanout (inc &&& dbl)     on 5       =  "
+                                             (fn-out (at-fn fanout 5))))]
+               [_ <- (println (string-append "  keep-first (drop 2nd)    on (7, 9)  =  "
+                                             (drop-out (at-fn keep-first (FnTen 7 9)))))]
+               [_ <- (println "")]
+               [_ <- (println "fanout and keep-first need dup / discard, which Lin")]
+               [_ <- (println "does not provide — they are type errors on a linear wire.")]
+               (pure Unit)))

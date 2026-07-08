@@ -23,7 +23,7 @@
 ;; `make` is return-typed: the carrier `f` appears only in the result,
 ;; so resolution depends on the concrete result type at the call site.
 (protocol (Make (f :: (-> * *)))
-  (: make (-> a (f a))))
+          (: make (-> a (f a))))
 
 (instance (Make Box)
   (define (make x) (MkBox x)))
@@ -34,9 +34,9 @@
 ;; `Use`'s default for `use` calls the return-typed superclass method
 ;; `make` over the still-abstract carrier `f`.
 (protocol (Use (f :: (-> * *)))
-  (:requires (Make f))
-  (: use (-> a (f a)))
-  (define (use x) (make x)))
+          (:requires (Make f))
+          (: use (-> a (f a)))
+          (define (use x) (make x)))
 
 ;; Both instances OMIT `use` and inherit the default.  Each must
 ;; resolve `make` to its own `Make` impl.
@@ -54,10 +54,10 @@
 (: suite (List Test))
 (define suite
   (list
-   (it "inherited default resolves return-typed make for Box"
-       (check-equal? (unbox boxed) 42))
-   (it "inherited default resolves return-typed make for Wrap"
-       (check-equal? (unwrap wrapped) 7))))
+    (it "inherited default resolves return-typed make for Box"
+        (check-equal? (unbox boxed) 42))
+    (it "inherited default resolves return-typed make for Wrap"
+        (check-equal? (unwrap wrapped) 7))))
 
-(: main Unit)
-(define main (run-io (run-suite "inherited-default-return-typed" suite)))
+(: test-main (IO Unit))
+(define test-main (run-suite "inherited-default-return-typed" suite))

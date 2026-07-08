@@ -25,7 +25,7 @@
 (: pairs (List (Pair Integer Integer)))
 (define pairs
   (do [x <- (list 1 2)]
-      [y <- (list 10 20)]
+    [y <- (list 10 20)]
     (pure (Pair x y))))
 
 ;; flatmap to the empty list short-circuits that branch
@@ -36,18 +36,18 @@
 (: suite (List Test))
 (define suite
   (list
-   (it "flatmap over List is concatMap"
-       (check-equal? dupped (Cons 1 (Cons 1 (Cons 2 (Cons 2 (Cons 3 (Cons 3 Nil))))))))
-   (it "join flattens one level of nesting"
-       (check-equal? flattened (Cons 1 (Cons 2 (Cons 3 (Cons 4 (Cons 5 Nil)))))))
-   (it "do over List is the cartesian product"
-       (check-equal? pairs
-                     (Cons (Pair 1 10)
-                           (Cons (Pair 1 20)
-                                 (Cons (Pair 2 10)
-                                       (Cons (Pair 2 20) Nil))))))
-   (it "flatmap to Nil drops that element"
-       (check-equal? with-empty (Cons 1 (Cons 3 Nil))))))
+    (it "flatmap over List is concatMap"
+        (check-equal? dupped (Cons 1 (Cons 1 (Cons 2 (Cons 2 (Cons 3 (Cons 3 Nil))))))))
+    (it "join flattens one level of nesting"
+        (check-equal? flattened (Cons 1 (Cons 2 (Cons 3 (Cons 4 (Cons 5 Nil)))))))
+    (it "do over List is the cartesian product"
+        (check-equal? pairs
+                      (Cons (Pair 1 10)
+                            (Cons (Pair 1 20)
+                                  (Cons (Pair 2 10)
+                                        (Cons (Pair 2 20) Nil))))))
+    (it "flatmap to Nil drops that element"
+        (check-equal? with-empty (Cons 1 (Cons 3 Nil))))))
 
-(: main Unit)
-(define main (run-io (run-suite "list-monad" suite)))
+(: test-main (IO Unit))
+(define test-main (run-suite "list-monad" suite))

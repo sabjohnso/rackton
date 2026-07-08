@@ -29,22 +29,22 @@
 (: suite (List Test))
 (define suite
   (list
-   (it "construction"
-       (all-checks
-        (list (check-equal? rt 5)
-              (check-true  to-ok-flag)
-              (check-equal? to-ok-val 5)
-              (check-true  to-neg-none))))
-   (it "Num"
-       (all-checks
-        (list (check-equal? add 7)
-              (check-equal? mul 12)
-              (check-equal? sub 5))))
-   (it "Eq / Ord / Show"
-       (all-checks
-        (list (check-true  eq-t)
-              (check-true  lt-t)
-              (check-equal? shown "42"))))))
+    (it "construction"
+        (all-checks
+          (list (check-equal? rt 5)
+                (check-true  to-ok-flag)
+                (check-equal? to-ok-val 5)
+                (check-true  to-neg-none))))
+    (it "Num"
+        (all-checks
+          (list (check-equal? add 7)
+                (check-equal? mul 12)
+                (check-equal? sub 5))))
+    (it "Eq / Ord / Show"
+        (all-checks
+          (list (check-true  eq-t)
+                (check-true  lt-t)
+                (check-equal? shown "42"))))))
 
-(: main Unit)
-(define main (run-io (run-suite "numeric-natural" suite)))
+(: test-main (IO Unit))
+(define test-main (run-suite "numeric-natural" suite))

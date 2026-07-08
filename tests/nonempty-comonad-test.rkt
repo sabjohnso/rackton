@@ -37,33 +37,33 @@
 (: zapp (List Integer))
 (define zapp
   (ne-to-list
-   (apply (nonempty (lambda (x) (+ x 1)) (list (lambda (x) (* x 10))))
-          (nonempty 4 (list 5)))))
+    (apply (nonempty (lambda (x) (+ x 1)) (list (lambda (x) (* x 10))))
+           (nonempty 4 (list 5)))))
 
 ;; --- ComonadApply (defaults to apply) -------------------------------
 (: coapp (List Integer))
 (define coapp
   (ne-to-list
-   (coapply (nonempty (lambda (x) (+ x 1)) (list (lambda (x) (* x 10))))
-            (nonempty 4 (list 5)))))
+    (coapply (nonempty (lambda (x) (+ x 1)) (list (lambda (x) (* x 10))))
+             (nonempty 4 (list 5)))))
 
 (: suite (List Test))
 (define suite
   (list
-   (it "Functor NonEmpty"
-       (check-equal? fmapped (list 10 20 30)))
-   (it "extract is the head"
-       (check-equal? ne-extract 1))
-   (it "duplicate yields suffixes (heads recover the list)"
-       (check-equal? dup-heads (list 1 2 3)))
-   (it "extend extract is identity"
-       (check-equal? ext-id (list 1 2 3)))
-   (it "extend ne-length gives suffix lengths"
-       (check-equal? ext-len (list 3 2 1)))
-   (it "FunctorApply NonEmpty is zippy"
-       (check-equal? zapp (list 5 50)))
-   (it "ComonadApply defaults to apply"
-       (check-equal? coapp (list 5 50)))))
+    (it "Functor NonEmpty"
+        (check-equal? fmapped (list 10 20 30)))
+    (it "extract is the head"
+        (check-equal? ne-extract 1))
+    (it "duplicate yields suffixes (heads recover the list)"
+        (check-equal? dup-heads (list 1 2 3)))
+    (it "extend extract is identity"
+        (check-equal? ext-id (list 1 2 3)))
+    (it "extend ne-length gives suffix lengths"
+        (check-equal? ext-len (list 3 2 1)))
+    (it "FunctorApply NonEmpty is zippy"
+        (check-equal? zapp (list 5 50)))
+    (it "ComonadApply defaults to apply"
+        (check-equal? coapp (list 5 50)))))
 
-(: main Unit)
-(define main (run-io (run-suite "nonempty comonad/apply" suite)))
+(: test-main (IO Unit))
+(define test-main (run-suite "nonempty comonad/apply" suite))

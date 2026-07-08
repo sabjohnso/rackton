@@ -51,28 +51,28 @@
 (: suite (List Test))
 (define suite
   (list
-   (it "empty / from-list dedup"
-       (all-checks
-        (list (check-equal? emp0 #t) (check-equal? emp1 #f)
-              (check-equal? sz 2))))
-   (it "variadic set constructor"
-       (all-checks
-        (list (check-equal? v0 0) (check-equal? v3 3)
-              (check-equal? v-mem #t) (check-equal? v-dedup 2))))
-   (it "union / intersection / difference"
-       (all-checks
-        (list (check-equal? u-mem #t) (check-equal? u-sz 3)
-              (check-equal? i-mem2 #t) (check-equal? i-mem1 #f)
-              (check-equal? d-mem1 #t) (check-equal? d-mem2 #f))))
-   (it "subset / disjoint"
-       (all-checks
-        (list (check-equal? sub-yes #t) (check-equal? sub-no #f)
-              (check-equal? disj-yes #t) (check-equal? disj-no #f))))
-   (it "map / filter / foldr"
-       (all-checks
-        (list (check-equal? map-mem #t)
-              (check-equal? filt-mem1 #f) (check-equal? filt-mem2 #t)
-              (check-equal? fold-sum 6))))))
+    (it "empty / from-list dedup"
+        (all-checks
+          (list (check-equal? emp0 #t) (check-equal? emp1 #f)
+                (check-equal? sz 2))))
+    (it "variadic set constructor"
+        (all-checks
+          (list (check-equal? v0 0) (check-equal? v3 3)
+                (check-equal? v-mem #t) (check-equal? v-dedup 2))))
+    (it "union / intersection / difference"
+        (all-checks
+          (list (check-equal? u-mem #t) (check-equal? u-sz 3)
+                (check-equal? i-mem2 #t) (check-equal? i-mem1 #f)
+                (check-equal? d-mem1 #t) (check-equal? d-mem2 #f))))
+    (it "subset / disjoint"
+        (all-checks
+          (list (check-equal? sub-yes #t) (check-equal? sub-no #f)
+                (check-equal? disj-yes #t) (check-equal? disj-no #f))))
+    (it "map / filter / foldr"
+        (all-checks
+          (list (check-equal? map-mem #t)
+                (check-equal? filt-mem1 #f) (check-equal? filt-mem2 #t)
+                (check-equal? fold-sum 6))))))
 
-(: main Unit)
-(define main (run-io (run-suite "rackton/data/set" suite)))
+(: test-main (IO Unit))
+(define test-main (run-suite "rackton/data/set" suite))

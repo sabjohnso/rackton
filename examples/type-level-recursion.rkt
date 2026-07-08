@@ -15,8 +15,8 @@
 (data Peano PZ (PS Peano))
 
 (type-family (Plus a b)
-  [PZ     b = b]
-  [(PS n) b = (PS (Plus n b))])
+             [PZ     b = b]
+             [(PS n) b = (PS (Plus n b))])
 
 ;; ----- a size-indexed value ----------------------------------------
 
@@ -27,7 +27,7 @@
 (: combine (-> (Counted m) (Counted n) (Counted (Plus m n))))
 (define (combine a b)
   (match a [(MkCounted x)
-    (match b [(MkCounted y) (MkCounted (+ x y))])]))
+            (match b [(MkCounted y) (MkCounted (+ x y))])]))
 
 (: amount (-> (Counted n) Integer))
 (define (amount c) (match c [(MkCounted x) x]))
@@ -46,6 +46,4 @@
 (: main (IO Unit))
 (define main
   (do [_ <- (println (string-append "payload sum   = " (show (amount three))))]
-      (println "size index (Plus 1 2) reduced to 3 at compile time")))
-
-(define _go (run-io main))
+    (println "size index (Plus 1 2) reduced to 3 at compile time")))

@@ -43,21 +43,21 @@
 (: suite (List Test))
 (define suite
   (list
-   (it "map-m / sequence-m / for-m over Maybe"
-       (all-checks
-        (list (check-equal? mm-ok  (Some (list 1 2 3)))
-              (check-equal? mm-bad None)
-              (check-equal? seq-ok (Some (list 1 2)))
-              (check-equal? seq-bad None)
-              (check-equal? form   (Some (list 10 20))))))
-   (it "fold-m / replicate-m / filter-m over Maybe"
-       (all-checks
-        (list (check-equal? fm  (Some 6))
-              (check-equal? rm  (Some (list 7 7 7)))
-              (check-equal? flm (Some (list 2 3))))))
-   (it "sequence-m over the List monad (cartesian)"
-       (check-equal? seq-list
-                     (list (list 1 3) (list 1 4) (list 2 3) (list 2 4))))))
+    (it "map-m / sequence-m / for-m over Maybe"
+        (all-checks
+          (list (check-equal? mm-ok  (Some (list 1 2 3)))
+                (check-equal? mm-bad None)
+                (check-equal? seq-ok (Some (list 1 2)))
+                (check-equal? seq-bad None)
+                (check-equal? form   (Some (list 10 20))))))
+    (it "fold-m / replicate-m / filter-m over Maybe"
+        (all-checks
+          (list (check-equal? fm  (Some 6))
+                (check-equal? rm  (Some (list 7 7 7)))
+                (check-equal? flm (Some (list 2 3))))))
+    (it "sequence-m over the List monad (cartesian)"
+        (check-equal? seq-list
+                      (list (list 1 3) (list 1 4) (list 2 3) (list 2 4))))))
 
-(: main Unit)
-(define main (run-io (run-suite "control-monad" suite)))
+(: test-main (IO Unit))
+(define test-main (run-suite "control-monad" suite))

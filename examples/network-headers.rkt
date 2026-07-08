@@ -129,8 +129,8 @@
   (match (decode-udp (bytes->bitstring payload))
     [(Some u)
      (do [_ <- (println (string-append* "    src port: " (show (UDP-source-port u))))]
-         [_ <- (println (string-append* "    dst port: " (show (UDP-dest-port u))))]
-         [_ <- (println (string-append* "    length:   " (show (UDP-length u))))]
+       [_ <- (println (string-append* "    dst port: " (show (UDP-dest-port u))))]
+       [_ <- (println (string-append* "    length:   " (show (UDP-length u))))]
        (match (bytes->string (UDP-data u))
          [(Some s) (println (string-append* "    data:     " s))]
          [None     (println "    data:     <<binary>>")]))]
@@ -140,29 +140,27 @@
 (define (report-ipv4 h)
   (do [_ <- (println (string-append* "  IPv4 version=" (show (IPv4-version h))
                                      " ihl=" (show (IPv4-ihl h))))]
-      [_ <- (println (string-append* "    total length: " (show (IPv4-total-length h))))]
-      [_ <- (println (string-append* "    ttl:          " (show (IPv4-ttl h))))]
-      [_ <- (println (string-append* "    protocol:     " (show (IPv4-protocol h))))]
-      [_ <- (println (string-append* "    source:       " (ip->string (IPv4-source h))))]
-      [_ <- (println (string-append* "    dest:         " (ip->string (IPv4-dest h))))]
-      [_ <- (println "  UDP payload:")]
+    [_ <- (println (string-append* "    total length: " (show (IPv4-total-length h))))]
+    [_ <- (println (string-append* "    ttl:          " (show (IPv4-ttl h))))]
+    [_ <- (println (string-append* "    protocol:     " (show (IPv4-protocol h))))]
+    [_ <- (println (string-append* "    source:       " (ip->string (IPv4-source h))))]
+    [_ <- (println (string-append* "    dest:         " (ip->string (IPv4-dest h))))]
+    [_ <- (println "  UDP payload:")]
     (report-udp (IPv4-payload h))))
 
 ;; ===== main =======================================================
 
-(: main Unit)
-(define main
-  (run-io
-    (let ([packet (datagram (string->bytes "PING"))])
-      (do [_ <- (println "UDP-over-IPv4 datagram via bit syntax:")]
-          [_ <- (println "")]
-          [_ <- (println (string-append* "on the wire ("
-                            (show (bitstring-length packet)) " bits):"))]
-          [_ <- (println (string-append* "  " (show-bytes (bitstring->bytes packet))))]
-          [_ <- (println "")]
-          [_ <- (println "parsed back:")]
-          [_ <- (match (decode-ipv4 packet)
-                  [(Some h) (report-ipv4 h)]
-                  [None     (println "  <<malformed IPv4>>")])]
-          [_ <- (println "")]
-        (println "done.")))))
+(: main (IO Unit))
+(define main (let ([packet (datagram (string->bytes "PING"))])
+               (do [_ <- (println "UDP-over-IPv4 datagram via bit syntax:")]
+                 [_ <- (println "")]
+                 [_ <- (println (string-append* "on the wire ("
+                                                (show (bitstring-length packet)) " bits):"))]
+                 [_ <- (println (string-append* "  " (show-bytes (bitstring->bytes packet))))]
+                 [_ <- (println "")]
+                 [_ <- (println "parsed back:")]
+                 [_ <- (match (decode-ipv4 packet)
+                         [(Some h) (report-ipv4 h)]
+                         [None     (println "  <<malformed IPv4>>")])]
+                 [_ <- (println "")]
+                 (println "done."))))

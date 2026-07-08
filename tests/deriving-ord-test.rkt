@@ -25,17 +25,17 @@
 (: suite (List Test))
 (define suite
   (list
-   (it "ctor-index ordering"
-       (all-checks
-        (list (check-true  c1)
-              (check-false c2)
-              (check-true  c3)
-              (check-false c4))))
-   (it "lexicographic field ordering on parametric data"
-       (all-checks
-        (list (check-true  p-less)
-              (check-true  p-eq)
-              (check-false p-gt))))))
+    (it "ctor-index ordering"
+        (all-checks
+          (list (check-true  c1)
+                (check-false c2)
+                (check-true  c3)
+                (check-false c4))))
+    (it "lexicographic field ordering on parametric data"
+        (all-checks
+          (list (check-true  p-less)
+                (check-true  p-eq)
+                (check-false p-gt))))))
 
-(: main Unit)
-(define main (run-io (run-suite "deriving Ord" suite)))
+(: test-main (IO Unit))
+(define test-main (run-suite "deriving Ord" suite))

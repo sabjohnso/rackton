@@ -18,12 +18,12 @@
 (define (run-calc input)
   (parameterize ([current-input-port  (open-input-string input)]
                  [current-output-port (open-output-string)])
-    (dynamic-require calc-example #f)
+    (dynamic-require `(submod ,calc-example main) #f)
     (get-output-string (current-output-port))))
 
 (test-case "calc evaluates simple expressions"
-  (define out (run-calc "(+ 1 2)\n"))
-  (check-regexp-match #rx"3" out))
+           (define out (run-calc "(+ 1 2)\n"))
+           (check-regexp-match #rx"3" out))
 
 ;; Skipping more elaborate tests here — dynamic-require caches the
 ;; module so we can't easily re-run it inside the same Racket session.

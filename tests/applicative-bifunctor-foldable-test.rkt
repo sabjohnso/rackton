@@ -19,8 +19,8 @@
 (: list-ap (List Integer))
 (define list-ap
   (fapply (Cons (lambda (x) (+ x 10))
-             (Cons (lambda (x) (* x 2)) Nil))
-       (Cons 1 (Cons 2 Nil))))
+                (Cons (lambda (x) (* x 2)) Nil))
+          (Cons 1 (Cons 2 Nil))))
 
 ;; ----- liftA2 default over Maybe ----------------------------
 (: lifted-add (Maybe Integer))
@@ -99,42 +99,42 @@
 (: suite (List Test))
 (define suite
   (list
-   (it "Applicative fapply on Maybe"
-       (all-checks
-        (list (check-equal? maybe-ap1 (Some 42))
-              (check-equal? maybe-ap2 None))))
-   (it "Applicative fapply on Either"
-       (check-equal? result-ap (Right 42)))
-   (it "Applicative fapply on List (cartesian)"
-       (check-equal? list-ap
-                     (Cons 11 (Cons 12 (Cons 2 (Cons 4 Nil))))))
-   (it "Applicative liftA2 on Maybe"
-       (check-equal? lifted-add (Some 7)))
-   (it "Applicative fapply on IO"
-       (check-equal? io-ap-result 105))
-   (it "Bifunctor bimap on Pair"
-       (check-equal? pair-bimapped (Pair 42 "hi!")))
-   (it "Bifunctor bimap on Either Right"
-       (check-equal? result-bimapped (Right 70)))
-   (it "Bifunctor bimap on Either Left"
-       (check-equal? result-bimapped-err (Left 4)))
-   (it "Bifunctor first on Pair"
-       (check-equal? pair-first (Pair 101 "k")))
-   (it "Bifunctor second on Pair"
-       (check-equal? pair-second (Pair 1 "k?")))
-   (it "Foldable foldr on List"
-       (check-equal? sum-result 6))
-   (it "Foldable foldr on Maybe"
-       (all-checks
-        (list (check-equal? fold-some 105)
-              (check-equal? fold-none 100))))
-   (it "Foldable length defaults"
-       (all-checks
-        (list (check-equal? list-len 3)
-              (check-equal? maybe-len 1)
-              (check-equal? maybe-empty-len 0))))
-   (it "Foldable sum default"
-       (check-equal? list-sum-default 30))))
+    (it "Applicative fapply on Maybe"
+        (all-checks
+          (list (check-equal? maybe-ap1 (Some 42))
+                (check-equal? maybe-ap2 None))))
+    (it "Applicative fapply on Either"
+        (check-equal? result-ap (Right 42)))
+    (it "Applicative fapply on List (cartesian)"
+        (check-equal? list-ap
+                      (Cons 11 (Cons 12 (Cons 2 (Cons 4 Nil))))))
+    (it "Applicative liftA2 on Maybe"
+        (check-equal? lifted-add (Some 7)))
+    (it "Applicative fapply on IO"
+        (check-equal? io-ap-result 105))
+    (it "Bifunctor bimap on Pair"
+        (check-equal? pair-bimapped (Pair 42 "hi!")))
+    (it "Bifunctor bimap on Either Right"
+        (check-equal? result-bimapped (Right 70)))
+    (it "Bifunctor bimap on Either Left"
+        (check-equal? result-bimapped-err (Left 4)))
+    (it "Bifunctor first on Pair"
+        (check-equal? pair-first (Pair 101 "k")))
+    (it "Bifunctor second on Pair"
+        (check-equal? pair-second (Pair 1 "k?")))
+    (it "Foldable foldr on List"
+        (check-equal? sum-result 6))
+    (it "Foldable foldr on Maybe"
+        (all-checks
+          (list (check-equal? fold-some 105)
+                (check-equal? fold-none 100))))
+    (it "Foldable length defaults"
+        (all-checks
+          (list (check-equal? list-len 3)
+                (check-equal? maybe-len 1)
+                (check-equal? maybe-empty-len 0))))
+    (it "Foldable sum default"
+        (check-equal? list-sum-default 30))))
 
-(: main Unit)
-(define main (run-io (run-suite "applicative-bifunctor-foldable" suite)))
+(: test-main (IO Unit))
+(define test-main (run-suite "applicative-bifunctor-foldable" suite))

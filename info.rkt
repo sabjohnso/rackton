@@ -3,14 +3,14 @@
 ;; syntax-color-lib: the Racket lexer is the structural editor's
 ;; "syntax table" (private/repl-entry.rkt) and its coloring source.
 (define deps '("base"
-               "syntax-color-lib"))
+                "syntax-color-lib"))
 (define build-deps '("scribble-lib"
-                     "racket-doc"
-                     "rackunit-lib"
-                     "rackcheck-lib"
-                     ;; sandbox-lib: scribblings/rackton-eval.rkt runs the
-                     ;; doc examples in a sandbox at build time.
-                     "sandbox-lib"))
+                      "racket-doc"
+                      "rackunit-lib"
+                      "rackcheck-lib"
+                      ;; sandbox-lib: scribblings/rackton-eval.rkt runs the
+                      ;; doc examples in a sandbox at build time.
+                      "sandbox-lib"))
 (define scribblings
   '(("scribblings/rackton.scrbl"                               ()           (language))
     ("scribblings/guide/rackton-guide.scrbl"                   (multi-page) (language))
@@ -22,6 +22,6 @@
 ;; component past the minor is a trailing zero.  A patch-zero release is
 ;; the two-part "0.38" (not "0.38.0"); a non-zero patch is "0.38.1".
 ;; The minor is the release counter.
-(define version "1.23")
+(define version "1.24")
 (define pkg-authors '(sbj))
 (define license '(Apache-2.0 OR MIT))

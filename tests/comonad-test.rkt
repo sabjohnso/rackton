@@ -33,16 +33,16 @@
 (: suite (List Test))
 (define suite
   (list
-   (it "extract unwraps Identity"
-       (check-equal? i-extract 42))
-   (it "duplicate adds a layer"
-       (check-equal? i-dup 7))
-   (it "extend with extract round-trips"
-       (check-equal? i-extend 9))
-   (it "extend applies a co-Kleisli arrow"
-       (check-equal? i-extend2 #t))
-   (it "coapply over Identity"
-       (check-equal? i-coapply 42))))
+    (it "extract unwraps Identity"
+        (check-equal? i-extract 42))
+    (it "duplicate adds a layer"
+        (check-equal? i-dup 7))
+    (it "extend with extract round-trips"
+        (check-equal? i-extend 9))
+    (it "extend applies a co-Kleisli arrow"
+        (check-equal? i-extend2 #t))
+    (it "coapply over Identity"
+        (check-equal? i-coapply 42))))
 
-(: main Unit)
-(define main (run-io (run-suite "rackton/control/comonad" suite)))
+(: test-main (IO Unit))
+(define test-main (run-suite "rackton/control/comonad" suite))

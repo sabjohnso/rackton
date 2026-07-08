@@ -28,26 +28,26 @@
 (: suite (List Test))
 (define suite
   (list
-   (it "inverse trig"
-       (all-checks
-        (list (check-true (< (abs (- asin-0 0.0)) 1e-9))
-              (check-true (< (abs (- acos-1 0.0)) 1e-9))
-              (check-true (< (abs (- atan-0 0.0)) 1e-9)))))
-   (it "hyperbolic trig"
-       (all-checks
-        (list (check-true (< (abs (- sinh-0 0.0)) 1e-9))
-              (check-true (< (abs (- cosh-0 1.0)) 1e-9))
-              (check-true (< (abs (- tanh-0 0.0)) 1e-9)))))
-   (it "log base"
-       (all-checks
-        (list (check-true (< (abs (- lb-2-8   3.0)) 1e-9))
-              (check-true (< (abs (- lb-10-1k 3.0)) 1e-9)))))
-   (it "proper fraction"
-       (all-checks
-        (list (check-equal? pf-pos-i 3)
-              (check-true (< (abs (- pf-pos-f 0.7)) 1e-9))
-              (check-equal? pf-neg-i -3)
-              (check-true (< (abs (- pf-neg-f -0.7)) 1e-9)))))))
+    (it "inverse trig"
+        (all-checks
+          (list (check-true (< (abs (- asin-0 0.0)) 1e-9))
+                (check-true (< (abs (- acos-1 0.0)) 1e-9))
+                (check-true (< (abs (- atan-0 0.0)) 1e-9)))))
+    (it "hyperbolic trig"
+        (all-checks
+          (list (check-true (< (abs (- sinh-0 0.0)) 1e-9))
+                (check-true (< (abs (- cosh-0 1.0)) 1e-9))
+                (check-true (< (abs (- tanh-0 0.0)) 1e-9)))))
+    (it "log base"
+        (all-checks
+          (list (check-true (< (abs (- lb-2-8   3.0)) 1e-9))
+                (check-true (< (abs (- lb-10-1k 3.0)) 1e-9)))))
+    (it "proper fraction"
+        (all-checks
+          (list (check-equal? pf-pos-i 3)
+                (check-true (< (abs (- pf-pos-f 0.7)) 1e-9))
+                (check-equal? pf-neg-i -3)
+                (check-true (< (abs (- pf-neg-f -0.7)) 1e-9)))))))
 
-(: main Unit)
-(define main (run-io (run-suite "numeric-real" suite)))
+(: test-main (IO Unit))
+(define test-main (run-suite "numeric-real" suite))

@@ -70,23 +70,23 @@
 (: suite (List Test))
 (define suite
   (list
-   (it "derived lenses view flat fields"
-       (all-checks
-        (list (check-equal? x-val 3)
-              (check-equal? y-val 7))))
-   (it "derived lenses set + over"
-       (all-checks
-        (list (check-equal? p-set-x  (Point 99 7))
-              (check-equal? p-bump-y (Point 3 8)))))
-   (it "derived parametric lens"
-       (all-checks
-        (list (check-equal? b-val "hi")
-              (check-equal? b-set (Box "hello")))))
-   (it "composed derived lenses through nesting"
-       (all-checks
-        (list (check-equal? seg-start-x 1)
-              (check-equal? seg-shifted (Segment (Point 42 2) (Point 10 20)))
-              (check-equal? seg-doubled (Segment (Point 2 2)  (Point 10 20))))))))
+    (it "derived lenses view flat fields"
+        (all-checks
+          (list (check-equal? x-val 3)
+                (check-equal? y-val 7))))
+    (it "derived lenses set + over"
+        (all-checks
+          (list (check-equal? p-set-x  (Point 99 7))
+                (check-equal? p-bump-y (Point 3 8)))))
+    (it "derived parametric lens"
+        (all-checks
+          (list (check-equal? b-val "hi")
+                (check-equal? b-set (Box "hello")))))
+    (it "composed derived lenses through nesting"
+        (all-checks
+          (list (check-equal? seg-start-x 1)
+                (check-equal? seg-shifted (Segment (Point 42 2) (Point 10 20)))
+                (check-equal? seg-doubled (Segment (Point 2 2)  (Point 10 20))))))))
 
-(: main Unit)
-(define main (run-io (run-suite "deriving Lens" suite)))
+(: test-main (IO Unit))
+(define test-main (run-suite "deriving Lens" suite))

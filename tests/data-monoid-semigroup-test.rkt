@@ -27,17 +27,17 @@
 (: suite (List Test))
 (define suite
   (list
-   (it "All / Any"
-       (all-checks
-        (list (check-equal? all-tt #t) (check-equal? all-tf #f)
-              (check-equal? any-ft #t) (check-equal? any-ff #f)
-              (check-equal? all-mc #f)
-              (check-equal? all-mc0 #t)
-              (check-equal? any-mc0 #f))))
-   (it "Min / Max / First / Last"
-       (all-checks
-        (list (check-equal? mn 3) (check-equal? mx 7)
-              (check-equal? ft 1) (check-equal? lt 2))))))
+    (it "All / Any"
+        (all-checks
+          (list (check-equal? all-tt #t) (check-equal? all-tf #f)
+                (check-equal? any-ft #t) (check-equal? any-ff #f)
+                (check-equal? all-mc #f)
+                (check-equal? all-mc0 #t)
+                (check-equal? any-mc0 #f))))
+    (it "Min / Max / First / Last"
+        (all-checks
+          (list (check-equal? mn 3) (check-equal? mx 7)
+                (check-equal? ft 1) (check-equal? lt 2))))))
 
-(: main Unit)
-(define main (run-io (run-suite "rackton/data/monoid+semigroup" suite)))
+(: test-main (IO Unit))
+(define test-main (run-suite "rackton/data/monoid+semigroup" suite))

@@ -27,13 +27,13 @@
 (: suite (List Test))
 (define suite
   (list
-   (it "pure C functions"
-       (all-checks
-        (list (check-true (< (abs (- r1 3.0)) 1e-9))
-              (check-true (< (abs (- r2 5.0)) 1e-9))
-              (check-equal? r3 7))))
-   (it "effectful (IO) C function"
-       (check-true (> r4 0)))))   ; getpid is a positive process id
+    (it "pure C functions"
+        (all-checks
+          (list (check-true (< (abs (- r1 3.0)) 1e-9))
+                (check-true (< (abs (- r2 5.0)) 1e-9))
+                (check-equal? r3 7))))
+    (it "effectful (IO) C function"
+        (check-true (> r4 0)))))   ; getpid is a positive process id
 
-(: main Unit)
-(define main (run-io (run-suite "foreign-c-inline" suite)))
+(: test-main (IO Unit))
+(define test-main (run-suite "foreign-c-inline" suite))

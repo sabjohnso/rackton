@@ -14,11 +14,11 @@
 (: suite (List Test))
 (define suite
   (list
-   (it "data/ratio"
-       (all-checks
-        (list (check-equal? rn 1) (check-equal? rd 2)
-              (check-equal? cn 3) (check-equal? cd 2)
-              (check-equal? tf 0.5))))))
+    (it "data/ratio"
+        (all-checks
+          (list (check-equal? rn 1) (check-equal? rd 2)
+                (check-equal? cn 3) (check-equal? cd 2)
+                (check-equal? tf 0.5))))))
 
-(: main Unit)
-(define main (run-io (run-suite "rackton/data/ratio" suite)))
+(: test-main (IO Unit))
+(define test-main (run-suite "rackton/data/ratio" suite))

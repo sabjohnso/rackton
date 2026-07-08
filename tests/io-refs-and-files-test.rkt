@@ -13,14 +13,14 @@
 (define (loop-step r stop)
   (do [n <- (read-ref r)]
     (if (< n stop)
-        (do [_ <- (write-ref r (+ n 1))]
-          (loop-step r stop))
-        (pure-io Unit))))
+      (do [_ <- (write-ref r (+ n 1))]
+        (loop-step r stop))
+      (pure-io Unit))))
 
 (: count-from-to (-> Integer (-> Integer (IO Integer))))
 (define (count-from-to start stop)
   (do [r <- (make-ref start)]
-      [_ <- (loop-step r stop)]
+    [_ <- (loop-step r stop)]
     (read-ref r)))
 
 ;; List helpers
@@ -58,32 +58,32 @@
 (: suite (List Test))
 (define suite
   (list
-   (it "Ref counter loops 5 → 10"
-       (check-equal? (run-io (count-from-to 5 10)) 10))
-   (it "reverse"
-       (check-equal? rev (Cons 9 (Cons 5 (Cons 1 (Cons 4 (Cons 1 (Cons 3 Nil))))))))
-   (it "take / drop"
-       (all-checks
-        (list (check-equal? first-3 (Cons 3 (Cons 1 (Cons 4 Nil))))
-              (check-equal? last-3  (Cons 1 (Cons 5 (Cons 9 Nil)))))))
-   (it "sort"
-       (check-equal? sorted-xs
-                     (Cons 1 (Cons 1 (Cons 3 (Cons 4 (Cons 5 (Cons 9 Nil))))))))
-   (it "find"
-       (all-checks
-        (list (check-equal? found   (Some 5))
-              (check-equal? missing None))))
-   (it "fst / snd / swap"
-       (all-checks
-        (list (check-equal? p-fst "key")
-              (check-equal? p-snd 42)
-              (check-equal? p-sw  (Pair 42 "key")))))
-   (it "fmap over a tree (derived)"
-       (check-equal?
-        t1-x2
-        (Node Leaf 2 (Node Leaf 4 (Node Leaf 6 Leaf)))))
-   (it "round-trip file write / read"
-       (check-equal? (run-io file-roundtrip) "rackton file io rules"))))
+    (it "Ref counter loops 5 → 10"
+        (check-equal? (run-io (count-from-to 5 10)) 10))
+    (it "reverse"
+        (check-equal? rev (Cons 9 (Cons 5 (Cons 1 (Cons 4 (Cons 1 (Cons 3 Nil))))))))
+    (it "take / drop"
+        (all-checks
+          (list (check-equal? first-3 (Cons 3 (Cons 1 (Cons 4 Nil))))
+                (check-equal? last-3  (Cons 1 (Cons 5 (Cons 9 Nil)))))))
+    (it "sort"
+        (check-equal? sorted-xs
+                      (Cons 1 (Cons 1 (Cons 3 (Cons 4 (Cons 5 (Cons 9 Nil))))))))
+    (it "find"
+        (all-checks
+          (list (check-equal? found   (Some 5))
+                (check-equal? missing None))))
+    (it "fst / snd / swap"
+        (all-checks
+          (list (check-equal? p-fst "key")
+                (check-equal? p-snd 42)
+                (check-equal? p-sw  (Pair 42 "key")))))
+    (it "fmap over a tree (derived)"
+        (check-equal?
+          t1-x2
+          (Node Leaf 2 (Node Leaf 4 (Node Leaf 6 Leaf)))))
+    (it "round-trip file write / read"
+        (check-equal? (run-io file-roundtrip) "rackton file io rules"))))
 
-(: main Unit)
-(define main (run-io (run-suite "io-refs-and-files" suite)))
+(: test-main (IO Unit))
+(define test-main (run-suite "io-refs-and-files" suite))

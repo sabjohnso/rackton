@@ -50,50 +50,50 @@
 (: suite (List Test))
 (define suite
   (list
-   (it "flag from argv"
-       (all-checks
-        (list (check-true (ran-bool? (value (flag (info (list "v" "verbose")))) (list "--verbose") #t))
-              (check-true (ran-bool? (value (flag (info (list "v" "verbose")))) Nil #f)))))
+    (it "flag from argv"
+        (all-checks
+          (list (check-true (ran-bool? (value (flag (info (list "v" "verbose")))) (list "--verbose") #t))
+                (check-true (ran-bool? (value (flag (info (list "v" "verbose")))) Nil #f)))))
 
-   (it "opt from argv (long, short-glued, default)"
-       (all-checks
-        (list (check-true (ran-int? (value (opt conv-int 0 (info (list "c" "count")))) (list "--count" "5") 5))
-              (check-true (ran-int? (value (opt conv-int 0 (info (list "c" "count")))) (list "-c5") 5))
-              (check-true (ran-int? (value (opt conv-int 9 (info (list "c" "count")))) Nil 9)))))
+    (it "opt from argv (long, short-glued, default)"
+        (all-checks
+          (list (check-true (ran-int? (value (opt conv-int 0 (info (list "c" "count")))) (list "--count" "5") 5))
+                (check-true (ran-int? (value (opt conv-int 0 (info (list "c" "count")))) (list "-c5") 5))
+                (check-true (ran-int? (value (opt conv-int 9 (info (list "c" "count")))) Nil 9)))))
 
-   (it "required: present unwraps, absent errors"
-       (all-checks
-        (list (check-true (ran-int? (required (opt (conv-some conv-int) None (info (list "n" "num")))) (list "--num" "7") 7))
-              (check-true (ran-err? (required (opt (conv-some conv-int) None (info (list "n" "num")))) Nil)))))
+    (it "required: present unwraps, absent errors"
+        (all-checks
+          (list (check-true (ran-int? (required (opt (conv-some conv-int) None (info (list "n" "num")))) (list "--num" "7") 7))
+                (check-true (ran-err? (required (opt (conv-some conv-int) None (info (list "n" "num")))) Nil)))))
 
-   (it "positional from argv"
-       (all-checks
-        (list (check-true (ran-str? (value (pos 0 conv-string "none" (info Nil))) (list "hello") "hello")))))
+    (it "positional from argv"
+        (all-checks
+          (list (check-true (ran-str? (value (pos 0 conv-string "none" (info Nil))) (list "hello") "hello")))))
 
-   (it "unknown option propagates the parser error"
-       (all-checks
-        (list (check-true (ran-err? (value (flag (info (list "v")))) (list "--nope"))))))
+    (it "unknown option propagates the parser error"
+        (all-checks
+          (list (check-true (ran-err? (value (flag (info (list "v")))) (list "--nope"))))))
 
-   (it "term->specs: flag valueless, opt valued, positional absent"
-       (all-checks
-        (list (check-equal? (specs-valued (value (flag (info (list "v"))))) (list #f))
-              (check-equal? (specs-valued (value (opt conv-int 0 (info (list "c"))))) (list #t))
-              (check-equal? (specs-valued (value (pos 0 conv-string "" (info Nil)))) Nil))))
+    (it "term->specs: flag valueless, opt valued, positional absent"
+        (all-checks
+          (list (check-equal? (specs-valued (value (flag (info (list "v"))))) (list #f))
+                (check-equal? (specs-valued (value (opt conv-int 0 (info (list "c"))))) (list #t))
+                (check-equal? (specs-valued (value (pos 0 conv-string "" (info Nil)))) Nil))))
 
-   (it "let+ config assembled from argv"
-       (all-checks
-        (list (check-true
-               (match (run-term cfg-term (list "--verbose" "-c" "3" "file.txt"))
-                 [(Ok (Cfg v c f)) (and (== v #t) (and (== c 3) (== f "file.txt")))]
-                 [(Err _) #f])))))
+    (it "let+ config assembled from argv"
+        (all-checks
+          (list (check-true
+                  (match (run-term cfg-term (list "--verbose" "-c" "3" "file.txt"))
+                    [(Ok (Cfg v c f)) (and (== v #t) (and (== c 3) (== f "file.txt")))]
+                    [(Err _) #f])))))
 
-   (it-prop "opt round-trips an integer through --count <n>"
-            (for-all (int-range -100000 100000)
-                     (lambda (n)
-                       (match (run-term (value (opt conv-int 0 (info (list "count"))))
-                                        (list "--count" (show n)))
-                         [(Ok v)  (== v n)]
-                         [(Err _) #f]))))))
+    (it-prop "opt round-trips an integer through --count <n>"
+             (for-all (int-range -100000 100000)
+                      (lambda (n)
+                        (match (run-term (value (opt conv-int 0 (info (list "count"))))
+                                         (list "--count" (show n)))
+                          [(Ok v)  (== v n)]
+                          [(Err _) #f]))))))
 
-(: main Unit)
-(define main (run-io (run-suite "rackton/cmdline/run" suite)))
+(: test-main (IO Unit))
+(define test-main (run-suite "rackton/cmdline/run" suite))

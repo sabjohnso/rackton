@@ -56,29 +56,29 @@
 (: suite (List Test))
 (define suite
   (list
-   (it "inexact complex literal 3.0+4.0i"
-       (all-checks
-        (list (check-equal? zlit zmk)
-              (check-equal? zlit-re 3.0)
-              (check-equal? zlit-im 4.0)
-              (check-equal? zlit-sum (make-complex 3.0 6.0))
-              (check-equal? zlit-show "3.0+4.0i"))))
-   (it "exact complex literal 3+4i"
-       (all-checks
-        (list (check-equal? e1 e1mk)
-              (check-equal? e1-re 3)
-              (check-equal? e1-im 4)
-              (check-equal? e-sum (make-complex-exact 3 4))
-              (check-equal? e-show "3+4i"))))
-   (it "derived exact operations"
-       (all-checks
-        (list (check-equal? e-conj-im -4)
-              (check-equal? e-norm 25)
-              (check-equal? e->c-re 3.0))))
-   (it "exact complex literal pattern"
-       (all-checks
-        (list (check-equal? cls "three-four")
-              (check-equal? cls-other "other"))))))
+    (it "inexact complex literal 3.0+4.0i"
+        (all-checks
+          (list (check-equal? zlit zmk)
+                (check-equal? zlit-re 3.0)
+                (check-equal? zlit-im 4.0)
+                (check-equal? zlit-sum (make-complex 3.0 6.0))
+                (check-equal? zlit-show "3.0+4.0i"))))
+    (it "exact complex literal 3+4i"
+        (all-checks
+          (list (check-equal? e1 e1mk)
+                (check-equal? e1-re 3)
+                (check-equal? e1-im 4)
+                (check-equal? e-sum (make-complex-exact 3 4))
+                (check-equal? e-show "3+4i"))))
+    (it "derived exact operations"
+        (all-checks
+          (list (check-equal? e-conj-im -4)
+                (check-equal? e-norm 25)
+                (check-equal? e->c-re 3.0))))
+    (it "exact complex literal pattern"
+        (all-checks
+          (list (check-equal? cls "three-four")
+                (check-equal? cls-other "other"))))))
 
-(: main Unit)
-(define main (run-io (run-suite "complex literals" suite)))
+(: test-main (IO Unit))
+(define test-main (run-suite "complex literals" suite))

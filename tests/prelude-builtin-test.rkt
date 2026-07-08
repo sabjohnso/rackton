@@ -47,36 +47,36 @@
 (: suite (List Test))
 (define suite
   (list
-   (it "Num Integer dispatches via +, -, *"
-       (all-checks
-        (list (check-equal? a 3)
-              (check-equal? b 42))))
-   (it "Eq/Ord dispatch"
-       (all-checks
-        (list (check-true  eq-test)
-              (check-true  ord-test)
-              (check-true  ord-default-gt)
-              (check-true  ord-default-le))))
-   (it "Show dispatch"
-       (all-checks
-        (list (check-equal? show-int  "42")
-              (check-equal? show-bool "True")
-              (check-equal? show-list "[1 2 3]")
-              ;; Pair is the binary tuple now, so it shows in tuple form.
-              (check-equal? show-pair "(1, 2)"))))
-   (it "prelude Maybe is auto-available"
-       (all-checks
-        (list (check-equal? (from-maybe 0 None) 0)
-              (check-equal? (from-maybe 0 (Some 7)) 7)
-              (check-equal? (from-maybe 0 just-five) 5))))
-   (it "prelude List"
-       (all-checks
-        (list (check-equal? (length-of Nil) 0)
-              (check-equal? (length-of list-3) 3))))
-   (it "Combinators"
-       (all-checks
-        (list (check-equal? same-five 5)
-              (check-equal? identity-applied "x"))))))
+    (it "Num Integer dispatches via +, -, *"
+        (all-checks
+          (list (check-equal? a 3)
+                (check-equal? b 42))))
+    (it "Eq/Ord dispatch"
+        (all-checks
+          (list (check-true  eq-test)
+                (check-true  ord-test)
+                (check-true  ord-default-gt)
+                (check-true  ord-default-le))))
+    (it "Show dispatch"
+        (all-checks
+          (list (check-equal? show-int  "42")
+                (check-equal? show-bool "True")
+                (check-equal? show-list "[1 2 3]")
+                ;; Pair is the binary tuple now, so it shows in tuple form.
+                (check-equal? show-pair "(1, 2)"))))
+    (it "prelude Maybe is auto-available"
+        (all-checks
+          (list (check-equal? (from-maybe 0 None) 0)
+                (check-equal? (from-maybe 0 (Some 7)) 7)
+                (check-equal? (from-maybe 0 just-five) 5))))
+    (it "prelude List"
+        (all-checks
+          (list (check-equal? (length-of Nil) 0)
+                (check-equal? (length-of list-3) 3))))
+    (it "Combinators"
+        (all-checks
+          (list (check-equal? same-five 5)
+                (check-equal? identity-applied "x"))))))
 
-(: main Unit)
-(define main (run-io (run-suite "prelude builtins" suite)))
+(: test-main (IO Unit))
+(define test-main (run-suite "prelude builtins" suite))

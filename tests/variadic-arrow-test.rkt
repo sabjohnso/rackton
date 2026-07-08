@@ -24,7 +24,7 @@
 
 ;; A class method whose signature uses the variadic form.
 (protocol (TriOp a)
-  (: combine (-> a a a a)))
+          (: combine (-> a a a a)))
 
 (instance (TriOp Integer)
   (define (combine x y z) (+ x (+ y z))))
@@ -42,18 +42,18 @@
 (: suite (List Test))
 (define suite
   (list
-   (it "variadic -> in signature: ternary fn type-checks and runs"
-       (check-equal? (add3 1 2 3) 6))
-   (it "variadic -> in signature: binary fn type-checks and runs"
-       (check-equal? (const2 5 7) 5))
-   (it "variadic -> mixed with higher-order arg"
-       (check-equal? (apply-twice (+ 1) 10) 12))
-   (it "partial application across a variadic-form signature"
-       (check-equal? ((add3-curried 20) 30) 60))
-   (it "variadic -> in a class method signature"
-       (check-equal? tri-int 6))
-   (it "1-arg `(-> T)` (0-arg fn encoding) still works"
-       (check-equal? thunk-val 99))))
+    (it "variadic -> in signature: ternary fn type-checks and runs"
+        (check-equal? (add3 1 2 3) 6))
+    (it "variadic -> in signature: binary fn type-checks and runs"
+        (check-equal? (const2 5 7) 5))
+    (it "variadic -> mixed with higher-order arg"
+        (check-equal? (apply-twice (+ 1) 10) 12))
+    (it "partial application across a variadic-form signature"
+        (check-equal? ((add3-curried 20) 30) 60))
+    (it "variadic -> in a class method signature"
+        (check-equal? tri-int 6))
+    (it "1-arg `(-> T)` (0-arg fn encoding) still works"
+        (check-equal? thunk-val 99))))
 
-(: main Unit)
-(define main (run-io (run-suite "variadic arrow" suite)))
+(: test-main (IO Unit))
+(define test-main (run-suite "variadic arrow" suite))

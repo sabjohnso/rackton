@@ -20,17 +20,17 @@
 (: suite (List Test))
 (define suite
   (list
-   (it "Boolean ops"
-       (all-checks
-        (list (check-true  b)
-              (check-true  a-and)
-              (check-true  a-or))))
-   (it "List helpers"
-       (all-checks
-        (list (check-equal? n 4)
-              (check-equal? sm 10)
-              (check-equal? len-of-big 2)
-              (check-equal? big (Cons 3 (Cons 4 Nil))))))))
+    (it "Boolean ops"
+        (all-checks
+          (list (check-true  b)
+                (check-true  a-and)
+                (check-true  a-or))))
+    (it "List helpers"
+        (all-checks
+          (list (check-equal? n 4)
+                (check-equal? sm 10)
+                (check-equal? len-of-big 2)
+                (check-equal? big (Cons 3 (Cons 4 Nil))))))))
 
-(: main Unit)
-(define main (run-io (run-suite "stdlib" suite)))
+(: test-main (IO Unit))
+(define test-main (run-suite "stdlib" suite))

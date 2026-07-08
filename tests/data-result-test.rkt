@@ -10,9 +10,9 @@
 ;; ----- eliminator / predicates / extraction -----------------------
 
 (: r-elim-ok  String) (define r-elim-ok
-  (result (lambda (e) (mappend "err:" e)) (lambda (a) (mappend "ok:" a)) (ann (Ok "x") (Result String String))))
+                        (result (lambda (e) (mappend "err:" e)) (lambda (a) (mappend "ok:" a)) (ann (Ok "x") (Result String String))))
 (: r-elim-err String) (define r-elim-err
-  (result (lambda (e) (mappend "err:" e)) (lambda (a) (mappend "ok:" a)) (ann (Err "y") (Result String String))))
+                        (result (lambda (e) (mappend "err:" e)) (lambda (a) (mappend "ok:" a)) (ann (Err "y") (Result String String))))
 
 (: r-is-ok  Boolean) (define r-is-ok  (is-ok  (ann (Ok 1)    (Result String Integer))))
 (: r-is-err Boolean) (define r-is-err (is-err (ann (Err "e") (Result String Integer))))
@@ -22,9 +22,9 @@
 (: r-from-err String)  (define r-from-err (from-err "d" (ann (Err "e") (Result String Integer))))
 
 (: r-oks  (List Integer)) (define r-oks
-  (oks  (list (ann (Ok 1) (Result String Integer)) (Err "a") (Ok 2))))
+                            (oks  (list (ann (Ok 1) (Result String Integer)) (Err "a") (Ok 2))))
 (: r-errs (List String))  (define r-errs
-  (errs (list (ann (Ok 1) (Result String Integer)) (Err "a") (Ok 2) (Err "b"))))
+                            (errs (list (ann (Ok 1) (Result String Integer)) (Err "a") (Ok 2) (Err "b"))))
 (: r-part (Pair (List String) (List Integer)))
 (define r-part
   (partition-results (list (ann (Ok 1) (Result String Integer)) (Err "a") (Ok 2))))
@@ -63,54 +63,54 @@
 (: suite (List Test))
 (define suite
   (list
-   (it "result eliminator"
-       (all-checks
-        (list (check-equal? r-elim-ok  "ok:x")
-              (check-equal? r-elim-err "err:y"))))
-   (it "predicates"
-       (all-checks
-        (list (check-equal? r-is-ok #t)
-              (check-equal? r-is-err #t))))
-   (it "extraction with default"
-       (all-checks
-        (list (check-equal? r-from-ok  5)
-              (check-equal? r-from-ok0 0)
-              (check-equal? r-from-err "e"))))
-   (it "collecting"
-       (all-checks
-        (list (check-equal? r-oks  (Cons 1 (Cons 2 Nil)))
-              (check-equal? r-errs (Cons "a" (Cons "b" Nil)))
-              (check-equal? r-part (Pair (Cons "a" Nil) (Cons 1 (Cons 2 Nil)))))))
-   (it "Maybe interop"
-       (all-checks
-        (list (check-equal? r-to-maybe  (Some 7))
-              (check-equal? r-to-maybe0 None)
-              (check-equal? r-from-maybe (Ok 9)))))
-   (it "Functor"
-       (all-checks
-        (list (check-equal? r-fmap-ok  (Ok 6))
-              (check-equal? r-fmap-err (Err "e")))))
-   (it "Applicative pure"
-       (check-equal? r-pure (Ok 7)))
-   (it "Monad flatmap"
-       (all-checks
-        (list (check-equal? r-bind-ok  (Ok 10))
-              (check-equal? r-bind-err (Err "e")))))
-   (it "Bifunctor bimap"
-       (check-equal? r-bimap (Err "e!")))
-   (it "Eq"
-       (all-checks
-        (list (check-equal? r-eq-yes #t)
-              (check-equal? r-eq-no  #f))))
-   (it "Show"
-       (all-checks
-        (list (check-equal? r-show-ok  "(Ok 5)")
-              (check-equal? r-show-err "(Err \"e\")"))))
-   (it "Either conversions"
-       (all-checks
-        (list (check-equal? r->e-ok  (Right 5))
-              (check-equal? r->e-err (Left "e"))
-              (check-equal? e->r-rt  (Right 5)))))))
+    (it "result eliminator"
+        (all-checks
+          (list (check-equal? r-elim-ok  "ok:x")
+                (check-equal? r-elim-err "err:y"))))
+    (it "predicates"
+        (all-checks
+          (list (check-equal? r-is-ok #t)
+                (check-equal? r-is-err #t))))
+    (it "extraction with default"
+        (all-checks
+          (list (check-equal? r-from-ok  5)
+                (check-equal? r-from-ok0 0)
+                (check-equal? r-from-err "e"))))
+    (it "collecting"
+        (all-checks
+          (list (check-equal? r-oks  (Cons 1 (Cons 2 Nil)))
+                (check-equal? r-errs (Cons "a" (Cons "b" Nil)))
+                (check-equal? r-part (Pair (Cons "a" Nil) (Cons 1 (Cons 2 Nil)))))))
+    (it "Maybe interop"
+        (all-checks
+          (list (check-equal? r-to-maybe  (Some 7))
+                (check-equal? r-to-maybe0 None)
+                (check-equal? r-from-maybe (Ok 9)))))
+    (it "Functor"
+        (all-checks
+          (list (check-equal? r-fmap-ok  (Ok 6))
+                (check-equal? r-fmap-err (Err "e")))))
+    (it "Applicative pure"
+        (check-equal? r-pure (Ok 7)))
+    (it "Monad flatmap"
+        (all-checks
+          (list (check-equal? r-bind-ok  (Ok 10))
+                (check-equal? r-bind-err (Err "e")))))
+    (it "Bifunctor bimap"
+        (check-equal? r-bimap (Err "e!")))
+    (it "Eq"
+        (all-checks
+          (list (check-equal? r-eq-yes #t)
+                (check-equal? r-eq-no  #f))))
+    (it "Show"
+        (all-checks
+          (list (check-equal? r-show-ok  "(Ok 5)")
+                (check-equal? r-show-err "(Err \"e\")"))))
+    (it "Either conversions"
+        (all-checks
+          (list (check-equal? r->e-ok  (Right 5))
+                (check-equal? r->e-err (Left "e"))
+                (check-equal? e->r-rt  (Right 5)))))))
 
-(: main Unit)
-(define main (run-io (run-suite "rackton/data/result" suite)))
+(: test-main (IO Unit))
+(define test-main (run-suite "rackton/data/result" suite))

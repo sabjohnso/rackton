@@ -58,42 +58,42 @@
 (: suite (List Test))
 (define suite
   (list
-   (it "pos: nth positional; default when out of range"
-       (all-checks
-        (list (check-true (ran-int? (value (pos 0 conv-int 0 (info Nil))) pctx 10))
-              (check-true (ran-int? (value (pos 2 conv-int 0 (info Nil))) pctx 30))
-              (check-true (ran-int? (value (pos 9 conv-int -1 (info Nil))) pctx -1)))))
+    (it "pos: nth positional; default when out of range"
+        (all-checks
+          (list (check-true (ran-int? (value (pos 0 conv-int 0 (info Nil))) pctx 10))
+                (check-true (ran-int? (value (pos 2 conv-int 0 (info Nil))) pctx 30))
+                (check-true (ran-int? (value (pos 9 conv-int -1 (info Nil))) pctx -1)))))
 
-   (it "pos-all: every positional, in order"
-       (all-checks
-        (list (check-true (ran-ints? (value (pos-all conv-int Nil (info Nil))) pctx
-                                     (list 10 20 30 40))))))
+    (it "pos-all: every positional, in order"
+        (all-checks
+          (list (check-true (ran-ints? (value (pos-all conv-int Nil (info Nil))) pctx
+                                       (list 10 20 30 40))))))
 
-   (it "pos-left n: positionals with index < n"
-       (all-checks
-        (list (check-true (ran-ints? (value (pos-left 2 conv-int Nil (info Nil))) pctx
-                                     (list 10 20))))))
+    (it "pos-left n: positionals with index < n"
+        (all-checks
+          (list (check-true (ran-ints? (value (pos-left 2 conv-int Nil (info Nil))) pctx
+                                       (list 10 20))))))
 
-   (it "pos-right n: positionals with index > n"
-       (all-checks
-        (list (check-true (ran-ints? (value (pos-right 1 conv-int Nil (info Nil))) pctx
-                                     (list 30 40))))))
+    (it "pos-right n: positionals with index > n"
+        (all-checks
+          (list (check-true (ran-ints? (value (pos-right 1 conv-int Nil (info Nil))) pctx
+                                       (list 30 40))))))
 
-   (it "vflag: the present alternative; default when none"
-       (all-checks
-        (list (check-true (ran-int? (value (vflag 0 alts)) vctx 2))
-              (check-true (ran-int? (value (vflag 0 alts)) empty-ctx 0)))))
+    (it "vflag: the present alternative; default when none"
+        (all-checks
+          (list (check-true (ran-int? (value (vflag 0 alts)) vctx 2))
+                (check-true (ran-int? (value (vflag 0 alts)) empty-ctx 0)))))
 
-   (it "vflag: mutually-exclusive alternatives error"
-       (all-checks
-        (list (check-true (ran-errs? (value (vflag 0 alts)) vctx-multi)))))
+    (it "vflag: mutually-exclusive alternatives error"
+        (all-checks
+          (list (check-true (ran-errs? (value (vflag 0 alts)) vctx-multi)))))
 
-   (it "vflag-all: a value per occurrence; defaults when none"
-       (all-checks
-        (list (check-true (ran-ints? (value (vflag-all Nil alts)) vctx-rep
-                                     (list 1 2 2)))
-              (check-true (ran-ints? (value (vflag-all (list 9) alts)) empty-ctx
-                                     (list 9))))))))
+    (it "vflag-all: a value per occurrence; defaults when none"
+        (all-checks
+          (list (check-true (ran-ints? (value (vflag-all Nil alts)) vctx-rep
+                                       (list 1 2 2)))
+                (check-true (ran-ints? (value (vflag-all (list 9) alts)) empty-ctx
+                                       (list 9))))))))
 
-(: main Unit)
-(define main (run-io (run-suite "rackton/cmdline/argval positionals + vflag" suite)))
+(: test-main (IO Unit))
+(define test-main (run-suite "rackton/cmdline/argval positionals + vflag" suite))

@@ -86,35 +86,35 @@
 (: suite (List Test))
 (define suite
   (list
-   (it "let& sequential, dependent bindings + short-circuit"
-       (all-checks
-        (list (check-equal? (seq-add 1) (Some 6))    ;; 1 + 2 + 3
-              (check-equal? (seq-add 5) (Some 18))   ;; 5 + 6 + 7
-              (check-equal? seq-short None))))
-   (it "let% independent bindings over Maybe"
-       (all-checks
-        (list (check-equal? par-add (Some 60))
-              (check-equal? par-short None))))
-   (it "let% over List is cartesian then concat"
-       ;; Cons/Nil (from the prelude) — Rackton lists are not Racket lists.
-       (check-equal? par-list (Cons 11 (Cons 21 (Cons 12 (Cons 22 Nil))))))
-   (it "let+ applicative, pure body, result wrapped"
-       (all-checks
-        (list (check-equal? app-add (Some 9))
-              (check-equal? app-list (Cons 11 (Cons 21 (Cons 12 (Cons 22 Nil))))))))
-   (it "single-binding degenerate forms"
-       (all-checks
-        (list (check-equal? one-and (Some 8))
-              (check-equal? one-par (Some 8))
-              (check-equal? one-app (Some 8)))))
-   (it "named plain let loop (pure)"
-       (all-checks
-        (list (check-equal? (sum-to 5) 15)           ;; 0+1+2+3+4+5
-              (check-equal? (sum-to 0) 0))))
-   (it "named let% monadic loop over Maybe"
-       (all-checks
-        (list (check-equal? (count-down 5) (Some 0))
-              (check-equal? (count-down 0) (Some 0)))))))
+    (it "let& sequential, dependent bindings + short-circuit"
+        (all-checks
+          (list (check-equal? (seq-add 1) (Some 6))    ;; 1 + 2 + 3
+                (check-equal? (seq-add 5) (Some 18))   ;; 5 + 6 + 7
+                (check-equal? seq-short None))))
+    (it "let% independent bindings over Maybe"
+        (all-checks
+          (list (check-equal? par-add (Some 60))
+                (check-equal? par-short None))))
+    (it "let% over List is cartesian then concat"
+        ;; Cons/Nil (from the prelude) — Rackton lists are not Racket lists.
+        (check-equal? par-list (Cons 11 (Cons 21 (Cons 12 (Cons 22 Nil))))))
+    (it "let+ applicative, pure body, result wrapped"
+        (all-checks
+          (list (check-equal? app-add (Some 9))
+                (check-equal? app-list (Cons 11 (Cons 21 (Cons 12 (Cons 22 Nil))))))))
+    (it "single-binding degenerate forms"
+        (all-checks
+          (list (check-equal? one-and (Some 8))
+                (check-equal? one-par (Some 8))
+                (check-equal? one-app (Some 8)))))
+    (it "named plain let loop (pure)"
+        (all-checks
+          (list (check-equal? (sum-to 5) 15)           ;; 0+1+2+3+4+5
+                (check-equal? (sum-to 0) 0))))
+    (it "named let% monadic loop over Maybe"
+        (all-checks
+          (list (check-equal? (count-down 5) (Some 0))
+                (check-equal? (count-down 0) (Some 0)))))))
 
-(: main Unit)
-(define main (run-io (run-suite "monadic-let-forms" suite)))
+(: test-main (IO Unit))
+(define test-main (run-suite "monadic-let-forms" suite))

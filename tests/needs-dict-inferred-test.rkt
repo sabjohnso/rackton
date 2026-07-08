@@ -11,7 +11,7 @@
 ;; No `(: madd ...)` — inference should generalize and skolemize.
 (define (madd mx my)
   (do [x <- mx]
-      [y <- my]
+    [y <- my]
     (pure (+ x y))))
 
 (: madd-maybe-some (Maybe Integer))
@@ -49,10 +49,10 @@
 ;; recursive call correctly threads dict args through.
 (define (replicate-pure n x)
   (if (== n 0)
-      (pure x)
-      (do [y <- (pure x)]
-          [rest <- (replicate-pure (- n 1) x)]
-        (pure y))))
+    (pure x)
+    (do [y <- (pure x)]
+      [rest <- (replicate-pure (- n 1) x)]
+      (pure y))))
 
 (: rep-maybe (Maybe Integer))
 (define rep-maybe (replicate-pure 3 7))
@@ -65,24 +65,24 @@
 (: suite (List Test))
 (define suite
   (list
-   (it "inferred madd over Maybe (Some/Some)"
-       (check-equal? madd-maybe-some (Some 7)))
-   (it "inferred madd over Maybe (None short-circuits)"
-       (check-equal? madd-maybe-none None))
-   (it "inferred madd over Either (Right/Right)"
-       (check-equal? madd-result (Right 42)))
-   (it "inferred pair-pure into Maybe"
-       (check-equal? pair-pure-maybe (Some (Pair 42 42))))
-   (it "inferred pair-pure into Either"
-       (check-equal? pair-pure-result (Right (Pair 7 7))))
-   (it "inferred Monoid cat on String"
-       (check-equal? cat-string "abc"))
-   (it "inferred Monoid cat on Sum"
-       (check-equal? (get-sum cat-sum) 8))
-   (it "recursive needs-dict function over Maybe"
-       (check-equal? rep-maybe (Some 7)))
-   (it "recursive needs-dict function over Either"
-       (check-equal? rep-result (Right 99)))))
+    (it "inferred madd over Maybe (Some/Some)"
+        (check-equal? madd-maybe-some (Some 7)))
+    (it "inferred madd over Maybe (None short-circuits)"
+        (check-equal? madd-maybe-none None))
+    (it "inferred madd over Either (Right/Right)"
+        (check-equal? madd-result (Right 42)))
+    (it "inferred pair-pure into Maybe"
+        (check-equal? pair-pure-maybe (Some (Pair 42 42))))
+    (it "inferred pair-pure into Either"
+        (check-equal? pair-pure-result (Right (Pair 7 7))))
+    (it "inferred Monoid cat on String"
+        (check-equal? cat-string "abc"))
+    (it "inferred Monoid cat on Sum"
+        (check-equal? (get-sum cat-sum) 8))
+    (it "recursive needs-dict function over Maybe"
+        (check-equal? rep-maybe (Some 7)))
+    (it "recursive needs-dict function over Either"
+        (check-equal? rep-result (Right 99)))))
 
-(: main Unit)
-(define main (run-io (run-suite "needs-dict-inferred" suite)))
+(: test-main (IO Unit))
+(define test-main (run-suite "needs-dict-inferred" suite))

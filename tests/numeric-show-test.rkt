@@ -20,21 +20,21 @@
 (: suite (List Test))
 (define suite
   (list
-   (it "show in radix"
-       (all-checks
-        (list (check-equal? h-255 "ff")
-              (check-equal? o-8   "10")
-              (check-equal? b-5   "101"))))
-   (it "read in radix (valid)"
-       (all-checks
-        (list (check-equal? rh-ok 255)
-              (check-equal? ro-ok 8)
-              (check-equal? rd-ok 42))))
-   (it "read in radix (invalid -> None)"
-       (all-checks
-        (list (check-equal? rh-bad -1)
-              (check-equal? ro-bad -1)
-              (check-equal? rd-bad -1))))))
+    (it "show in radix"
+        (all-checks
+          (list (check-equal? h-255 "ff")
+                (check-equal? o-8   "10")
+                (check-equal? b-5   "101"))))
+    (it "read in radix (valid)"
+        (all-checks
+          (list (check-equal? rh-ok 255)
+                (check-equal? ro-ok 8)
+                (check-equal? rd-ok 42))))
+    (it "read in radix (invalid -> None)"
+        (all-checks
+          (list (check-equal? rh-bad -1)
+                (check-equal? ro-bad -1)
+                (check-equal? rd-bad -1))))))
 
-(: main Unit)
-(define main (run-io (run-suite "rackton/numeric/show" suite)))
+(: test-main (IO Unit))
+(define test-main (run-suite "rackton/numeric/show" suite))

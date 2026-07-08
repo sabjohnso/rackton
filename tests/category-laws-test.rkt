@@ -87,30 +87,30 @@
 (: suite Test)
 (define suite
   (describe "Category laws"
-    ;; intensional — compare whole arrows
-    (it-prop "left identity (free, intensional)"
-      (for-all gen-cat (lambda (f) (== (comp ident f) f))))
-    (it-prop "right identity (free, intensional)"
-      (for-all gen-cat (lambda (f) (== (comp f ident) f))))
-    (it-prop "associativity (free, intensional)"
-      (for-all (gen-pair gen-cat (gen-pair gen-cat gen-cat))
-        (lambda (t)
-          (match t
-            [(Pair f (Pair g h))
-             (== (comp (comp f g) h) (comp f (comp g h)))]))))
-    ;; extensional — compare outputs of composed (->) arrows
-    (it-prop "left identity (-> extensional)"
-      (for-all gi (lambda (x) (== ((comp ident f1) x) (f1 x)))))
-    (it-prop "right identity (-> extensional)"
-      (for-all gi (lambda (x) (== ((comp f1 ident) x) (f1 x)))))
-    (it-prop "associativity (-> extensional)"
-      (for-all gi
-        (lambda (x)
-          (== ((comp (comp f1 g1) h1) x)
-              ((comp f1 (comp g1 h1)) x)))))
-    ;; teeth: an unlawful Category (ident not a unit) must be caught
-    (it "an unlawful Category is caught by the identity law"
-      (check-true bad-caught?))))
+            ;; intensional — compare whole arrows
+            (it-prop "left identity (free, intensional)"
+                     (for-all gen-cat (lambda (f) (== (comp ident f) f))))
+            (it-prop "right identity (free, intensional)"
+                     (for-all gen-cat (lambda (f) (== (comp f ident) f))))
+            (it-prop "associativity (free, intensional)"
+                     (for-all (gen-pair gen-cat (gen-pair gen-cat gen-cat))
+                              (lambda (t)
+                                (match t
+                                  [(Pair f (Pair g h))
+                                   (== (comp (comp f g) h) (comp f (comp g h)))]))))
+            ;; extensional — compare outputs of composed (->) arrows
+            (it-prop "left identity (-> extensional)"
+                     (for-all gi (lambda (x) (== ((comp ident f1) x) (f1 x)))))
+            (it-prop "right identity (-> extensional)"
+                     (for-all gi (lambda (x) (== ((comp f1 ident) x) (f1 x)))))
+            (it-prop "associativity (-> extensional)"
+                     (for-all gi
+                              (lambda (x)
+                                (== ((comp (comp f1 g1) h1) x)
+                                    ((comp f1 (comp g1 h1)) x)))))
+            ;; teeth: an unlawful Category (ident not a unit) must be caught
+            (it "an unlawful Category is caught by the identity law"
+                (check-true bad-caught?))))
 
-(: main Unit)
-(define main (run-io (run-suite-tree suite)))
+(: test-main (IO Unit))
+(define test-main (run-suite-tree suite))

@@ -56,8 +56,8 @@
   (map-maybe
     (lambda (c)
       (if (elem l c)
-          None
-          (Some (filter (lambda (k) (not (== k (neg l)))) c))))
+        None
+        (Some (filter (lambda (k) (not (== k (neg l)))) c))))
     clauses))
 
 ;; The literal of the first single-literal (unit) clause, if any.
@@ -74,24 +74,24 @@
 (: dpll (-> Formula (-> Assignment (Maybe Assignment))))
 (define (dpll clauses asn)
   (if (any? empty? clauses)
-      None                                  ; an empty clause: conflict
-      (if (empty? clauses)
-          (Some asn)                        ; nothing left to satisfy: done
-          (match (unit-literal clauses)
-            ;; A unit clause forces its literal — propagate it.
-            [(Some l) (dpll (simplify l clauses) (assign l asn))]
-            ;; No unit clause: branch on the first clause's first literal.
-            [(None)
-             (match clauses
-               [(Cons (Cons l _) _)
-                (match (dpll (simplify l clauses) (assign l asn))
-                  [(Some a) (Some a)]
-                  [(None)
-                   (let ([nl (neg l)])
-                     (dpll (simplify nl clauses) (assign nl asn)))])]
-               ;; Unreachable: clauses is non-empty and has no empty
-               ;; clause, so its first clause has a first literal.
-               [_ None])]))))
+    None                                  ; an empty clause: conflict
+    (if (empty? clauses)
+      (Some asn)                        ; nothing left to satisfy: done
+      (match (unit-literal clauses)
+        ;; A unit clause forces its literal — propagate it.
+        [(Some l) (dpll (simplify l clauses) (assign l asn))]
+        ;; No unit clause: branch on the first clause's first literal.
+        [(None)
+         (match clauses
+           [(Cons (Cons l _) _)
+            (match (dpll (simplify l clauses) (assign l asn))
+              [(Some a) (Some a)]
+              [(None)
+               (let ([nl (neg l)])
+                 (dpll (simplify nl clauses) (assign nl asn)))])]
+           ;; Unreachable: clauses is non-empty and has no empty
+           ;; clause, so its first clause has a first literal.
+           [_ None])]))))
 
 ;; Solve a formula from the empty assignment.
 (: solve (-> Formula (Maybe Assignment)))
@@ -104,12 +104,12 @@
   (match l
     [(Lit v p)
      (string-append (if p "" "¬")
-       (string-append "x" (integer->string v)))]))
+                    (string-append "x" (integer->string v)))]))
 
 (: clause->string (-> Clause String))
 (define (clause->string c)
   (string-append "("
-    (string-append (string-join " ∨ " (fmap lit->string c)) ")")))
+                 (string-append (string-join " ∨ " (fmap lit->string c)) ")")))
 
 (: formula->string (-> Formula String))
 (define (formula->string f)
@@ -118,13 +118,13 @@
 (: assignment->string (-> Assignment String))
 (define (assignment->string asn)
   (string-join ", "
-    (fmap (lambda (kv)
-            (match kv
-              [(Pair v b)
-               (string-append "x"
-                 (string-append (integer->string v)
-                   (string-append "=" (if b "T" "F"))))]))
-          (map-to-list asn))))
+               (fmap (lambda (kv)
+                       (match kv
+                         [(Pair v b)
+                          (string-append "x"
+                                         (string-append (integer->string v)
+                                                        (string-append "=" (if b "T" "F"))))]))
+                     (map-to-list asn))))
 
 ;; ===== Demo ========================================================
 
@@ -138,26 +138,26 @@
 (: sat-formula Formula)
 (define sat-formula
   (Cons (Cons (pos 1)  (Cons (pos 2)  Nil))
-  (Cons (Cons (nnot 1) (Cons (pos 3)  Nil))
-  (Cons (Cons (nnot 2) (Cons (nnot 3) Nil))
-  Nil))))
+        (Cons (Cons (nnot 1) (Cons (pos 3)  Nil))
+              (Cons (Cons (nnot 2) (Cons (nnot 3) Nil))
+                    Nil))))
 
 ;; Unsatisfiable: (x1) ∧ (¬x1)
 (: unsat-unit Formula)
 (define unsat-unit
   (Cons (Cons (pos 1)  Nil)
-  (Cons (Cons (nnot 1) Nil)
-  Nil)))
+        (Cons (Cons (nnot 1) Nil)
+              Nil)))
 
 ;; Unsatisfiable: every clause over two variables at once —
 ;; (x1 ∨ x2) ∧ (x1 ∨ ¬x2) ∧ (¬x1 ∨ x2) ∧ (¬x1 ∨ ¬x2)
 (: unsat-all Formula)
 (define unsat-all
   (Cons (Cons (pos 1)  (Cons (pos 2)  Nil))
-  (Cons (Cons (pos 1)  (Cons (nnot 2) Nil))
-  (Cons (Cons (nnot 1) (Cons (pos 2)  Nil))
-  (Cons (Cons (nnot 1) (Cons (nnot 2) Nil))
-  Nil)))))
+        (Cons (Cons (pos 1)  (Cons (nnot 2) Nil))
+              (Cons (Cons (nnot 1) (Cons (pos 2)  Nil))
+                    (Cons (Cons (nnot 1) (Cons (nnot 2) Nil))
+                          Nil)))))
 
 (: report (-> String (-> Formula (IO Unit))))
 (define (report label f)
@@ -166,13 +166,11 @@
       [(Some asn) (println (string-append "    SAT   " (assignment->string asn)))]
       [(None)     (println "    UNSAT")])))
 
-(: main Unit)
-(define main
-  (run-io
-    (do [_ <- (println "DPLL SAT solver:")]
-        [_ <- (println "")]
-        [_ <- (report "formula 1" sat-formula)]
-        [_ <- (report "formula 2" unsat-unit)]
-        [_ <- (report "formula 3" unsat-all)]
-        [_ <- (println "")]
-      (println "done."))))
+(: main (IO Unit))
+(define main (do [_ <- (println "DPLL SAT solver:")]
+               [_ <- (println "")]
+               [_ <- (report "formula 1" sat-formula)]
+               [_ <- (report "formula 2" unsat-unit)]
+               [_ <- (report "formula 3" unsat-all)]
+               [_ <- (println "")]
+               (println "done.")))

@@ -60,13 +60,13 @@
       [(Err _)        (pure Nil)]            ; missing file = empty
       [(Ok contents)
        (let* ([lines (string-split "\n" contents)]
-               [nonempty (filter (lambda (s) (not (== s ""))) lines)])
+              [nonempty (filter (lambda (s) (not (== s ""))) lines)])
          (pure (catMaybes (fmap parse-item nonempty))))])))
 
 (: write-items (-> String (-> (List Item) (IO Unit))))
 (define (write-items path items)
   (let* ([lines (fmap render-item items)]
-          [body  (string-join "\n" lines)])
+         [body  (string-join "\n" lines)])
     (write-file path (mappend body "\n"))))
 
 ;; ----- subcommands ---------------------------------------------
@@ -80,12 +80,12 @@
 (: cmd-done        (-> (List String) (IO Unit)))
 (: mark-done       (-> (List Item) (-> Integer (Result String (List Item)))))
 (: mark-done-from  (-> (List Item) (-> Integer (-> Integer
-                                                  (Result String (List Item))))))
+                                                   (Result String (List Item))))))
 (: cmd-clear       (IO Unit))
 
 (define cmd-list
   (do [path  <- todo-file]
-      [items <- (read-items path)]
+    [items <- (read-items path)]
     (print-items items 1)))
 
 (define (print-items items n)
@@ -93,19 +93,19 @@
     [(Nil) (pure Unit)]
     [(Cons it rest)
      (do [_ <- (println (mappend (integer->string n)
-                            (mappend ". " (render-item it))))]
+                                 (mappend ". " (render-item it))))]
        (print-items rest (+ n 1)))]))
 
 (define (cmd-add args)
   (match args
     [(Nil) (println "usage: todo add <task>")]
     [_
-     (let* ([text   (string-join " " args)]
+      (let* ([text   (string-join " " args)]
              [new-it (Item #f text)])
-       (do [path  <- todo-file]
-           [items <- (read-items path)]
-           [_     <- (write-items path (snoc items new-it))]
-         (println (mappend "added: " text))))]))
+        (do [path  <- todo-file]
+          [items <- (read-items path)]
+          [_     <- (write-items path (snoc items new-it))]
+          (println (mappend "added: " text))))]))
 
 ;; snoc — append a single element on the right.
 (define (snoc xs y)
@@ -120,7 +120,7 @@
        [(None)   (println (mappend "not a number: " s))]
        [(Some n)
         (do [path  <- todo-file]
-            [items <- (read-items path)]
+          [items <- (read-items path)]
           (match (mark-done items n)
             [(Err msg) (println msg)]
             [(Ok new)
@@ -145,25 +145,25 @@
 
 (define cmd-clear
   (do [path  <- todo-file]
-      [items <- (read-items path)]
-      (let* ([keep (filter (lambda (it)
-                              (match it [(Item done _) (not done)]))
-                            items)]
-              [dropped (- (length items) (length keep))])
-        (do [_ <- (write-items path keep)]
-          (println (mappend "cleared "
-                       (mappend (integer->string dropped)
-                           " items")))))))
+    [items <- (read-items path)]
+    (let* ([keep (filter (lambda (it)
+                           (match it [(Item done _) (not done)]))
+                         items)]
+           [dropped (- (length items) (length keep))])
+      (do [_ <- (write-items path keep)]
+        (println (mappend "cleared "
+                          (mappend (integer->string dropped)
+                                   " items")))))))
 
 ;; ----- usage ---------------------------------------------------
 
 (: usage (IO Unit))
 (define usage
   (do [_ <- (println "Usage:")]
-      [_ <- (println "  todo add <task>")]
-      [_ <- (println "  todo list")]
-      [_ <- (println "  todo done <N>")]
-      (println "  todo clear")))
+    [_ <- (println "  todo add <task>")]
+    [_ <- (println "  todo list")]
+    [_ <- (println "  todo done <N>")]
+    (println "  todo clear")))
 
 ;; ----- entry point ---------------------------------------------
 
@@ -176,7 +176,3 @@
       [(Cons "done"  rest) (cmd-done rest)]
       [(Cons "clear" _)    cmd-clear]
       [_                   usage])))
-
-;; Top-level: run when the module is loaded (the same idiom calc.rkt
-;; uses to make `racket examples/todo.rkt …` execute).
-(define _ignored (run-io main))

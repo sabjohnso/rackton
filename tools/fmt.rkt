@@ -42,7 +42,7 @@
                      [write (write-file f out)]
                      [check (pure Unit)]
                      [else  (print out)])]
-             [rest-changed <- (process-files reindent? width check write rest)]
+           [rest-changed <- (process-files reindent? width check write rest)]
            (pure (if (and check (not (== out src))) #t rest-changed)))))]))
 
 (: run-fmt (-> Boolean Integer Boolean Boolean (List String) (IO Unit)))
@@ -59,25 +59,25 @@
   (let+ ([reindent? (value (flag (info-doc "Keep the author's line breaks; fix only indentation"
                                            (arg-info (list "reindent")))))]
          [width (value (opt conv-int 80
-                           (info-docv "N"
-                            (info-doc "Target line width for reflow (default 80)"
-                                      (arg-info (list "w" "width"))))))]
+                            (info-docv "N"
+                                       (info-doc "Target line width for reflow (default 80)"
+                                                 (arg-info (list "w" "width"))))))]
          [check (value (flag (info-doc "Exit non-zero if any file would change"
                                        (arg-info (list "check")))))]
          [write (value (flag (info-doc "Format files in place"
                                        (arg-info (list "write")))))]
          [files (value (pos-all conv-string Nil
-                            (info-docv "FILE"
-                             (info-doc "Files to format; standard input if none"
-                                       (arg-info Nil)))))])
+                                (info-docv "FILE"
+                                           (info-doc "Files to format; standard input if none"
+                                                     (arg-info Nil)))))])
     (run-fmt reindent? width check write files)))
 
 (: fmt-cmd (Cmd (IO Unit)))
 (define fmt-cmd
   (cmd-v (cmd-version "0.1"
-          (cmd-doc "format Rackton source by reflowing it to a width"
-                   (cmd-info "rackton-fmt")))
+                      (cmd-doc "format Rackton source by reflowing it to a width"
+                               (cmd-info "rackton-fmt")))
          fmt-term))
 
-(: main Unit)
-(define main (run-io (do [code <- (eval fmt-cmd)] (exit-with-code code))))
+(: main (IO Unit))
+(define main (do [code <- (eval fmt-cmd)] (exit-with-code code)))

@@ -17,7 +17,7 @@
 (: logged-greeting (WriterT String IO Integer))
 (define logged-greeting
   (do [_ <- (tell "hello, ")]
-      [_ <- (tell "world")]
+    [_ <- (tell "world")]
     (pure 42)))
 
 (: greeting-result (IO (Pair String Integer)))
@@ -32,8 +32,8 @@
 (: traced-counter (WriterT (List Integer) IO Integer))
 (define traced-counter
   (do [_ <- (trace-step 1)]
-      [_ <- (trace-step 2)]
-      [_ <- (trace-step 3)]
+    [_ <- (trace-step 2)]
+    [_ <- (trace-step 3)]
     (pure 6)))
 
 (: traced-result (IO (Pair (List Integer) Integer)))
@@ -44,7 +44,7 @@
 (: maybe-pair (WriterT String Maybe Integer))
 (define maybe-pair
   (do [_ <- (tell "step-1 ")]
-      [_ <- (tell "step-2")]
+    [_ <- (tell "step-2")]
     (pure 7)))
 
 (: maybe-pair-result (Maybe (Pair String Integer)))
@@ -73,18 +73,18 @@
 (: suite (List Test))
 (define suite
   (list
-   (it "WriterT String IO: concatenates the log"
-       (check-equal? r-greeting (Pair "hello, world" 42)))
-   (it "WriterT (List Integer) IO: appends the list log"
-       (check-equal? r-traced (Pair (Cons 1 (Cons 2 (Cons 3 Nil))) 6)))
-   (it "WriterT String Maybe: works with a non-IO inner monad"
-       (check-equal? maybe-pair-result (Some (Pair "step-1 step-2" 7))))
-   (it "exec-writer-t drops the value"
-       (check-equal? r-only-log "hello, world"))
-   (it "eval-writer-t drops the log"
-       (check-equal? r-only-val 42))
-   (it "lift-writer-t starts with empty log"
-       (check-equal? r-hoisted (Pair "" 100)))))
+    (it "WriterT String IO: concatenates the log"
+        (check-equal? r-greeting (Pair "hello, world" 42)))
+    (it "WriterT (List Integer) IO: appends the list log"
+        (check-equal? r-traced (Pair (Cons 1 (Cons 2 (Cons 3 Nil))) 6)))
+    (it "WriterT String Maybe: works with a non-IO inner monad"
+        (check-equal? maybe-pair-result (Some (Pair "step-1 step-2" 7))))
+    (it "exec-writer-t drops the value"
+        (check-equal? r-only-log "hello, world"))
+    (it "eval-writer-t drops the log"
+        (check-equal? r-only-val 42))
+    (it "lift-writer-t starts with empty log"
+        (check-equal? r-hoisted (Pair "" 100)))))
 
-(: main Unit)
-(define main (run-io (run-suite "writer transformer" suite)))
+(: test-main (IO Unit))
+(define test-main (run-suite "writer transformer" suite))

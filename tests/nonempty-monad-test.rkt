@@ -23,35 +23,35 @@
 (: suite (List Test))
 (define suite
   (list
-   (it "pure makes a one-element nonempty list"
-       (check-equal? (ne-to-list ne-seven) (list 7)))
-   (it "flatmap concatenates and stays nonempty"
-       (check-equal? (ne-to-list (flatmap twice ne123))
-                     (list 1 10 2 20 3 30)))
-   (it "fapply is CARTESIAN (contrast the zippy apply)"
-       (check-equal? (ne-to-list
-                      (fapply (nonempty (lambda (x) (+ x 1))
-                                        (list (lambda (x) (* x 10))))
-                              ne123))
-                     (list 2 3 4 10 20 30)))
-   (it "the same operands under zippy apply give a different result"
-       (check-equal? (ne-to-list
-                      (apply (nonempty (lambda (x) (+ x 1))
-                                       (list (lambda (x) (* x 10))))
-                             ne123))
-                     (list 2 20)))
-   (it "monad left identity: flatmap f (pure a) = f a"
-       (check-equal? (ne-to-list (flatmap twice (pure 5)))
-                     (ne-to-list (twice 5))))
-   (it "monad right identity: flatmap pure m = m"
-       (check-equal? (ne-to-list (flatmap (lambda (x) (pure x)) ne123))
-                     (list 1 2 3)))
-   (it "monad associativity"
-       (all-checks
-        (list
-         (check-equal?
-          (ne-to-list (flatmap twice (flatmap twice ne123)))
-          (ne-to-list (flatmap (lambda (x) (flatmap twice (twice x))) ne123))))))))
+    (it "pure makes a one-element nonempty list"
+        (check-equal? (ne-to-list ne-seven) (list 7)))
+    (it "flatmap concatenates and stays nonempty"
+        (check-equal? (ne-to-list (flatmap twice ne123))
+                      (list 1 10 2 20 3 30)))
+    (it "fapply is CARTESIAN (contrast the zippy apply)"
+        (check-equal? (ne-to-list
+                        (fapply (nonempty (lambda (x) (+ x 1))
+                                          (list (lambda (x) (* x 10))))
+                                ne123))
+                      (list 2 3 4 10 20 30)))
+    (it "the same operands under zippy apply give a different result"
+        (check-equal? (ne-to-list
+                        (apply (nonempty (lambda (x) (+ x 1))
+                                         (list (lambda (x) (* x 10))))
+                               ne123))
+                      (list 2 20)))
+    (it "monad left identity: flatmap f (pure a) = f a"
+        (check-equal? (ne-to-list (flatmap twice (pure 5)))
+                      (ne-to-list (twice 5))))
+    (it "monad right identity: flatmap pure m = m"
+        (check-equal? (ne-to-list (flatmap (lambda (x) (pure x)) ne123))
+                      (list 1 2 3)))
+    (it "monad associativity"
+        (all-checks
+          (list
+            (check-equal?
+              (ne-to-list (flatmap twice (flatmap twice ne123)))
+              (ne-to-list (flatmap (lambda (x) (flatmap twice (twice x))) ne123))))))))
 
-(: main Unit)
-(define main (run-io (run-suite "nonempty monad" suite)))
+(: test-main (IO Unit))
+(define test-main (run-suite "nonempty monad" suite))

@@ -19,13 +19,13 @@
   (let& ([lst  (listen-on 0)]
          [port (listener-port lst)]
          [_    (fork-io
-                (let& ([s (accept lst)]
-                       [m (recv-bytes s 1024)]
-                       [_ (match m
-                            [(Some b) (send-bytes s b)]
-                            [(None)   (pure-io Unit)])]
-                       [_ (close s)])
-                  (pure-io Unit)))]
+                 (let& ([s (accept lst)]
+                        [m (recv-bytes s 1024)]
+                        [_ (match m
+                             [(Some b) (send-bytes s b)]
+                             [(None)   (pure-io Unit)])]
+                        [_ (close s)])
+                   (pure-io Unit)))]
          [c    (connect "127.0.0.1" port)]
          [_    (send-bytes c payload)]
          [r    (recv-bytes c 1024)]
@@ -52,10 +52,10 @@
 (: suite (List Test))
 (define suite
   (list
-   (it "TCP send-bytes/recv-bytes round-trips non-UTF-8 octets"
-       (check-true (run-io tcp-binary)))
-   (it "UDP send-to-bytes/recv-from-bytes round-trips non-UTF-8 octets"
-       (check-true (run-io udp-binary)))))
+    (it "TCP send-bytes/recv-bytes round-trips non-UTF-8 octets"
+        (check-true (run-io tcp-binary)))
+    (it "UDP send-to-bytes/recv-from-bytes round-trips non-UTF-8 octets"
+        (check-true (run-io udp-binary)))))
 
-(: main Unit)
-(define main (run-io (run-suite "network/bytes" suite)))
+(: test-main (IO Unit))
+(define test-main (run-suite "network/bytes" suite))

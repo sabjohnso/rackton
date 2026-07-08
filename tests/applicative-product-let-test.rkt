@@ -35,23 +35,23 @@
 (: suite (List Test))
 (define suite
   (list
-   (it "let+ over Result (two binds, via product)"
-       (all-checks
-        (list (check-true (match r-sum [(Ok n) (== n 7)] [(Err _) #f])))))
+    (it "let+ over Result (two binds, via product)"
+        (all-checks
+          (list (check-true (match r-sum [(Ok n) (== n 7)] [(Err _) #f])))))
 
-   (it "let+ over Result short-circuits on Err"
-       (all-checks
-        (list (check-true (match r-err [(Err e) (== e "boom")] [(Ok _) #f])))))
+    (it "let+ over Result short-circuits on Err"
+        (all-checks
+          (list (check-true (match r-err [(Err e) (== e "boom")] [(Ok _) #f])))))
 
-   (it "let+ over Maybe (two binds)"
-       (all-checks
-        (list (check-true (match m-sum [(Some n) (== n 7)] [(None) #f])))))
+    (it "let+ over Maybe (two binds)"
+        (all-checks
+          (list (check-true (match m-sum [(Some n) (== n 7)] [(None) #f])))))
 
-   (it "product over Result builds the pair"
-       (all-checks
-        (list (check-true (match r-prod
-                            [(Ok (Pair a b)) (and (== a 3) (== b 4))]
-                            [(Err _) #f])))))))
+    (it "product over Result builds the pair"
+        (all-checks
+          (list (check-true (match r-prod
+                              [(Ok (Pair a b)) (and (== a 3) (== b 4))]
+                              [(Err _) #f])))))))
 
-(: main Unit)
-(define main (run-io (run-suite "applicative product/let+" suite)))
+(: test-main (IO Unit))
+(define test-main (run-suite "applicative product/let+" suite))

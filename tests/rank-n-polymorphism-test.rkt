@@ -52,12 +52,12 @@
 (: suite (List Test))
 (define suite
   (list
-   (it "rank-2: polymorphic id at Integer and String"
-       (check-true (pair-eq? r-pair 7 "hi")))
-   (it "rank-2: polymorphic non-identity at two types"
-       (check-true (pair-eq? r-fst 1 "yes")))
-   (it "rank-2: polymorphic arg called twice at one return type"
-       (check-equal? r-twice 7))))
+    (it "rank-2: polymorphic id at Integer and String"
+        (check-true (pair-eq? r-pair 7 "hi")))
+    (it "rank-2: polymorphic non-identity at two types"
+        (check-true (pair-eq? r-fst 1 "yes")))
+    (it "rank-2: polymorphic arg called twice at one return type"
+        (check-equal? r-twice 7))))
 
-(: main Unit)
-(define main (run-io (run-suite "rank-N polymorphism" suite)))
+(: test-main (IO Unit))
+(define test-main (run-suite "rank-N polymorphism" suite))

@@ -25,15 +25,15 @@
 (: suite (List Test))
 (define suite
   (list
-   (it "sequence-a / for-t"
-       (all-checks
-        (list (check-equal? seq-ok  (Some (list 1 2 3)))
-              (check-equal? seq-bad None)
-              (check-equal? fort    (Some (list 2 4 6))))))
-   (it "lift-a3"
-       (all-checks
-        (list (check-equal? l3-ok  (Some 6))
-              (check-equal? l3-bad None))))))
+    (it "sequence-a / for-t"
+        (all-checks
+          (list (check-equal? seq-ok  (Some (list 1 2 3)))
+                (check-equal? seq-bad None)
+                (check-equal? fort    (Some (list 2 4 6))))))
+    (it "lift-a3"
+        (all-checks
+          (list (check-equal? l3-ok  (Some 6))
+                (check-equal? l3-bad None))))))
 
-(: main Unit)
-(define main (run-io (run-suite "rackton/data/traversable + applicative" suite)))
+(: test-main (IO Unit))
+(define test-main (run-suite "rackton/data/traversable + applicative" suite))

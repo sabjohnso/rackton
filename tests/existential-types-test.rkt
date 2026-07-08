@@ -72,17 +72,17 @@
 (: suite (List Test))
 (define suite
   (list
-   (it "heterogeneous Show list via existential"
-       ;; Show on String includes quotes (round-trippable), matching
-       ;; the existing prelude convention.
-       (check-equal? rendered
-                     (Cons "42" (Cons "\"hello\"" (Cons "True" Nil)))))
-   (it "existential Eq: x == x"
-       (all-checks
-        (list (check-true self-eq-int)
-              (check-true self-eq-str))))
-   (it "unconstrained existential packs a value with its own function"
-       (check-equal? described (Cons "42" (Cons "hi" Nil))))))
+    (it "heterogeneous Show list via existential"
+        ;; Show on String includes quotes (round-trippable), matching
+        ;; the existing prelude convention.
+        (check-equal? rendered
+                      (Cons "42" (Cons "\"hello\"" (Cons "True" Nil)))))
+    (it "existential Eq: x == x"
+        (all-checks
+          (list (check-true self-eq-int)
+                (check-true self-eq-str))))
+    (it "unconstrained existential packs a value with its own function"
+        (check-equal? described (Cons "42" (Cons "hi" Nil))))))
 
-(: main Unit)
-(define main (run-io (run-suite "existential-types" suite)))
+(: test-main (IO Unit))
+(define test-main (run-suite "existential-types" suite))

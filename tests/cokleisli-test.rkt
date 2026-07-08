@@ -41,17 +41,17 @@
 (: suite (List Test))
 (define suite
   (list
-   (it "Category: comp threads through extend"
-       (all-checks (list (check-equal? comp-out 22)
-                         (check-equal? ident-out 5))))
-   (it "Arrow: arr lifts a function on the extracted focus"
-       (check-equal? arr-out 42))
-   (it "Arrow: first runs on the first component"
-       (check-equal? first-out (Pair 11 99)))
-   (it "Arrow: *** runs both components"
-       (check-equal? split-out (Pair 11 40)))
-   (it "Arrow: &&& fans the same context to both"
-       (check-equal? fan-out (Pair 11 20)))))
+    (it "Category: comp threads through extend"
+        (all-checks (list (check-equal? comp-out 22)
+                          (check-equal? ident-out 5))))
+    (it "Arrow: arr lifts a function on the extracted focus"
+        (check-equal? arr-out 42))
+    (it "Arrow: first runs on the first component"
+        (check-equal? first-out (Pair 11 99)))
+    (it "Arrow: *** runs both components"
+        (check-equal? split-out (Pair 11 40)))
+    (it "Arrow: &&& fans the same context to both"
+        (check-equal? fan-out (Pair 11 20)))))
 
-(: main Unit)
-(define main (run-io (run-suite "rackton/data/cokleisli" suite)))
+(: test-main (IO Unit))
+(define test-main (run-suite "rackton/data/cokleisli" suite))

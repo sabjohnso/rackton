@@ -58,25 +58,25 @@
 (: suite (List Test))
 (define suite
   (list
-   (it "Category: comp threads through flatmap"
-       (all-checks (list (check-equal? comp-out (Some 22))
-                         (check-equal? ident-out (Some 5)))))
-   (it "Arrow: arr lifts a pure function"
-       (check-equal? arr-out (Some 42)))
-   (it "Arrow: first runs on the first component"
-       (check-equal? first-out (Some (Pair 11 99))))
-   (it "Arrow: *** runs both components"
-       (check-equal? split-out (Some (Pair 11 40))))
-   (it "Arrow: &&& fans out"
-       (check-equal? fan-out (Some (Pair 11 20))))
-   (it "ArrowChoice: left routes the Left branch"
-       (all-checks (list (check-equal? left-l (Some (Left 11)))
-                         (check-equal? left-r (Some (Right 5))))))
-   (it "ArrowChoice: ||| merges branches"
-       (all-checks (list (check-equal? fanin-l (Some 11))
-                         (check-equal? fanin-r (Some 20)))))
-   (it "ArrowApply: arrow-app applies a wrapped arrow"
-       (check-equal? app-out (Some 11)))))
+    (it "Category: comp threads through flatmap"
+        (all-checks (list (check-equal? comp-out (Some 22))
+                          (check-equal? ident-out (Some 5)))))
+    (it "Arrow: arr lifts a pure function"
+        (check-equal? arr-out (Some 42)))
+    (it "Arrow: first runs on the first component"
+        (check-equal? first-out (Some (Pair 11 99))))
+    (it "Arrow: *** runs both components"
+        (check-equal? split-out (Some (Pair 11 40))))
+    (it "Arrow: &&& fans out"
+        (check-equal? fan-out (Some (Pair 11 20))))
+    (it "ArrowChoice: left routes the Left branch"
+        (all-checks (list (check-equal? left-l (Some (Left 11)))
+                          (check-equal? left-r (Some (Right 5))))))
+    (it "ArrowChoice: ||| merges branches"
+        (all-checks (list (check-equal? fanin-l (Some 11))
+                          (check-equal? fanin-r (Some 20)))))
+    (it "ArrowApply: arrow-app applies a wrapped arrow"
+        (check-equal? app-out (Some 11)))))
 
-(: main Unit)
-(define main (run-io (run-suite "rackton/data/kleisli" suite)))
+(: test-main (IO Unit))
+(define test-main (run-suite "rackton/data/kleisli" suite))

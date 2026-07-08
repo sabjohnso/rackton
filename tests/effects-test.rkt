@@ -25,15 +25,15 @@
 (: core-tests Test)
 (define core-tests
   (group-of "rackton/effects — core"
-    (list
-     (it "epure then run-eff yields the value"
-       (check-equal? (run-eff (epure 7)) 7))
-     (it "a pure ebind chain runs"
-       (check-equal? (run-eff prog-pure) 10))
-     ;; prog-both / prog-throw only compile if the row accumulates correctly;
-     ;; reaching here means the Union type family reduced as intended.
-     (it "row accumulation type-checks (Union is componentwise)"
-       (check-true #t)))))
+            (list
+              (it "epure then run-eff yields the value"
+                  (check-equal? (run-eff (epure 7)) 7))
+              (it "a pure ebind chain runs"
+                  (check-equal? (run-eff prog-pure) 10))
+              ;; prog-both / prog-throw only compile if the row accumulates correctly;
+              ;; reaching here means the Union type family reduced as intended.
+              (it "row accumulation type-checks (Union is componentwise)"
+                  (check-true #t)))))
 
 ;; ----- increment 2: handlers discharge effects, then run -------------
 
@@ -59,32 +59,32 @@
 (: handler-tests Test)
 (define handler-tests
   (group-of "rackton/effects — handlers discharge to the empty row"
-    (list
-     (it "writer handler collects the log in order"
-       (check-true (match logging-result
-                     [(Pair v log) (and (== v 42) (== log (list "a" "b")))])))
-     (it "except handler turns failure into a value; writer keeps the log"
-       (check-true (match failing-result
-                     [(Pair res log)
-                      (and (match res [(Left e) (== e "boom")] [(Right z) #f])
-                           (== log (list "begin")))]))))))
+            (list
+              (it "writer handler collects the log in order"
+                  (check-true (match logging-result
+                                [(Pair v log) (and (== v 42) (== log (list "a" "b")))])))
+              (it "except handler turns failure into a value; writer keeps the log"
+                  (check-true (match failing-result
+                                [(Pair res log)
+                                 (and (match res [(Left e) (== e "boom")] [(Right z) #f])
+                                      (== log (list "begin")))]))))))
 
 (: laws Test)
 (define laws
   (group-of "rackton/effects — graded-monad identity laws"
-    (list
-     (it "left identity: ebind (epure x) k = k x"
-       (check-equal? (run-eff (ebind (epure 5) (lambda (n) (epure (+ n 1)))))
-                     (run-eff (epure 6))))
-     (it "right identity: ebind e epure = e"
-       (check-true
-         (match (run-eff (handle-writer (ebind logging epure)))
-           [(Pair v1 l1)
-            (match logging-result
-              [(Pair v2 l2) (and (== v1 v2) (== l1 l2))])]))))))
+            (list
+              (it "left identity: ebind (epure x) k = k x"
+                  (check-equal? (run-eff (ebind (epure 5) (lambda (n) (epure (+ n 1)))))
+                                (run-eff (epure 6))))
+              (it "right identity: ebind e epure = e"
+                  (check-true
+                    (match (run-eff (handle-writer (ebind logging epure)))
+                      [(Pair v1 l1)
+                       (match logging-result
+                         [(Pair v2 l2) (and (== v1 v2) (== l1 l2))])]))))))
 
 (: suite Test)
 (define suite (group-of "rackton/effects" (list core-tests handler-tests laws)))
 
-(: main Unit)
-(define main (run-io (run-suite-tree suite)))
+(: test-main (IO Unit))
+(define test-main (run-suite-tree suite))

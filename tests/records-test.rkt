@@ -35,16 +35,16 @@
 (: suite (List Test))
 (define suite
   (list
-   (it "non-parametric record"
-       (all-checks
-        (list (check-equal? p1-x 3)
-              (check-equal? p1-y 4)
-              (check-equal? d-origin 0)
-              (check-equal? d-p1 25))))
-   (it "parametric record"
-       (all-checks
-        (list (check-equal? b-value 42)
-              (check-equal? b-label "answer"))))))
+    (it "non-parametric record"
+        (all-checks
+          (list (check-equal? p1-x 3)
+                (check-equal? p1-y 4)
+                (check-equal? d-origin 0)
+                (check-equal? d-p1 25))))
+    (it "parametric record"
+        (all-checks
+          (list (check-equal? b-value 42)
+                (check-equal? b-label "answer"))))))
 
-(: main Unit)
-(define main (run-io (run-suite "records" suite)))
+(: test-main (IO Unit))
+(define test-main (run-suite "records" suite))

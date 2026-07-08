@@ -62,12 +62,12 @@
 (: suite (List Test))
 (define suite
   (list
-   (it "no-signature get-st/modify-st/lift-io resolve at StateT _ IO"
-       (check-equal? io-result (Pair 30 30)))
-   (it "no-signature modify-st/get-st resolve at StateT _ IO"
-       (check-equal? c-io-result (Pair 3 3)))
-   (it "the same no-signature function also resolves at StateT _ Maybe"
-       (check-equal? c-maybe-result (Some (Pair 105 105))))))
+    (it "no-signature get-st/modify-st/lift-io resolve at StateT _ IO"
+        (check-equal? io-result (Pair 30 30)))
+    (it "no-signature modify-st/get-st resolve at StateT _ IO"
+        (check-equal? c-io-result (Pair 3 3)))
+    (it "the same no-signature function also resolves at StateT _ Maybe"
+        (check-equal? c-maybe-result (Some (Pair 105 105))))))
 
-(: main Unit)
-(define main (run-io (run-suite "mtl-no-signature-return-typed" suite)))
+(: test-main (IO Unit))
+(define test-main (run-suite "mtl-no-signature-return-typed" suite))

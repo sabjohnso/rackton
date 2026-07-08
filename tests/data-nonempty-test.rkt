@@ -20,16 +20,16 @@
 (: suite (List Test))
 (define suite
   (list
-   (it "NonEmpty"
-       (all-checks
-        (list (check-equal? h 1)
-              (check-equal? t (list 2 3))
-              (check-equal? tl (list 1 2 3))
-              (check-equal? ln 3)
-              (check-equal? consed (list 0 1 2 3))
-              (check-equal? mapped (list 10 20 30))
-              (check-equal? ffl  (Some 4))
-              (check-equal? ffl0 None))))))
+    (it "NonEmpty"
+        (all-checks
+          (list (check-equal? h 1)
+                (check-equal? t (list 2 3))
+                (check-equal? tl (list 1 2 3))
+                (check-equal? ln 3)
+                (check-equal? consed (list 0 1 2 3))
+                (check-equal? mapped (list 10 20 30))
+                (check-equal? ffl  (Some 4))
+                (check-equal? ffl0 None))))))
 
-(: main Unit)
-(define main (run-io (run-suite "rackton/data/list/nonempty" suite)))
+(: test-main (IO Unit))
+(define test-main (run-suite "rackton/data/list/nonempty" suite))

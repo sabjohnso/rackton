@@ -28,7 +28,7 @@
 ;; method signatures.  Compilation only succeeds if the kind is taken
 ;; from the Functor bound.
 (protocol (Container [f => Functor])
-  (: peek (-> (f a) a)))
+          (: peek (-> (f a) a)))
 
 (instance (Container Box)
   (define (peek b) (match b [(MkBox x) x])))
@@ -49,12 +49,12 @@
 ;; ----- 2. superclass via a :requires clause -----------------------
 
 (protocol (Tagged a)
-  (: tag (-> a Integer)))
+          (: tag (-> a Integer)))
 
 ;; :requires names the superclass in the body instead of on the head.
 (protocol (Tagged2 a)
-  (:requires (Tagged a))
-  (: retag (-> a Integer)))
+          (:requires (Tagged a))
+          (: retag (-> a Integer)))
 
 (instance (Tagged Integer)
   (define (tag x) x))
@@ -72,12 +72,12 @@
 (: suite (List Test))
 (define suite
   (list
-   (it "higher-kinded bound: peek extracts through the Functor box"
-       (check-equal? peeked 7))
-   (it "higher-kinded bound: Functor superclass method is usable"
-       (check-equal? mapped-val 8))
-   (it ":requires: subclass method reaches the superclass method"
-       (check-equal? retagged 105))))
+    (it "higher-kinded bound: peek extracts through the Functor box"
+        (check-equal? peeked 7))
+    (it "higher-kinded bound: Functor superclass method is usable"
+        (check-equal? mapped-val 8))
+    (it ":requires: subclass method reaches the superclass method"
+        (check-equal? retagged 105))))
 
-(: main Unit)
-(define main (run-io (run-suite "superclass-bounds" suite)))
+(: test-main (IO Unit))
+(define test-main (run-suite "superclass-bounds" suite))

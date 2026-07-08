@@ -50,22 +50,22 @@
 (: suite (List Test))
 (define suite
   (list
-   (it "Symbol Eq + /="
-       (all-checks
-        (list (check-true foo=foo)
-              (check-true foo/=bar))))
-   (it "Symbol Ord"
-       (check-true bar<foo))
-   (it "Symbol Show is round-trippable"
-       (check-equal? show-foo "'foo"))
-   (it "symbol->string"
-       (check-equal? foo-as-string "foo"))
-   (it "string->symbol round-trip"
-       (check-equal? hi-as-symbol 'hi))
-   (it "symbol literal patterns"
-       (all-checks
-        (list (check-equal? matched-foo   "got foo")
-              (check-equal? matched-other "other"))))))
+    (it "Symbol Eq + /="
+        (all-checks
+          (list (check-true foo=foo)
+                (check-true foo/=bar))))
+    (it "Symbol Ord"
+        (check-true bar<foo))
+    (it "Symbol Show is round-trippable"
+        (check-equal? show-foo "'foo"))
+    (it "symbol->string"
+        (check-equal? foo-as-string "foo"))
+    (it "string->symbol round-trip"
+        (check-equal? hi-as-symbol 'hi))
+    (it "symbol literal patterns"
+        (all-checks
+          (list (check-equal? matched-foo   "got foo")
+                (check-equal? matched-other "other"))))))
 
-(: main Unit)
-(define main (run-io (run-suite "symbol" suite)))
+(: test-main (IO Unit))
+(define test-main (run-suite "symbol" suite))

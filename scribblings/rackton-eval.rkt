@@ -93,10 +93,10 @@
 
 (define (read-datums src)
   (with-input-from-string src
-    (lambda ()
-      (let loop ([acc '()])
-        (define d (read))
-        (if (eof-object? d) (reverse acc) (loop (cons d acc)))))))
+                          (lambda ()
+                            (let loop ([acc '()])
+                              (define d (read))
+                              (if (eof-object? d) (reverse acc) (loop (cons d acc)))))))
 
 (define (module-source? src)
   (regexp-match? #px"^\\s*#lang\\s+rackton\\b" src))
@@ -110,8 +110,8 @@
     (error 'rackton-example "expected at least one form to evaluate"))
   (let loop ([xs xs] [acc '()])
     (if (null? (cdr xs))
-        (values (reverse acc) (car xs))
-        (loop (cdr xs) (cons (car xs) acc)))))
+      (values (reverse acc) (car xs))
+      (loop (cdr xs) (cons (car xs) acc)))))
 
 ;; ---------------------------------------------------------------------------
 ;; Evaluation per mode
@@ -135,44 +135,53 @@
      (define s (fresh-sandbox ev))
      (s `(module rktex rackton ,@body))
      (s '(require 'rktex))
+     ;; Mirror `racket file.rkt`: after the top level, also instantiate
+     ;; the `main` submodule if the example defines the reserved `main`
+     ;; entry point — silently doing nothing when it doesn't (most
+     ;; module-mode examples are illustrating something else).  `#f`,
+     ;; not `(void)` — `rackton`'s own re-exported `void` (the
+     ;; Functor-generic one) shadows Racket's in this sandbox, and it
+     ;; is unary.
+     (s '(with-handlers ([exn:fail? (lambda (e) #f)])
+           (dynamic-require '(submod 'rktex main) #f)))
      (list 'output (get-output s))]
     [else
-     (define datums (read-datums src))
-     (case mode
-       [(defs)
-        (define s (fresh-sandbox ev))
-        (s `(rackton ,@(program datums)))
-        (remember! datums)
-        (void)]
-       [(value)
-        (define-values (defs expr) (split-last datums))
-        (define s (fresh-sandbox ev))
-        (s `(rackton ,@(program defs)
-                     (define _rackton-result (show ,expr))))
-        (define v (s '_rackton-result))
-        (remember! defs)
-        (list 'value v)]
-       [(io)
-        (define run-form (and run (read (open-input-string run))))
-        (define-values (defs expr)
-          (if run-form (values datums run-form) (split-last datums)))
-        (define s (fresh-sandbox ev))
-        (s `(rackton ,@(program defs)
-                     (define _rackton-result (run-io ,expr))))
-        (remember! defs)
-        (list 'output (get-output s))]
-       [(error)
-        (define s (fresh-sandbox ev))
-        (define failure
-          (with-handlers ([exn:fail? exn-message])
-            (s `(rackton ,@(program datums)))
-            #f))
-        (unless failure
-          (error 'rackton-example
-                 "example tagged #:mode 'error compiled/ran without error:\n~a"
-                 src))
-        (list 'error failure)]
-       [else (error 'rackton-example "unknown mode: ~s" mode)])]))
+      (define datums (read-datums src))
+      (case mode
+        [(defs)
+         (define s (fresh-sandbox ev))
+         (s `(rackton ,@(program datums)))
+         (remember! datums)
+         (void)]
+        [(value)
+         (define-values (defs expr) (split-last datums))
+         (define s (fresh-sandbox ev))
+         (s `(rackton ,@(program defs)
+                      (define _rackton-result (show ,expr))))
+         (define v (s '_rackton-result))
+         (remember! defs)
+         (list 'value v)]
+        [(io)
+         (define run-form (and run (read (open-input-string run))))
+         (define-values (defs expr)
+           (if run-form (values datums run-form) (split-last datums)))
+         (define s (fresh-sandbox ev))
+         (s `(rackton ,@(program defs)
+                      (define _rackton-result (run-io ,expr))))
+         (remember! defs)
+         (list 'output (get-output s))]
+        [(error)
+         (define s (fresh-sandbox ev))
+         (define failure
+           (with-handlers ([exn:fail? exn-message])
+             (s `(rackton ,@(program datums)))
+             #f))
+         (unless failure
+           (error 'rackton-example
+                  "example tagged #:mode 'error compiled/ran without error:\n~a"
+                  src))
+         (list 'error failure)]
+        [else (error 'rackton-example "unknown mode: ~s" mode)])]))
 
 ;; ---------------------------------------------------------------------------
 ;; Rendering
@@ -187,8 +196,8 @@
     [(eq? (car outcome) 'output)
      (define out (string-trim (cadr outcome) "\n" #:left? #f))
      (if (string=? out "")
-         '()
-         (list (nested #:style 'inset (verbatim out))))]
+       '()
+       (list (nested #:style 'inset (verbatim out))))]
     [(eq? (car outcome) 'error)
      (list (nested #:style 'inset
                    (verbatim (string-append "✗ " (cadr outcome)))))]

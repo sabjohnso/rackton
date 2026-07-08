@@ -33,9 +33,9 @@
 (define (compose-pairs bs rs)
   (foldr (lambda (b acc)
            (match b [(Pair x y)
-             (foldr (lambda (e acc2)
-                      (match e [(Pair y2 z) (if (== y y2) (Cons (Pair x z) acc2) acc2)]))
-                    acc rs)]))
+                     (foldr (lambda (e acc2)
+                              (match e [(Pair y2 z) (if (== y y2) (Cons (Pair x z) acc2) acc2)]))
+                            acc rs)]))
          Nil bs))
 (: compose-with (-> Rel Rel Rel))
 (define (compose-with base r)
@@ -53,9 +53,9 @@
 (: batches (Signal Rel))
 (define batches
   (SigCons (rel (list (Pair 1 2)))
-    (next (SigCons (rel (list (Pair 2 3)))
-      (next (SigCons (rel (list (Pair 3 4)))
-        (next (sig-repeat (MkRel empty-set)))))))))
+           (next (SigCons (rel (list (Pair 2 3)))
+                          (next (SigCons (rel (list (Pair 3 4)))
+                                         (next (sig-repeat (MkRel empty-set)))))))))
 
 (: closures (Signal Rel))
 (define closures (scan-mono closure-step (MkRel empty-set) batches))
@@ -92,21 +92,21 @@
 (: suite Test)
 (define suite
   (group-of "rackton/incremental — scan-mono (monotone x temporal)"
-    (list
-     (it "incremental transitive closure: sizes 1,3,6,6"
-       (check-equal? sizes (list 1 3 6 6)))
-     (it "sig-take terminates: each adv is a terminating mono-fix (ACC)"
-       (check-equal? (length (sig-take 20 closures)) 20))
-     (it "Boolean latch (running OR): #f then latched #t"
-       (check-equal? (sig-take 4 latch) (list #f #t #t #t)))
-     ;; the differential refinement: same answer, less work
-     (it "scan-mono-diff agrees with scan-mono (same sizes)"
-       (check-equal? sizes-diff (list 1 3 6 6)))
-     (it "mono-fix-from a lower bound reaches the same fixpoint"
-       (check-true (== (mono-fix-from full-base full-map) (mono-fix full-map))))
-     (it "resuming from a closer seed does FEWER iterations"
-       (check-true (< (count-iter full-map full-base)
-                      (count-iter full-map (MkRel empty-set))))))))
+            (list
+              (it "incremental transitive closure: sizes 1,3,6,6"
+                  (check-equal? sizes (list 1 3 6 6)))
+              (it "sig-take terminates: each adv is a terminating mono-fix (ACC)"
+                  (check-equal? (length (sig-take 20 closures)) 20))
+              (it "Boolean latch (running OR): #f then latched #t"
+                  (check-equal? (sig-take 4 latch) (list #f #t #t #t)))
+              ;; the differential refinement: same answer, less work
+              (it "scan-mono-diff agrees with scan-mono (same sizes)"
+                  (check-equal? sizes-diff (list 1 3 6 6)))
+              (it "mono-fix-from a lower bound reaches the same fixpoint"
+                  (check-true (== (mono-fix-from full-base full-map) (mono-fix full-map))))
+              (it "resuming from a closer seed does FEWER iterations"
+                  (check-true (< (count-iter full-map full-base)
+                                 (count-iter full-map (MkRel empty-set))))))))
 
-(: main Unit)
-(define main (run-io (run-suite-tree suite)))
+(: test-main (IO Unit))
+(define test-main (run-suite-tree suite))

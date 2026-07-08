@@ -40,9 +40,9 @@
 (define (compose-pairs bs rs)
   (foldr (lambda (b acc)
            (match b [(Pair x y)
-             (foldr (lambda (e acc2)
-                      (match e [(Pair y2 z) (if (== y y2) (Cons (Pair x z) acc2) acc2)]))
-                    acc rs)]))
+                     (foldr (lambda (e acc2)
+                              (match e [(Pair y2 z) (if (== y y2) (Cons (Pair x z) acc2) acc2)]))
+                            acc rs)]))
          Nil bs))
 (: compose-with (-> Rel Rel Rel))
 (define (compose-with base r)
@@ -60,9 +60,9 @@
 (: batches (Signal Rel))
 (define batches
   (SigCons (rel (list (Pair 1 2)))
-    (next (SigCons (rel (list (Pair 2 3)))
-      (next (SigCons (rel (list (Pair 3 4)))
-        (next (sig-repeat (MkRel empty-set)))))))))
+           (next (SigCons (rel (list (Pair 2 3)))
+                          (next (SigCons (rel (list (Pair 3 4)))
+                                         (next (sig-repeat (MkRel empty-set)))))))))
 
 (: closures (Signal Rel))
 (define closures (scan-mono closure-step (MkRel empty-set) batches))
@@ -75,16 +75,14 @@
 (define (ints->str xs)
   (foldr (lambda (n acc) (string-append (integer->string n) (string-append " " acc))) "" xs))
 
-(: main Unit)
-(define main
-  (run-io
-   (do [_ <- (println "Incremental transitive closure over time (rackton/incremental)")]
-       [_ <- (println "")]
-       [_ <- (println "Edges arrive:  tick0 +{1->2}, tick1 +{2->3}, tick2 +{3->4}, then none.")]
-       [_ <- (println "Each tick's closure is a monotone least fixpoint (mono-fix), recomputed")]
-       [_ <- (println "as the graph grows; mono-fix terminates by ACC, so every step is finite.")]
-       [_ <- (println "")]
-       [_ <- (println (string-append "closure sizes per tick:  " (ints->str sizes)))]
-       [_ <- (println "")]
-       [_ <- (println "(1 -> 3 -> 6 as paths accumulate, then steady once edges stop arriving.)")]
-     (pure Unit))))
+(: main (IO Unit))
+(define main (do [_ <- (println "Incremental transitive closure over time (rackton/incremental)")]
+               [_ <- (println "")]
+               [_ <- (println "Edges arrive:  tick0 +{1->2}, tick1 +{2->3}, tick2 +{3->4}, then none.")]
+               [_ <- (println "Each tick's closure is a monotone least fixpoint (mono-fix), recomputed")]
+               [_ <- (println "as the graph grows; mono-fix terminates by ACC, so every step is finite.")]
+               [_ <- (println "")]
+               [_ <- (println (string-append "closure sizes per tick:  " (ints->str sizes)))]
+               [_ <- (println "")]
+               [_ <- (println "(1 -> 3 -> 6 as paths accumulate, then steady once edges stop arriving.)")]
+               (pure Unit)))

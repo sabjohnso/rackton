@@ -28,12 +28,12 @@
 (: suite (List Test))
 (define suite
   (list
-   (it "foreign import from racket/string"
-       (all-checks
-        (list (check-true  has-ell)
-              (check-false has-zee))))
-   (it "foreign import with :as rename"
-       (check-equal? dashed "a-b-c"))))
+    (it "foreign import from racket/string"
+        (all-checks
+          (list (check-true  has-ell)
+                (check-false has-zee))))
+    (it "foreign import with :as rename"
+        (check-equal? dashed "a-b-c"))))
 
-(: main Unit)
-(define main (run-io (run-suite "foreign" suite)))
+(: test-main (IO Unit))
+(define test-main (run-suite "foreign" suite))

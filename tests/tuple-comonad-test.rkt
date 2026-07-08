@@ -43,20 +43,20 @@
 (: suite (List Test))
 (define suite
   (list
-   (it "Functor (Pair a) maps the focus"
-       (check-equal? p-fmap (Pair "env" 42)))
-   (it "extract is the focus"
-       (check-equal? p-extract 42))
-   (it "duplicate copies the env inward"
-       (all-checks
-        (list (check-equal? p-dup-outer-env "env")
-              (check-equal? p-dup-inner-env "env"))))
-   (it "extend extract is identity on the focus"
-       (check-equal? p-ext 9))
-   (it "FunctorApply (Pair e) mappends envs"
-       (check-equal? p-apply (Pair "ab" 42)))
-   (it "ComonadApply (Pair e) mappends envs"
-       (check-equal? p-coapply (Pair "ab" 42)))))
+    (it "Functor (Pair a) maps the focus"
+        (check-equal? p-fmap (Pair "env" 42)))
+    (it "extract is the focus"
+        (check-equal? p-extract 42))
+    (it "duplicate copies the env inward"
+        (all-checks
+          (list (check-equal? p-dup-outer-env "env")
+                (check-equal? p-dup-inner-env "env"))))
+    (it "extend extract is identity on the focus"
+        (check-equal? p-ext 9))
+    (it "FunctorApply (Pair e) mappends envs"
+        (check-equal? p-apply (Pair "ab" 42)))
+    (it "ComonadApply (Pair e) mappends envs"
+        (check-equal? p-coapply (Pair "ab" 42)))))
 
-(: main Unit)
-(define main (run-io (run-suite "tuple comonad/apply" suite)))
+(: test-main (IO Unit))
+(define test-main (run-suite "tuple comonad/apply" suite))

@@ -26,23 +26,23 @@
 (: suite (List Test))
 (define suite
   (list
-   (it "split-on keeps empties"
-       (all-checks
-        (list (check-equal? so1 "a|b|c")
-              (check-equal? so2 "a||b")
-              (check-equal? so3 "abc")
-              (check-equal? so4 "x|y|z"))))
-   (it "break-on at first occurrence"
-       (all-checks
-        (list (check-equal? bo1l "a")
-              (check-equal? bo1r "::b::c")
-              (check-equal? bo2l "abc")
-              (check-equal? bo2r ""))))
-   (it "index-of"
-       (all-checks
-        (list (check-equal? io1 3)
-              (check-equal? io2 -1)
-              (check-equal? io3 0))))))
+    (it "split-on keeps empties"
+        (all-checks
+          (list (check-equal? so1 "a|b|c")
+                (check-equal? so2 "a||b")
+                (check-equal? so3 "abc")
+                (check-equal? so4 "x|y|z"))))
+    (it "break-on at first occurrence"
+        (all-checks
+          (list (check-equal? bo1l "a")
+                (check-equal? bo1r "::b::c")
+                (check-equal? bo2l "abc")
+                (check-equal? bo2r ""))))
+    (it "index-of"
+        (all-checks
+          (list (check-equal? io1 3)
+                (check-equal? io2 -1)
+                (check-equal? io3 0))))))
 
-(: main Unit)
-(define main (run-io (run-suite "rackton/text/string split" suite)))
+(: test-main (IO Unit))
+(define test-main (run-suite "rackton/text/string split" suite))

@@ -26,7 +26,7 @@
 (: combined-logs (Log Integer))
 (define combined-logs
   (mappend (Log (Cons 1 (Cons 2 Nil)) "left:")
-      (Log (Cons 3 Nil)           "right")))
+           (Log (Cons 3 Nil)           "right")))
 
 ;; ----- Monoid on a single-ctor record -------------------
 
@@ -41,25 +41,25 @@
 (: combined-counter Counter)
 (define combined-counter
   (mappend (Counter (Cons 1 Nil) "a")
-      (Counter (Cons 2 Nil) "b")))
+           (Counter (Cons 2 Nil) "b")))
 
 ;; ---------- assertions ---------------------------------------
 
 (: suite (List Test))
 (define suite
   (list
-   (it "Bifunctor on Either2"
-       (all-checks
-        (list (check-equal? mapped-left  (Lft 42))
-              (check-equal? mapped-right (Rgt "ok!")))))
-   (it "Semigroup on a record combines fields pairwise"
-       (check-equal? combined-logs
-                     (Log (Cons 1 (Cons 2 (Cons 3 Nil))) "left:right")))
-   (it "Monoid mempty is element-wise empty"
-       (check-equal? empty-counter (Counter Nil "")))
-   (it "Monoid + Semigroup combine pairwise"
-       (check-equal? combined-counter
-                     (Counter (Cons 1 (Cons 2 Nil)) "ab")))))
+    (it "Bifunctor on Either2"
+        (all-checks
+          (list (check-equal? mapped-left  (Lft 42))
+                (check-equal? mapped-right (Rgt "ok!")))))
+    (it "Semigroup on a record combines fields pairwise"
+        (check-equal? combined-logs
+                      (Log (Cons 1 (Cons 2 (Cons 3 Nil))) "left:right")))
+    (it "Monoid mempty is element-wise empty"
+        (check-equal? empty-counter (Counter Nil "")))
+    (it "Monoid + Semigroup combine pairwise"
+        (check-equal? combined-counter
+                      (Counter (Cons 1 (Cons 2 Nil)) "ab")))))
 
-(: main Unit)
-(define main (run-io (run-suite "deriving-traversable-and-monoid" suite)))
+(: test-main (IO Unit))
+(define test-main (run-suite "deriving-traversable-and-monoid" suite))

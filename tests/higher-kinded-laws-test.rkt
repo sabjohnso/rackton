@@ -45,12 +45,12 @@
 (: render-list (-> (List Integer) String))
 (define (render-list xs)
   (string-append
-   "["
-   (string-append (foldr (lambda (n acc)
-                           (string-append (integer->string n)
-                                          (string-append " " acc)))
-                         "" xs)
-                  "]")))
+    "["
+    (string-append (foldr (lambda (n acc)
+                            (string-append (integer->string n)
+                                           (string-append " " acc)))
+                          "" xs)
+                   "]")))
 
 ;; Traversable's identity law produces a `Maybe`-wrapped container.
 (: eq-maybe-maybe (-> (Maybe (Maybe Integer)) (-> (Maybe (Maybe Integer)) Boolean)))
@@ -115,19 +115,19 @@
 (: suite (List Test))
 (define suite
   (list
-   (functor-laws     eq-maybe-int  render-maybe gen-maybe-int)
-   (functor-laws     eq-list-int   render-list  gen-list-int)
-   (applicative-laws eq-maybe-int render-maybe maybe-point maybe-point-fn gen-maybe-int)
-   (applicative-laws eq-list-int  render-list  list-point  list-point-fn  gen-list-int)
-   (monad-laws       eq-maybe-int render-maybe maybe-point gen-maybe-int)
-   (monad-laws       eq-list-int  render-list  list-point  gen-list-int)
-   (functor-laws     eq-id-int    render-id    gen-id-int)
-   (applicative-laws eq-id-int    render-id    id-point    id-point-fn   gen-id-int)
-   (monad-laws       eq-id-int    render-id    id-point    gen-id-int)
-   (traversable-laws eq-maybe-maybe render-maybe gen-maybe-int)
-   (traversable-laws eq-maybe-list  render-list  gen-list-int)))
+    (functor-laws     eq-maybe-int  render-maybe gen-maybe-int)
+    (functor-laws     eq-list-int   render-list  gen-list-int)
+    (applicative-laws eq-maybe-int render-maybe maybe-point maybe-point-fn gen-maybe-int)
+    (applicative-laws eq-list-int  render-list  list-point  list-point-fn  gen-list-int)
+    (monad-laws       eq-maybe-int render-maybe maybe-point gen-maybe-int)
+    (monad-laws       eq-list-int  render-list  list-point  gen-list-int)
+    (functor-laws     eq-id-int    render-id    gen-id-int)
+    (applicative-laws eq-id-int    render-id    id-point    id-point-fn   gen-id-int)
+    (monad-laws       eq-id-int    render-id    id-point    gen-id-int)
+    (traversable-laws eq-maybe-maybe render-maybe gen-maybe-int)
+    (traversable-laws eq-maybe-list  render-list  gen-list-int)))
 
 ;; ----- run quietly; panic (failing raco test) on any failure --------
 
-(: main Unit)
-(define main (run-io (run-suite "higher-kinded laws" suite)))
+(: test-main (IO Unit))
+(define test-main (run-suite "higher-kinded laws" suite))

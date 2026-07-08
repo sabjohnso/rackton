@@ -21,22 +21,22 @@
 (: defer+memo (IO (Pair Integer Integer)))
 (define defer+memo
   (do [r <- (make-ref 0)]
-      (let ([lz (delay (run-io (do [n <- (read-ref r)]
-                                   [_ <- (write-ref r (+ n 1))]
-                                   (pure n))))])
-        (do [before <- (read-ref r)]      ; 0: built but not forced (deferral)
-            [_ <- (pure (force lz))]       ; force #1 — runs the effect
-            [_ <- (pure (force lz))]       ; force #2 — cached, no effect
-            [after <- (read-ref r)]        ; 1: memoized (non-memo would be 2)
-            (pure (Pair before after))))))
+    (let ([lz (delay (run-io (do [n <- (read-ref r)]
+                               [_ <- (write-ref r (+ n 1))]
+                               (pure n))))])
+      (do [before <- (read-ref r)]      ; 0: built but not forced (deferral)
+        [_ <- (pure (force lz))]       ; force #1 — runs the effect
+        [_ <- (pure (force lz))]       ; force #2 — cached, no effect
+        [after <- (read-ref r)]        ; 1: memoized (non-memo would be 2)
+        (pure (Pair before after))))))
 
 (: suite (List Test))
 (define suite
   (list
-   (it "force (delay e) yields e's value"
-       (check-equal? tripled 3))
-   (it "delay defers and force memoizes"
-       (check-equal? (run-io defer+memo) (Pair 0 1)))))
+    (it "force (delay e) yields e's value"
+        (check-equal? tripled 3))
+    (it "delay defers and force memoizes"
+        (check-equal? (run-io defer+memo) (Pair 0 1)))))
 
-(: main Unit)
-(define main (run-io (run-suite "lazy" suite)))
+(: test-main (IO Unit))
+(define test-main (run-suite "lazy" suite))

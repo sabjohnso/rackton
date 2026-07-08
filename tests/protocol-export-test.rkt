@@ -24,11 +24,11 @@
 (: suite (List Test))
 (define suite
   (list
-   (it "cross-module instance of a user protocol dispatches"
-       (all-checks
-        (list (check-equal? r "red")
-              (check-equal? g "green")
-              (check-equal? c "custom"))))))
+    (it "cross-module instance of a user protocol dispatches"
+        (all-checks
+          (list (check-equal? r "red")
+                (check-equal? g "green")
+                (check-equal? c "custom"))))))
 
-(: main Unit)
-(define main (run-io (run-suite "cross-module protocol instance" suite)))
+(: test-main (IO Unit))
+(define test-main (run-suite "cross-module protocol instance" suite))

@@ -31,29 +31,29 @@
 (: suite (List Test))
 (define suite
   (list
-   (it "affix predicates"
-       (all-checks
-        (list (check-true p1) (check-false p2)
-              (check-true s1) (check-false s2)
-              (check-true i1) (check-false i2) (check-true i3))))
-   (it "take / drop"
-       (all-checks
-        (list (check-equal? tk "hel")
-              (check-equal? dp "lo"))))
-   (it "padding"
-       (all-checks
-        (list (check-equal? pl "***ab")
-              (check-equal? pl2 "abcd")
-              (check-equal? pr "ab***"))))
-   (it "repeat"
-       (all-checks
-        (list (check-equal? rp "ababab")
-              (check-equal? rp0 ""))))
-   (it "replace"
-       (all-checks
-        (list (check-equal? re "heLLo")
-              (check-equal? re2 "f00 b00")
-              (check-equal? re3 "abc"))))))
+    (it "affix predicates"
+        (all-checks
+          (list (check-true p1) (check-false p2)
+                (check-true s1) (check-false s2)
+                (check-true i1) (check-false i2) (check-true i3))))
+    (it "take / drop"
+        (all-checks
+          (list (check-equal? tk "hel")
+                (check-equal? dp "lo"))))
+    (it "padding"
+        (all-checks
+          (list (check-equal? pl "***ab")
+                (check-equal? pl2 "abcd")
+                (check-equal? pr "ab***"))))
+    (it "repeat"
+        (all-checks
+          (list (check-equal? rp "ababab")
+                (check-equal? rp0 ""))))
+    (it "replace"
+        (all-checks
+          (list (check-equal? re "heLLo")
+                (check-equal? re2 "f00 b00")
+                (check-equal? re3 "abc"))))))
 
-(: main Unit)
-(define main (run-io (run-suite "rackton/text/string extras" suite)))
+(: test-main (IO Unit))
+(define test-main (run-suite "rackton/text/string extras" suite))

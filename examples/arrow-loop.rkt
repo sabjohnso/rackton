@@ -36,7 +36,7 @@
 (: main (IO Unit))
 (define main
   (do [_ <- (println (labelled "ones (×8)"  (stream-take 8 ones)))]
-      [_ <- (println (labelled "nats (×8)"  (stream-take 8 nats)))]
+    [_ <- (println (labelled "nats (×8)"  (stream-take 8 nats)))]
     (println (labelled "fibs (×12)" (stream-take 12 fibs)))))
 
 ;; ----- the self-referential streams ---------------------------------
@@ -47,10 +47,10 @@
 (: ones (Stream Integer))
 (define ones
   (run-lfun
-   (proc (_)
-     (rec [s <- (feed (lcons 1) s)])
-     (feed (arr (lambda (z) z)) s))
-   0))
+    (proc (_)
+          (rec [s <- (feed (lcons 1) s)])
+          (feed (arr (lambda (z) z)) s))
+    0))
 
 ;; nats = 0 : map (+1) nats
 ;; Fold the recurrence into ONE arrow so it stays a single self-reference.
@@ -61,10 +61,10 @@
 (: nats (Stream Integer))
 (define nats
   (run-lfun
-   (proc (_)
-     (rec [ns <- (feed (comp (lcons 0) (arr (stream-map inc))) ns)])
-     (feed (arr (lambda (z) z)) ns))
-   0))
+    (proc (_)
+          (rec [ns <- (feed (comp (lcons 0) (arr (stream-map inc))) ns)])
+          (feed (arr (lambda (z) z)) ns))
+    0))
 
 ;; fibs = 0 : 1 : zipWith (+) fibs (tail fibs)
 ;;   comp (lcons 0) (comp (lcons 1) (arr tails-plus))
@@ -75,10 +75,10 @@
 (: fibs (Stream Integer))
 (define fibs
   (run-lfun
-   (proc (_)
-     (rec [fs <- (feed (comp (lcons 0) (comp (lcons 1) (arr tails-plus))) fs)])
-     (feed (arr (lambda (z) z)) fs))
-   0))
+    (proc (_)
+          (rec [fs <- (feed (comp (lcons 0) (comp (lcons 1) (arr tails-plus))) fs)])
+          (feed (arr (lambda (z) z)) fs))
+    0))
 
 ;; ----- helpers ------------------------------------------------------
 
@@ -105,8 +105,3 @@
        [(SNil) SNil]
        [(SCons y yt)
         (SCons (+ x y) (delay (zip-plus (force xt) (force yt))))])]))
-
-;; ----- run it -------------------------------------------------------
-
-(: _go Unit)
-(define _go (run-io main))

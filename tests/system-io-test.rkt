@@ -46,12 +46,12 @@
 (: suite (List Test))
 (define suite
   (list
-   (it "open-file / h-put-str / h-get-contents round-trip"
-       (check-equal? (run-io roundtrip) "hello world\n"))
-   (it "AppendMode"
-       (check-equal? (run-io appended) "ab"))
-   (it "h-get-line yields Some then None at EOF"
-       (check-true (run-io line-eof)))))
+    (it "open-file / h-put-str / h-get-contents round-trip"
+        (check-equal? (run-io roundtrip) "hello world\n"))
+    (it "AppendMode"
+        (check-equal? (run-io appended) "ab"))
+    (it "h-get-line yields Some then None at EOF"
+        (check-true (run-io line-eof)))))
 
-(: main Unit)
-(define main (run-io (run-suite "system/io" suite)))
+(: test-main (IO Unit))
+(define test-main (run-suite "system/io" suite))

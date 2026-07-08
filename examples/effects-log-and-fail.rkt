@@ -20,11 +20,11 @@
 (: checked-div (-> Integer Integer (Eff (EffRow Present Present) Integer)))
 (define (checked-div a b)
   (ebind (tell (string-append "div " (string-append (integer->string a)
-                  (string-append " " (integer->string b)))))
+                                                    (string-append " " (integer->string b)))))
          (lambda (u)
            (if (== b 0)
-               (throw "division by zero")
-               (with-except (epure (div a b)))))))
+             (throw "division by zero")
+             (with-except (epure (div a b)))))))
 
 ;; two pipelines: 100/5/2 succeeds; 100/5/0 throws on the second step.
 (: pipeline-ok (Eff (EffRow Present Present) Integer))
@@ -56,17 +56,15 @@
   (match (run-prog p)
     [(Pair r log)
      (println (string-append label
-                (string-append (outcome->str r) (log->str log))))]))
+                             (string-append (outcome->str r) (log->str log))))]))
 
-(: main Unit)
-(define main
-  (run-io
-   (do [_ <- (println "Typed algebraic effects (rackton/effects): log + may-fail")]
-       [_ <- (println "")]
-       [_ <- (report "100 / 5 / 2  =>  " pipeline-ok)]
-       [_ <- (println "")]
-       [_ <- (report "100 / 5 / 0  =>  " pipeline-bad)]
-       [_ <- (println "")]
-       [_ <- (println "Both effects are in each pipeline's TYPE; run-eff accepts")]
-       [_ <- (println "only the empty row, so a forgotten handler is a type error.")]
-     (pure Unit))))
+(: main (IO Unit))
+(define main (do [_ <- (println "Typed algebraic effects (rackton/effects): log + may-fail")]
+               [_ <- (println "")]
+               [_ <- (report "100 / 5 / 2  =>  " pipeline-ok)]
+               [_ <- (println "")]
+               [_ <- (report "100 / 5 / 0  =>  " pipeline-bad)]
+               [_ <- (println "")]
+               [_ <- (println "Both effects are in each pipeline's TYPE; run-eff accepts")]
+               [_ <- (println "only the empty row, so a forgotten handler is a type error.")]
+               (pure Unit)))

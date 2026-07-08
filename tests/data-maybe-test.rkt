@@ -26,21 +26,21 @@
 (: suite (List Test))
 (define suite
   (list
-   (it "catMaybes / mapMaybe"
-       (all-checks
-        (list (check-equal? r-cat  (Cons 1 (Cons 2 (Cons 3 Nil))))
-              (check-equal? r-mapm (Cons 30 (Cons 40 Nil))))))
-   (it "list interop"
-       (all-checks
-        (list (check-equal? r-tolist   (Cons 7 Nil))
-              (check-equal? r-tolist0  Nil)
-              (check-equal? r-tomaybe  (Some 9))
-              (check-equal? r-tomaybe0 None)
-              (check-equal? r-fromjust 42))))
-   (it "existing helpers"
-       (all-checks
-        (list (check-equal? r-maybe 6)
-              (check-true  r-isjust))))))
+    (it "catMaybes / mapMaybe"
+        (all-checks
+          (list (check-equal? r-cat  (Cons 1 (Cons 2 (Cons 3 Nil))))
+                (check-equal? r-mapm (Cons 30 (Cons 40 Nil))))))
+    (it "list interop"
+        (all-checks
+          (list (check-equal? r-tolist   (Cons 7 Nil))
+                (check-equal? r-tolist0  Nil)
+                (check-equal? r-tomaybe  (Some 9))
+                (check-equal? r-tomaybe0 None)
+                (check-equal? r-fromjust 42))))
+    (it "existing helpers"
+        (all-checks
+          (list (check-equal? r-maybe 6)
+                (check-true  r-isjust))))))
 
-(: main Unit)
-(define main (run-io (run-suite "rackton/data/maybe" suite)))
+(: test-main (IO Unit))
+(define test-main (run-suite "rackton/data/maybe" suite))

@@ -8,7 +8,7 @@
 (require "../unit.rkt")
 
 (protocol (Convertible a b)
-  (: convert (-> a b)))
+          (: convert (-> a b)))
 
 (instance (Convertible Integer String)
   (define (convert n) (show n)))
@@ -25,11 +25,11 @@
 (: suite (List Test))
 (define suite
   (list
-   (it "multi-parameter class dispatches by first arg's type"
-       (all-checks
-        (list (check-equal? (int-to-string 42)    "42")
-              (check-equal? (bool-to-string #t)   "yes")
-              (check-equal? (bool-to-string #f)   "no"))))))
+    (it "multi-parameter class dispatches by first arg's type"
+        (all-checks
+          (list (check-equal? (int-to-string 42)    "42")
+                (check-equal? (bool-to-string #t)   "yes")
+                (check-equal? (bool-to-string #f)   "no"))))))
 
-(: main Unit)
-(define main (run-io (run-suite "multiparam" suite)))
+(: test-main (IO Unit))
+(define test-main (run-suite "multiparam" suite))

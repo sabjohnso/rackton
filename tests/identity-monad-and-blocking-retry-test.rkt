@@ -19,23 +19,23 @@
 (define (positive-then-double tv)
   (do [n <- (read-tvar tv)]
     (if (> n 0)
-        (pure (* n 2))
-        retry)))
+      (pure (* n 2))
+      retry)))
 
 (: bump-once (-> (TVar Integer) (IO Unit)))
 (define (bump-once tv)
   (atomically
-   (do [n <- (read-tvar tv)]
-     (write-tvar tv (+ n 1)))))
+    (do [n <- (read-tvar tv)]
+      (write-tvar tv (+ n 1)))))
 
 (: blocking-retry-result (IO Integer))
 (define blocking-retry-result
   (do [tv <- (atomically (new-tvar 0))]
-      ;; Spawn a thread that bumps the TVar past zero.  The main
-      ;; thread's atomically blocks on retry until that happens.
-      [t  <- (fork-io (bump-once tv))]
-      [v  <- (atomically (positive-then-double tv))]
-      [_  <- (wait-thread t)]
+    ;; Spawn a thread that bumps the TVar past zero.  The main
+    ;; thread's atomically blocks on retry until that happens.
+    [t  <- (fork-io (bump-once tv))]
+    [v  <- (atomically (positive-then-double tv))]
+    [_  <- (wait-thread t)]
     (pure v)))
 
 ;; ----- 44.4 Mock Concurrent via Identity --------------------
@@ -43,9 +43,9 @@
 (: par-pair ((Concurrent m) => (-> (m a) (-> (m b) (m (Pair a b))))))
 (define (par-pair ma mb)
   (do [fa <- (fork-c ma)]
-      [fb <- (fork-c mb)]
-      [a  <- (await-c fa)]
-      [b  <- (await-c fb)]
+    [fb <- (fork-c mb)]
+    [a  <- (await-c fa)]
+    [b  <- (await-c fb)]
     (pure (Pair a b))))
 
 (: id-par-pair (Identity (Pair Integer String)))
@@ -94,25 +94,25 @@
 (: suite (List Test))
 (define suite
   (list
-   (it "STM blocking retry: main thread waits until TVar > 0"
-       (check-equal? (run-io blocking-retry-result) 2))
-   (it "Mock Concurrent via Identity — par-pair runs synchronously"
-       (check-equal? id-par-pair-result (Pair 7 "ok")))
-   (it "abs polymorphic via Num: Integer / Float / Rational"
-       (all-checks
-        (list (check-equal? abs-int    7)
-              (check-equal? abs-float  7.5)
-              (check-equal? abs-rat    (make-rational 1 2)))))
-   (it "negate polymorphic via Num: Integer / Float / Rational"
-       (all-checks
-        (list (check-equal? neg-int   -5)
-              (check-equal? neg-float -5.5)
-              (check-equal? neg-rat   (make-rational -1 3)))))
-   (it "min / max polymorphic via Ord"
-       (all-checks
-        (list (check-equal? min-int    3)
-              (check-equal? max-float  2.5)
-              (check-equal? min-str    "alpha"))))))
+    (it "STM blocking retry: main thread waits until TVar > 0"
+        (check-equal? (run-io blocking-retry-result) 2))
+    (it "Mock Concurrent via Identity — par-pair runs synchronously"
+        (check-equal? id-par-pair-result (Pair 7 "ok")))
+    (it "abs polymorphic via Num: Integer / Float / Rational"
+        (all-checks
+          (list (check-equal? abs-int    7)
+                (check-equal? abs-float  7.5)
+                (check-equal? abs-rat    (make-rational 1 2)))))
+    (it "negate polymorphic via Num: Integer / Float / Rational"
+        (all-checks
+          (list (check-equal? neg-int   -5)
+                (check-equal? neg-float -5.5)
+                (check-equal? neg-rat   (make-rational -1 3)))))
+    (it "min / max polymorphic via Ord"
+        (all-checks
+          (list (check-equal? min-int    3)
+                (check-equal? max-float  2.5)
+                (check-equal? min-str    "alpha"))))))
 
-(: main Unit)
-(define main (run-io (run-suite "identity-monad-and-blocking-retry" suite)))
+(: test-main (IO Unit))
+(define test-main (run-suite "identity-monad-and-blocking-retry" suite))

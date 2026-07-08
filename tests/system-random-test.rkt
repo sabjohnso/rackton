@@ -48,16 +48,16 @@
 (: suite (List Test))
 (define suite
   (list
-   (it "pure StdGen"
-       (all-checks
-        (list (check-true det)
-              (check-true in-range)
-              (check-true advances)
-              (check-true split-diff))))
-   (it "randomR IO conveniences"
-       (all-checks
-        (list (check-equal? r-rio 5)
-              (check-true (< (abs (- r-rfo 2.0)) 1e-9)))))))
+    (it "pure StdGen"
+        (all-checks
+          (list (check-true det)
+                (check-true in-range)
+                (check-true advances)
+                (check-true split-diff))))
+    (it "randomR IO conveniences"
+        (all-checks
+          (list (check-equal? r-rio 5)
+                (check-true (< (abs (- r-rfo 2.0)) 1e-9)))))))
 
-(: main Unit)
-(define main (run-io (run-suite "rackton/system/random" suite)))
+(: test-main (IO Unit))
+(define test-main (run-suite "rackton/system/random" suite))

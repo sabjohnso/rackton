@@ -26,20 +26,20 @@
 (: suite (List Test))
 (define suite
   (list
-   (it "null / empty"
-       (all-checks
-        (list (check-true  e-null)
-              (check-false h-null))))
-   (it "take / drop"
-       (all-checks
-        (list (check-equal? tk "hel")
-              (check-equal? dp "lo"))))
-   (it "split"
-       (all-checks
-        (list (check-equal? sp-l "he")
-              (check-equal? sp-r "llo"))))
-   (it "concat"
-       (check-equal? cc "abcdef"))))
+    (it "null / empty"
+        (all-checks
+          (list (check-true  e-null)
+                (check-false h-null))))
+    (it "take / drop"
+        (all-checks
+          (list (check-equal? tk "hel")
+                (check-equal? dp "lo"))))
+    (it "split"
+        (all-checks
+          (list (check-equal? sp-l "he")
+                (check-equal? sp-r "llo"))))
+    (it "concat"
+        (check-equal? cc "abcdef"))))
 
-(: main Unit)
-(define main (run-io (run-suite "rackton/text/bytes" suite)))
+(: test-main (IO Unit))
+(define test-main (run-suite "rackton/text/bytes" suite))

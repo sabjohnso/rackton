@@ -10,7 +10,7 @@
 (: endo-comp Integer)
 (define endo-comp
   ((app-endo (mappend (Endo (lambda (n) (+ n 1)))
-                 (Endo (lambda (n) (* n 2))))) 3))
+                      (Endo (lambda (n) (* n 2))))) 3))
 
 (: endo-id Integer)
 (define endo-id ((app-endo (ann mempty (Endo Integer))) 7))
@@ -25,14 +25,14 @@
 (: suite (List Test))
 (define suite
   (list
-   (it "Endo: composition monoid"
-       (all-checks
-        (list (check-equal? endo-comp 7)
-              (check-equal? endo-id 7))))
-   (it "Dual: flipped Semigroup"
-       (all-checks
-        (list (check-equal? dual-flip "ba")
-              (check-equal? dual-mempty ""))))))
+    (it "Endo: composition monoid"
+        (all-checks
+          (list (check-equal? endo-comp 7)
+                (check-equal? endo-id 7))))
+    (it "Dual: flipped Semigroup"
+        (all-checks
+          (list (check-equal? dual-flip "ba")
+                (check-equal? dual-mempty ""))))))
 
-(: main Unit)
-(define main (run-io (run-suite "rackton/data/monoid (Endo/Dual)" suite)))
+(: test-main (IO Unit))
+(define test-main (run-suite "rackton/data/monoid (Endo/Dual)" suite))

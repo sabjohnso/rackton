@@ -26,20 +26,20 @@
 (: suite (List Test))
 (define suite
   (list
-   (it "conjugate / magnitude / phase"
-       (all-checks
-        (list (check-equal? conj-re 3.0)
-              (check-equal? conj-im -4.0)
-              (check-equal? mag 5.0)
-              (check-equal? ph0 0.0))))
-   (it "mk-polar / cis"
-       (all-checks
-        (list (check-equal? mp-re 5.0) (check-equal? mp-im 0.0)
-              (check-equal? cis-re 1.0) (check-equal? cis-im 0.0))))
-   (it "polar"
-       (all-checks
-        (list (check-equal? pol-mag 5.0)
-              (check-equal? pol-ph 0.0))))))
+    (it "conjugate / magnitude / phase"
+        (all-checks
+          (list (check-equal? conj-re 3.0)
+                (check-equal? conj-im -4.0)
+                (check-equal? mag 5.0)
+                (check-equal? ph0 0.0))))
+    (it "mk-polar / cis"
+        (all-checks
+          (list (check-equal? mp-re 5.0) (check-equal? mp-im 0.0)
+                (check-equal? cis-re 1.0) (check-equal? cis-im 0.0))))
+    (it "polar"
+        (all-checks
+          (list (check-equal? pol-mag 5.0)
+                (check-equal? pol-ph 0.0))))))
 
-(: main Unit)
-(define main (run-io (run-suite "data-complex" suite)))
+(: test-main (IO Unit))
+(define test-main (run-suite "data-complex" suite))

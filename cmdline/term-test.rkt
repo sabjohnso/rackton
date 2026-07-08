@@ -52,46 +52,46 @@
 (: suite (List Test))
 (define suite
   (list
-   (it "pure declares no args"
-       (all-checks
-        (list (check-equal? (names-of (term-args (ann (pure 7) (Term Integer))))
-                            Nil))))
+    (it "pure declares no args"
+        (all-checks
+          (list (check-equal? (names-of (term-args (ann (pure 7) (Term Integer))))
+                              Nil))))
 
-   (it "fmap preserves args and maps the value"
-       (let ([t (fmap (lambda (x) (+ x 10)) t5)])
-         (all-checks
-          (list (check-equal? (names-of (term-args t)) (names-of (list ad1)))
-                (check-true (runs-to t 15))))))
+    (it "fmap preserves args and maps the value"
+        (let ([t (fmap (lambda (x) (+ x 10)) t5)])
+          (all-checks
+            (list (check-equal? (names-of (term-args t)) (names-of (list ad1)))
+                  (check-true (runs-to t 15))))))
 
-   (it "fapply unions args left-to-right"
-       (let ([t (fapply tinc t5)])
-         (all-checks
-          (list (check-equal? (names-of (term-args t)) (names-of (list ad2 ad1)))))))
+    (it "fapply unions args left-to-right"
+        (let ([t (fapply tinc t5)])
+          (all-checks
+            (list (check-equal? (names-of (term-args t)) (names-of (list ad2 ad1)))))))
 
-   (it "fapply applies the function"
-       (all-checks (list (check-true (runs-to (fapply tinc t5) 6)))))
+    (it "fapply applies the function"
+        (all-checks (list (check-true (runs-to (fapply tinc t5) 6)))))
 
-   (it "applicative identity: pure id <*> v"
-       (let ([idt (ann (pure (lambda (x) x)) (Term (-> Integer Integer)))])
-         (all-checks (list (check-true (runs-to (fapply idt t5) 5))))))
+    (it "applicative identity: pure id <*> v"
+        (let ([idt (ann (pure (lambda (x) x)) (Term (-> Integer Integer)))])
+          (all-checks (list (check-true (runs-to (fapply idt t5) 5))))))
 
-   (it "homomorphism: pure f <*> pure x"
-       (let ([pf (ann (pure (lambda (x) (+ x 1))) (Term (-> Integer Integer)))]
-             [px (ann (pure 4) (Term Integer))])
-         (all-checks (list (check-true (runs-to (fapply pf px) 5))))))
+    (it "homomorphism: pure f <*> pure x"
+        (let ([pf (ann (pure (lambda (x) (+ x 1))) (Term (-> Integer Integer)))]
+              [px (ann (pure 4) (Term Integer))])
+          (all-checks (list (check-true (runs-to (fapply pf px) 5))))))
 
-   (it "error propagates through fapply (left operand)"
-       (let ([tf (fmap (lambda (n) (lambda (x) x)) tbad)])
-         (all-checks (list (check-true (errs? (fapply tf t5)))))))
+    (it "error propagates through fapply (left operand)"
+        (let ([tf (fmap (lambda (n) (lambda (x) x)) tbad)])
+          (all-checks (list (check-true (errs? (fapply tf t5)))))))
 
-   (it "error propagates through fapply (right operand)"
-       (all-checks (list (check-true (errs? (fapply tinc tbad))))))
+    (it "error propagates through fapply (right operand)"
+        (all-checks (list (check-true (errs? (fapply tinc tbad))))))
 
-   (it "let+ assembles a term (value + arg union)"
-       (let ([t (let+ ([f tinc] [x t5]) (f x))])
-         (all-checks
-          (list (check-true (runs-to t 6))
-                (check-equal? (names-of (term-args t)) (names-of (list ad2 ad1)))))))))
+    (it "let+ assembles a term (value + arg union)"
+        (let ([t (let+ ([f tinc] [x t5]) (f x))])
+          (all-checks
+            (list (check-true (runs-to t 6))
+                  (check-equal? (names-of (term-args t)) (names-of (list ad2 ad1)))))))))
 
-(: main Unit)
-(define main (run-io (run-suite "rackton/cmdline/term" suite)))
+(: test-main (IO Unit))
+(define test-main (run-suite "rackton/cmdline/term" suite))

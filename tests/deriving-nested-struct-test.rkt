@@ -20,16 +20,16 @@
 (: suite (List Test))
 (define suite
   (list
-   (it "== over nested-struct fields"
-       (all-checks (list (check-true  (== s1 s2))
-                         (check-false (== s1 s3)))))
-   (it "< lexicographic over nested-struct fields"
-       (all-checks (list (check-true  (< s1 s3))
-                         (check-false (< s3 s1)))))
-   (it "show over nested-struct fields"
-       (check-equal? (show s1) "(Segment (Point 1 2) (Point 3 4))"))
-   (it "field access is intact (not a leaked dict)"
-       (check-equal? (Point-x (Segment-start s1)) 1))))
+    (it "== over nested-struct fields"
+        (all-checks (list (check-true  (== s1 s2))
+                          (check-false (== s1 s3)))))
+    (it "< lexicographic over nested-struct fields"
+        (all-checks (list (check-true  (< s1 s3))
+                          (check-false (< s3 s1)))))
+    (it "show over nested-struct fields"
+        (check-equal? (show s1) "(Segment (Point 1 2) (Point 3 4))"))
+    (it "field access is intact (not a leaked dict)"
+        (check-equal? (Point-x (Segment-start s1)) 1))))
 
-(: main Unit)
-(define main (run-io (run-suite "deriving nested struct" suite)))
+(: test-main (IO Unit))
+(define test-main (run-suite "deriving nested struct" suite))

@@ -67,22 +67,22 @@
 (: suite (List Test))
 (define suite
   (list
-   (it "partial application of operator +"
-       (check-equal? inc-result 42))
-   (it "partial application of user-defined ternary function"
-       (check-equal? add3-final 60))
-   (it "over-application across a returned lambda equals stepwise"
-       (all-checks
-        (list (check-equal? fma-stepwise 17)
-              (check-equal? fma-flat 17))))
-   (it "over-application through two single-param boundaries"
-       (check-equal? g3-flat 6))
-   (it "partial application of class method fmap"
-       (all-checks
-        (list (check-equal? lifted-result1 (Some 42))
-              (check-equal? lifted-result2 None))))
-   (it "partial application of prelude string-append"
-       (check-equal? greeting "hello, world"))))
+    (it "partial application of operator +"
+        (check-equal? inc-result 42))
+    (it "partial application of user-defined ternary function"
+        (check-equal? add3-final 60))
+    (it "over-application across a returned lambda equals stepwise"
+        (all-checks
+          (list (check-equal? fma-stepwise 17)
+                (check-equal? fma-flat 17))))
+    (it "over-application through two single-param boundaries"
+        (check-equal? g3-flat 6))
+    (it "partial application of class method fmap"
+        (all-checks
+          (list (check-equal? lifted-result1 (Some 42))
+                (check-equal? lifted-result2 None))))
+    (it "partial application of prelude string-append"
+        (check-equal? greeting "hello, world"))))
 
-(: main Unit)
-(define main (run-io (run-suite "curried-application" suite)))
+(: test-main (IO Unit))
+(define test-main (run-suite "curried-application" suite))

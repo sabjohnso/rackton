@@ -24,24 +24,24 @@
 (define suite
   (describe "rackton/unit demo"
 
-    ;; plain unit checks
-    (describe "checks"
-      (it "arithmetic" (check-equal? (+ 2 2) 4))
-      (it "reverse"    (check-true (int-list-eq (rev (list 1 2)) (list 2 1)))))
+            ;; plain unit checks
+            (describe "checks"
+                      (it "arithmetic" (check-equal? (+ 2 2) 4))
+                      (it "reverse"    (check-true (int-list-eq (rev (list 1 2)) (list 2 1)))))
 
-    ;; properties with integrated shrinking
-    (describe "properties"
-      (it-prop "rev is involutive on Integer lists"
-               (for-all-gen show-int-list (gen-list (int-range 0 9))
-                            (lambda (xs) (int-list-eq (rev (rev xs)) xs))))
-      (it-prop "DELIBERATELY FALSE: every int < 5"
-               (for-all (int-range 0 100) (lambda (x) (< x 5)))))
+            ;; properties with integrated shrinking
+            (describe "properties"
+                      (it-prop "rev is involutive on Integer lists"
+                               (for-all-gen show-int-list (gen-list (int-range 0 9))
+                                            (lambda (xs) (int-list-eq (rev (rev xs)) xs))))
+                      (it-prop "DELIBERATELY FALSE: every int < 5"
+                               (for-all (int-range 0 100) (lambda (x) (< x 5)))))
 
-    ;; algebraic laws
-    (describe "laws"
-      (eq-laws  (int-range -50 50))
-      (ord-laws (int-range -50 50))
-      (monoid-laws gen-string ""))))
+            ;; algebraic laws
+            (describe "laws"
+                      (eq-laws  (int-range -50 50))
+                      (ord-laws (int-range -50 50))
+                      (monoid-laws gen-string ""))))
 
 ;; ----- Helpers for the list property ---------------------------------
 
@@ -62,10 +62,9 @@
 
 ;; ----- Run it --------------------------------------------------------
 
-(: main Unit)
-(define main
-  (run-io (do [s <- (run-tests suite)]
-            (println (string-append "passed="
-                       (string-append (integer->string (summary-passed s))
-                         (string-append "  failed="
-                           (integer->string (summary-failed s)))))))))
+(: main (IO Unit))
+(define main (do [s <- (run-tests suite)]
+               (println (string-append "passed="
+                                       (string-append (integer->string (summary-passed s))
+                                                      (string-append "  failed="
+                                                                     (integer->string (summary-failed s))))))))

@@ -92,34 +92,34 @@
 (: suite (List Test))
 (define suite
   (list
-   (it "Absent prism: preview / review"
-       (all-checks
-        (list (check-equal? prev-absent-on-absent   (Some Unit))
-              (check-equal? prev-absent-on-present  None)
-              (check-equal? rev-absent              Absent))))
-   (it "Present prism: preview / review"
-       (all-checks
-        (list (check-equal? prev-present-on-present (Some 7))
-              (check-equal? prev-present-on-absent  None)
-              (check-equal? rev-present             (Present 99)))))
-   (it "Either2 derived prisms"
-       (all-checks
-        (list (check-equal? prev-lft-on-lft (Some "err"))
-              (check-equal? prev-rgt-on-rgt (Some 42))
-              (check-equal? rev-lft         (Lft "boom")))))
-   (it "nullary + single-field ctors both get prisms"
-       (all-checks
-        (list (check-equal? prev-empty-on-empty (Some Unit))
-              (check-equal? prev-one-on-one     (Some 7)))))
-   (it "2-field ctor focuses a Pair"
-       (all-checks
-        (list (check-equal? prev-rect      (Some (Pair 3 4)))
-              (check-equal? prev-rect-miss None)
-              (check-equal? rev-rect       (Rect 7 8)))))
-   (it "3-field ctor focuses a flat variadic Tuple"
-       (all-checks
-        (list (check-equal? prev-tri3 (Some (tuple 1 2 3)))
-              (check-equal? rev-tri3  (Tri3 1 2 3)))))))
+    (it "Absent prism: preview / review"
+        (all-checks
+          (list (check-equal? prev-absent-on-absent   (Some Unit))
+                (check-equal? prev-absent-on-present  None)
+                (check-equal? rev-absent              Absent))))
+    (it "Present prism: preview / review"
+        (all-checks
+          (list (check-equal? prev-present-on-present (Some 7))
+                (check-equal? prev-present-on-absent  None)
+                (check-equal? rev-present             (Present 99)))))
+    (it "Either2 derived prisms"
+        (all-checks
+          (list (check-equal? prev-lft-on-lft (Some "err"))
+                (check-equal? prev-rgt-on-rgt (Some 42))
+                (check-equal? rev-lft         (Lft "boom")))))
+    (it "nullary + single-field ctors both get prisms"
+        (all-checks
+          (list (check-equal? prev-empty-on-empty (Some Unit))
+                (check-equal? prev-one-on-one     (Some 7)))))
+    (it "2-field ctor focuses a Pair"
+        (all-checks
+          (list (check-equal? prev-rect      (Some (Pair 3 4)))
+                (check-equal? prev-rect-miss None)
+                (check-equal? rev-rect       (Rect 7 8)))))
+    (it "3-field ctor focuses a flat variadic Tuple"
+        (all-checks
+          (list (check-equal? prev-tri3 (Some (tuple 1 2 3)))
+                (check-equal? rev-tri3  (Tri3 1 2 3)))))))
 
-(: main Unit)
-(define main (run-io (run-suite "deriving Prism" suite)))
+(: test-main (IO Unit))
+(define test-main (run-suite "deriving Prism" suite))

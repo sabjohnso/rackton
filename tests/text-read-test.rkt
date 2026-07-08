@@ -21,20 +21,20 @@
 (: suite (List Test))
 (define suite
   (list
-   (it "read-int"
-       (all-checks
-        (list (check-equal? ri 42)
-              (check-true ri-bad))))
-   (it "read-float"
-       (all-checks
-        (list (check-true (< (abs (- rf 3.14)) 1e-9))
-              (check-true (< (abs (- rf-int 5.0)) 1e-9))
-              (check-true rf-bad))))
-   (it "read-bool (round-trips show)"
-       (all-checks
-        (list (check-true  rb-t)
-              (check-false rb-f)
-              (check-true  rb-bad))))))
+    (it "read-int"
+        (all-checks
+          (list (check-equal? ri 42)
+                (check-true ri-bad))))
+    (it "read-float"
+        (all-checks
+          (list (check-true (< (abs (- rf 3.14)) 1e-9))
+                (check-true (< (abs (- rf-int 5.0)) 1e-9))
+                (check-true rf-bad))))
+    (it "read-bool (round-trips show)"
+        (all-checks
+          (list (check-true  rb-t)
+                (check-false rb-f)
+                (check-true  rb-bad))))))
 
-(: main Unit)
-(define main (run-io (run-suite "rackton/text/read" suite)))
+(: test-main (IO Unit))
+(define test-main (run-suite "rackton/text/read" suite))

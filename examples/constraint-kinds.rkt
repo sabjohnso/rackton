@@ -16,8 +16,8 @@
 (: tell ((Display a) => (-> a a String)))
 (define (tell x y)
   (if (== x y)
-      (string-append "both equal " (show x))
-      (string-append (show x) (string-append " vs " (show y)))))
+    (string-append "both equal " (show x))
+    (string-append (show x) (string-append " vs " (show y)))))
 
 ;; ----- a higher-order family: `All c xs` ---------------------------
 ;; "constraint c holds of every element of the promoted list xs".
@@ -25,8 +25,8 @@
 (data (TList a) TNil (TCons a (TList a)))
 
 (constraint-family (All c xs)
-  [c TNil         = ]
-  [c (TCons x xs) = (c x) (All c xs)])
+                   [c TNil         = ]
+                   [c (TCons x xs) = (c x) (All c xs)])
 
 (data (Proxy a) MkProxy)
 
@@ -41,7 +41,5 @@
 (: main (IO Unit))
 (define main
   (do [_ <- (println (tell 7 7))]
-      [_ <- (println (tell 7 9))]
-      (println (all-showable pr))))
-
-(define _go (run-io main))
+    [_ <- (println (tell 7 9))]
+    (println (all-showable pr))))

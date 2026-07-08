@@ -30,17 +30,17 @@
 (: r-concat (List Integer))   (define r-concat
                                 (concat (list (list 1 2) (list 3) Nil (list 4))))
 (: r-intersperse (List Integer)) (define r-intersperse
-                                (intersperse 0 (list 1 2 3)))
+                                   (intersperse 0 (list 1 2 3)))
 (: r-intercalate (List Integer)) (define r-intercalate
-                                (intercalate (list 0 0) (list (list 1) (list 2))))
+                                   (intercalate (list 0 0) (list (list 1) (list 2))))
 (: r-replicate (List Integer)) (define r-replicate (replicate 3 7))
 (: r-range (List Integer))    (define r-range (range 2 5))
 
 ;; ----- slicing -----------------------------------------
 (: r-takewhile (List Integer)) (define r-takewhile
-                                (take-while (lambda (x) (< x 3)) (list 1 2 3 1)))
+                                 (take-while (lambda (x) (< x 3)) (list 1 2 3 1)))
 (: r-dropwhile (List Integer)) (define r-dropwhile
-                                (drop-while (lambda (x) (< x 3)) (list 1 2 3 1)))
+                                 (drop-while (lambda (x) (< x 3)) (list 1 2 3 1)))
 (: r-span (Pair (List Integer) (List Integer)))
 (define r-span (span (lambda (x) (< x 3)) (list 1 2 3 1)))
 (: r-break (Pair (List Integer) (List Integer)))
@@ -50,7 +50,7 @@
 
 ;; ----- folding / predicates ----------------------------
 (: r-fold-left Integer)           (define r-fold-left
-                                (fold-left (lambda (acc x) (- acc x)) 10 (list 1 2 3)))
+                                    (fold-left (lambda (acc x) (- acc x)) 10 (list 1 2 3)))
 (: r-all Boolean)             (define r-all (all? (lambda (x) (> x 0)) (list 1 2 3)))
 (: r-any Boolean)             (define r-any (any? (lambda (x) (> x 2)) (list 1 2 3)))
 (: r-andl Boolean)            (define r-andl (and-list (list #t #t #f)))
@@ -133,93 +133,93 @@
 (: suite (List Test))
 (define suite
   (list
-   (it "safe accessors"
-       (all-checks
-        (list (check-equal? r-head  (Some 1))
-              (check-equal? r-head0 None)
-              (check-equal? r-last  (Some 3))
-              (check-equal? r-tail  (Some (Cons 2 (Cons 3 Nil))))
-              (check-equal? r-init  (Some (Cons 1 (Cons 2 Nil))))
-              (check-equal? r-null0 #t)
-              (check-equal? r-null1 #f))))
-   (it "membership"
-       (all-checks
-        (list (check-equal? r-elem    #t)
-              (check-equal? r-notelem #t)
-              (check-equal? r-lookup  (Some "b"))
-              (check-equal? r-elemidx (Some 2))
-              (check-equal? r-findidx (Some 1)))))
-   (it "building"
-       (all-checks
-        (list (check-equal? r-concat      (Cons 1 (Cons 2 (Cons 3 (Cons 4 Nil)))))
-              (check-equal? r-intersperse (Cons 1 (Cons 0 (Cons 2 (Cons 0 (Cons 3 Nil))))))
-              (check-equal? r-intercalate (Cons 1 (Cons 0 (Cons 0 (Cons 2 Nil)))))
-              (check-equal? r-replicate   (Cons 7 (Cons 7 (Cons 7 Nil))))
-              (check-equal? r-range       (Cons 2 (Cons 3 (Cons 4 (Cons 5 Nil))))))))
-   (it "slicing"
-       (all-checks
-        (list (check-equal? r-takewhile (Cons 1 (Cons 2 Nil)))
-              (check-equal? r-dropwhile (Cons 3 (Cons 1 Nil)))
-              (check-equal? r-span  (Pair (Cons 1 (Cons 2 Nil)) (Cons 3 (Cons 1 Nil))))
-              (check-equal? r-break (Pair (Cons 1 (Cons 2 Nil)) (Cons 3 (Cons 1 Nil))))
-              (check-equal? r-partition (Pair (Cons 4 (Cons 5 Nil)) (Cons 1 (Cons 2 Nil)))))))
-   (it "folding / predicates"
-       (all-checks
-        (list (check-equal? r-fold-left 4)
-              (check-equal? r-all  #t)
-              (check-equal? r-any  #t)
-              (check-equal? r-andl #f)
-              (check-equal? r-orl  #t)
-              (check-equal? r-max  (Some 5))
-              (check-equal? r-min  (Some 1)))))
-   (it "zipping / uniqueness"
-       (all-checks
-        (list (check-equal? r-zipwith (Cons 11 (Cons 22 Nil)))
-              (check-equal? r-unzip   (Pair (Cons 1 (Cons 2 Nil)) (Cons "a" (Cons "b" Nil))))
-              (check-equal? r-nub     (Cons 1 (Cons 2 (Cons 3 Nil)))))))
-   (it "scans"
-       (all-checks
-        (list (check-equal? q-scanl (list 0 1 3 6))
-              (check-equal? q-scanr (list 6 5 3 0)))))
-   (it "grouping / sublists"
-       (all-checks
-        (list (check-equal? q-group (list (list 1 1) (list 2) (list 3 3)))
-              (check-equal? q-inits (list Nil (list 1) (list 1 2)))
-              (check-equal? q-tails (list (list 1 2) (list 2) Nil)))))
-   (it "prefix / suffix / infix / strip"
-       (all-checks
-        (list (check-equal? q-prefix #t)
-              (check-equal? q-suffix #t)
-              (check-equal? q-infix  #t)
-              (check-equal? q-strip  (Some (list 3))))))
-   (it "transpose"
-       (check-equal? q-transpose (list (list 1 4) (list 2 5) (list 3 6))))
-   (it "set-like"
-       (all-checks
-        (list (check-equal? q-delete    (list 1 3 2))
-              (check-equal? q-insert    (list 1 2 3 4 5))
-              (check-equal? q-diff      (list 1 3 2))
-              (check-equal? q-union     (list 1 2 3 4))
-              (check-equal? q-intersect (list 2 4)))))
-   (it "sorting"
-       (all-checks
-        (list (check-equal? q-sortby (list 3 2 1))
-              (check-equal? q-sorton (list 3 2 1)))))
-   (it "folds with seed-from-list"
-       (all-checks
-        (list (check-equal? q-foldl1 (Some 7))
-              (check-equal? q-foldr1 (Some 11)))))
-   (it "generation"
-       (all-checks
-        (list (check-equal? q-iterate (list 1 2 4 8))
-              (check-equal? q-cycle   (list 1 2 1 2 1 2))
-              (check-equal? q-unfoldr (list 3 2 1)))))
-   (it "nub-by / combinatorial / mapAccumL"
-       (all-checks
-        (list (check-equal? q-nubby   (list 1 2))
-              (check-equal? q-subseq  (list Nil (list 2) (list 1) (list 1 2)))
-              (check-equal? q-perms   (list (list 1 2) (list 2 1)))
-              (check-equal? q-mapaccum (Pair 6 (list 10 20 30))))))))
+    (it "safe accessors"
+        (all-checks
+          (list (check-equal? r-head  (Some 1))
+                (check-equal? r-head0 None)
+                (check-equal? r-last  (Some 3))
+                (check-equal? r-tail  (Some (Cons 2 (Cons 3 Nil))))
+                (check-equal? r-init  (Some (Cons 1 (Cons 2 Nil))))
+                (check-equal? r-null0 #t)
+                (check-equal? r-null1 #f))))
+    (it "membership"
+        (all-checks
+          (list (check-equal? r-elem    #t)
+                (check-equal? r-notelem #t)
+                (check-equal? r-lookup  (Some "b"))
+                (check-equal? r-elemidx (Some 2))
+                (check-equal? r-findidx (Some 1)))))
+    (it "building"
+        (all-checks
+          (list (check-equal? r-concat      (Cons 1 (Cons 2 (Cons 3 (Cons 4 Nil)))))
+                (check-equal? r-intersperse (Cons 1 (Cons 0 (Cons 2 (Cons 0 (Cons 3 Nil))))))
+                (check-equal? r-intercalate (Cons 1 (Cons 0 (Cons 0 (Cons 2 Nil)))))
+                (check-equal? r-replicate   (Cons 7 (Cons 7 (Cons 7 Nil))))
+                (check-equal? r-range       (Cons 2 (Cons 3 (Cons 4 (Cons 5 Nil))))))))
+    (it "slicing"
+        (all-checks
+          (list (check-equal? r-takewhile (Cons 1 (Cons 2 Nil)))
+                (check-equal? r-dropwhile (Cons 3 (Cons 1 Nil)))
+                (check-equal? r-span  (Pair (Cons 1 (Cons 2 Nil)) (Cons 3 (Cons 1 Nil))))
+                (check-equal? r-break (Pair (Cons 1 (Cons 2 Nil)) (Cons 3 (Cons 1 Nil))))
+                (check-equal? r-partition (Pair (Cons 4 (Cons 5 Nil)) (Cons 1 (Cons 2 Nil)))))))
+    (it "folding / predicates"
+        (all-checks
+          (list (check-equal? r-fold-left 4)
+                (check-equal? r-all  #t)
+                (check-equal? r-any  #t)
+                (check-equal? r-andl #f)
+                (check-equal? r-orl  #t)
+                (check-equal? r-max  (Some 5))
+                (check-equal? r-min  (Some 1)))))
+    (it "zipping / uniqueness"
+        (all-checks
+          (list (check-equal? r-zipwith (Cons 11 (Cons 22 Nil)))
+                (check-equal? r-unzip   (Pair (Cons 1 (Cons 2 Nil)) (Cons "a" (Cons "b" Nil))))
+                (check-equal? r-nub     (Cons 1 (Cons 2 (Cons 3 Nil)))))))
+    (it "scans"
+        (all-checks
+          (list (check-equal? q-scanl (list 0 1 3 6))
+                (check-equal? q-scanr (list 6 5 3 0)))))
+    (it "grouping / sublists"
+        (all-checks
+          (list (check-equal? q-group (list (list 1 1) (list 2) (list 3 3)))
+                (check-equal? q-inits (list Nil (list 1) (list 1 2)))
+                (check-equal? q-tails (list (list 1 2) (list 2) Nil)))))
+    (it "prefix / suffix / infix / strip"
+        (all-checks
+          (list (check-equal? q-prefix #t)
+                (check-equal? q-suffix #t)
+                (check-equal? q-infix  #t)
+                (check-equal? q-strip  (Some (list 3))))))
+    (it "transpose"
+        (check-equal? q-transpose (list (list 1 4) (list 2 5) (list 3 6))))
+    (it "set-like"
+        (all-checks
+          (list (check-equal? q-delete    (list 1 3 2))
+                (check-equal? q-insert    (list 1 2 3 4 5))
+                (check-equal? q-diff      (list 1 3 2))
+                (check-equal? q-union     (list 1 2 3 4))
+                (check-equal? q-intersect (list 2 4)))))
+    (it "sorting"
+        (all-checks
+          (list (check-equal? q-sortby (list 3 2 1))
+                (check-equal? q-sorton (list 3 2 1)))))
+    (it "folds with seed-from-list"
+        (all-checks
+          (list (check-equal? q-foldl1 (Some 7))
+                (check-equal? q-foldr1 (Some 11)))))
+    (it "generation"
+        (all-checks
+          (list (check-equal? q-iterate (list 1 2 4 8))
+                (check-equal? q-cycle   (list 1 2 1 2 1 2))
+                (check-equal? q-unfoldr (list 3 2 1)))))
+    (it "nub-by / combinatorial / mapAccumL"
+        (all-checks
+          (list (check-equal? q-nubby   (list 1 2))
+                (check-equal? q-subseq  (list Nil (list 2) (list 1) (list 1 2)))
+                (check-equal? q-perms   (list (list 1 2) (list 2 1)))
+                (check-equal? q-mapaccum (Pair 6 (list 10 20 30))))))))
 
-(: main Unit)
-(define main (run-io (run-suite "rackton/data/list (parity)" suite)))
+(: test-main (IO Unit))
+(define test-main (run-suite "rackton/data/list (parity)" suite))

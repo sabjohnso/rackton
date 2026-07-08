@@ -11,8 +11,8 @@
 (: msg (-> Integer (-> String String)))
 (define msg
   (sprintf (fmt-cat (fmt-lit "x=")
-           (fmt-cat fmt-int
-            (fmt-cat (fmt-lit ", y=") fmt-str)))))
+                    (fmt-cat fmt-int
+                             (fmt-cat (fmt-lit ", y=") fmt-str)))))
 (: out String) (define out ((msg 5) "hi"))
 
 ;; literal only — no args
@@ -29,14 +29,14 @@
 (: suite (List Test))
 (define suite
   (list
-   (it "multi-directive compose"
-       (check-equal? out "x=5, y=hi"))
-   (it "literal only"
-       (check-equal? lit-only "hello"))
-   (it "float directive"
-       (check-equal? flt-out "pi~3.5"))
-   (it "generic Show directive"
-       (check-equal? show-out "n=42"))))
+    (it "multi-directive compose"
+        (check-equal? out "x=5, y=hi"))
+    (it "literal only"
+        (check-equal? lit-only "hello"))
+    (it "float directive"
+        (check-equal? flt-out "pi~3.5"))
+    (it "generic Show directive"
+        (check-equal? show-out "n=42"))))
 
-(: main Unit)
-(define main (run-io (run-suite "rackton/text/printf" suite)))
+(: test-main (IO Unit))
+(define test-main (run-suite "rackton/text/printf" suite))

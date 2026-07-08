@@ -32,8 +32,8 @@
 (: p-bind (-> Integer Integer))
 (define p-bind
   (proc (x)
-    [y <- (feed (arr inc) x)]
-    (feed (arr dbl) y)))
+        [y <- (feed (arr inc) x)]
+        (feed (arr dbl) y)))
 
 ;; both the proc input and a bound variable are in scope downstream.
 (: add-pair (-> (Pair Integer Integer) Integer))
@@ -42,39 +42,39 @@
 (: p-sum (-> Integer Integer))
 (define p-sum
   (proc (x)
-    [y <- (feed (arr inc) x)]
-    (feed (arr add-pair) (Pair x y))))
+        [y <- (feed (arr inc) x)]
+        (feed (arr add-pair) (Pair x y))))
 
 ;; ----- let in the command stream -----------------------------------
 
 (: p-let (-> Integer Integer))
 (define p-let
   (proc (x)
-    (let ([y (* x 2)]))
-    (feed (arr inc) y)))
+        (let ([y (* x 2)]))
+        (feed (arr inc) y)))
 
 ;; ----- arrow if ----------------------------------------------------
 
 (: p-if (-> Integer Integer))
 (define p-if
   (proc (x)
-    (if (< x 0)
-        (feed (arr negate) x)
-        (feed (arr dbl) x))))
+        (if (< x 0)
+          (feed (arr negate) x)
+          (feed (arr dbl) x))))
 
 ;; ----- feed-apply (the arrow is read from the environment) ---------
 
 (: p-apply (-> (Pair (-> Integer Integer) Integer) Integer))
 (define p-apply
   (proc ((Pair f n))
-    (feed-apply f n)))
+        (feed-apply f n)))
 
 ;; ----- via (banana brackets): combine sub-commands with an op ------
 
 (: p-via (-> Integer (Pair Integer Integer)))
 (define p-via
   (proc (x)
-    (via fanout (feed (arr inc) x) (feed (arr dbl) x))))
+        (via fanout (feed (arr inc) x) (feed (arr dbl) x))))
 
 ;; ----- arrow match (case) — 2-way and 3-way ------------------------
 
@@ -84,9 +84,9 @@
 (: p-case (-> Integer Integer))
 (define p-case
   (proc (x)
-    (match (classify x)
-      [(None)   (feed (arr negate) x)]   ; uses the proc input
-      [(Some y) (feed (arr dbl) y)])))    ; uses the branch binding
+        (match (classify x)
+          [(None)   (feed (arr negate) x)]   ; uses the proc input
+          [(Some y) (feed (arr dbl) y)])))    ; uses the branch binding
 
 (data Sign Neg Zero Pos)
 
@@ -96,10 +96,10 @@
 (: p-sign (-> Integer Integer))
 (define p-sign
   (proc (x)
-    (match (sign-of x)
-      [Neg  (feed (arr negate) x)]
-      [Zero (feed (arr inc) x)]
-      [Pos  (feed (arr dbl) x)])))
+        (match (sign-of x)
+          [Neg  (feed (arr negate) x)]
+          [Zero (feed (arr inc) x)]
+          [Pos  (feed (arr dbl) x)])))
 
 ;; ----- rec / ArrowLoop ---------------------------------------------
 ;;
@@ -115,39 +115,39 @@
 (: build-feedback ((ArrowLoop cat p) => (-> Boolean (cat Integer Integer))))
 (define (build-feedback _ignore)
   (proc (x)
-    (rec [s <- (feed (arr inc) s)])
-    (feed (arr dbl) s)))
+        (rec [s <- (feed (arr inc) s)])
+        (feed (arr dbl) s)))
 
 (: suite (List Test))
 (define suite
   (list
-   (it "proc with one feed runs the arrow on the bound input"
-       (all-checks
-        (list (check-equal? (p-inc 5) 6)
-              (check-equal? (p-inc 0) 1))))
-   (it "bind threads a command's result to a later feed"
-       (check-equal? (p-bind 3) 8))       ; dbl (inc 3) = 8
-   (it "both the input and bound vars stay in scope"
-       (check-equal? (p-sum 3) 7))        ; x=3, y=inc 3=4, x+y=7
-   (it "let extends the environment for following commands"
-       (check-equal? (p-let 5) 11))       ; y = 5*2 = 10, inc 10 = 11
-   (it "arrow if selects a branch by a Boolean test"
-       (all-checks
-        (list (check-equal? (p-if 5)  10)  ; dbl 5
-              (check-equal? (p-if -3) 3)))) ; negate -3
-   (it "feed-apply runs an environment-supplied arrow"
-       (check-equal? (p-apply (Pair inc 5)) 6))
-   (it "via applies an arrow combinator to sub-commands"
-       (check-equal? (p-via 3) (Pair 4 6)))
-   (it "arrow match chooses a branch (2-way) and binds branch vars"
-       (all-checks
-        (list (check-equal? (p-case 5)  10)   ; Some 5 → dbl 5
-              (check-equal? (p-case -3) 3))))  ; None    → negate -3
-   (it "arrow match nests correctly (3-way)"
-       (all-checks
-        (list (check-equal? (p-sign -3) 3)    ; Neg  → negate -3
-              (check-equal? (p-sign 0)  1)    ; Zero → inc 0
-              (check-equal? (p-sign 4)  8)))))) ; Pos  → dbl 4
+    (it "proc with one feed runs the arrow on the bound input"
+        (all-checks
+          (list (check-equal? (p-inc 5) 6)
+                (check-equal? (p-inc 0) 1))))
+    (it "bind threads a command's result to a later feed"
+        (check-equal? (p-bind 3) 8))       ; dbl (inc 3) = 8
+    (it "both the input and bound vars stay in scope"
+        (check-equal? (p-sum 3) 7))        ; x=3, y=inc 3=4, x+y=7
+    (it "let extends the environment for following commands"
+        (check-equal? (p-let 5) 11))       ; y = 5*2 = 10, inc 10 = 11
+    (it "arrow if selects a branch by a Boolean test"
+        (all-checks
+          (list (check-equal? (p-if 5)  10)  ; dbl 5
+                (check-equal? (p-if -3) 3)))) ; negate -3
+    (it "feed-apply runs an environment-supplied arrow"
+        (check-equal? (p-apply (Pair inc 5)) 6))
+    (it "via applies an arrow combinator to sub-commands"
+        (check-equal? (p-via 3) (Pair 4 6)))
+    (it "arrow match chooses a branch (2-way) and binds branch vars"
+        (all-checks
+          (list (check-equal? (p-case 5)  10)   ; Some 5 → dbl 5
+                (check-equal? (p-case -3) 3))))  ; None    → negate -3
+    (it "arrow match nests correctly (3-way)"
+        (all-checks
+          (list (check-equal? (p-sign -3) 3)    ; Neg  → negate -3
+                (check-equal? (p-sign 0)  1)    ; Zero → inc 0
+                (check-equal? (p-sign 4)  8)))))) ; Pos  → dbl 4
 
-(: main Unit)
-(define main (run-io (run-suite "arrow-notation" suite)))
+(: test-main (IO Unit))
+(define test-main (run-suite "arrow-notation" suite))

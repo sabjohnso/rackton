@@ -18,7 +18,7 @@
 (: ok-then  (ExceptT String IO Integer))
 (define ok-then
   (do [x <- (pure 1)]
-      [y <- (pure 2)]
+    [y <- (pure 2)]
     (pure (+ x y))))
 
 (: ok-then-result (IO (Result String Integer)))
@@ -44,9 +44,9 @@
 (: thrower-st (StateT Integer (ExceptT String IO) Integer))
 (define thrower-st
   (do [_ <- (put-st 99)]
-      [_ <- (ann (throw-e "boom")
-                 (StateT Integer (ExceptT String IO) Integer))]
-      get-st))
+    [_ <- (ann (throw-e "boom")
+               (StateT Integer (ExceptT String IO) Integer))]
+    get-st))
 
 (: recover-st
    (-> String (StateT Integer (ExceptT String IO) Integer)))
@@ -97,18 +97,18 @@
 (: suite (List Test))
 (define suite
   (list
-   (it "do-notation chain on base ExceptT IO"
-       (check-equal? (run-io ok-then-result) (Ok 3)))
-   (it "do-notation chain on nested ExceptT (ExceptT IO)"
-       (check-equal? (run-io nested-ok-result) (Ok (Ok 15))))
-   (it "catch-e lifted through StateT (ExceptT IO)"
-       (check-equal? (run-io caught-st-result)
-                     (Ok (Pair 0 7))))
-   (it "catch-e base ExceptT IO (regression)"
-       (check-equal? (run-io caught-base-result) (Ok 42)))
-   (it "catch-e on nested ExceptT (ExceptT IO) via runtime resolver"
-       (check-equal? (run-io caught-outer-result)
-                     (Ok (Ok 99))))))
+    (it "do-notation chain on base ExceptT IO"
+        (check-equal? (run-io ok-then-result) (Ok 3)))
+    (it "do-notation chain on nested ExceptT (ExceptT IO)"
+        (check-equal? (run-io nested-ok-result) (Ok (Ok 15))))
+    (it "catch-e lifted through StateT (ExceptT IO)"
+        (check-equal? (run-io caught-st-result)
+                      (Ok (Pair 0 7))))
+    (it "catch-e base ExceptT IO (regression)"
+        (check-equal? (run-io caught-base-result) (Ok 42)))
+    (it "catch-e on nested ExceptT (ExceptT IO) via runtime resolver"
+        (check-equal? (run-io caught-outer-result)
+                      (Ok (Ok 99))))))
 
-(: main Unit)
-(define main (run-io (run-suite "needs-dict-on-transformers" suite)))
+(: test-main (IO Unit))
+(define test-main (run-suite "needs-dict-on-transformers" suite))

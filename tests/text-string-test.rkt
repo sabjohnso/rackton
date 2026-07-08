@@ -29,27 +29,27 @@
 (: suite (List Test))
 (define suite
   (list
-   (it "predicates / reverse / case"
-       (all-checks
-        (list (check-equal? ns0 #t) (check-equal? ns1 #f)
-              (check-equal? rev "cba")
-              (check-equal? up "AB3") (check-equal? lo "ab"))))
-   (it "strip"
-       (all-checks
-        (list (check-equal? st "hi") (check-equal? sts "hi") (check-equal? ste "hi"))))
-   (it "split-keep / lines / words"
-       (all-checks
-        (list (check-equal? sk  (list "a" "b" "" "c"))
-              (check-equal? ln  (list "a" "b" "c"))
-              (check-equal? ln2 (list "a"))
-              (check-equal? ln3 (ann Nil (List String)))
-              (check-equal? ln4 (list "a" "" "b"))
-              (check-equal? wd  (list "hello" "world"))
-              (check-equal? wd0 (ann Nil (List String))))))
-   (it "joining"
-       (all-checks
-        (list (check-equal? uw "a b c")
-              (check-equal? ul "a\nb\n"))))))
+    (it "predicates / reverse / case"
+        (all-checks
+          (list (check-equal? ns0 #t) (check-equal? ns1 #f)
+                (check-equal? rev "cba")
+                (check-equal? up "AB3") (check-equal? lo "ab"))))
+    (it "strip"
+        (all-checks
+          (list (check-equal? st "hi") (check-equal? sts "hi") (check-equal? ste "hi"))))
+    (it "split-keep / lines / words"
+        (all-checks
+          (list (check-equal? sk  (list "a" "b" "" "c"))
+                (check-equal? ln  (list "a" "b" "c"))
+                (check-equal? ln2 (list "a"))
+                (check-equal? ln3 (ann Nil (List String)))
+                (check-equal? ln4 (list "a" "" "b"))
+                (check-equal? wd  (list "hello" "world"))
+                (check-equal? wd0 (ann Nil (List String))))))
+    (it "joining"
+        (all-checks
+          (list (check-equal? uw "a b c")
+                (check-equal? ul "a\nb\n"))))))
 
-(: main Unit)
-(define main (run-io (run-suite "rackton/text/string" suite)))
+(: test-main (IO Unit))
+(define test-main (run-suite "rackton/text/string" suite))

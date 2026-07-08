@@ -69,22 +69,20 @@
 (: report-header (-> Bitstring (IO Unit)))
 (define (report-header b)
   (do [_ <- (println (string-append* "  bytes:  " (show-bytes (bitstring->bytes b))))]
-      [_ <- (println (string-append* "  bits:   " (show (bitstring-length b))))]
+    [_ <- (println (string-append* "  bits:   " (show (bitstring-length b))))]
     (match (parse-header b)
       [(Some h) (println (string-append* "  parsed: " (header->string h)))]
       [None     (println "  parsed: <<malformed>>")])))
 
 ;; ----- main -------------------------------------------------------
 
-(: main Unit)
-(define main
-  (run-io
-    (do [_ <- (println "Erlang-style bit syntax:")]
-        [_ <- (println "")]
-        [_ <- (println "A 4+4+8-bit header (version 4, ihl 5, tos 0):")]
-        [_ <- (report-header (make-header 4 5 0))]
-        [_ <- (println "")]
-        [_ <- (println "Length-prefixed frame round-trip:")]
-        [_ <- (println (string-append* "  unframed: "
-                         (show-payload (unframe (frame (string->bytes "hello"))))))]
-      (println "done."))))
+(: main (IO Unit))
+(define main (do [_ <- (println "Erlang-style bit syntax:")]
+               [_ <- (println "")]
+               [_ <- (println "A 4+4+8-bit header (version 4, ihl 5, tos 0):")]
+               [_ <- (report-header (make-header 4 5 0))]
+               [_ <- (println "")]
+               [_ <- (println "Length-prefixed frame round-trip:")]
+               [_ <- (println (string-append* "  unframed: "
+                                              (show-payload (unframe (frame (string->bytes "hello"))))))]
+               (println "done.")))

@@ -16,12 +16,12 @@
 (: x-lens (Lens Point Integer))
 (define x-lens
   (Lens (lambda (p) (Point-x p))
-          (lambda (p v) (Point v (Point-y p)))))
+        (lambda (p v) (Point v (Point-y p)))))
 
 (: y-lens (Lens Point Integer))
 (define y-lens
   (Lens (lambda (p) (Point-y p))
-          (lambda (p v) (Point (Point-x p) v))))
+        (lambda (p v) (Point (Point-x p) v))))
 
 (: p0 Point)
 (define p0 (Point 3 7))
@@ -46,12 +46,12 @@
 (: start-lens (Lens Segment Point))
 (define start-lens
   (Lens (lambda (s) (Segment-start s))
-          (lambda (s v) (Segment v (Segment-end s)))))
+        (lambda (s v) (Segment v (Segment-end s)))))
 
 (: end-lens (Lens Segment Point))
 (define end-lens
   (Lens (lambda (s) (Segment-end s))
-          (lambda (s v) (Segment (Segment-start s) v))))
+        (lambda (s v) (Segment (Segment-start s) v))))
 
 (: start-x-lens (Lens Segment Integer))
 (define start-x-lens (lens-compose start-lens x-lens))
@@ -73,18 +73,18 @@
 (: suite (List Test))
 (define suite
   (list
-   (it "view returns the focused field"
-       (check-equal? x-val 3))
-   (it "set replaces the focused field"
-       (check-equal? p-set-x (Point 99 7)))
-   (it "over transforms the focused field"
-       (check-equal? p-bump-y (Point 3 8)))
-   (it "composed lens views through nesting"
-       (check-equal? seg-start-x 1))
-   (it "composed lens sets only the focused position"
-       (check-equal? seg-shifted (Segment (Point 42 2) (Point 10 20))))
-   (it "composed lens over transforms only the focused position"
-       (check-equal? seg-over (Segment (Point 100 2) (Point 10 20))))))
+    (it "view returns the focused field"
+        (check-equal? x-val 3))
+    (it "set replaces the focused field"
+        (check-equal? p-set-x (Point 99 7)))
+    (it "over transforms the focused field"
+        (check-equal? p-bump-y (Point 3 8)))
+    (it "composed lens views through nesting"
+        (check-equal? seg-start-x 1))
+    (it "composed lens sets only the focused position"
+        (check-equal? seg-shifted (Segment (Point 42 2) (Point 10 20))))
+    (it "composed lens over transforms only the focused position"
+        (check-equal? seg-over (Segment (Point 100 2) (Point 10 20))))))
 
-(: main Unit)
-(define main (run-io (run-suite "lens" suite)))
+(: test-main (IO Unit))
+(define test-main (run-suite "lens" suite))

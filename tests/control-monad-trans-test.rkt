@@ -33,9 +33,9 @@
 (: io-nested (IO (Result String (Pair Integer Integer))))
 (define io-nested
   (run-except-t
-   ((run-state-t (ann (lift-io (pure-io 1))
-                      (StateT Integer (ExceptT String IO) Integer)))
-    0)))
+    ((run-state-t (ann (lift-io (pure-io 1))
+                       (StateT Integer (ExceptT String IO) Integer)))
+     0)))
 
 ;; ---------- assertions ---------------------------------------
 
@@ -48,17 +48,17 @@
 (: suite (List Test))
 (define suite
   (list
-   (it "lift (MonadTrans)"
-       (all-checks
-        (list (check-equal? lift-st (Some (Pair 0 5)))
-              (check-equal? lift-ex (Some (Ok 9))))))
-   (it "lift-io (MonadIO) single layer"
-       (all-checks
-        (list (check-equal? r-io-st (Pair 0 7))
-              (check-equal? r-io-ex (Ok 8))
-              (check-equal? r-io-wr (Pair "" 3)))))
-   (it "lift-io through a two-layer stack"
-       (check-equal? r-io-nested (Ok (Pair 0 1))))))
+    (it "lift (MonadTrans)"
+        (all-checks
+          (list (check-equal? lift-st (Some (Pair 0 5)))
+                (check-equal? lift-ex (Some (Ok 9))))))
+    (it "lift-io (MonadIO) single layer"
+        (all-checks
+          (list (check-equal? r-io-st (Pair 0 7))
+                (check-equal? r-io-ex (Ok 8))
+                (check-equal? r-io-wr (Pair "" 3)))))
+    (it "lift-io through a two-layer stack"
+        (check-equal? r-io-nested (Ok (Pair 0 1))))))
 
-(: main Unit)
-(define main (run-io (run-suite "control-monad-trans" suite)))
+(: test-main (IO Unit))
+(define test-main (run-suite "control-monad-trans" suite))

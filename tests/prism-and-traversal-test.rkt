@@ -11,14 +11,14 @@
 (: some-prism (Prism (Maybe a) a))
 (define some-prism
   (Prism (lambda (m) (match m [(Some x) (Some x)] [(None) None]))
-           Some))
+         Some))
 
 ;; A prism focusing on `None` — extracts Unit; builds None ignoring
 ;; its arg.
 (: none-prism (Prism (Maybe a) Unit))
 (define none-prism
   (Prism (lambda (m) (match m [(None) (Some Unit)] [(Some _) None]))
-           (lambda (_) None)))
+         (lambda (_) None)))
 
 (: prev-some-on-some (Maybe Integer))
 (define prev-some-on-some (preview some-prism (Some 7)))
@@ -66,21 +66,21 @@
 (: suite (List Test))
 (define suite
   (list
-   (it "Some-prism preview / review"
-       (all-checks
-        (list (check-equal? prev-some-on-some  (Some 7))
-              (check-equal? prev-some-on-none  None)
-              (check-equal? rev-some           (Some 42)))))
-   (it "None-prism preview on None"
-       (check-equal? prev-none-on-none (Some Unit)))
-   (it "list-traversal gathers and transforms"
-       (all-checks
-        (list (check-equal? nums-collected nums)
-              (check-equal? nums-doubled   (Cons 2 (Cons 4 (Cons 6 Nil)))))))
-   (it "lens-as-traversal: single-focus traversal"
-       (all-checks
-        (list (check-equal? x-collected (Cons 3 Nil))
-              (check-equal? x-bumped    (Point 4 7)))))))
+    (it "Some-prism preview / review"
+        (all-checks
+          (list (check-equal? prev-some-on-some  (Some 7))
+                (check-equal? prev-some-on-none  None)
+                (check-equal? rev-some           (Some 42)))))
+    (it "None-prism preview on None"
+        (check-equal? prev-none-on-none (Some Unit)))
+    (it "list-traversal gathers and transforms"
+        (all-checks
+          (list (check-equal? nums-collected nums)
+                (check-equal? nums-doubled   (Cons 2 (Cons 4 (Cons 6 Nil)))))))
+    (it "lens-as-traversal: single-focus traversal"
+        (all-checks
+          (list (check-equal? x-collected (Cons 3 Nil))
+                (check-equal? x-bumped    (Point 4 7)))))))
 
-(: main Unit)
-(define main (run-io (run-suite "prisms and traversals" suite)))
+(: test-main (IO Unit))
+(define test-main (run-suite "prisms and traversals" suite))

@@ -21,8 +21,8 @@
 (: safe-divide (-> Integer (-> Integer (Either String Integer))))
 (define (safe-divide x y)
   (if (== y 0)
-      (Left "divide by zero")
-      (Right (racket Integer (x y) (quotient x y)))))
+    (Left "divide by zero")
+    (Right (racket Integer (x y) (quotient x y)))))
 
 ;; Bind chain composing Either errors.
 (: div-chain (-> Integer (-> Integer (Either String Integer))))
@@ -35,29 +35,29 @@
 (: suite (List Test))
 (define suite
   (list
-   (it "fmap over Maybe"
-       (all-checks
-        (list (check-equal? (square-all (Some 3)) (Some 9))
-              (check-equal? (square-all None)     None))))
-   (it "fmap over List"
-       (all-checks
-        (list (check-equal? (square-all (Cons 1 (Cons 2 (Cons 3 Nil))))
-                            (Cons 1 (Cons 4 (Cons 9 Nil))))
-              (check-equal? (square-all Nil) Nil))))
-   (it "fmap over Either e"
-       (all-checks
-        (list (check-equal? (square-all (ann (Right 4) (Either String Integer)))
-                            (ann (Right 16) (Either String Integer)))
-              (check-equal? (square-all (ann (Left "bad") (Either String Integer)))
-                            (ann (Left "bad") (Either String Integer))))))
-   (it "Monad Maybe — bind chain"
-       (all-checks
-        (list (check-equal? (add-one-then-double 4)  (Some 10))
-              (check-equal? (add-one-then-double 10) (Some 22)))))
-   (it "Monad Either — bind chain composes errors"
-       (all-checks
-        (list (check-equal? (div-chain 10 2) (Right 5))
-              (check-equal? (div-chain 10 0) (Left "divide by zero")))))))
+    (it "fmap over Maybe"
+        (all-checks
+          (list (check-equal? (square-all (Some 3)) (Some 9))
+                (check-equal? (square-all None)     None))))
+    (it "fmap over List"
+        (all-checks
+          (list (check-equal? (square-all (Cons 1 (Cons 2 (Cons 3 Nil))))
+                              (Cons 1 (Cons 4 (Cons 9 Nil))))
+                (check-equal? (square-all Nil) Nil))))
+    (it "fmap over Either e"
+        (all-checks
+          (list (check-equal? (square-all (ann (Right 4) (Either String Integer)))
+                              (ann (Right 16) (Either String Integer)))
+                (check-equal? (square-all (ann (Left "bad") (Either String Integer)))
+                              (ann (Left "bad") (Either String Integer))))))
+    (it "Monad Maybe — bind chain"
+        (all-checks
+          (list (check-equal? (add-one-then-double 4)  (Some 10))
+                (check-equal? (add-one-then-double 10) (Some 22)))))
+    (it "Monad Either — bind chain composes errors"
+        (all-checks
+          (list (check-equal? (div-chain 10 2) (Right 5))
+                (check-equal? (div-chain 10 0) (Left "divide by zero")))))))
 
-(: main Unit)
-(define main (run-io (run-suite "hkt" suite)))
+(: test-main (IO Unit))
+(define test-main (run-suite "hkt" suite))

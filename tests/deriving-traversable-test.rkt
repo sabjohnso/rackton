@@ -36,17 +36,17 @@
 (: suite (List Test))
 (define suite
   (list
-   (it "arity 1 (fmap path)"
-       (check-equal? r1 (Some (MkOne 1))))
-   (it "arity 2 (liftA2 path)"
-       (check-equal? r2 (Some (MkTwo 1 2))))
-   (it "arity 3 (fmap+fapply chain over an n-ary ctor)"
-       (all-checks (list (check-equal? r3  (Some (MkThree 1 2 3)))
-                         (check-equal? r3b None))))
-   (it "recursive type, all-Some"
-       (check-equal? rt (Some (Node (Leaf 1) (Node (Leaf 2) (Leaf 3))))))
-   (it "recursive type, short-circuits to None"
-       (check-equal? rtb None))))
+    (it "arity 1 (fmap path)"
+        (check-equal? r1 (Some (MkOne 1))))
+    (it "arity 2 (liftA2 path)"
+        (check-equal? r2 (Some (MkTwo 1 2))))
+    (it "arity 3 (fmap+fapply chain over an n-ary ctor)"
+        (all-checks (list (check-equal? r3  (Some (MkThree 1 2 3)))
+                          (check-equal? r3b None))))
+    (it "recursive type, all-Some"
+        (check-equal? rt (Some (Node (Leaf 1) (Node (Leaf 2) (Leaf 3))))))
+    (it "recursive type, short-circuits to None"
+        (check-equal? rtb None))))
 
-(: main Unit)
-(define main (run-io (run-suite "deriving Traversable" suite)))
+(: test-main (IO Unit))
+(define test-main (run-suite "deriving Traversable" suite))

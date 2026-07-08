@@ -24,40 +24,40 @@
 (: suite (List Test))
 (define suite
   (list
-   (it-prop "conv-string round-trips"
-            (for-all gen-string
-                     (lambda (s)
-                       (match (conv-parse conv-string (conv-print conv-string s))
-                         [(Ok y)  (== y s)]
-                         [(Err _) #f]))))
+    (it-prop "conv-string round-trips"
+             (for-all gen-string
+                      (lambda (s)
+                        (match (conv-parse conv-string (conv-print conv-string s))
+                          [(Ok y)  (== y s)]
+                          [(Err _) #f]))))
 
-   (it-prop "conv-int round-trips"
-            (for-all (int-range -1000000 1000000)
-                     (lambda (n)
-                       (match (conv-parse conv-int (conv-print conv-int n))
-                         [(Ok y)  (== y n)]
-                         [(Err _) #f]))))
+    (it-prop "conv-int round-trips"
+             (for-all (int-range -1000000 1000000)
+                      (lambda (n)
+                        (match (conv-parse conv-int (conv-print conv-int n))
+                          [(Ok y)  (== y n)]
+                          [(Err _) #f]))))
 
-   (it-prop "conv-bool round-trips"
-            (for-all bool
-                     (lambda (b)
-                       (match (conv-parse conv-bool (conv-print conv-bool b))
-                         [(Ok y)  (== y b)]
-                         [(Err _) #f]))))
+    (it-prop "conv-bool round-trips"
+             (for-all bool
+                      (lambda (b)
+                        (match (conv-parse conv-bool (conv-print conv-bool b))
+                          [(Ok y)  (== y b)]
+                          [(Err _) #f]))))
 
-   (it-prop "conv-float round-trips"
-            (for-all gen-float
-                     (lambda (x)
-                       (match (conv-parse conv-float (conv-print conv-float x))
-                         [(Ok y)  (== y x)]
-                         [(Err _) #f]))))
+    (it-prop "conv-float round-trips"
+             (for-all gen-float
+                      (lambda (x)
+                        (match (conv-parse conv-float (conv-print conv-float x))
+                          [(Ok y)  (== y x)]
+                          [(Err _) #f]))))
 
-   (it-prop "conv-char round-trips"
-            (for-all gen-char
-                     (lambda (c)
-                       (match (conv-parse conv-char (conv-print conv-char c))
-                         [(Ok y)  (== y c)]
-                         [(Err _) #f]))))))
+    (it-prop "conv-char round-trips"
+             (for-all gen-char
+                      (lambda (c)
+                        (match (conv-parse conv-char (conv-print conv-char c))
+                          [(Ok y)  (== y c)]
+                          [(Err _) #f]))))))
 
-(: main Unit)
-(define main (run-io (run-suite "rackton/cmdline/conv" suite)))
+(: test-main (IO Unit))
+(define test-main (run-suite "rackton/cmdline/conv" suite))

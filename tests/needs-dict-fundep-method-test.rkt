@@ -21,9 +21,9 @@
 ;; A fundep class with both a VALUE-form (held) and a FUNCTION-form
 ;; (mk) return-typed method, each needing the inner monad's `pure`.
 (protocol (Holder s [m => Monad])
-  (:fundep m -> s)
-  (: held (m s))
-  (: mk   (-> s (m s))))
+          (:fundep m -> s)
+          (: held (m s))
+          (: mk   (-> s (m s))))
 
 (instance ((Monad m) => (Functor (Wrap m)))
   (define (fmap f w) (MkWrap (fmap f (un w)))))
@@ -56,12 +56,12 @@
 (: suite (List Test))
 (define suite
   (list
-   (it "fundep needs-dict function-form method threads inner pure (Maybe)"
-       (check-equal? maybe-val (Some 7)))
-   (it "fundep needs-dict function-form method threads inner pure (List)"
-       (check-equal? list-val (Cons 9 Nil)))
-   (it "fundep needs-dict value-form method threads inner pure"
-       (check-equal? held-val (Some 0)))))
+    (it "fundep needs-dict function-form method threads inner pure (Maybe)"
+        (check-equal? maybe-val (Some 7)))
+    (it "fundep needs-dict function-form method threads inner pure (List)"
+        (check-equal? list-val (Cons 9 Nil)))
+    (it "fundep needs-dict value-form method threads inner pure"
+        (check-equal? held-val (Some 0)))))
 
-(: main Unit)
-(define main (run-io (run-suite "needs-dict-fundep-method" suite)))
+(: test-main (IO Unit))
+(define test-main (run-suite "needs-dict-fundep-method" suite))

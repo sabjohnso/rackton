@@ -75,47 +75,47 @@
 (: suite (List Test))
 (define suite
   (list
-   (it "leaf: parses option / uses default / reports unknown"
-       (all-checks
-        (list (check-true (ok-int? (eval-core leaf no-env (list "--count" "5")) 5))
-              (check-true (ok-int? (eval-core leaf no-env Nil) 0))
-              (check-true (is-fail? (eval-core leaf no-env (list "--nope")))))))
+    (it "leaf: parses option / uses default / reports unknown"
+        (all-checks
+          (list (check-true (ok-int? (eval-core leaf no-env (list "--count" "5")) 5))
+                (check-true (ok-int? (eval-core leaf no-env Nil) 0))
+                (check-true (is-fail? (eval-core leaf no-env (list "--nope")))))))
 
-   (it "leaf: --help renders name and options"
-       (let ([o (eval-core leaf no-env (list "--help"))])
-         (all-checks
-          (list (check-true (help-has? o "tool"))
-                (check-true (help-has? o "OPTIONS"))
-                (check-true (help-has? o "--count"))))))
+    (it "leaf: --help renders name and options"
+        (let ([o (eval-core leaf no-env (list "--help"))])
+          (all-checks
+            (list (check-true (help-has? o "tool"))
+                  (check-true (help-has? o "OPTIONS"))
+                  (check-true (help-has? o "--count"))))))
 
-   (it "leaf: --version"
-       (all-checks
-        (list (check-true (is-version? (eval-core leaf no-env (list "--version")) "2.0")))))
+    (it "leaf: --version"
+        (all-checks
+          (list (check-true (is-version? (eval-core leaf no-env (list "--version")) "2.0")))))
 
-   (it "env default: $COUNT used when absent, argv wins when present"
-       (all-checks
-        (list (check-true (ok-int? (eval-core leaf (list (Pair "COUNT" "7")) Nil) 7))
-              (check-true (ok-int? (eval-core leaf (list (Pair "COUNT" "7")) (list "--count" "3")) 3)))))
+    (it "env default: $COUNT used when absent, argv wins when present"
+        (all-checks
+          (list (check-true (ok-int? (eval-core leaf (list (Pair "COUNT" "7")) Nil) 7))
+                (check-true (ok-int? (eval-core leaf (list (Pair "COUNT" "7")) (list "--count" "3")) 3)))))
 
-   (it "group: dispatches to a subcommand"
-       (all-checks
-        (list (check-true (ok-int? (eval-core grp no-env (list "add" "-n" "4")) 4))
-              (check-true (ok-int? (eval-core grp no-env (list "commit")) 2)))))
+    (it "group: dispatches to a subcommand"
+        (all-checks
+          (list (check-true (ok-int? (eval-core grp no-env (list "add" "-n" "4")) 4))
+                (check-true (ok-int? (eval-core grp no-env (list "commit")) 2)))))
 
-   (it "group: unknown subcommand errors"
-       (all-checks
-        (list (check-true (is-fail? (eval-core grp no-env (list "frobnicate")))))))
+    (it "group: unknown subcommand errors"
+        (all-checks
+          (list (check-true (is-fail? (eval-core grp no-env (list "frobnicate")))))))
 
-   (it "group: --help lists subcommands; --version"
-       (let ([h (eval-core grp no-env (list "--help"))])
-         (all-checks
-          (list (check-true (help-has? h "add"))
-                (check-true (help-has? h "commit"))
-                (check-true (is-version? (eval-core grp no-env (list "--version")) "9.9"))))))
+    (it "group: --help lists subcommands; --version"
+        (let ([h (eval-core grp no-env (list "--help"))])
+          (all-checks
+            (list (check-true (help-has? h "add"))
+                  (check-true (help-has? h "commit"))
+                  (check-true (is-version? (eval-core grp no-env (list "--version")) "9.9"))))))
 
-   (it "nested group: dispatches two levels deep"
-       (all-checks
-        (list (check-true (ok-int? (eval-core grp no-env (list "remote" "add" "-n" "5")) 5)))))))
+    (it "nested group: dispatches two levels deep"
+        (all-checks
+          (list (check-true (ok-int? (eval-core grp no-env (list "remote" "add" "-n" "5")) 5)))))))
 
-(: main Unit)
-(define main (run-io (run-suite "rackton/cmdline/eval" suite)))
+(: test-main (IO Unit))
+(define test-main (run-suite "rackton/cmdline/eval" suite))

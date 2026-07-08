@@ -23,19 +23,19 @@
 (: suite (List Test))
 (define suite
   (list
-   (it "showFFloat"
-       (all-checks
-        (list (check-equal? f-2   "3.14")
-              (check-equal? f-none "2.5"))))
-   (it "showEFloat"
-       (all-checks
-        (list (check-equal? e-3   "2.457e2")
-              (check-equal? e-neg "2.47e-2"))))
-   (it "showGFloat"
-       (all-checks
-        (list (check-equal? g-fix "3.14")
-              (check-equal? g-big "1.23e7")
-              (check-equal? g-sml "1.00e-3"))))))
+    (it "showFFloat"
+        (all-checks
+          (list (check-equal? f-2   "3.14")
+                (check-equal? f-none "2.5"))))
+    (it "showEFloat"
+        (all-checks
+          (list (check-equal? e-3   "2.457e2")
+                (check-equal? e-neg "2.47e-2"))))
+    (it "showGFloat"
+        (all-checks
+          (list (check-equal? g-fix "3.14")
+                (check-equal? g-big "1.23e7")
+                (check-equal? g-sml "1.00e-3"))))))
 
-(: main Unit)
-(define main (run-io (run-suite "rackton/numeric/show (float)" suite)))
+(: test-main (IO Unit))
+(define test-main (run-suite "rackton/numeric/show (float)" suite))

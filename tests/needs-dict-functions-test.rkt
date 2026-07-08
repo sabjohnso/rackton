@@ -58,26 +58,26 @@
 (: suite (List Test))
 (define suite
   (list
-   (it "user my-concat on String"
-       (check-equal? glued "abc"))
-   (it "user my-concat on empty list with ascription"
-       (check-equal? empty-strs ""))
-   (it "user my-concat on Sum"
-       (check-equal? (get-sum total) 15))
-   (it "user my-concat on Product"
-       (check-equal? (get-product factorial) 24))
-   (it "user my-pure-pair into Maybe"
-       (check-equal? pair-maybe (Some (Pair 42 42))))
-   (it "user my-pure-pair into List"
-       (check-equal? pair-list (Cons (Pair "hi" "hi") Nil)))
-   (it "user my-pure-pair into Either"
-       (check-equal? pair-result (Right (Pair 7 7))))
-   (it "user my-pure-pair into IO"
-       (check-equal? (run-io pair-io) (Pair 1 1)))
-   (it "user body mixes runtime mappend and dict-passed mempty (String)"
-       (check-equal? wrapped-str "hello"))
-   (it "user body mixes runtime mappend and dict-passed mempty (Sum)"
-       (check-equal? (get-sum wrapped-sum) 99))))
+    (it "user my-concat on String"
+        (check-equal? glued "abc"))
+    (it "user my-concat on empty list with ascription"
+        (check-equal? empty-strs ""))
+    (it "user my-concat on Sum"
+        (check-equal? (get-sum total) 15))
+    (it "user my-concat on Product"
+        (check-equal? (get-product factorial) 24))
+    (it "user my-pure-pair into Maybe"
+        (check-equal? pair-maybe (Some (Pair 42 42))))
+    (it "user my-pure-pair into List"
+        (check-equal? pair-list (Cons (Pair "hi" "hi") Nil)))
+    (it "user my-pure-pair into Either"
+        (check-equal? pair-result (Right (Pair 7 7))))
+    (it "user my-pure-pair into IO"
+        (check-equal? (run-io pair-io) (Pair 1 1)))
+    (it "user body mixes runtime mappend and dict-passed mempty (String)"
+        (check-equal? wrapped-str "hello"))
+    (it "user body mixes runtime mappend and dict-passed mempty (Sum)"
+        (check-equal? (get-sum wrapped-sum) 99))))
 
-(: main Unit)
-(define main (run-io (run-suite "needs-dict-functions" suite)))
+(: test-main (IO Unit))
+(define test-main (run-suite "needs-dict-functions" suite))

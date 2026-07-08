@@ -110,58 +110,58 @@
 (: suite (List Test))
 (define suite
   (list
-   (it "Char Eq + Ord"
-       (all-checks
-        (list (check-true a=a)
-              (check-true a<z))))
-   (it "Char Show prints round-trippable literal"
-       (check-equal? show-A "#\\A"))
-   (it "char->integer codepoint"
-       (check-equal? code-of-A 65))
-   (it "integer->char success and failure"
-       (all-checks
-        (list (check-equal? from-65  (Some #\A))
-              (check-equal? from-bad None))))
-   (it "case conversion"
-       (all-checks
-        (list (check-equal? up-a    #\A)
-              (check-equal? down-Z  #\z))))
-   (it "char predicates"
-       (all-checks
-        (list (check-true alpha?)
-              (check-true numeric?)
-              (check-true ws?)
-              (check-false not-alpha?))))
-   (it "string ↔ chars round-trip"
-       (all-checks
-        (list (check-equal? chars (Cons #\a (Cons #\b (Cons #\c Nil))))
-              (check-equal? rebuilt "abc"))))
-   (it "string-ref Maybe path"
-       (all-checks
-        (list (check-equal? ref-ok  (Some #\b))
-              (check-equal? ref-bad None))))
-   (it "char->string"
-       (check-equal? ch-as-string "A"))
-   (it "Bytes Eq + length"
-       (all-checks
-        (list (check-true bs=bs)
-              (check-equal? bs-len 5))))
-   (it "bytes-ref Maybe path"
-       (all-checks
-        (list (check-equal? bs-ref-ok  (Some 104))
-              (check-equal? bs-ref-bad None))))
-   (it "bytes-append"
-       (check-equal? bs-append #"foo-bar"))
-   (it "bytes ↔ list round-trip"
-       (all-checks
-        (list (check-equal? lst   (Cons 65 (Cons 66 Nil)))
-              (check-equal? built #"AB"))))
-   (it "make-bytes fills the buffer"
-       (check-equal? filled #"XXX"))
-   (it "string ↔ bytes UTF-8 round-trip + invalid-byte path"
-       (all-checks
-        (list (check-equal? decoded     (Some "Aé"))
-              (check-equal? decoded-bad None))))))
+    (it "Char Eq + Ord"
+        (all-checks
+          (list (check-true a=a)
+                (check-true a<z))))
+    (it "Char Show prints round-trippable literal"
+        (check-equal? show-A "#\\A"))
+    (it "char->integer codepoint"
+        (check-equal? code-of-A 65))
+    (it "integer->char success and failure"
+        (all-checks
+          (list (check-equal? from-65  (Some #\A))
+                (check-equal? from-bad None))))
+    (it "case conversion"
+        (all-checks
+          (list (check-equal? up-a    #\A)
+                (check-equal? down-Z  #\z))))
+    (it "char predicates"
+        (all-checks
+          (list (check-true alpha?)
+                (check-true numeric?)
+                (check-true ws?)
+                (check-false not-alpha?))))
+    (it "string ↔ chars round-trip"
+        (all-checks
+          (list (check-equal? chars (Cons #\a (Cons #\b (Cons #\c Nil))))
+                (check-equal? rebuilt "abc"))))
+    (it "string-ref Maybe path"
+        (all-checks
+          (list (check-equal? ref-ok  (Some #\b))
+                (check-equal? ref-bad None))))
+    (it "char->string"
+        (check-equal? ch-as-string "A"))
+    (it "Bytes Eq + length"
+        (all-checks
+          (list (check-true bs=bs)
+                (check-equal? bs-len 5))))
+    (it "bytes-ref Maybe path"
+        (all-checks
+          (list (check-equal? bs-ref-ok  (Some 104))
+                (check-equal? bs-ref-bad None))))
+    (it "bytes-append"
+        (check-equal? bs-append #"foo-bar"))
+    (it "bytes ↔ list round-trip"
+        (all-checks
+          (list (check-equal? lst   (Cons 65 (Cons 66 Nil)))
+                (check-equal? built #"AB"))))
+    (it "make-bytes fills the buffer"
+        (check-equal? filled #"XXX"))
+    (it "string ↔ bytes UTF-8 round-trip + invalid-byte path"
+        (all-checks
+          (list (check-equal? decoded     (Some "Aé"))
+                (check-equal? decoded-bad None))))))
 
-(: main Unit)
-(define main (run-io (run-suite "char-and-bytes" suite)))
+(: test-main (IO Unit))
+(define test-main (run-suite "char-and-bytes" suite))

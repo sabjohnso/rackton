@@ -10,27 +10,27 @@
 (: mkdir-res (IO Boolean))
 (define mkdir-res
   (do [_ <- (create-directory-if-missing "/tmp/rackton-leftover-dir")]
-      [_ <- (create-directory-if-missing "/tmp/rackton-leftover-dir")]
-      [b <- (does-directory-exist? "/tmp/rackton-leftover-dir")]
-      (pure b)))
+    [_ <- (create-directory-if-missing "/tmp/rackton-leftover-dir")]
+    [b <- (does-directory-exist? "/tmp/rackton-leftover-dir")]
+    (pure b)))
 
 ;; renameFile: old gone, new has the content
 (: rename-res (IO Boolean))
 (define rename-res
   (do [_   <- (write-file "/tmp/rackton-ren-a.txt" "data")]
-      [_   <- (rename-file "/tmp/rackton-ren-a.txt" "/tmp/rackton-ren-b.txt")]
-      [old <- (file-exists? "/tmp/rackton-ren-a.txt")]
-      [s   <- (read-file "/tmp/rackton-ren-b.txt")]
-      (pure (if old #f (== s "data")))))
+    [_   <- (rename-file "/tmp/rackton-ren-a.txt" "/tmp/rackton-ren-b.txt")]
+    [old <- (file-exists? "/tmp/rackton-ren-a.txt")]
+    [s   <- (read-file "/tmp/rackton-ren-b.txt")]
+    (pure (if old #f (== s "data")))))
 
 ;; copyFile: source remains, copy has the content
 (: copy-res (IO Boolean))
 (define copy-res
   (do [_   <- (write-file "/tmp/rackton-cp-src.txt" "copyme")]
-      [_   <- (copy-file "/tmp/rackton-cp-src.txt" "/tmp/rackton-cp-dst.txt")]
-      [src <- (file-exists? "/tmp/rackton-cp-src.txt")]
-      [d   <- (read-file "/tmp/rackton-cp-dst.txt")]
-      (pure (if src (== d "copyme") #f))))
+    [_   <- (copy-file "/tmp/rackton-cp-src.txt" "/tmp/rackton-cp-dst.txt")]
+    [src <- (file-exists? "/tmp/rackton-cp-src.txt")]
+    [d   <- (read-file "/tmp/rackton-cp-dst.txt")]
+    (pure (if src (== d "copyme") #f))))
 
 ;; clocks
 (: now-pos    (IO Boolean)) (define now-pos    (do [t <- get-current-time-millis] (pure (> t 1000000000000))))
@@ -45,11 +45,11 @@
 (: suite (List Test))
 (define suite
   (list
-   (it "createDirectoryIfMissing" (check-true r-mkdir))
-   (it "renameFile"               (check-true r-rename))
-   (it "copyFile"                 (check-true r-copy))
-   (it "getCurrentTime (ms)"      (check-true r-now))
-   (it "getCPUTime (ms)"          (check-true r-cpu))))
+    (it "createDirectoryIfMissing" (check-true r-mkdir))
+    (it "renameFile"               (check-true r-rename))
+    (it "copyFile"                 (check-true r-copy))
+    (it "getCurrentTime (ms)"      (check-true r-now))
+    (it "getCPUTime (ms)"          (check-true r-cpu))))
 
-(: main Unit)
-(define main (run-io (run-suite "rackton/system leftovers" suite)))
+(: test-main (IO Unit))
+(define test-main (run-suite "rackton/system leftovers" suite))

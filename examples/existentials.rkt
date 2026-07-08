@@ -20,7 +20,7 @@
 ;; ----- a protocol the hidden types must satisfy ----------------------
 
 (protocol (Pretty a)
-  (: pretty (-> a String)))
+          (: pretty (-> a String)))
 
 (instance (Pretty Integer)
   (define (pretty n) (string-append "the integer " (show n))))
@@ -34,8 +34,8 @@
     (match p
       [(Point2 x y)
        (string-append "the point ("
-         (string-append (show x)
-           (string-append ", " (string-append (show y) ")"))))])))
+                      (string-append (show x)
+                                     (string-append ", " (string-append (show y) ")"))))])))
 
 ;; ----- the existential element type, named once ----------------------
 
@@ -69,12 +69,10 @@
   (match xs
     [(Nil)         ""]
     [(Cons s rest) (string-append "  - "
-                     (string-append s
-                       (string-append "\n" (bullet-lines rest))))]))
+                                  (string-append s
+                                                 (string-append "\n" (bullet-lines rest))))]))
 
-(: main Unit)
-(define main
-  (run-io
-    (do [_ <- (println "A heterogeneous list, described uniformly:")]
-        [_ <- (println "")]
-      (println (bullet-lines (pretty-all things))))))
+(: main (IO Unit))
+(define main (do [_ <- (println "A heterogeneous list, described uniformly:")]
+               [_ <- (println "")]
+               (println (bullet-lines (pretty-all things)))))

@@ -189,7 +189,7 @@
     [(Nil) (pure-io (Summary 0 0))]
     [(Cons t rest)
      (do [s1 <- (run-at d t)]
-         [s2 <- (run-group d rest)]
+       [s2 <- (run-group d rest)]
        (pure-io (summary-add s1 s2)))]))
 
 (: run-tests (-> Test (IO Summary)))
@@ -204,7 +204,9 @@
 ;; behaves.  `run-suite` wraps it: run quietly under a top-level group
 ;; name, then `panic` (which makes `raco test` report a non-zero result)
 ;; if any leaf failed.  A `#lang rackton` test file ends with
-;; `(define _ (run-io (run-suite "name" (list ...))))`.
+;; `(define test-main (run-suite "name" (list ...)))` — Rackton's
+;; reserved `test-main` entry point, auto-run under `(module+ test
+;; ...)`.
 
 (: qreport-unit (-> String (-> String (-> Assertion (IO Summary)))))
 (define (qreport-unit path name a)
@@ -212,8 +214,8 @@
     [(CheckPass)   (pure-io one-pass)]
     [(CheckFail m)
      (do [_ <- (println (string-append "FAIL - "
-                          (string-append path
-                            (string-append name (string-append ": " m)))))]
+                                       (string-append path
+                                                      (string-append name (string-append ": " m)))))]
        (pure-io one-fail))]))
 
 (: qreport-prop (-> String (-> String (-> Property (IO Summary)))))
@@ -222,18 +224,18 @@
     (match res
       [(Err emsg)
        (do [_ <- (println (string-append "FAIL - "
-                            (string-append path
-                              (string-append name (string-append ": panicked: " emsg)))))]
+                                         (string-append path
+                                                        (string-append name (string-append ": panicked: " emsg)))))]
          (pure-io one-fail))]
       [(Ok (PropPassed _)) (pure-io one-pass)]
       [(Ok (PropFailed shown seed))
        (do [_ <- (println (string-append "FAIL - "
-                            (string-append path
-                              (string-append name
-                                (string-append ": counterexample="
-                                  (string-append shown
-                                    (string-append " seed="
-                                      (integer->string seed))))))))]
+                                         (string-append path
+                                                        (string-append name
+                                                                       (string-append ": counterexample="
+                                                                                      (string-append shown
+                                                                                                     (string-append " seed="
+                                                                                                                    (integer->string seed))))))))]
          (pure-io one-fail))])))
 
 (: qrun-at (-> String (-> Test (IO Summary))))
@@ -250,7 +252,7 @@
     [(Nil) (pure-io (Summary 0 0))]
     [(Cons t rest)
      (do [s1 <- (qrun-at path t)]
-         [s2 <- (qrun-group path rest)]
+       [s2 <- (qrun-group path rest)]
        (pure-io (summary-add s1 s2)))]))
 
 (: run-tests-quiet (-> Test (IO Summary)))
@@ -266,15 +268,15 @@
 ;; Run a single Test tree quietly, then `panic` (so `raco test` reports a
 ;; non-zero result) if any leaf failed.  This is the single-tree form of
 ;; `run-suite`, for a file whose whole suite is one top-level `describe`:
-;; `(run-io (run-suite-tree (describe "…" …)))`.
+;; `(define test-main (run-suite-tree (describe "…" …)))`.
 (: run-suite-tree (-> Test (IO Unit)))
 (define (run-suite-tree t)
   (do [s <- (run-tests-quiet t)]
     (if (> (summary-failed s) 0)
-        (panic (string-append (test-label t)
-                 (string-append ": "
-                   (string-append (integer->string (summary-failed s)) " failure(s)"))))
-        (pure-io Unit))))
+      (panic (string-append (test-label t)
+                            (string-append ": "
+                                           (string-append (integer->string (summary-failed s)) " failure(s)"))))
+      (pure-io Unit))))
 
 ;; `run-suite NAME tests` runs `tests` under a fresh top-level group named
 ;; `NAME` — sugar for `run-suite-tree` applied to `(group-of NAME tests)`.

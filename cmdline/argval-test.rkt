@@ -49,47 +49,47 @@
 (: suite (List Test))
 (define suite
   (list
-   (it "flag present / absent"
-       (all-checks
-        (list (check-true (ok-bool? (value (flag (info (list "v")))) #t))
-              (check-true (ok-bool? (value (flag (info (list "q")))) #f)))))
+    (it "flag present / absent"
+        (all-checks
+          (list (check-true (ok-bool? (value (flag (info (list "v")))) #t))
+                (check-true (ok-bool? (value (flag (info (list "q")))) #f)))))
 
-   (it "flag-all yields one #t per occurrence"
-       (all-checks
-        (list (check-true (ok-bools? (value (flag-all (info (list "v"))))
-                                     (list #t #t))))))
+    (it "flag-all yields one #t per occurrence"
+        (all-checks
+          (list (check-true (ok-bools? (value (flag-all (info (list "v"))))
+                                       (list #t #t))))))
 
-   (it "opt: last occurrence wins; default when absent"
-       (all-checks
-        (list (check-true (ok-int? (value (opt conv-int 0 (info (list "count")))) 5))
-              (check-true (ok-int? (value (opt conv-int 99 (info (list "gone")))) 99)))))
+    (it "opt: last occurrence wins; default when absent"
+        (all-checks
+          (list (check-true (ok-int? (value (opt conv-int 0 (info (list "count")))) 5))
+                (check-true (ok-int? (value (opt conv-int 99 (info (list "gone")))) 99)))))
 
-   (it "opt: bad value is an error"
-       (all-checks
-        (list (check-true (errs? (value (opt conv-int 0 (info (list "name")))))))))
+    (it "opt: bad value is an error"
+        (all-checks
+          (list (check-true (errs? (value (opt conv-int 0 (info (list "name")))))))))
 
-   (it "opt-all: every occurrence parsed; defaults when absent"
-       (all-checks
-        (list (check-true (ok-ints? (value (opt-all conv-int Nil (info (list "count"))))
-                                    (list 3 5)))
-              (check-true (ok-ints? (value (opt-all conv-int (list 7) (info (list "gone"))))
-                                    (list 7))))))
+    (it "opt-all: every occurrence parsed; defaults when absent"
+        (all-checks
+          (list (check-true (ok-ints? (value (opt-all conv-int Nil (info (list "count"))))
+                                      (list 3 5)))
+                (check-true (ok-ints? (value (opt-all conv-int (list 7) (info (list "gone"))))
+                                      (list 7))))))
 
-   (it "required: present unwraps; absent errors"
-       (all-checks
-        (list (check-true (ok-int? (required (opt (conv-some conv-int) None (info (list "count")))) 5))
-              (check-true (errs? (required (opt (conv-some conv-int) None (info (list "gone")))))))))
+    (it "required: present unwraps; absent errors"
+        (all-checks
+          (list (check-true (ok-int? (required (opt (conv-some conv-int) None (info (list "count")))) 5))
+                (check-true (errs? (required (opt (conv-some conv-int) None (info (list "gone")))))))))
 
-   (it "non-empty: occurrences pass; empty errors"
-       (all-checks
-        (list (check-true (ok-ints? (non-empty (opt-all conv-int Nil (info (list "count"))))
-                                    (list 3 5)))
-              (check-true (errs? (non-empty (opt-all conv-int Nil (info (list "gone")))))))))
+    (it "non-empty: occurrences pass; empty errors"
+        (all-checks
+          (list (check-true (ok-ints? (non-empty (opt-all conv-int Nil (info (list "count"))))
+                                      (list 3 5)))
+                (check-true (errs? (non-empty (opt-all conv-int Nil (info (list "gone")))))))))
 
-   (it "last: last occurrence; empty errors"
-       (all-checks
-        (list (check-true (ok-int? (last (opt-all conv-int Nil (info (list "count")))) 5))
-              (check-true (errs? (last (opt-all conv-int Nil (info (list "gone")))))))))))
+    (it "last: last occurrence; empty errors"
+        (all-checks
+          (list (check-true (ok-int? (last (opt-all conv-int Nil (info (list "count")))) 5))
+                (check-true (errs? (last (opt-all conv-int Nil (info (list "gone")))))))))))
 
-(: main Unit)
-(define main (run-io (run-suite "rackton/cmdline/argval" suite)))
+(: test-main (IO Unit))
+(define test-main (run-suite "rackton/cmdline/argval" suite))

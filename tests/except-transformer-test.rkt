@@ -11,8 +11,8 @@
 (: divide-safely (-> Integer (-> Integer (ExceptT String IO Integer))))
 (define (divide-safely num den)
   (if (== den 0)
-      (throw-error "division by zero")
-      (pure (div num den))))
+    (throw-error "division by zero")
+    (pure (div num den))))
 
 (: succ-call (ExceptT String IO Integer))
 (define succ-call (divide-safely 20 4))
@@ -30,8 +30,8 @@
 (: chained (ExceptT String IO Integer))
 (define chained
   (do [a <- (divide-safely 100 5)]
-      [b <- (divide-safely a 0)]    ;; throws — rest skipped
-      [c <- (divide-safely a 2)]
+    [b <- (divide-safely a 0)]    ;; throws — rest skipped
+    [c <- (divide-safely a 2)]
     (pure (+ b c))))
 
 (: chained-result (IO (Result String Integer)))
@@ -78,22 +78,22 @@
 (: suite (List Test))
 (define suite
   (list
-   (it "ExceptT success path"
-       (check-equal? (run-io succ-result) (Ok 5)))
-   (it "ExceptT throw-error short-circuits"
-       (check-equal? (run-io fail-result) (Err "division by zero")))
-   (it "bind short-circuits on the thrown error"
-       (check-equal? (run-io chained-result) (Err "division by zero")))
-   (it "catch-error recovers from a thrown error"
-       (check-equal? (run-io recovered-result) (Ok 999)))
-   (it "ExceptT over Maybe: thrown error visible as outer Some (Err …)"
-       (check-equal? maybe-throw-result (Some (Err "bad"))))
-   (it "ExceptT over Maybe: lift Some yields Some (Ok …)"
-       (check-equal? maybe-lifted-result (Some (Ok 7))))
-   (it "ExceptT over Maybe: lift None yields outer None"
-       (check-equal? maybe-none-result None))
-   (it "ExceptT over Maybe: bind on Err short-circuits within outer Some"
-       (check-equal? maybe-chained-result (Some (Err "from-mid"))))))
+    (it "ExceptT success path"
+        (check-equal? (run-io succ-result) (Ok 5)))
+    (it "ExceptT throw-error short-circuits"
+        (check-equal? (run-io fail-result) (Err "division by zero")))
+    (it "bind short-circuits on the thrown error"
+        (check-equal? (run-io chained-result) (Err "division by zero")))
+    (it "catch-error recovers from a thrown error"
+        (check-equal? (run-io recovered-result) (Ok 999)))
+    (it "ExceptT over Maybe: thrown error visible as outer Some (Err …)"
+        (check-equal? maybe-throw-result (Some (Err "bad"))))
+    (it "ExceptT over Maybe: lift Some yields Some (Ok …)"
+        (check-equal? maybe-lifted-result (Some (Ok 7))))
+    (it "ExceptT over Maybe: lift None yields outer None"
+        (check-equal? maybe-none-result None))
+    (it "ExceptT over Maybe: bind on Err short-circuits within outer Some"
+        (check-equal? maybe-chained-result (Some (Err "from-mid"))))))
 
-(: main Unit)
-(define main (run-io (run-suite "except-transformer" suite)))
+(: test-main (IO Unit))
+(define test-main (run-suite "except-transformer" suite))

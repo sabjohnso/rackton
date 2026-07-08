@@ -24,19 +24,19 @@
 (: suite (List Test))
 (define suite
   (list
-   (it "fold-map / fold (Monoid over Foldable)"
-       (all-checks
-        (list (check-equal? fm-list "123")
-              (check-equal? fm-some "5")
-              (check-equal? fm-none "")
-              (check-equal? fold-list "abc"))))
-   (it "any-of / all-of over List and Maybe"
-       (all-checks
-        (list (check-equal? any-l #t) (check-equal? any-s #t) (check-equal? any-n #f)
-              (check-equal? all-l #t) (check-equal? all-l2 #f))))
-   (it "elem-of over List and Maybe"
-       (all-checks
-        (list (check-equal? el-l #t) (check-equal? el-s #t) (check-equal? el-n #f))))))
+    (it "fold-map / fold (Monoid over Foldable)"
+        (all-checks
+          (list (check-equal? fm-list "123")
+                (check-equal? fm-some "5")
+                (check-equal? fm-none "")
+                (check-equal? fold-list "abc"))))
+    (it "any-of / all-of over List and Maybe"
+        (all-checks
+          (list (check-equal? any-l #t) (check-equal? any-s #t) (check-equal? any-n #f)
+                (check-equal? all-l #t) (check-equal? all-l2 #f))))
+    (it "elem-of over List and Maybe"
+        (all-checks
+          (list (check-equal? el-l #t) (check-equal? el-s #t) (check-equal? el-n #f))))))
 
-(: main Unit)
-(define main (run-io (run-suite "rackton/data/foldable" suite)))
+(: test-main (IO Unit))
+(define test-main (run-suite "rackton/data/foldable" suite))

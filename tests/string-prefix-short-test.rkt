@@ -13,12 +13,12 @@
 (: suite (List Test))
 (define suite
   (list
-   (it "string shorter than prefix is #f, not a crash"
-       (all-checks
-        (list (check-false (string-prefix? "--" "x"))
-              (check-false (string-prefix? "ab" ""))
-              (check-true  (string-prefix? "--" "--count"))
-              (check-true  (string-prefix? "" "anything")))))))
+    (it "string shorter than prefix is #f, not a crash"
+        (all-checks
+          (list (check-false (string-prefix? "--" "x"))
+                (check-false (string-prefix? "ab" ""))
+                (check-true  (string-prefix? "--" "--count"))
+                (check-true  (string-prefix? "" "anything")))))))
 
-(: main Unit)
-(define main (run-io (run-suite "string-prefix? short strings" suite)))
+(: test-main (IO Unit))
+(define test-main (run-suite "string-prefix? short strings" suite))

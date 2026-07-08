@@ -31,29 +31,29 @@
 (: suite (List Test))
 (define suite
   (list
-   (it "digit / hex"
-       (all-checks
-        (list (check-equal? d5 #t) (check-equal? da #f)
-              (check-equal? hf #t) (check-equal? hg #f))))
-   (it "case predicates"
-       (all-checks
-        (list (check-equal? uA #t) (check-equal? ua #f) (check-equal? la #t))))
-   (it "alpha / alnum / space"
-       (all-checks
-        (list (check-equal? alA #t) (check-equal? al5 #f)
-              (check-equal? an5 #t) (check-equal? ansp #f)
-              (check-equal? sp #t))))
-   (it "control / punctuation"
-       (all-checks
-        (list (check-equal? ctl #t) (check-equal? pun #t))))
-   (it "conversions"
-       (all-checks
-        (list (check-equal? d7 7)
-              (check-equal? i3 #\3)
-              (check-equal? ordA 65)
-              (check-equal? chrB #\B)
-              (check-equal? upa #\A)
-              (check-equal? loZ #\z))))))
+    (it "digit / hex"
+        (all-checks
+          (list (check-equal? d5 #t) (check-equal? da #f)
+                (check-equal? hf #t) (check-equal? hg #f))))
+    (it "case predicates"
+        (all-checks
+          (list (check-equal? uA #t) (check-equal? ua #f) (check-equal? la #t))))
+    (it "alpha / alnum / space"
+        (all-checks
+          (list (check-equal? alA #t) (check-equal? al5 #f)
+                (check-equal? an5 #t) (check-equal? ansp #f)
+                (check-equal? sp #t))))
+    (it "control / punctuation"
+        (all-checks
+          (list (check-equal? ctl #t) (check-equal? pun #t))))
+    (it "conversions"
+        (all-checks
+          (list (check-equal? d7 7)
+                (check-equal? i3 #\3)
+                (check-equal? ordA 65)
+                (check-equal? chrB #\B)
+                (check-equal? upa #\A)
+                (check-equal? loZ #\z))))))
 
-(: main Unit)
-(define main (run-io (run-suite "data-char" suite)))
+(: test-main (IO Unit))
+(define test-main (run-suite "data-char" suite))

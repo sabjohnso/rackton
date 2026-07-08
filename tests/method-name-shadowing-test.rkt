@@ -15,15 +15,15 @@
 
 ;; `peek` and `poke` both collide with Storable's methods.
 (define-effect Counter
-  (peek -> Integer)
-  (poke -> Unit))
+               (peek -> Integer)
+               (poke -> Unit))
 
 (: run-counter (-> Integer (-> (-> Integer) Integer)))
 (define (run-counter s0 prog)
   (handle (prog)
-    [peek () k -> (k s0)]
-    [poke () k -> (k Unit)]
-    [return v -> v]))
+          [peek () k -> (k s0)]
+          [poke () k -> (k Unit)]
+          [return v -> v]))
 
 (: prog (-> Integer))
 (define (prog) (+ (peek) (peek)))
@@ -38,10 +38,10 @@
 (: suite (List Test))
 (define suite
   (list
-   (it "effect op named like Storable.peek shadows the method"
-       (check-equal? result 42))
-   (it "a plain binding named like a method shadows it"
-       (check-equal? poke-shadow 7))))
+    (it "effect op named like Storable.peek shadows the method"
+        (check-equal? result 42))
+    (it "a plain binding named like a method shadows it"
+        (check-equal? poke-shadow 7))))
 
-(: main Unit)
-(define main (run-io (run-suite "method-name shadowing" suite)))
+(: test-main (IO Unit))
+(define test-main (run-suite "method-name shadowing" suite))

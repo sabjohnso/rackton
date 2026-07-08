@@ -10,9 +10,9 @@
 (: parallel-sum (IO Integer))
 (define parallel-sum
   (do [f1 <- (fork-c (pure 10))]
-      [f2 <- (fork-c (pure 32))]
-      [a  <- (await-c f1)]
-      [b  <- (await-c f2)]
+    [f2 <- (fork-c (pure 32))]
+    [a  <- (await-c f1)]
+    [b  <- (await-c f2)]
     (pure (+ a b))))
 
 ;; ----- 43.B polymorphic-monad parallelization ----------------
@@ -23,9 +23,9 @@
 (: par-pair ((Concurrent m) => (-> (m a) (-> (m b) (m (Pair a b))))))
 (define (par-pair ma mb)
   (do [fa <- (fork-c ma)]
-      [fb <- (fork-c mb)]
-      [a  <- (await-c fa)]
-      [b  <- (await-c fb)]
+    [fb <- (fork-c mb)]
+    [a  <- (await-c fa)]
+    [b  <- (await-c fb)]
     (pure (Pair a b))))
 
 (: par-pair-result (IO (Pair Integer String)))
@@ -47,12 +47,12 @@
 (: suite (List Test))
 (define suite
   (list
-   (it "fork-c + await-c in IO"
-       (check-equal? r-sum 42))
-   (it "par-pair polymorphic over Concurrent, instantiated at IO"
-       (check-equal? r-par (Pair 7 "ok")))
-   (it "yield-c is callable"
-       (check-equal? r-yield Unit))))
+    (it "fork-c + await-c in IO"
+        (check-equal? r-sum 42))
+    (it "par-pair polymorphic over Concurrent, instantiated at IO"
+        (check-equal? r-par (Pair 7 "ok")))
+    (it "yield-c is callable"
+        (check-equal? r-yield Unit))))
 
-(: main Unit)
-(define main (run-io (run-suite "concurrent-class" suite)))
+(: test-main (IO Unit))
+(define test-main (run-suite "concurrent-class" suite))

@@ -49,12 +49,12 @@
 (: sample Json)
 (define sample
   (JObj (list
-         (Pair "name"     (JStr "rackton"))
-         (Pair "version"  (JNum 1))
-         (Pair "stable"   (JBool #t))
-         (Pair "keywords" (JArr (list (JStr "typed") (JStr "functional") (JStr "racket"))))
-         (Pair "meta"     (JObj (list (Pair "authors" (JArr (list (JStr "sbj"))))
-                                      (Pair "license" (JStr "MIT"))))))))
+          (Pair "name"     (JStr "rackton"))
+          (Pair "version"  (JNum 1))
+          (Pair "stable"   (JBool #t))
+          (Pair "keywords" (JArr (list (JStr "typed") (JStr "functional") (JStr "racket"))))
+          (Pair "meta"     (JObj (list (Pair "authors" (JArr (list (JStr "sbj"))))
+                                       (Pair "license" (JStr "MIT"))))))))
 
 (: idents (List Doc))
 (define idents
@@ -71,11 +71,9 @@
 (define (demo label w d)
   (do [_ <- (banner label w)] (println (pretty w d))))
 
-(: main Unit)
-(define main
-  (run-io
-   (do [_ <- (demo "json" 60 (json->doc sample))]
-       [_ <- (demo "json" 28 (json->doc sample))]
-       [_ <- (println "")]
-       [_ <- (demo "grid" 50 (<> (text "exports: ") (fill-grid idents)))]
-       (demo "grid" 30 (<> (text "exports: ") (fill-grid idents))))))
+(: main (IO Unit))
+(define main (do [_ <- (demo "json" 60 (json->doc sample))]
+               [_ <- (demo "json" 28 (json->doc sample))]
+               [_ <- (println "")]
+               [_ <- (demo "grid" 50 (<> (text "exports: ") (fill-grid idents)))]
+               (demo "grid" 30 (<> (text "exports: ") (fill-grid idents)))))

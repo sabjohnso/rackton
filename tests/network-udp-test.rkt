@@ -26,10 +26,10 @@
 (: suite (List Test))
 (define suite
   (list
-   (it "send-to / recv-from delivers the datagram"
-       (check-equal? (tref (run-io datagram-roundtrip) 0) "pong"))
-   (it "recv-from reports the loopback sender host"
-       (check-equal? (tref (run-io datagram-roundtrip) 1) "127.0.0.1"))))
+    (it "send-to / recv-from delivers the datagram"
+        (check-equal? (tref (run-io datagram-roundtrip) 0) "pong"))
+    (it "recv-from reports the loopback sender host"
+        (check-equal? (tref (run-io datagram-roundtrip) 1) "127.0.0.1"))))
 
-(: main Unit)
-(define main (run-io (run-suite "network/udp" suite)))
+(: test-main (IO Unit))
+(define test-main (run-suite "network/udp" suite))

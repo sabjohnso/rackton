@@ -136,42 +136,42 @@
 (: suite (List Test))
 (define suite
   (list
-   (it "derived on-second maps the second component"
-       (check-equal? (second-inc (Pair 3 5)) (Pair 3 6)))
-   (it "derived split runs both arrows on the two halves"
-       (check-equal? (split-incdbl (Pair 3 5)) (Pair 4 10)))
-   (it "derived fanout feeds one input to both arrows"
-       (check-equal? (fanout-incdbl 3) (Pair 4 6)))
-   (it "derived on-right maps the Right branch"
-       (check-equal? (right-inc (Right 3)) (Right 4)))
-   (it "derived on-right passes the Left branch through"
-       (check-equal? (right-inc (Left 9)) (Left 9)))
-   (it "derived fork maps the Left branch with the first arrow"
-       (check-equal? (fork-incdbl (Left 3)) (Left 4)))
-   (it "derived fork maps the Right branch with the second arrow"
-       (check-equal? (fork-incdbl (Right 5)) (Right 10)))
-   (it "derived fanin collapses Left with the first arrow"
-       (check-equal? (fanin-incdbl (Left 3)) 4))
-   (it "derived fanin collapses Right with the second arrow"
-       (check-equal? (fanin-incdbl (Right 5)) 10))
-   ;; split-as-primitive arrow: the other combinators derive from split.
-   (it "on-first derives from split"
-       (check-equal? (g-first (Pair 3 5)) (Pair 4 5)))
-   (it "on-second derives from split"
-       (check-equal? (g-second (Pair 3 5)) (Pair 3 6)))
-   (it "fanout derives from split"
-       (check-equal? (g-fanout 3) (Pair 4 6)))
-   ;; fork-as-primitive ArrowChoice: the rest derive from fork.
-   (it "on-left derives from fork (maps Left)"
-       (check-equal? (g-onleft (Left 3)) (Left 4)))
-   (it "on-left derives from fork (passes Right)"
-       (check-equal? (g-onleft (Right 9)) (Right 9)))
-   (it "on-right derives from fork (maps Right)"
-       (check-equal? (g-onright (Right 3)) (Right 4)))
-   (it "fanin derives from fork (Left → first arrow)"
-       (check-equal? (g-fanin (Left 3)) 4))
-   (it "fanin derives from fork (Right → second arrow)"
-       (check-equal? (g-fanin (Right 5)) 10))))
+    (it "derived on-second maps the second component"
+        (check-equal? (second-inc (Pair 3 5)) (Pair 3 6)))
+    (it "derived split runs both arrows on the two halves"
+        (check-equal? (split-incdbl (Pair 3 5)) (Pair 4 10)))
+    (it "derived fanout feeds one input to both arrows"
+        (check-equal? (fanout-incdbl 3) (Pair 4 6)))
+    (it "derived on-right maps the Right branch"
+        (check-equal? (right-inc (Right 3)) (Right 4)))
+    (it "derived on-right passes the Left branch through"
+        (check-equal? (right-inc (Left 9)) (Left 9)))
+    (it "derived fork maps the Left branch with the first arrow"
+        (check-equal? (fork-incdbl (Left 3)) (Left 4)))
+    (it "derived fork maps the Right branch with the second arrow"
+        (check-equal? (fork-incdbl (Right 5)) (Right 10)))
+    (it "derived fanin collapses Left with the first arrow"
+        (check-equal? (fanin-incdbl (Left 3)) 4))
+    (it "derived fanin collapses Right with the second arrow"
+        (check-equal? (fanin-incdbl (Right 5)) 10))
+    ;; split-as-primitive arrow: the other combinators derive from split.
+    (it "on-first derives from split"
+        (check-equal? (g-first (Pair 3 5)) (Pair 4 5)))
+    (it "on-second derives from split"
+        (check-equal? (g-second (Pair 3 5)) (Pair 3 6)))
+    (it "fanout derives from split"
+        (check-equal? (g-fanout 3) (Pair 4 6)))
+    ;; fork-as-primitive ArrowChoice: the rest derive from fork.
+    (it "on-left derives from fork (maps Left)"
+        (check-equal? (g-onleft (Left 3)) (Left 4)))
+    (it "on-left derives from fork (passes Right)"
+        (check-equal? (g-onleft (Right 9)) (Right 9)))
+    (it "on-right derives from fork (maps Right)"
+        (check-equal? (g-onright (Right 3)) (Right 4)))
+    (it "fanin derives from fork (Left → first arrow)"
+        (check-equal? (g-fanin (Left 3)) 4))
+    (it "fanin derives from fork (Right → second arrow)"
+        (check-equal? (g-fanin (Right 5)) 10))))
 
-(: main Unit)
-(define main (run-io (run-suite "arrow-default-derivation" suite)))
+(: test-main (IO Unit))
+(define test-main (run-suite "arrow-default-derivation" suite))

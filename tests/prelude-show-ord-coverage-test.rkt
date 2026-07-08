@@ -41,25 +41,25 @@
 (: suite Test)
 (define suite
   (describe "previously-untested prelude Show/Ord instances"
-    (it "Show Maybe"
-      (all-checks (list (check-equal? show-some "(Some 5)")
-                        (check-equal? show-none "None"))))
-    (it "Show Either"
-      (all-checks (list (check-equal? show-left  "(Left 3)")
-                        (check-equal? show-right "(Right True)"))))
-    (it "Show Unit"  (check-equal? show-unit "Unit"))
-    (it "Show Bytes" (check-equal? show-bytes "#\"hi\""))
-    (it "Ord Maybe"
-      (all-checks (list (check-true  ord-none-lt-some)
-                        (check-true  ord-some-lt-some)
-                        (check-false ord-some-not-lt)
-                        (check-equal? ord-maybe-min (Some 1))
-                        (check-equal? ord-maybe-max (Some 5)))))
-    (it "Ord List"
-      (all-checks (list (check-true ord-nil-lt)
-                        (check-true ord-list-lt)
-                        (check-true ord-list-lex)
-                        (check-true ord-list-le))))))
+            (it "Show Maybe"
+                (all-checks (list (check-equal? show-some "(Some 5)")
+                                  (check-equal? show-none "None"))))
+            (it "Show Either"
+                (all-checks (list (check-equal? show-left  "(Left 3)")
+                                  (check-equal? show-right "(Right True)"))))
+            (it "Show Unit"  (check-equal? show-unit "Unit"))
+            (it "Show Bytes" (check-equal? show-bytes "#\"hi\""))
+            (it "Ord Maybe"
+                (all-checks (list (check-true  ord-none-lt-some)
+                                  (check-true  ord-some-lt-some)
+                                  (check-false ord-some-not-lt)
+                                  (check-equal? ord-maybe-min (Some 1))
+                                  (check-equal? ord-maybe-max (Some 5)))))
+            (it "Ord List"
+                (all-checks (list (check-true ord-nil-lt)
+                                  (check-true ord-list-lt)
+                                  (check-true ord-list-lex)
+                                  (check-true ord-list-le))))))
 
-(: main Unit)
-(define main (run-io (run-suite-tree suite)))
+(: test-main (IO Unit))
+(define test-main (run-suite-tree suite))

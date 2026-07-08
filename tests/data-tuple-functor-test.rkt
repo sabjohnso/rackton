@@ -22,12 +22,12 @@
 (: suite (List Test))
 (define suite
   (list
-   (it "curry / uncurry"
-       (all-checks
-        (list (check-equal? c-res 7)
-              (check-equal? u-res 11))))
-   (it "const-replace-flipped"
-       (check-equal? cf-res 9))))
+    (it "curry / uncurry"
+        (all-checks
+          (list (check-equal? c-res 7)
+                (check-equal? u-res 11))))
+    (it "const-replace-flipped"
+        (check-equal? cf-res 9))))
 
-(: main Unit)
-(define main (run-io (run-suite "rackton/data/tuple+functor" suite)))
+(: test-main (IO Unit))
+(define test-main (run-suite "rackton/data/tuple+functor" suite))

@@ -64,12 +64,12 @@
 (: suite (List Test))
 (define suite
   (list
-   (it "ref"         (check-equal? r-ref 42))
-   (it "file"        (check-equal? r-file "hello"))
-   (it "directory"   (check-false  r-gone))
-   (it "exception"   (check-true   r-caught))
-   (it "random"      (check-true   r-rand))
-   (it "environment" (check-true   r-env))))
+    (it "ref"         (check-equal? r-ref 42))
+    (it "file"        (check-equal? r-file "hello"))
+    (it "directory"   (check-false  r-gone))
+    (it "exception"   (check-true   r-caught))
+    (it "random"      (check-true   r-rand))
+    (it "environment" (check-true   r-env))))
 
-(: main Unit)
-(define main (run-io (run-suite "rackton/system split" suite)))
+(: test-main (IO Unit))
+(define test-main (run-suite "rackton/system split" suite))

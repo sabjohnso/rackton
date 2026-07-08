@@ -130,51 +130,51 @@
 (: suite (List Test))
 (define suite
   (list
-   (it "Rational arithmetic"
-       (all-checks
-        (list (check-equal? five-sixths (make-rational 5 6))
-              (check-equal? one-sixth   (make-rational 1 6))
-              (check-equal? half-shown  "1/2"))))
-   (it "Rational literal syntax"
-       (all-checks
-        (list (check-equal? q                (make-rational 3 4))
-              (check-equal? neg-q            (make-rational -3 4))
-              (check-equal? lit-sum          (make-rational 3 4))
-              (check-equal? classified       "three-quarters")
-              (check-equal? classified-other "other"))))
-   (it "Complex arithmetic"
-       (all-checks
-        (list (check-equal? c-sum  (make-complex  4.0  6.0))
-              (check-equal? c-prod (make-complex -5.0 10.0))
-              (check-true   (< (abs-float (- c-mag 5.0)) 0.000001)))))
-   (it "Integral class on Integer"
-       (all-checks
-        (list (check-equal? int-div-result   3)
-              (check-equal? int-mod-result   2)
-              (check-equal? int-quot-result  3)
-              (check-equal? int-rem-result   2))))
-   (it "Real class to-rational"
-       (all-checks
-        (list (check-equal? from-int (make-rational 7 1))
-              (check-equal? from-rat half))))
-   (it "Floating class basics"
-       (all-checks
-        (list (check-equal? root-9 3.0)
-              (check-true (< (abs-float (- pi-shown 3.141592653589793)) 0.000001))
-              (check-equal? exp-0 1.0)
-              (check-true (< (abs-float (- log-e 1.0)) 0.000001))
-              (check-equal? sin-0 0.0))))
-   (it "RealFrac floor/round/ceiling/truncate"
-       (all-checks
-        (list (check-equal? floored   3)
-              (check-equal? rounded   4)
-              (check-equal? ceiled    4)
-              (check-equal? truncated -3))))
-   (it "RealFloat is-nan? / is-infinite?"
-       (all-checks
-        (list (check-true  nan-is-nan)
-              (check-true  inf-is-inf)
-              (check-false finite-is-nan))))))
+    (it "Rational arithmetic"
+        (all-checks
+          (list (check-equal? five-sixths (make-rational 5 6))
+                (check-equal? one-sixth   (make-rational 1 6))
+                (check-equal? half-shown  "1/2"))))
+    (it "Rational literal syntax"
+        (all-checks
+          (list (check-equal? q                (make-rational 3 4))
+                (check-equal? neg-q            (make-rational -3 4))
+                (check-equal? lit-sum          (make-rational 3 4))
+                (check-equal? classified       "three-quarters")
+                (check-equal? classified-other "other"))))
+    (it "Complex arithmetic"
+        (all-checks
+          (list (check-equal? c-sum  (make-complex  4.0  6.0))
+                (check-equal? c-prod (make-complex -5.0 10.0))
+                (check-true   (< (abs-float (- c-mag 5.0)) 0.000001)))))
+    (it "Integral class on Integer"
+        (all-checks
+          (list (check-equal? int-div-result   3)
+                (check-equal? int-mod-result   2)
+                (check-equal? int-quot-result  3)
+                (check-equal? int-rem-result   2))))
+    (it "Real class to-rational"
+        (all-checks
+          (list (check-equal? from-int (make-rational 7 1))
+                (check-equal? from-rat half))))
+    (it "Floating class basics"
+        (all-checks
+          (list (check-equal? root-9 3.0)
+                (check-true (< (abs-float (- pi-shown 3.141592653589793)) 0.000001))
+                (check-equal? exp-0 1.0)
+                (check-true (< (abs-float (- log-e 1.0)) 0.000001))
+                (check-equal? sin-0 0.0))))
+    (it "RealFrac floor/round/ceiling/truncate"
+        (all-checks
+          (list (check-equal? floored   3)
+                (check-equal? rounded   4)
+                (check-equal? ceiled    4)
+                (check-equal? truncated -3))))
+    (it "RealFloat is-nan? / is-infinite?"
+        (all-checks
+          (list (check-true  nan-is-nan)
+                (check-true  inf-is-inf)
+                (check-false finite-is-nan))))))
 
-(: main Unit)
-(define main (run-io (run-suite "numeric tower" suite)))
+(: test-main (IO Unit))
+(define test-main (run-suite "numeric tower" suite))

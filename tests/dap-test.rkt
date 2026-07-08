@@ -74,8 +74,8 @@
                         "  (if (== n 0)"
                         "      1"
                         "      (* n (fact (- n 1)))))"
-                        "(: main Integer)"
-                        "(define main (fact 5))"))])
+                        "(: main (IO Unit))"
+                        "(define main (println (integer->string (fact 5))))"))])
       (displayln l out))))
 
 ;; ----- the session ----------------------------------------------------------

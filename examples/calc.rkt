@@ -49,10 +49,10 @@
         [(symbol? x)        (SSym (symbol->string x))]
         [(pair? x)
          (SList
-          (let to-rackton ([ys x])
-            (cond
-              [(null? ys) Nil]
-              [else (Cons (walk (car ys)) (to-rackton (cdr ys)))])))]
+           (let to-rackton ([ys x])
+             (cond
+               [(null? ys) Nil]
+               [else (Cons (walk (car ys)) (to-rackton (cdr ys)))])))]
         [(null? x) (SList Nil)]
         [else (panic "unsupported atom in source")]))))
 
@@ -84,10 +84,10 @@
 
 (define (parse-form op rest)
   (if (== op "+")   (parse-binary EAdd rest "+")
-  (if (== op "-")   (parse-binary ESub rest "-")
-  (if (== op "*")   (parse-binary EMul rest "*")
-  (if (== op "let") (parse-let rest)
-                    (Err (string-append "unknown operator: " op)))))))
+    (if (== op "-")   (parse-binary ESub rest "-")
+      (if (== op "*")   (parse-binary EMul rest "*")
+        (if (== op "let") (parse-let rest)
+          (Err (string-append "unknown operator: " op)))))))
 
 (define (parse-binary mk rest op)
   (match rest
@@ -155,12 +155,11 @@
 (: repl-step (IO Unit))
 (define repl-step
   (do [_  <- (print "calc> ")]
-      [ln <- read-line]
+    [ln <- read-line]
     (if (== ln "")
-        (println "bye!")
-        (do [_ <- (println (process ln))]
-          repl-step))))
+      (println "bye!")
+      (do [_ <- (println (process ln))]
+        repl-step))))
 
-;; Top-level: run the loop on module load (interactive use).
-(: main Unit)
-(define main (run-io repl-step))
+(: main (IO Unit))
+(define main repl-step)

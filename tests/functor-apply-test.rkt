@@ -37,18 +37,18 @@
 (: suite (List Test))
 (define suite
   (list
-   (it "apply over Maybe"
-       (all-checks
-        (list (check-equal? m-apply (Some 42))
-              (check-equal? m-apply-none None))))
-   (it "liftF2 derives from apply"
-       (check-equal? m-lift (Some 5)))
-   (it "apply over List is cartesian"
-       (check-equal? l-apply (Cons 5 (Cons 6 (Cons 40 (Cons 50 Nil))))))
-   (it "apply over Either is right-biased"
-       (check-equal? e-apply (Right 42)))
-   (it "apply over Identity"
-       (check-equal? i-apply 42))))
+    (it "apply over Maybe"
+        (all-checks
+          (list (check-equal? m-apply (Some 42))
+                (check-equal? m-apply-none None))))
+    (it "liftF2 derives from apply"
+        (check-equal? m-lift (Some 5)))
+    (it "apply over List is cartesian"
+        (check-equal? l-apply (Cons 5 (Cons 6 (Cons 40 (Cons 50 Nil))))))
+    (it "apply over Either is right-biased"
+        (check-equal? e-apply (Right 42)))
+    (it "apply over Identity"
+        (check-equal? i-apply 42))))
 
-(: main Unit)
-(define main (run-io (run-suite "rackton/control/apply" suite)))
+(: test-main (IO Unit))
+(define test-main (run-suite "rackton/control/apply" suite))

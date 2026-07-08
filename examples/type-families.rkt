@@ -15,8 +15,8 @@
 (data Flag On Off)
 
 (type-family (When b t e)
-  [On  t e = t]
-  [Off t e = e])
+             [On  t e = t]
+             [Off t e = e])
 
 ;; (When On Integer String) reduces to Integer; (When Off …) to String,
 ;; so each definition's value must match the reduced type.
@@ -46,8 +46,6 @@
 (: main (IO Unit))
 (define main
   (do [_ <- (println (string-append "When On  ⇒ " (show chosen-int)))]
-      [_ <- (println (string-append "When Off ⇒ " chosen-str))]
-      [_ <- (println (string-append "Cell NameCol = " a-name))]
-      (println (string-append "Cell AgeCol  = " (show an-age)))))
-
-(define _go (run-io main))
+    [_ <- (println (string-append "When Off ⇒ " chosen-str))]
+    [_ <- (println (string-append "Cell NameCol = " a-name))]
+    (println (string-append "Cell AgeCol  = " (show an-age)))))

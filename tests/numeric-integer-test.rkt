@@ -32,32 +32,32 @@
 (: suite (List Test))
 (define suite
   (list
-   (it "parity"
-       (all-checks
-        (list (check-true  even-4)
-              (check-false even-5)
-              (check-true  odd-3))))
-   (it "signum"
-       (all-checks
-        (list (check-equal? sig-neg -1)
-              (check-equal? sig-zero 0)
-              (check-equal? sig-pos 1))))
-   (it "gcd / lcm"
-       (all-checks
-        (list (check-equal? gcd-12-8 4)
-              (check-equal? gcd-0-5 5)
-              (check-equal? lcm-4-6 12)
-              (check-equal? lcm-0-5 0))))
-   (it "factorial"
-       (all-checks
-        (list (check-equal? fact-5 120)
-              (check-equal? fact-0 1))))
-   (it "integer power"
-       (all-checks
-        (list (check-equal? pow-2-10 1024)
-              (check-equal? pow-3-0 1))))
-   (it "from-integral"
-       (check-equal? from-3 3.0))))
+    (it "parity"
+        (all-checks
+          (list (check-true  even-4)
+                (check-false even-5)
+                (check-true  odd-3))))
+    (it "signum"
+        (all-checks
+          (list (check-equal? sig-neg -1)
+                (check-equal? sig-zero 0)
+                (check-equal? sig-pos 1))))
+    (it "gcd / lcm"
+        (all-checks
+          (list (check-equal? gcd-12-8 4)
+                (check-equal? gcd-0-5 5)
+                (check-equal? lcm-4-6 12)
+                (check-equal? lcm-0-5 0))))
+    (it "factorial"
+        (all-checks
+          (list (check-equal? fact-5 120)
+                (check-equal? fact-0 1))))
+    (it "integer power"
+        (all-checks
+          (list (check-equal? pow-2-10 1024)
+                (check-equal? pow-3-0 1))))
+    (it "from-integral"
+        (check-equal? from-3 3.0))))
 
-(: main Unit)
-(define main (run-io (run-suite "numeric-integer" suite)))
+(: test-main (IO Unit))
+(define test-main (run-suite "numeric-integer" suite))

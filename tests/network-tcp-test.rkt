@@ -17,13 +17,13 @@
   (let& ([lst  (listen-on 0)]
          [port (listener-port lst)]
          [_    (fork-io
-                (let& ([s  (accept lst)]
-                       [m  (recv s 1024)]
-                       [_  (match m
-                             [(Some msg) (send s msg)]
-                             [(None)     (pure-io Unit)])]
-                       [_  (close s)])
-                  (pure-io Unit)))]
+                 (let& ([s  (accept lst)]
+                        [m  (recv s 1024)]
+                        [_  (match m
+                              [(Some msg) (send s msg)]
+                              [(None)     (pure-io Unit)])]
+                        [_  (close s)])
+                   (pure-io Unit)))]
          [c    (connect "127.0.0.1" port)]
          [_    (send c "ping")]
          [r    (recv c 1024)]
@@ -39,9 +39,9 @@
   (let& ([lst  (listen-on 0)]
          [port (listener-port lst)]
          [_    (fork-io
-                (let& ([s (accept lst)]
-                       [_ (close s)])
-                  (pure-io Unit)))]
+                 (let& ([s (accept lst)]
+                        [_ (close s)])
+                   (pure-io Unit)))]
          [c    (connect "127.0.0.1" port)]
          [r    (recv c 1024)]
          [_    (close c)]
@@ -53,10 +53,10 @@
 (: suite (List Test))
 (define suite
   (list
-   (it "connect/send/recv echoes the payload over loopback"
-       (check-equal? (run-io echo-roundtrip) "ping"))
-   (it "recv yields None after the peer closes"
-       (check-true (run-io eof-gives-none)))))
+    (it "connect/send/recv echoes the payload over loopback"
+        (check-equal? (run-io echo-roundtrip) "ping"))
+    (it "recv yields None after the peer closes"
+        (check-true (run-io eof-gives-none)))))
 
-(: main Unit)
-(define main (run-io (run-suite "network/tcp" suite)))
+(: test-main (IO Unit))
+(define test-main (run-suite "network/tcp" suite))

@@ -57,7 +57,7 @@
 (define (greet-int n) (mk-pretty n))
 
 (protocol (MkPretty a)
-  (: mk-pretty (-> a String)))
+          (: mk-pretty (-> a String)))
 
 (instance (MkPretty Integer)
   (define (mk-pretty n) "an int"))
@@ -70,7 +70,7 @@
   (define (tag-of b) "BBox"))
 
 (protocol (Tagged a)
-  (: tag-of (-> a String)))
+          (: tag-of (-> a String)))
 
 (data BBox MkBBox)
 
@@ -92,25 +92,25 @@
 (: suite (List Test))
 (define suite
   (list
-   (it "forward reference between defs"
-       (check-equal? forward-result 8))
-   (it "mutually recursive defs"
-       (all-checks
-        (list (check-equal? even-7  #f)
-              (check-equal? even-10 #t))))
-   (it "mutually recursive data types"
-       (all-checks
-        (list (check-true (is-leaf? leaf))
-              (check-true (leaf-cons-empty? leaf-forest))
-              (check-true (branched-shape? branched)))))
-   (it "class used before its declaration"
-       (check-equal? greet-result "an int"))
-   (it "instance declared before its class"
-       (check-equal? bbox-tag "BBox"))
-   (it "SCC-preserved polymorphism: helper used at two types"
-       (all-checks
-        (list (check-equal? use1 (Some 3))
-              (check-equal? use2 (Some "x")))))))
+    (it "forward reference between defs"
+        (check-equal? forward-result 8))
+    (it "mutually recursive defs"
+        (all-checks
+          (list (check-equal? even-7  #f)
+                (check-equal? even-10 #t))))
+    (it "mutually recursive data types"
+        (all-checks
+          (list (check-true (is-leaf? leaf))
+                (check-true (leaf-cons-empty? leaf-forest))
+                (check-true (branched-shape? branched)))))
+    (it "class used before its declaration"
+        (check-equal? greet-result "an int"))
+    (it "instance declared before its class"
+        (check-equal? bbox-tag "BBox"))
+    (it "SCC-preserved polymorphism: helper used at two types"
+        (all-checks
+          (list (check-equal? use1 (Some 3))
+                (check-equal? use2 (Some "x")))))))
 
-(: main Unit)
-(define main (run-io (run-suite "order invariance" suite)))
+(: test-main (IO Unit))
+(define test-main (run-suite "order invariance" suite))

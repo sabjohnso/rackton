@@ -23,14 +23,18 @@ Save the following as @filepath{hello.rkt}:
 @rackton-example[#:eval ev]{
 #lang rackton
 
+(: main (IO Unit))
 (define main (println "hello, world"))
-(define _    (run-io main))
 }
 
 Run it with @exec{racket hello.rkt}.  @racket[println] is typed
 @racket[(-> String (IO Unit))] — it doesn't perform IO when called; it
-returns an @racket[IO] action.  @racket[run-io] is the bridge that
-executes the action in the surrounding Racket runtime.
+returns an @racket[IO] action.  @racket[main] is a reserved name: a
+@hash-lang[]@racketmodfont{rackton} module that defines it must give it
+type @racket[(IO Unit)], and Rackton emits a @racket[(module+ main
+(run-io main))] submodule that runs it — which is what
+@exec{racket hello.rkt} instantiates.  @secref["testing"] covers the
+matching @racket[test-main] entry point, run by @exec{raco test}.
 
 @section{Your first typed function}
 

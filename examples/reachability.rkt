@@ -39,7 +39,7 @@
 (instance (Eq Rel)
   (define (== a b)
     (if (set-subset? (edges-of a) (edges-of b))
-        (set-subset? (edges-of b) (edges-of a)) #f)))
+      (set-subset? (edges-of b) (edges-of a)) #f)))
 (instance (Poset Rel)
   (define (leq a b) (set-subset? (edges-of a) (edges-of b))))
 (instance (JoinSemilattice Rel)
@@ -57,10 +57,10 @@
 (define (compose-pairs bs rs)
   (foldr (lambda (b acc)
            (match b [(Pair x y)
-             (foldr (lambda (e acc2)
-                      (match e [(Pair y2 z)
-                        (if (== y y2) (Cons (Pair x z) acc2) acc2)]))
-                    acc rs)]))
+                     (foldr (lambda (e acc2)
+                              (match e [(Pair y2 z)
+                                        (if (== y y2) (Cons (Pair x z) acc2) acc2)]))
+                            acc rs)]))
          Nil bs))
 (: compose-with (-> Rel Rel Rel))
 (define (compose-with base r)
@@ -97,22 +97,20 @@
 (: query-line (-> String String String))
 (define (query-line x z)
   (string-append "  " (string-append x (string-append " reaches " (string-append z
-    (string-append "?  " (if (reaches? x z) "yes" "no")))))))
+                                                                                 (string-append "?  " (if (reaches? x z) "yes" "no")))))))
 
-(: main Unit)
-(define main
-  (run-io
-   (do [_ <- (println "Graph reachability via a monotone least fixpoint (rackton/mono)")]
-       [_ <- (println "")]
-       [_ <- (println "edges:")]
-       [_ <- (print (relation->block graph))]
-       [_ <- (println "")]
-       [_ <- (println (string-append "reachable (transitive closure), "
-               (string-append (integer->string (set-size (edges-of reach))) " pairs:")))]
-       [_ <- (print (relation->block reach))]
-       [_ <- (println "")]
-       [_ <- (println "queries:")]
-       [_ <- (println (query-line "a" "d"))]
-       [_ <- (println (query-line "a" "a"))]
-       [_ <- (println (query-line "e" "d"))]
-     (pure Unit))))
+(: main (IO Unit))
+(define main (do [_ <- (println "Graph reachability via a monotone least fixpoint (rackton/mono)")]
+               [_ <- (println "")]
+               [_ <- (println "edges:")]
+               [_ <- (print (relation->block graph))]
+               [_ <- (println "")]
+               [_ <- (println (string-append "reachable (transitive closure), "
+                                             (string-append (integer->string (set-size (edges-of reach))) " pairs:")))]
+               [_ <- (print (relation->block reach))]
+               [_ <- (println "")]
+               [_ <- (println "queries:")]
+               [_ <- (println (query-line "a" "d"))]
+               [_ <- (println (query-line "a" "a"))]
+               [_ <- (println (query-line "e" "d"))]
+               (pure Unit)))

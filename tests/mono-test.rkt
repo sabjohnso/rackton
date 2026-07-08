@@ -19,11 +19,11 @@
 (: order-laws Test)
 (define order-laws
   (group-of "rackton/mono — order-theory laws (Boolean)"
-    (list
-     (Poset-laws gen-bool)
-     (JoinSemilattice-laws gen-bool)
-     (it-prop "BoundedJoinSemilattice bot-identity: bot lub x = x"
-       (for-all gen-bool (lambda (x) (== (lub bot x) x)))))))
+            (list
+              (Poset-laws gen-bool)
+              (JoinSemilattice-laws gen-bool)
+              (it-prop "BoundedJoinSemilattice bot-identity: bot lub x = x"
+                       (for-all gen-bool (lambda (x) (== (lub bot x) x)))))))
 
 ;; ----- increment 2: the Mono combinators, EXTENSIONALLY (Mono is a -----
 ;; sealed function wrapper with no Eq, so compare outputs on the carrier).
@@ -37,33 +37,33 @@
 (: combinator-laws Test)
 (define combinator-laws
   (group-of "rackton/mono — Mono combinators (Boolean)"
-    (list
-     (it-prop "comp left identity: id . f = f"
-       (for-all gen-bool (lambda (x)
-         (== (app-mono (mono-comp mono-id or-false) x) (app-mono or-false x)))))
-     (it-prop "comp right identity: f . id = f"
-       (for-all gen-bool (lambda (x)
-         (== (app-mono (mono-comp or-false mono-id) x) (app-mono or-false x)))))
-     (it-prop "comp associativity: (h.g).f = h.(g.f)"
-       (for-all gen-bool (lambda (x)
-         (== (app-mono (mono-comp (mono-comp or-true or-false) mono-id) x)
-             (app-mono (mono-comp or-true (mono-comp or-false mono-id)) x)))))
-     (it-prop "mono-join is pointwise lub"
-       (for-all gen-bool (lambda (x)
-         (== (app-mono (mono-join or-false (mono-const #t)) x) (lub x #t)))))
-     (it-prop "mono-pair / mono-fst / mono-snd project"
-       (for-all gen-bool (lambda (x)
-         (and (== (app-mono (mono-comp mono-fst (mono-pair or-false or-true)) x)
-                  (app-mono or-false x))
-              (== (app-mono (mono-comp mono-snd (mono-pair or-false or-true)) x)
-                  (app-mono or-true x))))))
-     (it-prop "mono-fst / mono-snd on a pair"
-       (for-all gen-bb (lambda (p) (match p [(Pair a b)
-         (and (== (app-mono mono-fst (Pair a b)) a)
-              (== (app-mono mono-snd (Pair a b)) b))]))))
-     (it-prop "every Mono is monotone: x <= y => f x <= f y  (f = or-true)"
-       (for-all gen-bb (lambda (p) (match p [(Pair x y)
-         (if (leq x y) (leq (app-mono or-true x) (app-mono or-true y)) #t)])))))))
+            (list
+              (it-prop "comp left identity: id . f = f"
+                       (for-all gen-bool (lambda (x)
+                                           (== (app-mono (mono-comp mono-id or-false) x) (app-mono or-false x)))))
+              (it-prop "comp right identity: f . id = f"
+                       (for-all gen-bool (lambda (x)
+                                           (== (app-mono (mono-comp or-false mono-id) x) (app-mono or-false x)))))
+              (it-prop "comp associativity: (h.g).f = h.(g.f)"
+                       (for-all gen-bool (lambda (x)
+                                           (== (app-mono (mono-comp (mono-comp or-true or-false) mono-id) x)
+                                               (app-mono (mono-comp or-true (mono-comp or-false mono-id)) x)))))
+              (it-prop "mono-join is pointwise lub"
+                       (for-all gen-bool (lambda (x)
+                                           (== (app-mono (mono-join or-false (mono-const #t)) x) (lub x #t)))))
+              (it-prop "mono-pair / mono-fst / mono-snd project"
+                       (for-all gen-bool (lambda (x)
+                                           (and (== (app-mono (mono-comp mono-fst (mono-pair or-false or-true)) x)
+                                                    (app-mono or-false x))
+                                                (== (app-mono (mono-comp mono-snd (mono-pair or-false or-true)) x)
+                                                    (app-mono or-true x))))))
+              (it-prop "mono-fst / mono-snd on a pair"
+                       (for-all gen-bb (lambda (p) (match p [(Pair a b)
+                                                             (and (== (app-mono mono-fst (Pair a b)) a)
+                                                                  (== (app-mono mono-snd (Pair a b)) b))]))))
+              (it-prop "every Mono is monotone: x <= y => f x <= f y  (f = or-true)"
+                       (for-all gen-bb (lambda (p) (match p [(Pair x y)
+                                                             (if (leq x y) (leq (app-mono or-true x) (app-mono or-true y)) #t)])))))))
 
 ;; ----- increment 3: the payoff — transitive closure as a monotone -----
 ;; least fixpoint (a one-rule Datalog program).  The carrier is a NOMINAL
@@ -92,9 +92,9 @@
 (define (compose-pairs bs rs)
   (foldr (lambda (b acc)
            (match b [(Pair x y)
-             (foldr (lambda (e acc2)
-                      (match e [(Pair y2 z) (if (== y y2) (Cons (Pair x z) acc2) acc2)]))
-                    acc rs)]))
+                     (foldr (lambda (e acc2)
+                              (match e [(Pair y2 z) (if (== y y2) (Cons (Pair x z) acc2) acc2)]))
+                            acc rs)]))
          Nil bs))
 (: compose-rel (-> Rel Rel Rel))
 (define (compose-rel base r)
@@ -116,26 +116,26 @@
 (: datalog Test)
 (define datalog
   (group-of "rackton/mono — transitive closure (Datalog payoff)"
-    (list
-     (it "mono-fix computes the transitive closure"
-       (check-true (== tc expected)))
-     (it "mono-fix result is a fixed point of the step"
-       (check-true (== (app-mono step tc) tc)))
-     (it "mono-fix/fuel agrees given enough fuel"
-       (check-true (match (mono-fix/fuel 100 step)
-                     [(Some r) (== r expected)] [None #f])))
-     (it "mono-fix/fuel returns None when starved"
-       (check-true (match (mono-fix/fuel 1 step)
-                     [(Some r) #f] [None #t])))
-     ;; mono-fix-from: resuming from ⊥ matches mono-fix; resuming from the
-     ;; answer itself is idempotent (the differential refinement is correct)
-     (it "mono-fix-from bot agrees with mono-fix"
-       (check-true (== (mono-fix-from (MkRel empty-set) step) tc)))
-     (it "mono-fix-from the fixpoint is idempotent"
-       (check-true (== (mono-fix-from tc step) tc))))))
+            (list
+              (it "mono-fix computes the transitive closure"
+                  (check-true (== tc expected)))
+              (it "mono-fix result is a fixed point of the step"
+                  (check-true (== (app-mono step tc) tc)))
+              (it "mono-fix/fuel agrees given enough fuel"
+                  (check-true (match (mono-fix/fuel 100 step)
+                                [(Some r) (== r expected)] [None #f])))
+              (it "mono-fix/fuel returns None when starved"
+                  (check-true (match (mono-fix/fuel 1 step)
+                                [(Some r) #f] [None #t])))
+              ;; mono-fix-from: resuming from ⊥ matches mono-fix; resuming from the
+              ;; answer itself is idempotent (the differential refinement is correct)
+              (it "mono-fix-from bot agrees with mono-fix"
+                  (check-true (== (mono-fix-from (MkRel empty-set) step) tc)))
+              (it "mono-fix-from the fixpoint is idempotent"
+                  (check-true (== (mono-fix-from tc step) tc))))))
 
 (: suite Test)
 (define suite (group-of "rackton/mono" (list order-laws combinator-laws datalog)))
 
-(: main Unit)
-(define main (run-io (run-suite-tree suite)))
+(: test-main (IO Unit))
+(define test-main (run-suite-tree suite))

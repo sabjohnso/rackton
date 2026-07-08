@@ -44,14 +44,14 @@
 (: suite (List Test))
 (define suite
   (list
-   (it "single-field update"
-       (check-true (point-eq? shift-x 99 2)))
-   (it "multi-field update"
-       (check-true (point-eq? move 99 88)))
-   (it "parametric record: update value field"
-       (check-true (box-int-eq? r-box1 99 "old")))
-   (it "parametric record: update tag field"
-       (check-true (box-int-eq? r-box2 7 "new")))))
+    (it "single-field update"
+        (check-true (point-eq? shift-x 99 2)))
+    (it "multi-field update"
+        (check-true (point-eq? move 99 88)))
+    (it "parametric record: update value field"
+        (check-true (box-int-eq? r-box1 99 "old")))
+    (it "parametric record: update tag field"
+        (check-true (box-int-eq? r-box2 7 "new")))))
 
-(: main Unit)
-(define main (run-io (run-suite "polymorphic record update" suite)))
+(: test-main (IO Unit))
+(define test-main (run-suite "polymorphic record update" suite))

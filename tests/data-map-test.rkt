@@ -61,33 +61,33 @@
 (: suite (List Test))
 (define suite
   (list
-   (it "membership / size"
-       (all-checks
-        (list (check-equal? mem1 #t) (check-equal? mem3 #f)
-              (check-equal? emp0 #t) (check-equal? emp1 #f)
-              (check-equal? sz 2) (check-equal? tolen 2))))
-   (it "singleton / find-with-default"
-       (all-checks
-        (list (check-equal? single (Some "z"))
-              (check-equal? fwd-hit "b") (check-equal? fwd-miss "d"))))
-   (it "adjust / insert-with"
-       (all-checks
-        (list (check-equal? adj (Some "a!"))
-              (check-equal? iw  (Some "xa")))))
-   (it "union / union-with"
-       (all-checks
-        (list (check-equal? uni  (Some "L"))
-              (check-equal? uniw (Some "LR")))))
-   (it "difference / intersection"
-       (all-checks
-        (list (check-equal? diff1 #f) (check-equal? diff2 #t)
-              (check-equal? isect (Some 220)))))
-   (it "map / filter"
-       (all-checks
-        (list (check-equal? mm  (Some 20))
-              (check-equal? mmk (Some 11))
-              (check-equal? filt1 #f) (check-equal? filt2 #t)
-              (check-equal? filtk #f))))))
+    (it "membership / size"
+        (all-checks
+          (list (check-equal? mem1 #t) (check-equal? mem3 #f)
+                (check-equal? emp0 #t) (check-equal? emp1 #f)
+                (check-equal? sz 2) (check-equal? tolen 2))))
+    (it "singleton / find-with-default"
+        (all-checks
+          (list (check-equal? single (Some "z"))
+                (check-equal? fwd-hit "b") (check-equal? fwd-miss "d"))))
+    (it "adjust / insert-with"
+        (all-checks
+          (list (check-equal? adj (Some "a!"))
+                (check-equal? iw  (Some "xa")))))
+    (it "union / union-with"
+        (all-checks
+          (list (check-equal? uni  (Some "L"))
+                (check-equal? uniw (Some "LR")))))
+    (it "difference / intersection"
+        (all-checks
+          (list (check-equal? diff1 #f) (check-equal? diff2 #t)
+                (check-equal? isect (Some 220)))))
+    (it "map / filter"
+        (all-checks
+          (list (check-equal? mm  (Some 20))
+                (check-equal? mmk (Some 11))
+                (check-equal? filt1 #f) (check-equal? filt2 #t)
+                (check-equal? filtk #f))))))
 
-(: main Unit)
-(define main (run-io (run-suite "rackton/data/map" suite)))
+(: test-main (IO Unit))
+(define test-main (run-suite "rackton/data/map" suite))

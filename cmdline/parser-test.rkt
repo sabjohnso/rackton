@@ -46,61 +46,61 @@
 (: suite (List Test))
 (define suite
   (list
-   (it "long flag"
-       (all-checks (list (check-equal? (flag-ct (p (list "--verbose")) (list "v" "verbose")) 1))))
+    (it "long flag"
+        (all-checks (list (check-equal? (flag-ct (p (list "--verbose")) (list "v" "verbose")) 1))))
 
-   (it "valued option: --k=v / --k v / -kv / -k v all agree"
-       (all-checks
-        (list (check-equal? (opt-vals (p (list "--count=5"))   (list "c" "count")) (list "5"))
-              (check-equal? (opt-vals (p (list "--count" "5")) (list "c" "count")) (list "5"))
-              (check-equal? (opt-vals (p (list "-c5"))          (list "c" "count")) (list "5"))
-              (check-equal? (opt-vals (p (list "-c" "5"))       (list "c" "count")) (list "5")))))
+    (it "valued option: --k=v / --k v / -kv / -k v all agree"
+        (all-checks
+          (list (check-equal? (opt-vals (p (list "--count=5"))   (list "c" "count")) (list "5"))
+                (check-equal? (opt-vals (p (list "--count" "5")) (list "c" "count")) (list "5"))
+                (check-equal? (opt-vals (p (list "-c5"))          (list "c" "count")) (list "5"))
+                (check-equal? (opt-vals (p (list "-c" "5"))       (list "c" "count")) (list "5")))))
 
-   (it "repeated valued option keeps occurrence order"
-       (all-checks
-        (list (check-equal? (opt-vals (p (list "--count" "3" "--count" "5")) (list "c" "count"))
-                            (list "3" "5")))))
+    (it "repeated valued option keeps occurrence order"
+        (all-checks
+          (list (check-equal? (opt-vals (p (list "--count" "3" "--count" "5")) (list "c" "count"))
+                              (list "3" "5")))))
 
-   (it "combined short flags -va"
-       (all-checks
-        (list (check-equal? (flag-ct (p (list "-va")) (list "v" "verbose")) 1)
-              (check-equal? (flag-ct (p (list "-va")) (list "a" "all"))     1))))
+    (it "combined short flags -va"
+        (all-checks
+          (list (check-equal? (flag-ct (p (list "-va")) (list "v" "verbose")) 1)
+                (check-equal? (flag-ct (p (list "-va")) (list "a" "all"))     1))))
 
-   (it "positionals"
-       (all-checks
-        (list (check-equal? (positionals-of (p (list "x" "y"))) (list "x" "y")))))
+    (it "positionals"
+        (all-checks
+          (list (check-equal? (positionals-of (p (list "x" "y"))) (list "x" "y")))))
 
-   (it "-- terminates option parsing"
-       (all-checks
-        (list (check-equal? (positionals-of (p (list "--" "--count" "5")))
-                            (list "--count" "5")))))
+    (it "-- terminates option parsing"
+        (all-checks
+          (list (check-equal? (positionals-of (p (list "--" "--count" "5")))
+                              (list "--count" "5")))))
 
-   (it "lone - is a positional"
-       (all-checks
-        (list (check-equal? (positionals-of (p (list "-"))) (list "-")))))
+    (it "lone - is a positional"
+        (all-checks
+          (list (check-equal? (positionals-of (p (list "-"))) (list "-")))))
 
-   (it "unambiguous prefix abbreviation"
-       (all-checks
-        (list (check-equal? (flag-ct (p (list "--verb")) (list "v" "verbose")) 1))))
+    (it "unambiguous prefix abbreviation"
+        (all-checks
+          (list (check-equal? (flag-ct (p (list "--verb")) (list "v" "verbose")) 1))))
 
-   (it "mixed options and positionals"
-       (let ([r (p (list "-c" "5" "foo" "--verbose" "bar"))])
-         (all-checks
-          (list (check-equal? (opt-vals r (list "c" "count")) (list "5"))
-                (check-equal? (flag-ct r (list "v" "verbose")) 1)
-                (check-equal? (positionals-of r) (list "foo" "bar"))))))
+    (it "mixed options and positionals"
+        (let ([r (p (list "-c" "5" "foo" "--verbose" "bar"))])
+          (all-checks
+            (list (check-equal? (opt-vals r (list "c" "count")) (list "5"))
+                  (check-equal? (flag-ct r (list "v" "verbose")) 1)
+                  (check-equal? (positionals-of r) (list "foo" "bar"))))))
 
-   (it "unknown option errors"
-       (all-checks (list (check-true (is-err? (p (list "--nope")))))))
+    (it "unknown option errors"
+        (all-checks (list (check-true (is-err? (p (list "--nope")))))))
 
-   (it "ambiguous abbreviation errors"
-       (all-checks (list (check-true (is-err? (p (list "--co")))))))
+    (it "ambiguous abbreviation errors"
+        (all-checks (list (check-true (is-err? (p (list "--co")))))))
 
-   (it "missing value errors"
-       (all-checks (list (check-true (is-err? (p (list "--count")))))))
+    (it "missing value errors"
+        (all-checks (list (check-true (is-err? (p (list "--count")))))))
 
-   (it "flag given a value errors"
-       (all-checks (list (check-true (is-err? (p (list "--verbose=1")))))))))
+    (it "flag given a value errors"
+        (all-checks (list (check-true (is-err? (p (list "--verbose=1")))))))))
 
-(: main Unit)
-(define main (run-io (run-suite "rackton/cmdline/parser" suite)))
+(: test-main (IO Unit))
+(define test-main (run-suite "rackton/cmdline/parser" suite))

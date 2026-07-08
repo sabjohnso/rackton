@@ -25,12 +25,12 @@
 (: suite (List Test))
 (define suite
   (list
-   (it "derived Eq compares structurally"
-       (all-checks
-        (list (check-true  tree-eq)
-              (check-false tree-neq))))
-   (it "derived Show renders constructors"
-       (check-equal? tree-show "(Node Leaf 1 (Node Leaf 2 Leaf))"))))
+    (it "derived Eq compares structurally"
+        (all-checks
+          (list (check-true  tree-eq)
+                (check-false tree-neq))))
+    (it "derived Show renders constructors"
+        (check-equal? tree-show "(Node Leaf 1 (Node Leaf 2 Leaf))"))))
 
-(: main Unit)
-(define main (run-io (run-suite "deriving" suite)))
+(: test-main (IO Unit))
+(define test-main (run-suite "deriving" suite))

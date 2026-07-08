@@ -11,8 +11,8 @@
 
 ;; ----- 53.A Sized class with associated Index type -----------
 (protocol (Sized (c :: *))
-  (:type Index)
-  (: size-of (-> c (Index c))))
+          (:type Index)
+          (: size-of (-> c (Index c))))
 
 ;; Concrete List instance: Index resolves to Integer.
 (instance (Sized (List a))
@@ -37,12 +37,12 @@
 (: suite (List Test))
 (define suite
   (list
-   (it "associated type Index — List instance resolves to Integer"
-       (check-equal? r-list-size 3))
-   (it "associated type Index — alternate instance resolves correctly"
-       (check-equal? (match r-map-self
-                       [(MkMap n) n])
-                     99))))
+    (it "associated type Index — List instance resolves to Integer"
+        (check-equal? r-list-size 3))
+    (it "associated type Index — alternate instance resolves correctly"
+        (check-equal? (match r-map-self
+                        [(MkMap n) n])
+                      99))))
 
-(: main Unit)
-(define main (run-io (run-suite "associated-types" suite)))
+(: test-main (IO Unit))
+(define test-main (run-suite "associated-types" suite))

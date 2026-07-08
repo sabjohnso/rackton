@@ -48,16 +48,16 @@
 (: suite (List Test))
 (define suite
   (list
-   (it "list literal builds the right Cons/Nil chain"
-       (check-true same-as-cons))
-   (it "list literal length and sum"
-       (all-checks
-        (list (check-equal? total 6)
-              (check-equal? count 3))))
-   (it "empty list literal is Nil"
-       (check-equal? empty-count 0))
-   (it "nested list literals"
-       (check-equal? nested-total 6))))
+    (it "list literal builds the right Cons/Nil chain"
+        (check-true same-as-cons))
+    (it "list literal length and sum"
+        (all-checks
+          (list (check-equal? total 6)
+                (check-equal? count 3))))
+    (it "empty list literal is Nil"
+        (check-equal? empty-count 0))
+    (it "nested list literals"
+        (check-equal? nested-total 6))))
 
-(: main Unit)
-(define main (run-io (run-suite "list-literal" suite)))
+(: test-main (IO Unit))
+(define test-main (run-suite "list-literal" suite))

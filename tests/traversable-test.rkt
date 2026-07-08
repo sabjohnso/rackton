@@ -46,23 +46,23 @@
 (: suite (List Test))
 (define suite
   (list
-   (it "traverse Maybe into Maybe (Some, success)"
-       (check-equal? maybe-of-maybe-some (Some (Some 5))))
-   (it "traverse Maybe into Maybe (None preserved)"
-       (check-equal? maybe-of-maybe-none (Some None)))
-   (it "traverse Maybe into Maybe (short-circuit on inner None)"
-       (check-equal? maybe-of-maybe-fail None))
-   (it "traverse List into Maybe (all succeed)"
-       (check-equal? maybe-of-list-all
-                     (Some (Cons 1 (Cons 2 (Cons 3 Nil))))))
-   (it "traverse List into Maybe (short-circuit on inner None)"
-       (check-equal? maybe-of-list-fail None))
-   (it "traverse List into Maybe (empty list -> pure Nil)"
-       (check-equal? maybe-of-list-empty (Some Nil)))
-   (it "traverse List into Either (all succeed)"
-       (check-equal? result-of-list-all (Right (Cons 5 (Cons 6 Nil)))))
-   (it "traverse List into Either (short-circuit on Left)"
-       (check-equal? result-of-list-fail (Left "non-positive")))))
+    (it "traverse Maybe into Maybe (Some, success)"
+        (check-equal? maybe-of-maybe-some (Some (Some 5))))
+    (it "traverse Maybe into Maybe (None preserved)"
+        (check-equal? maybe-of-maybe-none (Some None)))
+    (it "traverse Maybe into Maybe (short-circuit on inner None)"
+        (check-equal? maybe-of-maybe-fail None))
+    (it "traverse List into Maybe (all succeed)"
+        (check-equal? maybe-of-list-all
+                      (Some (Cons 1 (Cons 2 (Cons 3 Nil))))))
+    (it "traverse List into Maybe (short-circuit on inner None)"
+        (check-equal? maybe-of-list-fail None))
+    (it "traverse List into Maybe (empty list -> pure Nil)"
+        (check-equal? maybe-of-list-empty (Some Nil)))
+    (it "traverse List into Either (all succeed)"
+        (check-equal? result-of-list-all (Right (Cons 5 (Cons 6 Nil)))))
+    (it "traverse List into Either (short-circuit on Left)"
+        (check-equal? result-of-list-fail (Left "non-positive")))))
 
-(: main Unit)
-(define main (run-io (run-suite "traversable" suite)))
+(: test-main (IO Unit))
+(define test-main (run-suite "traversable" suite))

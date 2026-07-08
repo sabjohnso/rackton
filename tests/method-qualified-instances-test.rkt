@@ -26,8 +26,8 @@
       [(Leaf) (pure Leaf)]
       [(Branch l v r)
        (fapply (fapply (fapply (pure branchC) (traverse f l))
-                 (f v))
-            (traverse f r))])))
+                       (f v))
+               (traverse f r))])))
 
 (: positive? (-> Integer (Maybe Integer)))
 (define (positive? n) (if (> n 0) (Some n) None))
@@ -58,15 +58,15 @@
 (: suite (List Test))
 (define suite
   (list
-   (it "user-written Traversable Tree (success)"
-       (check-equal? hand-trav-ok
-                     (Some (Branch Leaf 1 (Branch Leaf 2 Leaf)))))
-   (it "user-written Traversable Tree (None short-circuits)"
-       (check-equal? hand-trav-fail None))
-   (it "derived Traversable Box (success)"
-       (check-equal? derived-trav-ok (Some (MkBox 5))))
-   (it "derived Traversable Box (failure)"
-       (check-equal? derived-trav-fail None))))
+    (it "user-written Traversable Tree (success)"
+        (check-equal? hand-trav-ok
+                      (Some (Branch Leaf 1 (Branch Leaf 2 Leaf)))))
+    (it "user-written Traversable Tree (None short-circuits)"
+        (check-equal? hand-trav-fail None))
+    (it "derived Traversable Box (success)"
+        (check-equal? derived-trav-ok (Some (MkBox 5))))
+    (it "derived Traversable Box (failure)"
+        (check-equal? derived-trav-fail None))))
 
-(: main Unit)
-(define main (run-io (run-suite "method-qualified-instances" suite)))
+(: test-main (IO Unit))
+(define test-main (run-suite "method-qualified-instances" suite))

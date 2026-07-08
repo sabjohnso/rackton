@@ -24,20 +24,20 @@
 (: suite (List Test))
 (define suite
   (list
-   (it "Integer <-> Float"
-       (all-checks
-        (list (check-true (< (abs (- i2f 3.0)) 1e-9))
-              (check-equal? f2i 3)
-              (check-equal? f2i-n -3))))
-   (it "to-rational"
-       (check-true tr-ok))
-   (it "rational -> float"
-       (check-true (< (abs (- r2f 0.5)) 1e-9)))
-   (it "realToFrac"
-       (all-checks
-        (list (check-true (< (abs (- rtf-rat 0.75)) 1e-9))
-              (check-true (< (abs (- rtf-int 2.0)) 1e-9))
-              (check-true (< (abs (- rtf-flt 1.5)) 1e-9)))))))
+    (it "Integer <-> Float"
+        (all-checks
+          (list (check-true (< (abs (- i2f 3.0)) 1e-9))
+                (check-equal? f2i 3)
+                (check-equal? f2i-n -3))))
+    (it "to-rational"
+        (check-true tr-ok))
+    (it "rational -> float"
+        (check-true (< (abs (- r2f 0.5)) 1e-9)))
+    (it "realToFrac"
+        (all-checks
+          (list (check-true (< (abs (- rtf-rat 0.75)) 1e-9))
+                (check-true (< (abs (- rtf-int 2.0)) 1e-9))
+                (check-true (< (abs (- rtf-flt 1.5)) 1e-9)))))))
 
-(: main Unit)
-(define main (run-io (run-suite "numeric-conversions" suite)))
+(: test-main (IO Unit))
+(define test-main (run-suite "numeric-conversions" suite))

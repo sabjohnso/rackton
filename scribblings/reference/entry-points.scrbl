@@ -79,3 +79,38 @@ inside an otherwise-Racket codebase.
 Run a @hash-lang[] @racketmodfont{rackton} file directly with
 @exec{racket file.rkt}, or load it from another module with
 @racket[(require "file.rkt")].
+
+@section[#:tag "reserved-entry-points"]{@racket[main] and @racket[test-main]}
+
+@racket[main] and @racket[test-main] are reserved names, recognized
+only in @racket[rackton/main] context (a @hash-lang[]
+@racketmodfont{rackton} file, or @racket[(module @#,racketidfont{name}
+rackton …)]) — not inside an embedded @racket[(rackton …)] block, where
+they are ordinary names.  Each, if a module defines it, must have type
+@racket[(IO Unit)] — a declared signature is checked against exactly
+that type, and an undeclared one gets @racket[(IO Unit)] synthesized as
+its signature, so an otherwise-ambiguous body (this language has no
+type-class defaulting) still resolves.
+
+Defining @racket[main] emits @racket[(module+ main (run-io main))];
+defining @racket[test-main] emits @racket[(module+ test (run-io
+test-main))].  Both piggyback on ordinary Racket/@exec{raco} behavior:
+running @exec{racket file.rkt} instantiates the module's top level and
+then, if present, its @racketidfont{main} submodule; @exec{raco test}
+prefers a module's @racketidfont{test} submodule over requiring the
+module directly.  So an application's entry point is @racket[main]:
+
+@rackton-example[#:eval ev]{
+#lang rackton
+
+(: main (IO Unit))
+(define main (println "hello, world"))
+}
+
+and a test suite's is @racket[test-main] — see
+@secref["testing" #:doc '(lib "rackton/scribblings/guide/rackton-guide.scrbl")]
+for @tt{rackton/unit}'s @racketidfont{run-suite}, which packages a
+@racketidfont{Test} tree into exactly this shape.  Neither name's IO
+runs merely because something @racket[require]s the file — only
+instantiating the matching submodule runs it, which keeps requiring a
+module (e.g. to reuse its types or definitions) free of side effects.

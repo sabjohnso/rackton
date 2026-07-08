@@ -67,7 +67,7 @@
 (data St (St Subst Integer))
 
 (newtype (Infer a)
-  (Infer (-> St (Result String (Pair St a)))))
+         (Infer (-> St (Result String (Pair St a)))))
 
 (: run-infer-fn (-> (Infer a) (-> St (Result String (Pair St a)))))
 (define (run-infer-fn m) (match m [(Infer f) f]))
@@ -75,27 +75,27 @@
 (instance (Functor Infer)
   (define (fmap f m)
     (Infer (lambda (st)
-      (match ((run-infer-fn m) st)
-        [(Err e)          (Err e)]
-        [(Ok (Pair s a))  (Ok (Pair s (f a)))])))))
+             (match ((run-infer-fn m) st)
+               [(Err e)          (Err e)]
+               [(Ok (Pair s a))  (Ok (Pair s (f a)))])))))
 
 (instance (Applicative Infer)
   (define (pure x) (Infer (lambda (st) (Ok (Pair st x)))))
   (define (fapply mf mx)
     (Infer (lambda (st)
-      (match ((run-infer-fn mf) st)
-        [(Err e)           (Err e)]
-        [(Ok (Pair s1 f))
-         (match ((run-infer-fn mx) s1)
-           [(Err e)           (Err e)]
-           [(Ok (Pair s2 x))  (Ok (Pair s2 (f x)))])])))))
+             (match ((run-infer-fn mf) st)
+               [(Err e)           (Err e)]
+               [(Ok (Pair s1 f))
+                (match ((run-infer-fn mx) s1)
+                  [(Err e)           (Err e)]
+                  [(Ok (Pair s2 x))  (Ok (Pair s2 (f x)))])])))))
 
 (instance (Monad Infer)
   (define (flatmap k m)
     (Infer (lambda (st)
-      (match ((run-infer-fn m) st)
-        [(Err e)           (Err e)]
-        [(Ok (Pair s1 a))  ((run-infer-fn (k a)) s1)])))))
+             (match ((run-infer-fn m) st)
+               [(Err e)           (Err e)]
+               [(Ok (Pair s1 a))  ((run-infer-fn (k a)) s1)])))))
 
 ;; Read the current substitution.
 (: get-subst (Infer Subst))
@@ -106,16 +106,16 @@
 (: ext-subst (-> Subst (Infer Unit)))
 (define (ext-subst u)
   (Infer (lambda (st)
-    (match st [(St sub n) (Ok (Pair (St (compose-subst u sub) n) Unit))]))))
+           (match st [(St sub n) (Ok (Pair (St (compose-subst u sub) n) Unit))]))))
 
 ;; A fresh type variable, named "t0", "t1", … from the counter.
 (: fresh (Infer Type))
 (define fresh
   (Infer (lambda (st)
-    (match st
-      [(St sub n)
-       (Ok (Pair (St sub (+ n 1))
-                 (TVar (string-append "t" (integer->string n)))))]))))
+           (match st
+             [(St sub n)
+              (Ok (Pair (St sub (+ n 1))
+                        (TVar (string-append "t" (integer->string n)))))]))))
 
 ;; Abort inference with a message.
 (: throw (-> String (Infer a)))
@@ -184,17 +184,17 @@
     [(TVar other)
      (if (== name other) (pure empty-map) (pure (map-singleton name t)))]
     [_
-     (if (set-member? name (ftv-type t))
-         (throw (string-append "occurs check: "
-                  (string-append name
-                    (string-append " occurs in " (type->string t)))))
-         (pure (map-singleton name t)))]))
+      (if (set-member? name (ftv-type t))
+        (throw (string-append "occurs check: "
+                              (string-append name
+                                             (string-append " occurs in " (type->string t)))))
+        (pure (map-singleton name t)))]))
 
 (: unify-error (-> Type (-> Type (Infer a))))
 (define (unify-error t1 t2)
   (throw (string-append "cannot unify "
-           (string-append (type->string t1)
-             (string-append " with " (type->string t2))))))
+                        (string-append (type->string t1)
+                                       (string-append " with " (type->string t2))))))
 
 ;; Most general unifier of two monotypes.
 (: mgu (-> Type (-> Type (Infer Subst))))
@@ -202,7 +202,7 @@
   (match (Pair t1 t2)
     [(Pair (TFun a1 r1) (TFun a2 r2))
      (do [s1 <- (mgu a1 a2)]
-         [s2 <- (mgu (apply-type s1 r1) (apply-type s1 r2))]
+       [s2 <- (mgu (apply-type s1 r1) (apply-type s1 r2))]
        (pure (compose-subst s2 s1)))]
     [(Pair (TVar a) _)  (var-bind a t2)]
     [(Pair _ (TVar a))  (var-bind a t1)]
@@ -214,7 +214,7 @@
 (: unify (-> Type (-> Type (Infer Unit))))
 (define (unify t1 t2)
   (do [s <- get-subst]
-      [u <- (mgu (apply-type s t1) (apply-type s t2))]
+    [u <- (mgu (apply-type s t1) (apply-type s t2))]
     (ext-subst u)))
 
 ;; ===== Generalize / instantiate ====================================
@@ -226,7 +226,7 @@
     [(Nil) (pure Nil)]
     [(Cons h t)
      (do [y  <- (f h)]
-         [ys <- (infer-mapM f t)]
+       [ys <- (infer-mapM f t)]
        (pure (Cons y ys)))]))
 
 ;; Replace a scheme's quantified variables with fresh ones.
@@ -256,30 +256,30 @@
     [(ELit (LBool _)) (pure (TCon "Bool"))]
     [(ELam x body)
      (do [tv <- fresh]
-         [tb <- (infer (map-insert x (Forall Nil tv) env) body)]
-         [s  <- get-subst]
+       [tb <- (infer (map-insert x (Forall Nil tv) env) body)]
+       [s  <- get-subst]
        (pure (apply-type s (TFun tv tb))))]
     [(EApp f a)
      (do [tf <- (infer env f)]
-         [ta <- (infer env a)]
-         [tv <- fresh]
-         [_  <- (unify tf (TFun ta tv))]
-         [s  <- get-subst]
+       [ta <- (infer env a)]
+       [tv <- fresh]
+       [_  <- (unify tf (TFun ta tv))]
+       [s  <- get-subst]
        (pure (apply-type s tv)))]
     [(ELet x e1 e2)
      (do [t1 <- (infer env e1)]
-         [s  <- get-subst]
+       [s  <- get-subst]
        ;; Generalize e1's type under the solved substitution, then bind
        ;; the resulting scheme while inferring the body.
        (infer (map-insert x (generalize (apply-env s env) (apply-type s t1)) env)
               e2))]
     [(EIf c th el)
      (do [tc <- (infer env c)]
-         [_  <- (unify tc (TCon "Bool"))]
-         [tt <- (infer env th)]
-         [te <- (infer env el)]
-         [_  <- (unify tt te)]
-         [s  <- get-subst]
+       [_  <- (unify tc (TCon "Bool"))]
+       [tt <- (infer env th)]
+       [te <- (infer env el)]
+       [_  <- (unify tt te)]
+       [s  <- get-subst]
        (pure (apply-type s tt)))]))
 
 ;; Infer a closed expression's principal type scheme.
@@ -287,7 +287,7 @@
 (define (type-of e)
   (run-infer
     (do [t <- (infer empty-map e)]
-        [s <- get-subst]
+      [s <- get-subst]
       (pure (generalize empty-map (apply-type s t))))))
 
 ;; ===== Pretty-printing =============================================
@@ -300,7 +300,7 @@
     [(TVar a)   a]
     [(TCon c)   c]
     [(TFun a b) (string-append (paren-arrow a)
-                  (string-append " -> " (type->string b)))]))
+                               (string-append " -> " (type->string b)))]))
 
 (: paren-arrow (-> Type String))
 (define (paren-arrow t)
@@ -315,7 +315,7 @@
      (match vars
        [(Nil) (type->string t)]
        [_     (string-append "forall " (string-append (string-join " " vars)
-                (string-append ". " (type->string t))))])]))
+                                                      (string-append ". " (type->string t))))])]))
 
 ;; Rename a scheme's variables to a, b, c, … in order of first
 ;; appearance, so output reads `forall a. a -> a` rather than `t3`.
@@ -344,10 +344,10 @@
 (: report (-> String (-> Expr (IO Unit))))
 (define (report label e)
   (println (string-append label
-    (string-append " :: "
-      (match (type-of e)
-        [(Ok sch)  (scheme->string (normalize-scheme sch))]
-        [(Err msg) (string-append "TYPE ERROR — " msg)])))))
+                          (string-append " :: "
+                                         (match (type-of e)
+                                           [(Ok sch)  (scheme->string (normalize-scheme sch))]
+                                           [(Err msg) (string-append "TYPE ERROR — " msg)])))))
 
 ;; --- Well-typed terms ---------------------------------------------
 
@@ -360,20 +360,20 @@
 ;; \f. \g. \x. f (g x)
 (define e-compose
   (ELam "f" (ELam "g" (ELam "x"
-    (EApp (EVar "f") (EApp (EVar "g") (EVar "x")))))))
+                            (EApp (EVar "f") (EApp (EVar "g") (EVar "x")))))))
 
 ;; let id = \x. x in if (id #t) then (id 1) else 2
 ;; id is used at both Bool and Int — let-polymorphism in action.
 (define e-let-poly
   (ELet "id" (ELam "x" (EVar "x"))
-    (EIf (EApp (EVar "id") (ELit (LBool #t)))
-         (EApp (EVar "id") (ELit (LInt 1)))
-         (ELit (LInt 2)))))
+        (EIf (EApp (EVar "id") (ELit (LBool #t)))
+             (EApp (EVar "id") (ELit (LInt 1)))
+             (ELit (LInt 2)))))
 
 ;; let id = \x. x in id id
 (define e-id-id
   (ELet "id" (ELam "x" (EVar "x"))
-    (EApp (EVar "id") (EVar "id"))))
+        (EApp (EVar "id") (EVar "id"))))
 
 ;; if #t then 1 else 0
 (define e-if
@@ -391,22 +391,20 @@
 ;; \x. x x — self-application, fails the occurs check
 (define e-omega (ELam "x" (EApp (EVar "x") (EVar "x"))))
 
-(: main Unit)
-(define main
-  (run-io
-    (do [_ <- (println "Hindley–Milner inference for a small lambda calculus:")]
-        [_ <- (println "")]
-        [_ <- (println "well-typed:")]
-        [_ <- (report "  \\x. x                       " e-id)]
-        [_ <- (report "  \\x. \\y. x                    " e-const)]
-        [_ <- (report "  \\f. \\g. \\x. f (g x)          " e-compose)]
-        [_ <- (report "  let id=\\x.x in id id        " e-id-id)]
-        [_ <- (report "  let id=.. in if id#t..      " e-let-poly)]
-        [_ <- (report "  if #t then 1 else 0         " e-if)]
-        [_ <- (println "")]
-        [_ <- (println "ill-typed:")]
-        [_ <- (report "  (1 2)                       " e-apply-int)]
-        [_ <- (report "  if #t then 1 else #f        " e-bad-if)]
-        [_ <- (report "  \\x. x x                      " e-omega)]
-        [_ <- (println "")]
-      (println "done."))))
+(: main (IO Unit))
+(define main (do [_ <- (println "Hindley–Milner inference for a small lambda calculus:")]
+               [_ <- (println "")]
+               [_ <- (println "well-typed:")]
+               [_ <- (report "  \\x. x                       " e-id)]
+               [_ <- (report "  \\x. \\y. x                    " e-const)]
+               [_ <- (report "  \\f. \\g. \\x. f (g x)          " e-compose)]
+               [_ <- (report "  let id=\\x.x in id id        " e-id-id)]
+               [_ <- (report "  let id=.. in if id#t..      " e-let-poly)]
+               [_ <- (report "  if #t then 1 else 0         " e-if)]
+               [_ <- (println "")]
+               [_ <- (println "ill-typed:")]
+               [_ <- (report "  (1 2)                       " e-apply-int)]
+               [_ <- (report "  if #t then 1 else #f        " e-bad-if)]
+               [_ <- (report "  \\x. x x                      " e-omega)]
+               [_ <- (println "")]
+               (println "done.")))

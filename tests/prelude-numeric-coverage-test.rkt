@@ -39,17 +39,17 @@
 (: suite Test)
 (define suite
   (describe "previously-untested prelude numeric-tower instances"
-    (it "Fractional Rational" (check-equal? frac-rat "6"))
-    (it "RealFrac Rational"
-      (all-checks (list (check-equal? floor-rat 3)
-                        (check-equal? ceil-rat  4)
-                        (check-equal? round-rat 4)
-                        (check-equal? trunc-rat 3)
-                        (check-equal? trunc-rat-neg -3))))
-    (it "Fractional Complex" (check-equal? frac-cplx "2.0+1.0i"))
-    (it "Floating Complex"
-      (all-checks (list (check-equal? sqrt-cplx "0.0+1.0i")
-                        (check-equal? exp-cplx  "1.0+0.0i"))))))
+            (it "Fractional Rational" (check-equal? frac-rat "6"))
+            (it "RealFrac Rational"
+                (all-checks (list (check-equal? floor-rat 3)
+                                  (check-equal? ceil-rat  4)
+                                  (check-equal? round-rat 4)
+                                  (check-equal? trunc-rat 3)
+                                  (check-equal? trunc-rat-neg -3))))
+            (it "Fractional Complex" (check-equal? frac-cplx "2.0+1.0i"))
+            (it "Floating Complex"
+                (all-checks (list (check-equal? sqrt-cplx "0.0+1.0i")
+                                  (check-equal? exp-cplx  "1.0+0.0i"))))))
 
-(: main Unit)
-(define main (run-io (run-suite-tree suite)))
+(: test-main (IO Unit))
+(define test-main (run-suite-tree suite))

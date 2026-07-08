@@ -74,54 +74,54 @@
 (: suite (List Test))
 (define suite
   (list
-   (it "arr over (->) is the function itself"
-       (check-equal? ((arr inc) 4) 5))
-   (it "comp is standard composition (the right arrow runs first)"
-       (all-checks
-        (list (check-equal? (inc-then-dbl 3) 8)     ; inc 3 = 4, dbl 4 = 8
-              (check-equal? (inc-then-dbl 0) 2))))
-   (it "ident is the identity arrow"
-       (check-equal? (id-int 7) 7))
-   (it "Category left identity: comp ident f = f"
-       (check-equal? ((comp ident (arr inc)) 9) (inc 9)))
-   (it "Category right identity: comp f ident = f"
-       (check-equal? ((comp (arr inc) ident) 9) (inc 9)))
-   (it "Category associativity at a point"
-       (check-equal?
-        ((comp (comp (arr inc) (arr dbl)) (arr inc)) 3)
-        ((comp (arr inc) (comp (arr dbl) (arr inc))) 3)))
-   (it "on-first maps the first half of a Pair"
-       (check-equal? (first-inc (Pair 3 100)) (Pair 4 100)))
-   (it "on-second maps the second half of a Pair"
-       (check-equal? (second-inc (Pair 100 3)) (Pair 100 4)))
-   (it "split runs both arrows on the two halves"
-       (check-equal? (split-incdbl (Pair 3 5)) (Pair 4 10)))
-   (it "fanout feeds one input to both arrows"
-       (check-equal? (fanout-incdbl 3) (Pair 4 6)))
-   (it "arr respects composition: arr (f∘g) = comp (arr f) (arr g)"
-       (check-equal?
-        ((arr (lambda (x) (inc (dbl x)))) 5)
-        ((comp (arr inc) (arr dbl)) 5)))
-   ;; ArrowChoice — Left is the Left/active branch, Right the Right.
-   (it "on-left maps the Left branch, passes Right through"
-       (all-checks
-        (list (check-equal? (left-inc (Left 3)) (Left 4))
-              (check-equal? (left-inc (Right 3))  (Right 3)))))
-   (it "on-right maps the Right branch, passes Left through"
-       (all-checks
-        (list (check-equal? (right-inc (Right 3))  (Right 4))
-              (check-equal? (right-inc (Left 3)) (Left 3)))))
-   (it "fork runs one arrow per branch"
-       (all-checks
-        (list (check-equal? (fork-incdbl (Left 3)) (Left 4))
-              (check-equal? (fork-incdbl (Right 3))  (Right 6)))))
-   (it "fanin collapses both branches to one result"
-       (all-checks
-        (list (check-equal? (fanin-incdbl (Left 3)) 4)
-              (check-equal? (fanin-incdbl (Right 3))  6))))
-   ;; ArrowApply — feeds an arrow and its argument through `arrow-app`.
-   (it "arrow-app applies a captured arrow to its argument"
-       (check-equal? (apply-arrow (Pair inc 5)) 6))))
+    (it "arr over (->) is the function itself"
+        (check-equal? ((arr inc) 4) 5))
+    (it "comp is standard composition (the right arrow runs first)"
+        (all-checks
+          (list (check-equal? (inc-then-dbl 3) 8)     ; inc 3 = 4, dbl 4 = 8
+                (check-equal? (inc-then-dbl 0) 2))))
+    (it "ident is the identity arrow"
+        (check-equal? (id-int 7) 7))
+    (it "Category left identity: comp ident f = f"
+        (check-equal? ((comp ident (arr inc)) 9) (inc 9)))
+    (it "Category right identity: comp f ident = f"
+        (check-equal? ((comp (arr inc) ident) 9) (inc 9)))
+    (it "Category associativity at a point"
+        (check-equal?
+          ((comp (comp (arr inc) (arr dbl)) (arr inc)) 3)
+          ((comp (arr inc) (comp (arr dbl) (arr inc))) 3)))
+    (it "on-first maps the first half of a Pair"
+        (check-equal? (first-inc (Pair 3 100)) (Pair 4 100)))
+    (it "on-second maps the second half of a Pair"
+        (check-equal? (second-inc (Pair 100 3)) (Pair 100 4)))
+    (it "split runs both arrows on the two halves"
+        (check-equal? (split-incdbl (Pair 3 5)) (Pair 4 10)))
+    (it "fanout feeds one input to both arrows"
+        (check-equal? (fanout-incdbl 3) (Pair 4 6)))
+    (it "arr respects composition: arr (f∘g) = comp (arr f) (arr g)"
+        (check-equal?
+          ((arr (lambda (x) (inc (dbl x)))) 5)
+          ((comp (arr inc) (arr dbl)) 5)))
+    ;; ArrowChoice — Left is the Left/active branch, Right the Right.
+    (it "on-left maps the Left branch, passes Right through"
+        (all-checks
+          (list (check-equal? (left-inc (Left 3)) (Left 4))
+                (check-equal? (left-inc (Right 3))  (Right 3)))))
+    (it "on-right maps the Right branch, passes Left through"
+        (all-checks
+          (list (check-equal? (right-inc (Right 3))  (Right 4))
+                (check-equal? (right-inc (Left 3)) (Left 3)))))
+    (it "fork runs one arrow per branch"
+        (all-checks
+          (list (check-equal? (fork-incdbl (Left 3)) (Left 4))
+                (check-equal? (fork-incdbl (Right 3))  (Right 6)))))
+    (it "fanin collapses both branches to one result"
+        (all-checks
+          (list (check-equal? (fanin-incdbl (Left 3)) 4)
+                (check-equal? (fanin-incdbl (Right 3))  6))))
+    ;; ArrowApply — feeds an arrow and its argument through `arrow-app`.
+    (it "arrow-app applies a captured arrow to its argument"
+        (check-equal? (apply-arrow (Pair inc 5)) 6))))
 
-(: main Unit)
-(define main (run-io (run-suite "category-arrow" suite)))
+(: test-main (IO Unit))
+(define test-main (run-suite "category-arrow" suite))

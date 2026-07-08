@@ -28,16 +28,16 @@
 (: p-bind (LFun Integer Integer))
 (define p-bind
   (proc (x)
-    [y <- (feed (arr dbl) x)]
-    (feed (arr inc) y)))            ; inc (dbl x)
+        [y <- (feed (arr dbl) x)]
+        (feed (arr inc) y)))            ; inc (dbl x)
 
 ;; if: route through the coproduct (ArrowChoice LFun) and fan back in
 (: p-if (LFun Integer Integer))
 (define p-if
   (proc (x)
-    (if (< x 0)
-        (feed (arr (lambda (n) (- 0 n))) x)   ; negate
-        (feed (arr dbl) x))))                 ; double
+        (if (< x 0)
+          (feed (arr (lambda (n) (- 0 n))) x)   ; negate
+          (feed (arr dbl) x))))                 ; double
 
 ;; ----- the payoff: a productive proc rec ----------------------------
 ;; `s` is defined in terms of itself: `lcons 1` prepends 1 and drops the
@@ -46,10 +46,10 @@
 (: ones (Stream Integer))
 (define ones
   (run-lfun
-   (proc (_)
-     (rec [s <- (feed (lcons 1) s)])
-     (feed (arr (lambda (z) z)) s))
-   0))
+    (proc (_)
+          (rec [s <- (feed (lcons 1) s)])
+          (feed (arr (lambda (z) z)) s))
+    0))
 
 ;; Same shape, but with NO type signature, so it goes through the
 ;; undeclared-definition inference path.  This regresses a bug where that
@@ -59,30 +59,30 @@
 ;; folded into one self-reference so the knot stays productive.
 (define nats-no-sig
   (run-lfun
-   (proc (_)
-     (rec [ns <- (feed (comp (lcons 0) (arr (stream-map inc))) ns)])
-     (feed (arr (lambda (z) z)) ns))
-   0))
+    (proc (_)
+          (rec [ns <- (feed (comp (lcons 0) (arr (stream-map inc))) ns)])
+          (feed (arr (lambda (z) z)) ns))
+    0))
 
 (: suite (List Test))
 (define suite
   (list
-   (it "single feed runs the lifted function"
-       (check-equal? (run-lfun p-inc 5) 6))
-   (it "bind keeps the bound value in scope for a later feed"
-       (check-equal? (run-lfun p-bind 3) 7))      ; inc (dbl 3) = 7
-   (it "if routes through the lazy coproduct"
-       (all-checks
-        (list (check-equal? (run-lfun p-if 5) 10)
-              (check-equal? (run-lfun p-if -3) 3))))
-   (it "proc rec ties a productive value-recursion knot (stream head)"
-       (check-equal? (stream-head ones) (Some 1)))
-   (it "the looped stream really is infinitely many 1s (finite prefix)"
-       (check-equal? (stream-take 5 ones)
-                     (Cons 1 (Cons 1 (Cons 1 (Cons 1 (Cons 1 Nil)))))))
-   (it "proc rec resolves return-typed tensor ops with no type signature"
-       (check-equal? (stream-take 4 nats-no-sig)
-                     (Cons 0 (Cons 1 (Cons 2 (Cons 3 Nil))))))))
+    (it "single feed runs the lifted function"
+        (check-equal? (run-lfun p-inc 5) 6))
+    (it "bind keeps the bound value in scope for a later feed"
+        (check-equal? (run-lfun p-bind 3) 7))      ; inc (dbl 3) = 7
+    (it "if routes through the lazy coproduct"
+        (all-checks
+          (list (check-equal? (run-lfun p-if 5) 10)
+                (check-equal? (run-lfun p-if -3) 3))))
+    (it "proc rec ties a productive value-recursion knot (stream head)"
+        (check-equal? (stream-head ones) (Some 1)))
+    (it "the looped stream really is infinitely many 1s (finite prefix)"
+        (check-equal? (stream-take 5 ones)
+                      (Cons 1 (Cons 1 (Cons 1 (Cons 1 (Cons 1 Nil)))))))
+    (it "proc rec resolves return-typed tensor ops with no type signature"
+        (check-equal? (stream-take 4 nats-no-sig)
+                      (Cons 0 (Cons 1 (Cons 2 (Cons 3 Nil))))))))
 
-(: main Unit)
-(define main (run-io (run-suite "lazy-arrow" suite)))
+(: test-main (IO Unit))
+(define test-main (run-suite "lazy-arrow" suite))

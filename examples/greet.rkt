@@ -31,8 +31,8 @@
 (: print-n (-> Integer String (IO Unit)))
 (define (print-n n s)
   (if (<= n 0)
-      (pure Unit)
-      (do [_ <- (println s)] (print-n (- n 1) s))))
+    (pure Unit)
+    (do [_ <- (println s)] (print-n (- n 1) s))))
 
 ;; build the greeting from the parsed arguments and emit it.
 (: run-greet (-> Boolean Integer String (IO Unit)))
@@ -50,21 +50,21 @@
                                        (arg-info (list "l" "loud")))))]
          [times (value (opt conv-int 1
                             (info-docv "N"
-                             (info-doc "Repeat the greeting N times"
-                                       (arg-info (list "r" "repeat"))))))]
+                                       (info-doc "Repeat the greeting N times"
+                                                 (arg-info (list "r" "repeat"))))))]
          [name  (value (pos 0 conv-string "world"
                             (info-docv "NAME"
-                             (info-doc "Who to greet"
-                                       (arg-info Nil)))))])
+                                       (info-doc "Who to greet"
+                                                 (arg-info Nil)))))])
     (run-greet loud times name)))
 
 (: greet-cmd (Cmd (IO Unit)))
 (define greet-cmd
   (cmd-v (cmd-version "1.0"
-          (cmd-doc "print a friendly greeting" (cmd-info "greet")))
+                      (cmd-doc "print a friendly greeting" (cmd-info "greet")))
          greeting))
 
 ;; eval parses argv, runs the action (or prints help/version/error),
 ;; and returns the exit code; exit-with-code makes it the process status.
-(: main Unit)
-(define main (run-io (do [code <- (eval greet-cmd)] (exit-with-code code))))
+(: main (IO Unit))
+(define main (do [code <- (eval greet-cmd)] (exit-with-code code)))

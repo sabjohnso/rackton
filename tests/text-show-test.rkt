@@ -23,17 +23,17 @@
 (: suite (List Test))
 (define suite
   (list
-   (it "primitive ShowS"
-       (all-checks
-        (list (check-equal? r-string "abc")
-              (check-equal? r-shows "42")
-              (check-equal? r-char "Z"))))
-   (it "show-paren"
-       (all-checks
-        (list (check-equal? r-paren-t "(42)")
-              (check-equal? r-paren-f "42"))))
-   (it "composition threads the continuation"
-       (check-equal? r-chain "x=5!"))))
+    (it "primitive ShowS"
+        (all-checks
+          (list (check-equal? r-string "abc")
+                (check-equal? r-shows "42")
+                (check-equal? r-char "Z"))))
+    (it "show-paren"
+        (all-checks
+          (list (check-equal? r-paren-t "(42)")
+                (check-equal? r-paren-f "42"))))
+    (it "composition threads the continuation"
+        (check-equal? r-chain "x=5!"))))
 
-(: main Unit)
-(define main (run-io (run-suite "rackton/text/show" suite)))
+(: test-main (IO Unit))
+(define test-main (run-suite "rackton/text/show" suite))
