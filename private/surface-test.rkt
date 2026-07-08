@@ -280,6 +280,9 @@
   ;; A constructor applied to args is application.
   (check-equal? (pe '(Some 3))
                 (e:app (e:var 'Some #f) (list (e:literal 3 #f)) #f))
+  ;; A nullary constructor may optionally be parenthesized, mirroring the
+  ;; existing pattern-position and bare-arrow-tycon conventions.
+  (check-equal? (pe '(None)) (pe 'None))
 
   ;; ----- let ------------------------------------------------------
 
@@ -390,6 +393,11 @@
                           #f
                           #f
                           #f))
+
+  ;; A nullary constructor in a data declaration may optionally be
+  ;; parenthesized: `(None)` denotes the same zero-field constructor as `None`.
+  (check-equal? (ptop '(data (Maybe a) (None) (Some a)))
+                (ptop '(data (Maybe a) None (Some a))))
 
   (check-equal? (ptop '(data Bool True False))
                 (top:data 'Bool '()

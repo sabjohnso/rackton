@@ -937,6 +937,15 @@
                (infix-operator-names stx))
        stx)]
 
+    ;; A nullary constructor may optionally be parenthesized: `(None)`
+    ;; denotes the same value as bare `None`, mirroring the pattern-position
+    ;; and bare-arrow-tycon conventions.  This must sit above the 0-arg
+    ;; Unit-application sugar below, which is for effect operations and
+    ;; other lowercase-named 0-arg functions, not constructors.
+    [(head:id)
+     #:when (or (qualified-id? (syntax->datum #'head))
+                (not (lowercase-id? (syntax->datum #'head))))
+     (parse-expr #'head)]
     ;; Also accept zero-arg applications `(f)`.  These
     ;; are passed an implicit Unit so the typing of 0-arg ops
     ;; as `(-> Unit T)` lines up — saves users from spelling out
@@ -3185,6 +3194,12 @@
 (define (parse-data-ctor stx)
   (syntax-parse stx
     [name:id
+     #:fail-unless (not (lowercase-id? (syntax->datum #'name)))
+     "data constructor name must be a non-lowercase identifier"
+     (data-ctor-plain (syntax->datum #'name) '() stx)]
+    ;; A nullary constructor may optionally be parenthesized: `(None)`
+    ;; declares the same zero-field constructor as bare `None`.
+    [(name:id)
      #:fail-unless (not (lowercase-id? (syntax->datum #'name)))
      "data constructor name must be a non-lowercase identifier"
      (data-ctor-plain (syntax->datum #'name) '() stx)]
