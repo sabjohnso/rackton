@@ -8,7 +8,8 @@
 ;; directly so we don't need to wrangle real stdin/stdout.
 
 (require rackunit
-         "../private/repl.rkt")
+         "../private/repl.rkt"
+         "../private/repl-doc.rkt")
 
 (define (drive-session inputs)
   ;; Returns (values final-state outputs), where outputs is the list
@@ -216,3 +217,13 @@
   (check-regexp-match #rx"<lambda> :: " (car outs))
   (check-regexp-match #rx"->" (car outs))
   (check-false (regexp-match? #rx"procedure" (car outs)) (car outs)))
+
+(test-case "REPL: ,doc opens the resolved documentation path"
+  ;; Stub the resolver and opener so the command routes through without
+  ;; launching a browser or needing the docs built.
+  (define opened (box 'unset))
+  (parameterize ([current-doc-resolver (lambda () "/tmp/rackton/index.html")]
+                 [current-url-opener   (lambda (p) (set-box! opened p))])
+    (define-values (_ outs) (drive-session '((unquote doc))))
+    (check-equal? (unbox opened) "/tmp/rackton/index.html")
+    (check-regexp-match #rx"/tmp/rackton/index\\.html" (car outs))))

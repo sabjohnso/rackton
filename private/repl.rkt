@@ -51,6 +51,7 @@
          "repl-term.rkt"
          "repl-source.rkt"
          "repl-search.rkt"
+         "repl-doc.rkt"
          (only-in "installed-scan.rkt" rackton-workspace-entries)
          (only-in "analyze.rkt" index-entry-name index-entry-scheme)
          (only-in "macro-expand.rkt"
@@ -177,6 +178,7 @@
     [(list 'unquote 'help)        (values state (help-text))]
     [(list 'unquote 'h)           (values state (help-text))]
     [(list 'unquote 'keys)        (values state (keys-text))]
+    [(list 'unquote 'doc)         (values state (doc-command-result))]
     [(list 'unquote 'type expr)   (values state (show-type state (arg 2)))]
     [(list 'unquote 't    expr)   (values state (show-type state (arg 2)))]
     [(list 'unquote 'info name)   (values state (show-info state name))]
@@ -231,6 +233,7 @@
    ",returns TYPE list functions returning TYPE\n"
    ",complete PFX list names completing PFX (editor transport)\n"
    ",keys        editor key bindings (terminal sessions)\n"
+   ",doc         open the Rackton documentation in a browser\n"
    ",colors      show or set the editor color scheme\n"
    ",clear       reset the session to a fresh prelude env\n"
    ",quit        exit the REPL\n"

@@ -196,11 +196,12 @@
   (check-regexp-match #rx"C-right" out)      ; slurp forward
   (check-regexp-match #rx"M-p" out))         ; history prefix search
 
-(test-case ",help mentions ,keys, ,source, and ,accepts"
+(test-case ",help mentions ,keys, ,source, ,accepts, and ,doc"
   (define out (last-output '((unquote help))))
   (check-regexp-match #rx",keys" out)
   (check-regexp-match #rx",source" out)
-  (check-regexp-match #rx",accepts" out))
+  (check-regexp-match #rx",accepts" out)
+  (check-regexp-match #rx",doc" out))
 
 ;; ----- ,colors --------------------------------------------------------
 
