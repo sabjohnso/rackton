@@ -6,6 +6,10 @@ compiled/
 /doc/
 *.org
 
+# Makefile-driven incremental testing artifacts (see Makefile)
+/deps.mk
+/.mk-stamps/
+
 # Scribble --html render artifacts (companion assets + rendered pages)
 scribble.css
 scribble-common.js
