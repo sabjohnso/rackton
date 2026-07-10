@@ -160,13 +160,13 @@
 
  ;; Return-typed class methods (resolved at compile time per call site;
  ;; the `$pure:TCon` names are what the codegen emits after resolution).
- |$pure:Maybe| |$pure:List| |$pure:Either| |$pure:IO|
+ $pure:Maybe $pure:List $pure:Either $pure:IO
  ;; (transformer $pure / $flatmap / mtl impls are regenerated in the
  ;; carved rackton/control/monad/* modules.)
- |$mempty:String| |$mempty:List|
- |$integer->enum:Integer|
- |$ident:->| |$arr:->| |$arrow-app:->|
- |$mk-prod:Pair| |$inj-left:Either| |$inj-right:Either|
+ $mempty:String $mempty:List
+ $integer->enum:Integer
+ $ident:-> $arr:-> $arrow-app:->
+ $mk-prod:Pair $inj-left:Either $inj-right:Either
  ;; Runtime dispatchers for the positional class methods
  ;; introduced by mtl polish (local-en already covered above).
  ;; catch-e is exported so carved transformer modules
@@ -272,16 +272,16 @@
  new-tvar read-tvar write-tvar
  retry or-else atomically
  stm-fmap stm-pure stm-ap stm-bind
- |$pure:STM|
+ $pure:STM
 
  ;; Concurrent
- fork-c |$await-c:IO| |$yield-c:IO|
+ fork-c $await-c:IO $yield-c:IO
 
  ;; MonadIO
- |$lift-io:IO|
+ $lift-io:IO
 
  ;; Identity + Concurrent Identity
- run-identity |$await-c:Identity| |$yield-c:Identity| |$pure:Identity|
+ run-identity $await-c:Identity $yield-c:Identity $pure:Identity
 
  ;; List + Pair helpers (zip/take/drop/find/sort -> rackton/data/list,
  ;; swap -> rackton/data/tuple, Phase 2 slim)
@@ -313,7 +313,7 @@
  sqrt exp log sin cos tan **
  floor-real ceiling-real round-real truncate-real
  is-nan? is-infinite? atan2
- |$pi:Float| |$pi:Complex|
+ $pi:Float $pi:Complex
  to-rational
 
  ;; Error handling
@@ -898,38 +898,38 @@
 (define $dispatch:inj-right (make-hasheq))  ; Coproduct.inj-right (return-typed)
 (define $dispatch:integer->enum (make-hasheq))  ; Enum.integer->enum (return-typed)
 
-(define (|$pure:Maybe|  x) (Some x))
-(define (|$pure:List|   x) (Cons x Nil))
-(define (|$pure:Either| x) (Right x))
-(define (|$pure:IO|     x) ($io (lambda () x)))
+(define ($pure:Maybe  x) (Some x))
+(define ($pure:List   x) (Cons x Nil))
+(define ($pure:Either x) (Right x))
+(define ($pure:IO     x) ($io (lambda () x)))
 
 ;; Register the non-needs-dict pures with their witness
 ;; ctor tags so pure-via-witness can find them at runtime.  Lists
 ;; have two ctors (Nil, Cons); register both.  Either has two too.
-(register-pure-impl! '$ctor:None  |$pure:Maybe|)
-(register-pure-impl! '$ctor:Some  |$pure:Maybe|)
-(register-pure-impl! '$ctor:Nil   |$pure:List|)
-(register-pure-impl! '$ctor:Cons  |$pure:List|)
-(register-pure-impl! '$ctor:Right |$pure:Either|)
-(register-pure-impl! '$ctor:Left  |$pure:Either|)
-(register-pure-impl! '$io          |$pure:IO|)
+(register-pure-impl! '$ctor:None  $pure:Maybe)
+(register-pure-impl! '$ctor:Some  $pure:Maybe)
+(register-pure-impl! '$ctor:Nil   $pure:List)
+(register-pure-impl! '$ctor:Cons  $pure:List)
+(register-pure-impl! '$ctor:Right $pure:Either)
+(register-pure-impl! '$ctor:Left  $pure:Either)
+(register-pure-impl! '$io          $pure:IO)
 
 ;; ----- Monoid mempty (return-typed) -------------------------------
 ;; Sum / Product moved to rackton/data/monoid (Phase 2 slim).
-(define |$mempty:String|  "")
-(define |$mempty:List|    Nil)
+(define $mempty:String  "")
+(define $mempty:List    Nil)
 
 ;; ----- Enum integer->enum (return-typed) --------------------------
 ;; For Integer the integer→value direction is the identity.
-(define (|$integer->enum:Integer| i) i)
+(define ($integer->enum:Integer i) i)
 
 ;; ----- Category/Arrow ident & arr (return-typed) ------------------
 ;; For the function-arrow instance, the identity arrow is the identity
 ;; function and lifting a function into the arrow is the identity.
-(define |$ident:->| (lambda (x) x))
-(define (|$arr:->| f) f)
+(define $ident:-> (lambda (x) x))
+(define ($arr:-> f) f)
 ;; ArrowApply's `arrow-app` for (->) runs a captured arrow on its arg.
-(define |$arrow-app:->| (lambda (p) (match p [(Pair f x) (f x)])))
+(define $arrow-app:-> (lambda (p) (match p [(Pair f x) (f x)])))
 
 ;; ----- Semigroup mappend -----------------------------------------------
 (define (semigroup-list-mappend xs ys)
@@ -1219,8 +1219,8 @@
           (define a (($stm-thunk s) log))
           (($stm-thunk (f a)) log))))
 
-(define |$pure:STM| stm-pure)
-(register-pure-impl! '$stm |$pure:STM|)
+(define $pure:STM stm-pure)
+(register-pure-impl! '$stm $pure:STM)
 
 ;; ----- Concurrent class + Future -----------------
 ;;
@@ -1259,11 +1259,11 @@
 
 (register-instance-method! $dispatch:fork-c  '$io fork-c-io)
 
-(define |$await-c:IO| await-c-io)
-(define |$yield-c:IO| ($io (lambda () (sleep 0) Unit)))
+(define $await-c:IO await-c-io)
+(define $yield-c:IO ($io (lambda () (sleep 0) Unit)))
 
 ;; MonadIO IO: lift-io is the identity on IO actions.
-(define (|$lift-io:IO| io) io)
+(define ($lift-io:IO io) io)
 
 ;; ----- Identity monad + Concurrent Identity -------
 
@@ -1275,8 +1275,8 @@
   (match i [(Identity x) (Identity (f x))]))
 (register-instance-method! $dispatch:fmap '$ctor:Identity identity-fmap)
 
-(define |$pure:Identity| Identity)
-(register-pure-impl! '$ctor:Identity |$pure:Identity|)
+(define $pure:Identity Identity)
+(register-pure-impl! '$ctor:Identity $pure:Identity)
 
 (define (identity-ap ifn ix)
   (match ifn
@@ -1308,8 +1308,8 @@
   (Identity fut))
 (register-instance-method! $dispatch:fork-c '$ctor:Identity fork-c-identity)
 
-(define |$await-c:Identity| await-c-identity)
-(define |$yield-c:Identity| (Identity Unit))
+(define $await-c:Identity await-c-identity)
+(define $yield-c:Identity (Identity Unit))
 
 ;; ----- File I/O ------------------------------------------------
 
@@ -1522,8 +1522,8 @@
 
 ;; ----- Floating class ---------------------------------------
 
-(define |$pi:Float|   rkt:pi)
-(define |$pi:Complex| (rkt:make-rectangular rkt:pi 0))
+(define $pi:Float   rkt:pi)
+(define $pi:Complex (rkt:make-rectangular rkt:pi 0))
 
 (define $dispatch:exp  (make-hasheq))
 (define-class-method exp  $dispatch:exp  0 1)
@@ -2108,8 +2108,8 @@
 (register-instance-method! $dispatch:split     '-> arrow-split)
 (register-instance-method! $dispatch:fanout    '-> arrow-fanout)
 ;; Return-typed ident/arr: keyed by the result type's tycon (`->`).
-(register-instance-method! $dispatch:ident '-> |$ident:->|)
-(register-instance-method! $dispatch:arr   '-> |$arr:->|)
+(register-instance-method! $dispatch:ident '-> $ident:->)
+(register-instance-method! $dispatch:arr   '-> $arr:->)
 
 ;; ArrowChoice for (->): Left and Right are the two branches.
 (define arrow-on-left  (lambda (f) (lambda (r) (match r [(Left a) (Left (f a))] [(Right x) (Right x)]))))
@@ -2121,25 +2121,25 @@
 (register-instance-method! $dispatch:fork     '-> arrow-fork)
 (register-instance-method! $dispatch:fanin    '-> arrow-fanin)
 ;; ArrowApply for (->): arrow-app is return-typed, keyed by tycon `->`.
-(register-instance-method! $dispatch:arrow-app '-> |$arrow-app:->|)
+(register-instance-method! $dispatch:arrow-app '-> $arrow-app:->)
 
 ;; ----- Product (Pair) / Coproduct (Either) instances ------------
 ;; mk-prod / inj-left / inj-right are return-typed (keyed by the result
 ;; type's tycon); prod-fst / prod-snd / co-elim dispatch on the value's
 ;; ctor tag.
-(define (|$mk-prod:Pair| a b) (Pair a b))
+(define ($mk-prod:Pair a b) (Pair a b))
 (define pair-prod-fst (lambda (q) (match q [(Pair a _) a])))
 (define pair-prod-snd (lambda (q) (match q [(Pair _ b) b])))
 ;; mk-prod is return-typed (keyed by the result type's tcon, 'Pair);
 ;; prod-fst / prod-snd dispatch on the Pair value, now a Tuple vector.
-(register-instance-method! $dispatch:mk-prod  'Pair  |$mk-prod:Pair|)
+(register-instance-method! $dispatch:mk-prod  'Pair  $mk-prod:Pair)
 (register-instance-method! $dispatch:prod-fst 'Tuple pair-prod-fst)
 (register-instance-method! $dispatch:prod-snd 'Tuple pair-prod-snd)
-(define (|$inj-left:Either|  a) (Left  a))
-(define (|$inj-right:Either| b) (Right b))
+(define ($inj-left:Either  a) (Left  a))
+(define ($inj-right:Either b) (Right b))
 (define either-co-elim (lambda (f g s) (match s [(Left a) (f a)] [(Right b) (g b)])))
-(register-instance-method! $dispatch:inj-left  'Either   |$inj-left:Either|)
-(register-instance-method! $dispatch:inj-right 'Either   |$inj-right:Either|)
+(register-instance-method! $dispatch:inj-left  'Either   $inj-left:Either)
+(register-instance-method! $dispatch:inj-right 'Either   $inj-right:Either)
 (register-instance-method! $dispatch:co-elim '$ctor:Left  either-co-elim)
 (register-instance-method! $dispatch:co-elim '$ctor:Right either-co-elim)
 
@@ -2489,34 +2489,34 @@
 ;; needs-dict transformer pures (StateT/EnvT/WriterT/ExceptT) are NOT
 ;; registered here — their call sites carry dict args and resolve via
 ;; the direct provided reference, not this table.
-(register-instance-method! $dispatch:pure 'Maybe    |$pure:Maybe|)
-(register-instance-method! $dispatch:pure 'List     |$pure:List|)
-(register-instance-method! $dispatch:pure 'Either   |$pure:Either|)
-(register-instance-method! $dispatch:pure 'IO       |$pure:IO|)
+(register-instance-method! $dispatch:pure 'Maybe    $pure:Maybe)
+(register-instance-method! $dispatch:pure 'List     $pure:List)
+(register-instance-method! $dispatch:pure 'Either   $pure:Either)
+(register-instance-method! $dispatch:pure 'IO       $pure:IO)
 ;; $pure:State / $pure:Env register from rackton/control/monad/state +
 ;; reader; $pure:STM from rackton/control/stm.
-(register-instance-method! $dispatch:pure 'Identity |$pure:Identity|)
+(register-instance-method! $dispatch:pure 'Identity $pure:Identity)
 
-(register-instance-method! $dispatch:mempty 'String  |$mempty:String|)
-(register-instance-method! $dispatch:mempty 'List    |$mempty:List|)
+(register-instance-method! $dispatch:mempty 'String  $mempty:String)
+(register-instance-method! $dispatch:mempty 'List    $mempty:List)
 ;; Sum / Product mempty register themselves from rackton/data/monoid.
 
-(register-instance-method! $dispatch:integer->enum 'Integer |$integer->enum:Integer|)
+(register-instance-method! $dispatch:integer->enum 'Integer $integer->enum:Integer)
 
 ;; Other return-typed methods (Floating.pi, MonadState.get-st,
 ;; MonadEnv.ask-en, Concurrent.await-c/yield-c).  Only the base
 ;; (non-needs-dict) instances are registered — the lifted transformer
 ;; instances are needs-dict and resolve via the direct provided ref.
-(register-instance-method! $dispatch:pi 'Float   |$pi:Float|)
-(register-instance-method! $dispatch:pi 'Complex |$pi:Complex|)
+(register-instance-method! $dispatch:pi 'Float   $pi:Float)
+(register-instance-method! $dispatch:pi 'Complex $pi:Complex)
 
 ;; get-st/put-st/modify-st:State register from rackton/control/monad/state;
 ;; ask-en:Env from rackton/control/monad/reader.
 ;; tell-w / throw-e have only needs-dict instances — no plain base to
 ;; register; their tables stay empty.
 
-(register-instance-method! $dispatch:await-c 'IO       |$await-c:IO|)
-(register-instance-method! $dispatch:await-c 'Identity |$await-c:Identity|)
-(register-instance-method! $dispatch:yield-c 'IO       |$yield-c:IO|)
-(register-instance-method! $dispatch:lift-io 'IO       |$lift-io:IO|)
-(register-instance-method! $dispatch:yield-c 'Identity |$yield-c:Identity|)
+(register-instance-method! $dispatch:await-c 'IO       $await-c:IO)
+(register-instance-method! $dispatch:await-c 'Identity $await-c:Identity)
+(register-instance-method! $dispatch:yield-c 'IO       $yield-c:IO)
+(register-instance-method! $dispatch:lift-io 'IO       $lift-io:IO)
+(register-instance-method! $dispatch:yield-c 'Identity $yield-c:Identity)

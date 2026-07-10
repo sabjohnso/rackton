@@ -156,7 +156,7 @@
 ;; ----- return-typed class methods ----------------------------------
 
 ;; These methods have no runtime binding: the elaborator resolves each
-;; call site to a per-instance impl name like |$pure:Maybe| before
+;; call site to a per-instance impl name like $pure:Maybe before
 ;; codegen.  Stubs exist solely so docs can link to them.
 
 (define-syntax (define-rackton-method stx)
