@@ -17,6 +17,7 @@
          define/curried
          register-instance-method!
          lookup-return-method
+         make-deferred-return
          dispatch-tag
          rackton-no-instance-error
          ;; Re-exported so codegen-emitted instance impls can reference
@@ -26,6 +27,7 @@
          cover-fn)
 
 (require racket/struct
+         racket/promise
          ;; Coverage instrumentation, gated at COMPILE time: `when-coverage`
          ;; expands to nothing unless this module is compiled with
          ;; RACKTON_COVERAGE_BUILD set, so a normal build emits no logging
@@ -127,19 +129,45 @@
 (define (register-instance-method! table tag impl)
   (hash-set! table tag impl))
 
+;; A DEFERRED arity-0 return-typed impl.  A point-free `mempty` /
+;; `mzero` aliased to a top-level def cannot be eta-expanded (it is a
+;; value, not a function), so codegen emits it as a memoized thunk
+;; wrapped in this marker; the reference is forced at lookup, by which
+;; point every module binding exists.  The marker (rather than a bare
+;; promise) keeps the deferral unambiguous — a method whose value is
+;; itself a procedure or a user-level promise is never mistaken for a
+;; deferred impl.  Prefab so a value forced in one namespace (e.g. the
+;; REPL's eval namespace) is recognised in another.
+(struct rackton-deferred (promise) #:prefab)
+
+;; Wrap `thunk` (a nullary procedure) as a deferred impl whose value is
+;; computed at most once.
+(define (make-deferred-return thunk)
+  (rackton-deferred (delay (thunk))))
+
+;; Force a deferred impl to its value; return any non-deferred value
+;; unchanged (prelude impls and every arity>=1 impl are stored bare).
+(define (deref-return-impl impl)
+  (if (rackton-deferred? impl)
+      (force (rackton-deferred-promise impl))
+      impl))
+
 ;; Look up a return-typed method's per-instance impl from its dispatch
 ;; table by the compile-time-resolved result-type tag.  Unlike
 ;; positional dispatch (which reads the tag off a runtime argument),
 ;; the call site supplies the tag as a constant.  Errors loudly when no
 ;; instance is registered for that type (e.g. an instance module was
-;; never required, so its registration side-effect never ran).
+;; never required, so its registration side-effect never ran).  This is
+;; the sole reader of return-typed value tables, so forcing a deferred
+;; impl here covers every read.
 (define (lookup-return-method table tag method-name)
   (when-coverage (record-cover! method-name tag))
-  (hash-ref table tag
-            (lambda ()
-              (error method-name
-                     "no instance registered for return-typed method at type ~a"
-                     tag))))
+  (deref-return-impl
+   (hash-ref table tag
+             (lambda ()
+               (error method-name
+                      "no instance registered for return-typed method at type ~a"
+                      tag)))))
 
 ;; Define a function that accepts EITHER its full arity at once OR any
 ;; shorter prefix, returning a closure that collects the rest.  This is

@@ -1115,7 +1115,8 @@
         (cond
           [(eq? (hash-ref (class-info-dispatchpos cinfo) name #f) 'return)
            (compile-instance-return-method
-            name body head-pred-class head-tcon-names pure-impl-name tags stx ctx st)]
+            name body head-pred-class head-tcon-names pure-impl-name tags
+            (method-arity cinfo name) stx ctx st)]
           [else
            (compile-instance-positional-method
             name body cinfo head-pred-class head-tcon-names head-arg-types
@@ -1149,7 +1150,7 @@
 ;; dict) instances, also register it in the per-method dispatch table so
 ;; cross-module call sites can find it.  Returns a list of forms.
 (define (compile-instance-return-method
-         name body head-pred-class head-tcon-names pure-impl-name tags stx ctx st)
+         name body head-pred-class head-tcon-names pure-impl-name tags arity stx ctx st)
   ;; Return-typed methods don't dispatch on a runtime value;
   ;; emit one top-level `(define $method:Tcon impl)` whose
   ;; name matches what `infer.rkt` synthesizes in
@@ -1171,11 +1172,20 @@
        (prepend-lambda-params body dict-args stx)]
       [else body]))
   (define impl-name-sym (return-impl-symbol name head-tcon-names))
+  ;; An arity-0 value method (mempty/mzero) has no lambda to defer a
+  ;; point-free alias behind, so a naked reference to a later-emitted def
+  ;; would forward-reference it.  Emit its impl as a memoized deferred
+  ;; thunk — forced at `lookup-return-method` — so the reference resolves
+  ;; at call time.  Needs-dict return-typed methods are already lambdas
+  ;; (dict params), so they are excluded.
+  (define defer? (and (zero? arity) (or (not dict-args) (null? dict-args))))
   (let-values ([(impl st) (compile-expr body* ctx st)])
    (define def-form
     (with-syntax ([impl-name (datum->syntax stx impl-name-sym stx)]
                   [impl (cover-wrap impl name (car head-tcon-names) stx)])
-      #'(define impl-name impl)))
+      (if defer?
+          #'(define impl-name (make-deferred-return (lambda () impl)))
+          #'(define impl-name impl))))
    (cond
     ;; needs-dict return-typed instance (e.g. a transformer's
     ;; pure): keep the bare define only.  Its call sites carry
