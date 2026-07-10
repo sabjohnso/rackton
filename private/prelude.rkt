@@ -766,6 +766,12 @@
     (: not (-> Boolean Boolean))
     (define (not b) (if b #f #t))
 
+    ;; A bare two-argument application `(and e1 e2)` / `(or e1 e2)` is
+    ;; lowered to `if` at the surface (parse-expr/form), so it
+    ;; short-circuits.  These strict function definitions remain for
+    ;; first-class use — a bare `and` / `or` passed as a value or applied
+    ;; to other than two arguments — where short-circuiting is impossible
+    ;; anyway (the operands are already evaluated).
     (: and (-> Boolean (-> Boolean Boolean)))
     (define (and a b) (if a b #f))
 

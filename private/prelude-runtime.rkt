@@ -579,7 +579,7 @@
     (cond
       [(null? as)
        (error 'inner-pure-from-args "no witness with tag ~v in args" tag)]
-      [(and (struct? (car as)) (eq? (dispatch-tag (car as)) tag))
+      [(rkt:and (struct? (car as)) (eq? (dispatch-tag (car as)) tag))
        (inner-pure-from-witness (car as))]
       [else (loop (cdr as))])))
 
@@ -2336,12 +2336,12 @@
 ;; element has the needed instance and that compared tuples share arity. --
 (define (tuple-eq t1 t2)
   (define n (rackton-tuple-length t1))
-  (and (rkt:= n (rackton-tuple-length t2))
-       (let loop ([i 0])
-         (cond
-           [(rkt:= i n) #t]
-           [(== (rackton-tuple-ref t1 i) (rackton-tuple-ref t2 i)) (loop (rkt:+ i 1))]
-           [else #f]))))
+  (rkt:and (rkt:= n (rackton-tuple-length t2))
+           (let loop ([i 0])
+             (cond
+               [(rkt:= i n) #t]
+               [(== (rackton-tuple-ref t1 i) (rackton-tuple-ref t2 i)) (loop (rkt:+ i 1))]
+               [else #f]))))
 (register-instance-method! $dispatch:== 'Tuple tuple-eq)
 (register-instance-method! $dispatch:/= 'Tuple (lambda (x y) (rkt:not (== x y))))
 

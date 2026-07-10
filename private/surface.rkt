@@ -381,12 +381,17 @@
 ;; same rename environment, falling through to the bare symbol — and thus to
 ;; the top-level/prelude environment — when they match no local binder.
 ;;
-;; When off (no macros in the block) this is a no-op: binders keep their
-;; written symbol and references are a plain `syntax->datum`, exactly as
-;; before, so non-macro programs are entirely unaffected.
+;; When off (no macros in the block), reference RESOLUTION is a no-op:
+;; binders keep their written symbol and references are a plain
+;; `syntax->datum`, exactly as before.  The binder SET is recorded either
+;; way (see `current-local-binders`), so a non-macro program gets the same
+;; AST — only the shadow query `local-binder-name?` reads the extra record.
 (define current-hygiene? (make-parameter #f))
-;; The rename environment in scope: a list of (identifier . fresh-symbol).
-(define current-rename-env (make-parameter '()))
+;; The local binders in scope: a list of (identifier . rename-or-#f).  The
+;; rename is a fresh symbol under hygiene (consulted by `resolve-id`) and #f
+;; otherwise; the identifier is recorded regardless so `local-binder-name?`
+;; can detect shadowing of a built-in operator with hygiene off.
+(define current-local-binders (make-parameter '()))
 
 ;; Resolve an identifier occurrence (binder or reference) to the symbol the
 ;; AST should carry: its fresh rename if a local binder of the same identity
@@ -394,22 +399,34 @@
 (define (resolve-id id-stx)
   (cond
     [(current-hygiene?)
-     (let loop ([env (current-rename-env)])
+     (let loop ([env (current-local-binders)])
        (cond
          [(null? env)                              (syntax->datum id-stx)]
          [(bound-identifier=? (caar env) id-stx)   (cdar env)]
          [else                                     (loop (cdr env))]))]
     [else (syntax->datum id-stx)]))
 
-;; Extend the current rename environment with a fresh symbol for each binder
-;; identifier (a no-op when hygiene is off).  Returns the extended env, to be
-;; installed via `parameterize` around the scope the binders cover.
-(define (extend-rename-env binder-id-stxs)
-  (cond
-    [(current-hygiene?)
-     (for/fold ([env (current-rename-env)]) ([id (in-list binder-id-stxs)])
-       (cons (cons id (make-hygiene-rename id)) env))]
-    [else (current-rename-env)]))
+;; Extend the in-scope local-binder set with each binder identifier.  The
+;; recorded rename is a fresh symbol only when hygiene is on (else #f);
+;; `resolve-id` consults it only under hygiene.  The binder NAME is recorded
+;; either way, so `local-binder-name?` can see lexical shadowing regardless
+;; of hygiene.  Returns the extended set, to be installed via `parameterize`
+;; around the scope the binders cover.
+(define (extend-local-binders binder-id-stxs)
+  (for/fold ([env (current-local-binders)]) ([id (in-list binder-id-stxs)])
+    (cons (cons id (and (current-hygiene?) (make-hygiene-rename id))) env)))
+
+;; Is `name` (a symbol) bound by a local binder in the current scope?  Used
+;; to decide whether a built-in operator (`and` / `or`) is shadowed and so
+;; must be left as an ordinary application rather than lowered to `if`.
+;; The comparison is by NAME (not `bound-identifier=?` as in `resolve-id`),
+;; deliberately coarser: under hygiene a differently-marked binder named
+;; `and` still suppresses the lowering, which is conservative in the safe
+;; direction — it can only leave an ordinary application, never wrongly
+;; short-circuit.
+(define (local-binder-name? name)
+  (for/or ([entry (in-list (current-local-binders))])
+    (eq? (syntax->datum (car entry)) name)))
 
 ;; A hygiene α-rename: a fresh uninterned symbol standing in for a local
 ;; binder of `id`.  Tagged with `hygiene-rename-prefix` so codegen
@@ -637,7 +654,7 @@
      ;; are in scope for the body (and the recursive call).
      (define rhss (map parse-expr (syntax->list #'(rhs ...))))
      (define ids  (syntax->list #'(x ...)))
-     (parameterize ([current-rename-env (extend-rename-env (cons #'loop ids))])
+     (parameterize ([current-local-binders (extend-local-binders (cons #'loop ids))])
        (build-named-let (resolve-id #'loop)
                         (for/list ([id (in-list ids)] [r (in-list rhss)])
                           (cons (resolve-id id) r))
@@ -667,7 +684,7 @@
           (build-sequential-let (reverse acc) (parse-expr #'body) stx)]
          [else
           (define rhs-ast (parse-expr (car rhss)))
-          (parameterize ([current-rename-env (extend-rename-env (list (car ids)))])
+          (parameterize ([current-local-binders (extend-local-binders (list (car ids)))])
             (loop (cdr ids) (cdr rhss)
                   (cons (cons (resolve-id (car ids)) rhs-ast) acc)))]))]
 
@@ -677,7 +694,7 @@
      ;; Seeds evaluate in the enclosing scope; loop name and params scope the body.
      (define ids   (syntax->list #'(x ...)))
      (define seeds (map parse-expr (syntax->list #'(rhs ...))))
-     (parameterize ([current-rename-env (extend-rename-env (cons #'loop ids))])
+     (parameterize ([current-local-binders (extend-local-binders (cons #'loop ids))])
        (build-named-monadic-let
         (resolve-id #'loop)
         (for/list ([id (in-list ids)] [r (in-list seeds)]) (cons (resolve-id id) r))
@@ -708,7 +725,7 @@
      ;; Recursive: every binder is in scope in all RHSs and the body, so
      ;; introduce them all before parsing either.
      (define ids (syntax->list #'(x ...)))
-     (parameterize ([current-rename-env (extend-rename-env ids)])
+     (parameterize ([current-local-binders (extend-local-binders ids)])
        (e:letrec (for/list ([id (in-list ids)]
                             [r  (in-list (syntax->list #'(rhs ...)))])
                    (cons (resolve-id id) (parse-expr r)))
@@ -954,6 +971,24 @@
      (e:app (parse-expr #'head)
             (list (e:var 'Unit stx))
             stx)]
+    ;; Short-circuiting `and` / `or`.  The prelude `and` / `or` are strict
+    ;; binary functions, so a bare `(and e1 e2)` application would evaluate
+    ;; BOTH operands before dispatching.  Lower the two-argument surface
+    ;; form to `if` so the guard operand is skipped, matching Racket /
+    ;; Coalton.  A LOCALLY shadowed `and` / `or` (a `let`/`lambda`/`match`
+    ;; binder of that name) is left as an ordinary application, as is a bare
+    ;; reference or a one-argument `(and x)` partial application — each
+    ;; resolves to the first-class prelude function.  LIMITATION: a
+    ;; top-level or imported rebinding of `and` / `or` is not detected here
+    ;; (it never enters `current-local-binders`), so its two-argument form
+    ;; still lowers to `if`; treat `and` / `or` as operators one does not
+    ;; redefine at top level, as in Racket.
+    [(op:id e1 e2)
+     #:when (and (memq (syntax->datum #'op) '(and or))
+                 (not (local-binder-name? (syntax->datum #'op))))
+     (if (eq? (syntax->datum #'op) 'and)
+         (e:if (parse-expr #'e1) (parse-expr #'e2) (e:literal #f stx) stx)
+         (e:if (parse-expr #'e1) (e:literal #t stx) (parse-expr #'e2) stx))]
     ;; Keyword construction `(C :f1 v1 :f2 v2 …)`.  Recognised when the
     ;; first argument is a keyword token; every argument must then be a
     ;; `:label value` pair (no mixing with positional).  Keyword fields
@@ -1024,15 +1059,15 @@
 (define (parse-match-clause stx)
   (syntax-parse stx
     [[pat (~datum :when) guard body]
-     (parameterize ([current-rename-env
-                     (extend-rename-env (pattern-binder-ids #'pat))])
+     (parameterize ([current-local-binders
+                     (extend-local-binders (pattern-binder-ids #'pat))])
        (clause (parse-pattern #'pat)
                (parse-expr #'guard)
                (parse-expr #'body)
                stx))]
     [[pat body]
-     (parameterize ([current-rename-env
-                     (extend-rename-env (pattern-binder-ids #'pat))])
+     (parameterize ([current-local-binders
+                     (extend-local-binders (pattern-binder-ids #'pat))])
        (clause (parse-pattern #'pat)
                #f
                (parse-expr #'body)
@@ -1047,14 +1082,14 @@
       (syntax-parse c
         #:datum-literals (return ->)
         [[return v:id -> body]
-         (parameterize ([current-rename-env (extend-rename-env (list #'v))])
+         (parameterize ([current-local-binders (extend-local-binders (list #'v))])
            (handle-return (resolve-id #'v)
                           (parse-expr #'body) c))]
         [[op:id (p:id ...) k:id -> body]
          ;; `op` names the effect operation (a reference); the argument
          ;; binders and the continuation `k` are in scope for the body.
-         (parameterize ([current-rename-env
-                         (extend-rename-env (cons #'k (syntax->list #'(p ...))))])
+         (parameterize ([current-local-binders
+                         (extend-local-binders (cons #'k (syntax->list #'(p ...))))])
            (handle-clause (syntax->datum #'op)
                           (map resolve-id (syntax->list #'(p ...)))
                           (resolve-id #'k)
@@ -1131,16 +1166,16 @@
 (define (parse-case-lambda-clause who stx)
   (syntax-parse stx
     [[(pat ...) (~datum :when) guard body]
-     (parameterize ([current-rename-env
-                     (extend-rename-env
+     (parameterize ([current-local-binders
+                     (extend-local-binders
                       (append-map pattern-binder-ids (syntax->list #'(pat ...))))])
        (clause* (map parse-pattern (syntax->list #'(pat ...)))
                 (parse-expr #'guard)
                 (parse-expr #'body)
                 stx))]
     [[(pat ...) body]
-     (parameterize ([current-rename-env
-                     (extend-rename-env
+     (parameterize ([current-local-binders
+                     (extend-local-binders
                       (append-map pattern-binder-ids (syntax->list #'(pat ...))))])
        (clause* (map parse-pattern (syntax->list #'(pat ...)))
                 #f
@@ -1244,8 +1279,8 @@
   ;; Introduce the binders (hygienic α-rename when active) for the body and
   ;; for re-parsing the LHS patterns, so a binder and its references in the
   ;; body share the same fresh symbol.
-  (parameterize ([current-rename-env
-                  (extend-rename-env (append-map pattern-binder-ids lhs-stxs))])
+  (parameterize ([current-local-binders
+                  (extend-local-binders (append-map pattern-binder-ids lhs-stxs))])
     (define body (parse-expr body-stx))
     (define-values (binds destructures)
       (for/fold ([binds '()] [ds '()]
@@ -1277,8 +1312,8 @@
        ;; Sequential: this RHS sees the bindings before it (current env);
        ;; this binding's own binders cover the remaining bindings and body.
        (define rhs (parse-expr (car rs)))
-       (parameterize ([current-rename-env
-                       (extend-rename-env (pattern-binder-ids (car ls)))])
+       (parameterize ([current-local-binders
+                       (extend-local-binders (pattern-binder-ids (car ls)))])
          (define pat   (parse-pattern (car ls)))
          (define inner (loop (cdr ls) (cdr rs)))
          (cond
@@ -1337,7 +1372,7 @@
 (define (parse-gathered-let combiner ids-stx rhss-stx body-stx stx)
   (define ids  (syntax->list ids-stx))
   (define rhss (map parse-expr (syntax->list rhss-stx)))
-  (parameterize ([current-rename-env (extend-rename-env ids)])
+  (parameterize ([current-local-binders (extend-local-binders ids)])
     (build-gathered-let combiner
                         (for/list ([id (in-list ids)] [r (in-list rhss)])
                           (cons (resolve-id id) r))
@@ -1393,7 +1428,7 @@
         ;; The RHS is in the enclosing scope; `v` binds the unwrapped value
         ;; for the rest of the chain and the body.
         (define rhs (parse-expr #'expr))
-        (parameterize ([current-rename-env (extend-rename-env (list #'v))])
+        (parameterize ([current-local-binders (extend-local-binders (list #'v))])
           (e:app (sugar-ref 'flatmap stx)
                  (list (e:lam (list (resolve-id #'v))
                               (parse-do (cdr stmts) body-stx stx)
@@ -2022,8 +2057,8 @@
   ;; Introduce all param binders into the rename env (hygienic α-rename when
   ;; active) before parsing the body, so the body's references to a param and
   ;; the param binder share one fresh symbol.
-  (parameterize ([current-rename-env
-                  (extend-rename-env
+  (parameterize ([current-local-binders
+                  (extend-local-binders
                    (append-map (lambda (p)
                                  (if (identifier? p)
                                      (list p)
