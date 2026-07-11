@@ -17,10 +17,10 @@
   (define r2 (from-maybe 7 None))
 
   (: j Boolean)
-  (define j (is-just (Some 1)))
+  (define j (some? (Some 1)))
 
   (: n Boolean)
-  (define n (is-nothing None)))
+  (define n (none? None)))
 
 (test-case "collection-path require of rackton/data/maybe"
   (check-equal? r 5)

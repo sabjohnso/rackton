@@ -103,11 +103,9 @@
        [(Nil)        #f]
        [(Cons sh st) (if (== ph sh) (chars-prefix? pt st) #f)])]))
 
-(: is-prefix? (-> String (-> String Boolean)))
-(define (is-prefix? p s) (string-prefix? p s))
-
-(: is-suffix? (-> String (-> String Boolean)))
-(define (is-suffix? p s) (string-prefix? (reverse-string p) (reverse-string s)))
+;; `string-prefix?` is the prelude's; `string-suffix?` is its mirror.
+(: string-suffix? (-> String (-> String Boolean)))
+(define (string-suffix? p s) (string-prefix? (reverse-string p) (reverse-string s)))
 
 ;; does `needle` occur anywhere in the char list?
 (: chars-infix? (-> (List Char) (-> (List Char) Boolean)))
@@ -118,8 +116,8 @@
         [(Nil)       #f]
         [(Cons _ st) (chars-infix? needle st)])))
 
-(: is-infix? (-> String (-> String Boolean)))
-(define (is-infix? needle s)
+(: string-infix? (-> String (-> String Boolean)))
+(define (string-infix? needle s)
   (chars-infix? (string->chars needle) (string->chars s)))
 
 ;; --- slicing -------------------------------------------------------

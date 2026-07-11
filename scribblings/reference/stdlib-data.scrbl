@@ -193,8 +193,8 @@ non-method eliminators, predicates, and collectors.
   Eliminator: applies @racket[f] to a @racket[Left] payload and @racket[g] to
   a @racket[Right] payload.}
 
-@deftogether[(@defproc[(is-left [r (Either a b)]) Boolean]
-              @defproc[(is-right [r (Either a b)]) Boolean])]{
+@deftogether[(@defproc[(left? [r (Either a b)]) Boolean]
+              @defproc[(right? [r (Either a b)]) Boolean])]{
   Test whether @racket[r] is a @racket[Left] or a @racket[Right], respectively.}
 
 @deftogether[(@defproc[(from-left [default a] [r (Either a b)]) a]
@@ -247,8 +247,8 @@ Instances: @racket[Functor], @racket[Applicative], @racket[Monad]
   Eliminator: applies @racket[f] to an @racket[Err] payload and @racket[g] to
   an @racket[Ok] payload.}
 
-@deftogether[(@defproc[(is-ok [r (Result e a)]) Boolean]
-              @defproc[(is-err [r (Result e a)]) Boolean])]{
+@deftogether[(@defproc[(ok? [r (Result e a)]) Boolean]
+              @defproc[(err? [r (Result e a)]) Boolean])]{
   Test whether @racket[r] is an @racket[Ok] or an @racket[Err], respectively.}
 
 @deftogether[(@defproc[(from-ok [default a] [r (Result e a)]) a]
@@ -1023,9 +1023,9 @@ Additive helpers over the prelude's @racket[Maybe] type, in the spirit of Haskel
 @defproc[(maybe [d b] [f (-> a b)] [m (Maybe a)]) b]{
 Eliminator for @racket[Maybe]: returns @racket[f] applied to the @racket[Some] payload, or the default @racket[d] when @racket[m] is @racket[None].}
 
-@deftogether[(@defproc[(is-just [m (Maybe a)]) Boolean]
-              @defproc[(is-nothing [m (Maybe a)]) Boolean])]{
-@racket[is-just] is true when @racket[m] is a @racket[Some]; @racket[is-nothing] is true when @racket[m] is @racket[None].}
+@deftogether[(@defproc[(some? [m (Maybe a)]) Boolean]
+              @defproc[(none? [m (Maybe a)]) Boolean])]{
+@racket[some?] is true when @racket[m] is a @racket[Some]; @racket[none?] is true when @racket[m] is @racket[None].}
 
 @defproc[(from-maybe [d a] [m (Maybe a)]) a]{
 Returns the @racket[Some] payload, or the default @racket[d] when @racket[m] is @racket[None].}

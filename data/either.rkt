@@ -17,11 +17,11 @@
     [(Left  a) (f a)]
     [(Right b) (g b)]))
 
-(: is-left (-> (Either a b) Boolean))
-(define (is-left r) (match r [(Left _) #t] [(Right _) #f]))
+(: left? (-> (Either a b) Boolean))
+(define (left? r) (match r [(Left _) #t] [(Right _) #f]))
 
-(: is-right (-> (Either a b) Boolean))
-(define (is-right r) (match r [(Left _) #f] [(Right _) #t]))
+(: right? (-> (Either a b) Boolean))
+(define (right? r) (match r [(Left _) #f] [(Right _) #t]))
 
 ;; @racket[(from-left default r)] — the Left payload, or @racket[default].
 (: from-left (-> a (-> (Either a b) a)))

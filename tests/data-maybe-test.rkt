@@ -21,7 +21,7 @@
 (: r-fromjust Integer) (define r-fromjust (from-just (Some 42)))
 ;; existing helpers still present
 (: r-maybe Integer)    (define r-maybe (maybe 0 (lambda (x) (+ x 1)) (Some 5)))
-(: r-isjust Boolean)   (define r-isjust (is-just (Some 1)))
+(: r-isjust Boolean)   (define r-isjust (some? (Some 1)))
 
 (: suite (List Test))
 (define suite

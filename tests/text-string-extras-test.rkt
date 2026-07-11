@@ -6,13 +6,13 @@
 (require rackton/text/string
          "../unit.rkt")
 
-(: p1 Boolean) (define p1 (is-prefix? "he" "hello"))
-(: p2 Boolean) (define p2 (is-prefix? "lo" "hello"))
-(: s1 Boolean) (define s1 (is-suffix? "lo" "hello"))
-(: s2 Boolean) (define s2 (is-suffix? "he" "hello"))
-(: i1 Boolean) (define i1 (is-infix? "ell" "hello"))
-(: i2 Boolean) (define i2 (is-infix? "xyz" "hello"))
-(: i3 Boolean) (define i3 (is-infix? "" "hello"))
+(: p1 Boolean) (define p1 (string-prefix? "he" "hello"))
+(: p2 Boolean) (define p2 (string-prefix? "lo" "hello"))
+(: s1 Boolean) (define s1 (string-suffix? "lo" "hello"))
+(: s2 Boolean) (define s2 (string-suffix? "he" "hello"))
+(: i1 Boolean) (define i1 (string-infix? "ell" "hello"))
+(: i2 Boolean) (define i2 (string-infix? "xyz" "hello"))
+(: i3 Boolean) (define i3 (string-infix? "" "hello"))
 
 (: tk String) (define tk (take-string 3 "hello"))
 (: dp String) (define dp (drop-string 3 "hello"))

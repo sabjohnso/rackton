@@ -174,14 +174,14 @@ and the char conversions live in the prelude.
 @defproc[(chars-prefix? [p (List Char)] [s (List Char)]) Boolean]{
   Is the first char list a prefix of the second?}
 
-@deftogether[(@defproc[(is-prefix? [p String] [s String]) Boolean]
-              @defproc[(is-suffix? [p String] [s String]) Boolean])]{
-  Does @racket[p] occur at the start / end of @racket[s]?}
+@defproc[(string-suffix? [p String] [s String]) Boolean]{
+  Does @racket[p] occur at the end of @racket[s]?  (@racket[string-prefix?],
+  the start-of-string mirror, is in the prelude.)}
 
 @defproc[(chars-infix? [needle (List Char)] [s (List Char)]) Boolean]{
   Does @racket[needle] occur anywhere in the char list @racket[s]?}
 
-@defproc[(is-infix? [needle String] [s String]) Boolean]{
+@defproc[(string-infix? [needle String] [s String]) Boolean]{
   Does @racket[needle] occur anywhere in @racket[s]?}
 
 @deftogether[(@defproc[(take-string [n Integer] [s String]) String]

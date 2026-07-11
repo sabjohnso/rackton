@@ -14,8 +14,8 @@
 (: r-elim-err String) (define r-elim-err
                         (result (lambda (e) (mappend "err:" e)) (lambda (a) (mappend "ok:" a)) (ann (Err "y") (Result String String))))
 
-(: r-is-ok  Boolean) (define r-is-ok  (is-ok  (ann (Ok 1)    (Result String Integer))))
-(: r-is-err Boolean) (define r-is-err (is-err (ann (Err "e") (Result String Integer))))
+(: r-is-ok  Boolean) (define r-is-ok  (ok?  (ann (Ok 1)    (Result String Integer))))
+(: r-is-err Boolean) (define r-is-err (err? (ann (Err "e") (Result String Integer))))
 
 (: r-from-ok  Integer) (define r-from-ok  (from-ok  0 (ann (Ok 5)    (Result String Integer))))
 (: r-from-ok0 Integer) (define r-from-ok0 (from-ok  0 (ann (Err "e") (Result String Integer))))

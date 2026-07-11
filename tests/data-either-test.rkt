@@ -12,8 +12,8 @@
 (: r-either-r String) (define r-either-r
                         (either (lambda (e) (mappend "left:" e)) (lambda (a) (mappend "right:" a)) (ann (Right "y") (Either String String))))
 
-(: r-is-right Boolean) (define r-is-right (is-right (ann (Right 1)  (Either String Integer))))
-(: r-is-left  Boolean) (define r-is-left  (is-left  (ann (Left "e") (Either String Integer))))
+(: r-is-right Boolean) (define r-is-right (right? (ann (Right 1)  (Either String Integer))))
+(: r-is-left  Boolean) (define r-is-left  (left?  (ann (Left "e") (Either String Integer))))
 
 (: r-from-right  Integer) (define r-from-right  (from-right 0 (ann (Right 5)  (Either String Integer))))
 (: r-from-right0 Integer) (define r-from-right0 (from-right 0 (ann (Left "e") (Either String Integer))))

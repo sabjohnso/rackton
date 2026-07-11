@@ -67,11 +67,11 @@
     [(Err e) (f e)]
     [(Ok  a) (g a)]))
 
-(: is-ok (-> (Result e a) Boolean))
-(define (is-ok r) (match r [(Ok _) #t] [(Err _) #f]))
+(: ok? (-> (Result e a) Boolean))
+(define (ok? r) (match r [(Ok _) #t] [(Err _) #f]))
 
-(: is-err (-> (Result e a) Boolean))
-(define (is-err r) (match r [(Ok _) #f] [(Err _) #t]))
+(: err? (-> (Result e a) Boolean))
+(define (err? r) (match r [(Ok _) #f] [(Err _) #t]))
 
 ;; @racket[(from-ok default r)] — the Ok payload, or @racket[default].
 (: from-ok (-> a (-> (Result e a) a)))

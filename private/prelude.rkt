@@ -1629,13 +1629,13 @@
     ;; --- RealFloat class ---------------------------
 
     (protocol (RealFloat [a => RealFrac Floating])
-      (: is-nan?      (-> a Boolean))
-      (: is-infinite? (-> a Boolean))
+      (: nan?      (-> a Boolean))
+      (: infinite? (-> a Boolean))
       (: atan2        (-> a (-> a a))))
 
     (instance (RealFloat Float)
-      (define (is-nan?      x)   (racket Boolean (x)   #f))
-      (define (is-infinite? x)   (racket Boolean (x)   #f))
+      (define (nan?      x)   (racket Boolean (x)   #f))
+      (define (infinite? x)   (racket Boolean (x)   #f))
       (define (atan2        y x) (racket Float   (y x) 0.0)))
 
     ;; --- Eq / Ord / Show for the core containers ----------------

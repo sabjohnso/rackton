@@ -15,11 +15,11 @@
     [(None)   d]
     [(Some x) (f x)]))
 
-(: is-just (-> (Maybe a) Boolean))
-(define (is-just m) (match m [(None) #f] [(Some _) #t]))
+(: some? (-> (Maybe a) Boolean))
+(define (some? m) (match m [(None) #f] [(Some _) #t]))
 
-(: is-nothing (-> (Maybe a) Boolean))
-(define (is-nothing m) (match m [(None) #t] [(Some _) #f]))
+(: none? (-> (Maybe a) Boolean))
+(define (none? m) (match m [(None) #t] [(Some _) #f]))
 
 (: from-maybe (-> a (-> (Maybe a) a)))
 (define (from-maybe d m)

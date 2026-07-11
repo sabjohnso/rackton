@@ -52,7 +52,7 @@ These functions complement the @racket[Num] / @racket[Integral] /
 @racket[div], @racket[mod], @racket[quot], @racket[rem],
 @racket[float-div], @racket[exp], @racket[log], @racket[sqrt],
 @racket[sin], @racket[cos], @racket[tan], @racket[**], @racket[pi],
-@racket[is-nan?], @racket[is-infinite?], @racket[atan2],
+@racket[nan?], @racket[infinite?], @racket[atan2],
 @racket[floor-real], @racket[ceiling-real], @racket[round-real],
 @racket[truncate-real], @racket[to-rational], and @racket[min] /
 @racket[max].

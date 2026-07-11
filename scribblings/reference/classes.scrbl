@@ -172,8 +172,8 @@ Floating-point reals.  Superprotocols: @racket[RealFrac],
 @racket[Floating].
 
 @deftogether[(
-  @defproc[(is-nan?      [x a]) Boolean]
-  @defproc[(is-infinite? [x a]) Boolean]
+  @defproc[(nan?      [x a]) Boolean]
+  @defproc[(infinite? [x a]) Boolean]
   @defproc[(atan2        [y a] [x a]) a])]{
 
 NaN and infinity tests, plus quadrant-aware arctangent.}

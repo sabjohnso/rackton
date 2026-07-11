@@ -116,16 +116,16 @@
 (: truncated Integer)
 (define truncated (truncate-real -3.7))
 
-;; ----- 40.G RealFloat class — is-nan? / is-infinite? --------
+;; ----- 40.G RealFloat class — nan? / infinite? --------
 
 (: nan-is-nan Boolean)
-(define nan-is-nan (is-nan? (float-div 0.0 0.0)))
+(define nan-is-nan (nan? (float-div 0.0 0.0)))
 
 (: inf-is-inf Boolean)
-(define inf-is-inf (is-infinite? (float-div 1.0 0.0)))
+(define inf-is-inf (infinite? (float-div 1.0 0.0)))
 
 (: finite-is-nan Boolean)
-(define finite-is-nan (is-nan? 1.0))
+(define finite-is-nan (nan? 1.0))
 
 (: suite (List Test))
 (define suite
@@ -170,7 +170,7 @@
                 (check-equal? rounded   4)
                 (check-equal? ceiled    4)
                 (check-equal? truncated -3))))
-    (it "RealFloat is-nan? / is-infinite?"
+    (it "RealFloat nan? / infinite?"
         (all-checks
           (list (check-true  nan-is-nan)
                 (check-true  inf-is-inf)

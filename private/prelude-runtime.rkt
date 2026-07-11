@@ -312,7 +312,7 @@
  div mod quot rem
  sqrt exp log sin cos tan **
  floor-real ceiling-real round-real truncate-real
- is-nan? is-infinite? atan2
+ nan? infinite? atan2
  $pi:Float $pi:Complex
  to-rational
 
@@ -1590,16 +1590,16 @@
 
 ;; ----- RealFloat class --------------------------------------
 
-(define $dispatch:is-nan?      (make-hasheq))
-(define-class-method is-nan?      $dispatch:is-nan?      0 1)
-(define $dispatch:is-infinite? (make-hasheq))
-(define-class-method is-infinite? $dispatch:is-infinite? 0 1)
+(define $dispatch:nan?      (make-hasheq))
+(define-class-method nan?      $dispatch:nan?      0 1)
+(define $dispatch:infinite? (make-hasheq))
+(define-class-method infinite? $dispatch:infinite? 0 1)
 (define $dispatch:atan2        (make-hasheq))
 (define-class-method atan2        $dispatch:atan2        0 2)
 
-(register-instance-method! $dispatch:is-nan?      'Float
+(register-instance-method! $dispatch:nan?      'Float
                            (lambda (x) (rkt:nan? x)))
-(register-instance-method! $dispatch:is-infinite? 'Float
+(register-instance-method! $dispatch:infinite? 'Float
                            (lambda (x) (rkt:infinite? x)))
 (register-instance-method! $dispatch:atan2        'Float
                            (lambda (y x) (rkt:atan y x)))
