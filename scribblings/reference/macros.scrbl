@@ -75,25 +75,27 @@ A procedural transformer can run arbitrary computation while the program is
 being compiled.  This @racket[triple-literal] folds @racket[(* 3 n)] at
 compile time and splices the resulting literal:
 
-@rackton-example[#:eval ev #:mode 'display]{
+@rackton-example[#:eval ev #:mode 'value]{
 (require (for-syntax racket/base))
 
 (define-syntax (triple-literal stx)
   (syntax-case stx ()
     [(_ n) (datum->syntax stx (* 3 (syntax->datum #'n)))]))
 
-(triple-literal 5)   (code:comment "15 — computed during compilation")
+(triple-literal 5)
 }
+
+The @racket[15] is folded during compilation and spliced as a literal.
 
 A macro may even expand into a fresh macro definition (a macro-defining
 macro); the front phase binds the generated macro before later uses:
 
-@rackton-example[#:eval ev #:mode 'display]{
+@rackton-example[#:eval ev #:mode 'value]{
 (define-syntax-rule (define-doubler name op)
   (define-syntax-rule (name x) (op x x)))
 
 (define-doubler dbl +)
-(dbl 4)              (code:comment "8")
+(dbl 4)
 }
 
 @section{Exporting macros across modules}

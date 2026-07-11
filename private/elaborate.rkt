@@ -138,6 +138,55 @@
   (define l (syntax->list f))
   (and l (pair? l) (identifier? (car l)) (eq? (syntax-e (car l)) 'require)))
 
+;; The `(for-syntax …)` sub-specs of a `(require …)` form.  These carry the
+;; phase-1 imports a procedural transformer's body needs (`syntax-case`,
+;; `datum->syntax`, …).  They must be made effective *during* elaboration —
+;; before the transformer right-hand sides are evaluated — not merely emitted
+;; into the compiled output, where they would arrive too late.
+(define-for-syntax (require-form-for-syntax-specs f)
+  (define l (syntax->list f))
+  (cond
+    [(not l) '()]
+    [else
+     (for/list ([spec (in-list (cdr l))]
+                #:when (let ([sl (and (pair? (syntax-e spec)) (syntax->list spec))])
+                         (and sl (pair? sl) (identifier? (car sl))
+                              (eq? (syntax-e (car sl)) 'for-syntax))))
+       spec)]))
+
+;; Lift every block-internal `(for-syntax …)` require to the top of the module
+;; being compiled, so the imports are live while transformer bodies are
+;; evaluated here.  Each lift adds a fresh scope carrying the imported phase-1
+;; bindings, and — because the lift happens mid-expansion of the enclosing
+;; `rackton` macro — the imported bindings also carry that macro's introduction
+;; scope.  Return one combined introducer that reconciles a form with both:
+;; `syntax-local-introduce` toggles the macro-introduction scope (the block
+;; forms are macro *arguments*, so they lack it and the lifted bindings have
+;; it), and each delta introducer adds the fresh lifted-require scope.  A #f
+;; result means the block has no for-syntax requires — leave the forms untouched.
+(define-for-syntax (lift-block-for-syntax-requires forms)
+  (define specs
+    (append-map require-form-for-syntax-specs
+                (filter require-form? forms)))
+  (cond
+    [(null? specs) #f]
+    [else
+     (define introducers
+       (for/list ([spec (in-list specs)])
+         (define base (datum->syntax spec (gensym 'rackton-for-syntax)))
+         (define introduced (syntax-local-lift-require spec base))
+         (make-syntax-delta-introducer introduced base)))
+     (define (add-lifted-scopes stx)
+       (for/fold ([s stx]) ([intro (in-list introducers)])
+         (intro s 'add)))
+     (define (remove-lifted-scopes stx)
+       (for/fold ([s stx]) ([intro (in-list introducers)])
+         (intro s 'remove)))
+     (lambda (stx [mode 'add])
+       (case mode
+         [(add)    (add-lifted-scopes (syntax-local-introduce stx))]
+         [(remove) (syntax-local-introduce (remove-lifted-scopes stx))]))]))
+
 ;; Per-elaboration sinks, set up in `rackton-elaborate`:
 ;;   current-collected-macros — a box collecting (cons (listof name-sym) datum)
 ;;     for every macro DEFINED in this block, so a `#lang rackton` library can
@@ -164,6 +213,19 @@
       (define ctx    (syntax-local-make-definition-context))
       (define ctx-id (list (gensym 'rackton-macros)))
       (define registered '())          ; bound macro-name identifiers
+
+      ;; When the block both defines a procedural transformer and requires its
+      ;; phase-1 toolbox `(require (for-syntax racket/base))`, lift that require
+      ;; now and stamp its scope onto every form.  The transformer bodies are
+      ;; evaluated below (`syntax-local-bind-syntaxes`); without the lift their
+      ;; `syntax-case`/`datum->syntax` references are unbound, because the
+      ;; compiled-output require arrives only after elaboration is over.  A
+      ;; #f introducer means no for-syntax requires — leave the forms untouched.
+      (define add-fs-scope
+        (and (ormap macro-def-form? forms)
+             (lift-block-for-syntax-requires forms)))
+      (define forms*
+        (if add-fs-scope (map (lambda (f) (add-fs-scope f 'add)) forms) forms))
 
       ;; Bind a macro definition — written directly, produced by an expanding
       ;; macro-defining macro, or reconstructed from an imported library — into
@@ -202,12 +264,12 @@
                    (datum->syntax spec-stx (cdr entry) spec-stx)))))]))
 
       ;; Pass 0 — import macros from required libraries first.
-      (for ([f (in-list forms)] #:when (require-form? f))
+      (for ([f (in-list forms*)] #:when (require-form? f))
         (import-macros-from! f))
 
       ;; Pass 1 — bind every directly-written macro definition, so a macro may
       ;; be used before its textual definition, and collect it for re-export.
-      (for ([f (in-list forms)] #:when (macro-def-form? f))
+      (for ([f (in-list forms*)] #:when (macro-def-form? f))
         (bind-macro-def! f #:collect? #t))
 
       ;; No macros after all (e.g. requires that export none): identity.
@@ -254,15 +316,21 @@
           ;; definition: bind it here (so later forms see it) instead of emitting
           ;; it to parse-top.
           (define out '())
-          (for ([f (in-list forms)] #:unless (macro-def-form? f))
+          (for ([f (in-list forms*)] #:unless (macro-def-form? f))
             (define expanded
               (expand-walk (internal-definition-context-introduce ctx f 'add)))
             (cond
               [(macro-def-form? expanded)
                (bind-macro-def! expanded)]
               [else
+                ;; Strip the internal-definition scope so top-level names keep
+                ;; the user's module context, and the lifted for-syntax scope
+                ;; (an inert phase-1 marker at phase 0) so the residual core
+                ;; forms reach `parse-top` exactly as written.
+                (define residual
+                  (internal-definition-context-introduce ctx expanded 'remove))
                 (set! out
-                      (cons (internal-definition-context-introduce ctx expanded 'remove)
+                      (cons (if add-fs-scope (add-fs-scope residual 'remove) residual)
                             out))]))
           (reverse out)])]))
 
