@@ -112,14 +112,14 @@
 
 ;; --- membership ----------------------------------------------------
 
-(: elem ((Eq a) => (-> a (-> (List a) Boolean))))
-(define (elem x xs)
+(: elem? ((Eq a) => (-> a (-> (List a) Boolean))))
+(define (elem? x xs)
   (match xs
     [(Nil)      #f]
-    [(Cons h t) (if (== x h) #t (elem x t))]))
+    [(Cons h t) (if (== x h) #t (elem? x t))]))
 
-(: not-elem ((Eq a) => (-> a (-> (List a) Boolean))))
-(define (not-elem x xs) (not (elem x xs)))
+(: not-elem? ((Eq a) => (-> a (-> (List a) Boolean))))
+(define (not-elem? x xs) (not (elem? x xs)))
 
 (: lookup ((Eq k) => (-> k (-> (List (Pair k v)) (Maybe v)))))
 (define (lookup k xs)
@@ -350,11 +350,11 @@
 
 (: union ((Eq a) => (-> (List a) (-> (List a) (List a)))))
 (define (union xs ys)
-  (append xs (filter (lambda (y) (not (elem y xs))) (nub ys))))
+  (append xs (filter (lambda (y) (not (elem? y xs))) (nub ys))))
 
 (: intersect ((Eq a) => (-> (List a) (-> (List a) (List a)))))
 (define (intersect xs ys)
-  (filter (lambda (x) (elem x ys)) xs))
+  (filter (lambda (x) (elem? x ys)) xs))
 
 ;; --- sorting by comparator / key -----------------------------------
 

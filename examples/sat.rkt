@@ -55,7 +55,7 @@
 (define (simplify l clauses)
   (map-maybe
     (lambda (c)
-      (if (elem l c)
+      (if (elem? l c)
         None
         (Some (filter (lambda (k) (not (== k (neg l)))) c))))
     clauses))

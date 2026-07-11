@@ -13,8 +13,8 @@
 (: r-shl Integer) (define r-shl (bit-shift-left  1 4))
 (: r-shr Integer) (define r-shr (bit-shift-right 16 2))
 
-(: r-test-t Boolean) (define r-test-t (bit-test 4 2))
-(: r-test-f Boolean) (define r-test-f (bit-test 4 0))
+(: r-test-t Boolean) (define r-test-t (bit-test? 4 2))
+(: r-test-f Boolean) (define r-test-f (bit-test? 4 0))
 
 (: r-set   Integer) (define r-set   (bit-set 0 3))
 (: r-clear Integer) (define r-clear (bit-clear 15 0))

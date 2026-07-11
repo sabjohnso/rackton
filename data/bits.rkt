@@ -48,8 +48,8 @@
 ;; --- single-bit operations -----------------------------------------
 ;; Bit positions are 0-indexed from the least-significant bit.
 
-(: bit-test (-> Integer (-> Integer Boolean)))
-(define (bit-test a i) (racket Boolean (a i) (bitwise-bit-set? a i)))
+(: bit-test? (-> Integer (-> Integer Boolean)))
+(define (bit-test? a i) (racket Boolean (a i) (bitwise-bit-set? a i)))
 
 (: bit-set (-> Integer (-> Integer Integer)))
 (define (bit-set a i) (racket Integer (a i) (bitwise-ior a (arithmetic-shift 1 i))))

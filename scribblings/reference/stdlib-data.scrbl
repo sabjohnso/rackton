@@ -64,7 +64,7 @@ non-negative inputs.
 }
 
 @deftogether[(
-  @defproc[(bit-test [a Integer] [i Integer]) Boolean]
+  @defproc[(bit-test? [a Integer] [i Integer]) Boolean]
   @defproc[(bit-set [a Integer] [i Integer]) Integer]
   @defproc[(bit-clear [a Integer] [i Integer]) Integer]
 )]{
@@ -288,13 +288,13 @@ Generic folds over any @racket[Foldable] container (the prelude's instances are 
 @defproc[(fold [t (t m)]) m]{
   Combines a foldable of @racket[Monoid] values into one (Haskell's @tt{fold} / @tt{mconcat}); requires @racket[(Monoid m)] and @racket[(Foldable t)].}
 
-@defproc[(any-of [p (-> a Boolean)] [t (t a)]) Boolean]{
+@defproc[(any-of? [p (-> a Boolean)] [t (t a)]) Boolean]{
   Returns true when @racket[p] holds for some element of the foldable; requires @racket[(Foldable t)].}
 
-@defproc[(all-of [p (-> a Boolean)] [t (t a)]) Boolean]{
+@defproc[(all-of? [p (-> a Boolean)] [t (t a)]) Boolean]{
   Returns true when @racket[p] holds for every element of the foldable; requires @racket[(Foldable t)].}
 
-@defproc[(elem-of [x a] [t (t a)]) Boolean]{
+@defproc[(elem-of? [x a] [t (t a)]) Boolean]{
   Tests membership of @racket[x] in any foldable using @racket[==]; requires @racket[(Eq a)] and @racket[(Foldable t)].}
 
 
@@ -776,9 +776,9 @@ total functions.
 
 @defproc[(empty? [xs (List a)]) Boolean]{True when @racket[xs] is @racket[Nil].}
 
-@defproc[(elem [x a] [xs (List a)]) Boolean]{True when @racket[x] occurs in @racket[xs] (by @racket[Eq]).}
+@defproc[(elem? [x a] [xs (List a)]) Boolean]{True when @racket[x] occurs in @racket[xs] (by @racket[Eq]).}
 
-@defproc[(not-elem [x a] [xs (List a)]) Boolean]{True when @racket[x] does not occur in @racket[xs] (by @racket[Eq]).}
+@defproc[(not-elem? [x a] [xs (List a)]) Boolean]{True when @racket[x] does not occur in @racket[xs] (by @racket[Eq]).}
 
 @defproc[(lookup [k k] [xs (List (Pair k v))]) (Maybe v)]{Look up the first value keyed by @racket[k] in an association list.}
 

@@ -18,8 +18,8 @@
 (: r-null1 Boolean)           (define r-null1 (empty? (list 1)))
 
 ;; ----- membership --------------------------------------
-(: r-elem Boolean)            (define r-elem (elem 2 (list 1 2 3)))
-(: r-notelem Boolean)         (define r-notelem (not-elem 9 (list 1 2 3)))
+(: r-elem Boolean)            (define r-elem (elem? 2 (list 1 2 3)))
+(: r-notelem Boolean)         (define r-notelem (not-elem? 9 (list 1 2 3)))
 (: r-lookup (Maybe String))   (define r-lookup
                                 (lookup 2 (list (Pair 1 "a") (Pair 2 "b"))))
 (: r-elemidx (Maybe Integer)) (define r-elemidx (elem-index 3 (list 1 2 3)))
