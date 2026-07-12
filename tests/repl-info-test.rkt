@@ -89,7 +89,9 @@
   (define out (info-output 'Integer))
   (check-false (regexp-match #rx"unbound" out))
   (check-regexp-match #rx"primitive type" out)
-  (check-regexp-match #rx"\\(Num Integer\\)" out)
+  ;; `Num` is a constraint synonym (no instance), so ,info lists the
+  ;; underlying lattice nodes it expands to, e.g. `(Ord Integer)`.
+  (check-regexp-match #rx"\\(Ord Integer\\)" out)
   (check-regexp-match #rx"\\(Eq Integer\\)" out))
 
 (test-case ",info recognizes the other primitive types"
@@ -126,8 +128,8 @@
   ;; past the `implements:` label (which itself sits at column 2).
   (define out (info-output 'Integer))
   (check-regexp-match #px"\n  implements:\n" out)
-  (check-regexp-match #px"\n    \\(Num Integer\\)" out)
-  (check-false (regexp-match #px"\n  \\(Num Integer\\)" out)))
+  (check-regexp-match #px"\n    \\(Ord Integer\\)" out)
+  (check-false (regexp-match #px"\n  \\(Ord Integer\\)" out)))
 
 (test-case ",info indents a type ctor's implements list under the label"
   (define out (info-output 'List))

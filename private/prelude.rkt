@@ -60,31 +60,106 @@
                          (if (<= x y) (if (<= y z) (<= x z) #t) #t))]
          [totality     (All ([x : a] [y : a]) (if (<= x y) #t (<= y x)))]))
 
-    ;; --- Num ----------------------------------------------------
+    ;; --- Num, decomposed into an algebraic lattice --------------
+    ;;
+    ;; `Num` was a single protocol carrying `+ - * abs negate`.  It is now
+    ;; a constraint SYNONYM over a lattice whose axes — the operation, its
+    ;; identity, its inverse, and commutativity — are independent
+    ;; protocols.  This lets `Float` (and `Complex`) be modelled honestly:
+    ;; their `+` and `*` have an identity and, additively, a two-sided
+    ;; inverse, but are NOT associative under IEEE rounding, so they
+    ;; instantiate the magma / unital-magma / loop nodes and stop below
+    ;; the semigroup/monoid/group nodes.  The exact types (Integer /
+    ;; Rational / ComplexExact) reach the abelian-group node.
+    ;;
+    ;; The law-free MEET nodes (Monoid, Group, Abelian-Group, and their
+    ;; multiplicative twins) are synonyms, not protocols, so a type opts
+    ;; into them by satisfying their components rather than by an empty
+    ;; instance.  Every law that used to live on `Num` is attached to the
+    ;; node that owns the relevant operation; ring distributivity (which
+    ;; links `+` and `*`) is dropped here — it belongs to a future
+    ;; `Semiring` node, not to either magma.  Equality is assumed via
+    ;; `(Eq a)` to state a law, never made a superclass.
 
-    (protocol (Num a)
-      (: +      (-> a (-> a a)))
-      (: -      (-> a (-> a a)))
-      (: *      (-> a (-> a a)))
-      ;; Abs and negate as Num methods, polymorphic over
-      ;; the numeric tower (Integer / Float / Rational / Complex).
-      (: abs    (-> a a))
-      (: negate (-> a a))
-      ;; `+` and `*` form commutative monoids that distribute, and
-      ;; `negate` is the additive inverse witnessed by `-`.  Stating the
-      ;; equations needs equality, so the laws assume `(Eq a)` without
-      ;; making it a superclass of Num.
+    ;; Additive protocols (operation + / identity zero / inverse negate).
+    (protocol (Additive-Magma a)
+      (: + (-> a (-> a a))))
+
+    (protocol (Additive-Semigroup [a => Additive-Magma])
       :laws
-        ([add-commutative  ((Eq a) => (All ([x : a] [y : a]) (== (+ x y) (+ y x))))]
-         [add-associative  ((Eq a) => (All ([x : a] [y : a] [z : a])
-                             (== (+ (+ x y) z) (+ x (+ y z)))))]
-         [mul-commutative  ((Eq a) => (All ([x : a] [y : a]) (== (* x y) (* y x))))]
-         [mul-associative  ((Eq a) => (All ([x : a] [y : a] [z : a])
-                             (== (* (* x y) z) (* x (* y z)))))]
-         [distributive     ((Eq a) => (All ([x : a] [y : a] [z : a])
-                             (== (* x (+ y z)) (+ (* x y) (* x z)))))]
-         [subtract-negate  ((Eq a) => (All ([x : a] [y : a])
-                             (== (- x y) (+ x (negate y)))))]))
+        ([add-associative ((Eq a) =>
+           (All ([x : a] [y : a] [z : a])
+             (== (+ (+ x y) z) (+ x (+ y z)))))]))
+
+    (protocol (Additive-Unital-Magma [a => Additive-Magma])
+      (: zero a)
+      :laws
+        ([add-left-identity  ((Eq a) => (All ([x : a]) (== (+ zero x) x)))]
+         [add-right-identity ((Eq a) => (All ([x : a]) (== (+ x zero) x)))]))
+
+    (protocol (Additive-Loop [a => Additive-Unital-Magma])
+      (: negate (-> a a))
+      (: -      (-> a (-> a a)))
+      :laws
+        ([add-left-inverse  ((Eq a) => (All ([x : a]) (== (+ (negate x) x) zero)))]
+         [add-right-inverse ((Eq a) => (All ([x : a]) (== (+ x (negate x)) zero)))]
+         [subtract-negate   ((Eq a) => (All ([x : a] [y : a])
+                              (== (- x y) (+ x (negate y)))))]))
+
+    (protocol (Additive-Commutative-Loop [a => Additive-Loop])
+      :laws
+        ([add-commutative ((Eq a) => (All ([x : a] [y : a]) (== (+ x y) (+ y x))))]))
+
+    ;; Multiplicative protocols (operation * / identity one).  No numeric
+    ;; type has a total reciprocal (`recip 0` is undefined), so the
+    ;; multiplicative loop/group nodes are omitted — division lives on
+    ;; `Fractional`.
+    (protocol (Multiplicative-Magma a)
+      (: * (-> a (-> a a))))
+
+    (protocol (Multiplicative-Semigroup [a => Multiplicative-Magma])
+      :laws
+        ([mul-associative ((Eq a) =>
+           (All ([x : a] [y : a] [z : a])
+             (== (* (* x y) z) (* x (* y z)))))]))
+
+    (protocol (Multiplicative-Unital-Magma [a => Multiplicative-Magma])
+      (: one a)
+      :laws
+        ([mul-left-identity  ((Eq a) => (All ([x : a]) (== (* one x) x)))]
+         [mul-right-identity ((Eq a) => (All ([x : a]) (== (* x one) x)))]))
+
+    (protocol (Multiplicative-Commutative-Unital-Magma [a => Multiplicative-Unital-Magma])
+      :laws
+        ([mul-commutative ((Eq a) => (All ([x : a] [y : a]) (== (* x y) (* y x))))]))
+
+    ;; `abs` fits no group axis (it needs order or a norm), so it is its
+    ;; own protocol.
+    (protocol (Abs a)
+      (: abs (-> a a)))
+
+    ;; Meet nodes — synonyms over the protocols above (no instances).
+    ;; Each lists only the MAXIMAL node on every branch; superclass
+    ;; entailment supplies the rest (e.g. Additive-Loop already entails
+    ;; Additive-Unital-Magma, which entails Additive-Magma).
+    (define-constraint (Additive-Monoid a)
+      (Additive-Semigroup a) (Additive-Unital-Magma a))
+    (define-constraint (Additive-Group a)
+      (Additive-Semigroup a) (Additive-Loop a))
+    (define-constraint (Additive-Abelian-Group a)
+      (Additive-Semigroup a) (Additive-Commutative-Loop a))
+    (define-constraint (Multiplicative-Monoid a)
+      (Multiplicative-Semigroup a) (Multiplicative-Unital-Magma a))
+    (define-constraint (Multiplicative-Commutative-Monoid a)
+      (Multiplicative-Semigroup a) (Multiplicative-Commutative-Unital-Magma a))
+
+    ;; `Num` = an additive commutative loop + a multiplicative commutative
+    ;; unital magma + abs.  Every former `Num` type satisfies it; the
+    ;; exact types do so through their stronger instances.
+    (define-constraint (Num a)
+      (Additive-Commutative-Loop a)
+      (Multiplicative-Commutative-Unital-Magma a)
+      (Abs a))
 
     ;; --- Show ---------------------------------------------------
 
@@ -96,12 +171,24 @@
     ;; only the type discipline matters here.  The actual runtime
     ;; implementations live in prelude-runtime.rkt.
 
-    (instance (Num Integer)
-      (define (+ x y) (racket Integer (x y) 0))
-      (define (- x y) (racket Integer (x y) 0))
-      (define (* x y) (racket Integer (x y) 0))
-      (define (abs    x) (racket Integer (x) 0))
-      (define (negate x) (racket Integer (x) 0)))
+    ;; Integer: additive abelian group, multiplicative commutative monoid.
+    (instance (Additive-Magma Integer)
+      (define (+ x y) (racket Integer (x y) 0)))
+    (instance (Additive-Semigroup Integer))
+    (instance (Additive-Unital-Magma Integer)
+      (define zero (racket Integer () 0)))
+    (instance (Additive-Loop Integer)
+      (define (negate x) (racket Integer (x) 0))
+      (define (- x y) (racket Integer (x y) 0)))
+    (instance (Additive-Commutative-Loop Integer))
+    (instance (Multiplicative-Magma Integer)
+      (define (* x y) (racket Integer (x y) 0)))
+    (instance (Multiplicative-Semigroup Integer))
+    (instance (Multiplicative-Unital-Magma Integer)
+      (define one (racket Integer () 1)))
+    (instance (Multiplicative-Commutative-Unital-Magma Integer))
+    (instance (Abs Integer)
+      (define (abs x) (racket Integer (x) 0)))
 
     (instance (Eq Integer)
       (define (== x y) (racket Boolean (x y) #f)))
@@ -1400,12 +1487,23 @@
 
     ;; --- Float type + instances ----------------------------
 
-    (instance (Num Float)
-      (define (+ x y) (racket Float (x y) 0.0))
-      (define (- x y) (racket Float (x y) 0.0))
-      (define (* x y) (racket Float (x y) 0.0))
-      (define (abs    x) (racket Float (x) 0.0))
-      (define (negate x) (racket Float (x) 0.0)))
+    ;; Float: additive commutative loop, multiplicative commutative unital
+    ;; magma.  IEEE `+`/`*` are not associative, so no semigroup node.
+    (instance (Additive-Magma Float)
+      (define (+ x y) (racket Float (x y) 0.0)))
+    (instance (Additive-Unital-Magma Float)
+      (define zero (racket Float () 0.0)))
+    (instance (Additive-Loop Float)
+      (define (negate x) (racket Float (x) 0.0))
+      (define (- x y) (racket Float (x y) 0.0)))
+    (instance (Additive-Commutative-Loop Float))
+    (instance (Multiplicative-Magma Float)
+      (define (* x y) (racket Float (x y) 0.0)))
+    (instance (Multiplicative-Unital-Magma Float)
+      (define one (racket Float () 1.0)))
+    (instance (Multiplicative-Commutative-Unital-Magma Float))
+    (instance (Abs Float)
+      (define (abs x) (racket Float (x) 0.0)))
 
     (instance (Eq Float)
       (define (== x y) (racket Boolean (x y) #f)))
@@ -1416,7 +1514,11 @@
     (instance (Show Float)
       (define (show x) (racket String (x) "")))
 
-    (protocol (Fractional [a => Num])
+    ;; `Num` is now a synonym and cannot sit in a superclass position, so
+    ;; the downstream numeric protocols name the concrete lattice nodes
+    ;; that `Num` expands to.
+    (protocol (Fractional [a => Additive-Commutative-Loop
+                                Multiplicative-Commutative-Unital-Magma Abs])
       (: float-div (-> a (-> a a))))
 
     (instance (Fractional Float)
@@ -1466,12 +1568,25 @@
       (define (show x) (racket String (x) "")))
 
     ;; Num / Fractional for Rational
-    (instance (Num Rational)
-      (define (+ x y) (racket Rational (x y) #f))
-      (define (- x y) (racket Rational (x y) #f))
-      (define (* x y) (racket Rational (x y) #f))
-      (define (abs    x) (racket Rational (x) #f))
-      (define (negate x) (racket Rational (x) #f)))
+    ;; Rational: exact — additive abelian group, multiplicative
+    ;; commutative monoid.
+    (instance (Additive-Magma Rational)
+      (define (+ x y) (racket Rational (x y) #f)))
+    (instance (Additive-Semigroup Rational))
+    (instance (Additive-Unital-Magma Rational)
+      (define zero (racket Rational () #f)))
+    (instance (Additive-Loop Rational)
+      (define (negate x) (racket Rational (x) #f))
+      (define (- x y) (racket Rational (x y) #f)))
+    (instance (Additive-Commutative-Loop Rational))
+    (instance (Multiplicative-Magma Rational)
+      (define (* x y) (racket Rational (x y) #f)))
+    (instance (Multiplicative-Semigroup Rational))
+    (instance (Multiplicative-Unital-Magma Rational)
+      (define one (racket Rational () #f)))
+    (instance (Multiplicative-Commutative-Unital-Magma Rational))
+    (instance (Abs Rational)
+      (define (abs x) (racket Rational (x) #f)))
     (instance (Fractional Rational)
       (define (float-div x y) (racket Rational (x y) #f)))
 
@@ -1481,12 +1596,23 @@
     (instance (Show Complex)
       (define (show x) (racket String (x) "")))
 
-    (instance (Num Complex)
-      (define (+ x y) (racket Complex (x y) #f))
-      (define (- x y) (racket Complex (x y) #f))
-      (define (* x y) (racket Complex (x y) #f))
-      (define (abs    x) (racket Complex (x) #f))
-      (define (negate x) (racket Complex (x) #f)))
+    ;; Complex: float-backed — additive commutative loop, multiplicative
+    ;; commutative unital magma (non-associative, like Float).
+    (instance (Additive-Magma Complex)
+      (define (+ x y) (racket Complex (x y) #f)))
+    (instance (Additive-Unital-Magma Complex)
+      (define zero (racket Complex () #f)))
+    (instance (Additive-Loop Complex)
+      (define (negate x) (racket Complex (x) #f))
+      (define (- x y) (racket Complex (x y) #f)))
+    (instance (Additive-Commutative-Loop Complex))
+    (instance (Multiplicative-Magma Complex)
+      (define (* x y) (racket Complex (x y) #f)))
+    (instance (Multiplicative-Unital-Magma Complex)
+      (define one (racket Complex () #f)))
+    (instance (Multiplicative-Commutative-Unital-Magma Complex))
+    (instance (Abs Complex)
+      (define (abs x) (racket Complex (x) #f)))
     (instance (Fractional Complex)
       (define (float-div x y) (racket Complex (x y) #f)))
 
@@ -1513,16 +1639,30 @@
       (define (== x y) (racket Boolean (x y) #f)))
     (instance (Show ComplexExact)
       (define (show x) (racket String (x) "")))
-    (instance (Num ComplexExact)
-      (define (+ x y) (racket ComplexExact (x y) #f))
-      (define (- x y) (racket ComplexExact (x y) #f))
-      (define (* x y) (racket ComplexExact (x y) #f))
-      (define (abs    x) (racket ComplexExact (x) #f))
-      (define (negate x) (racket ComplexExact (x) #f)))
+    ;; ComplexExact: exact Gaussian integers — additive abelian group,
+    ;; multiplicative commutative monoid.
+    (instance (Additive-Magma ComplexExact)
+      (define (+ x y) (racket ComplexExact (x y) #f)))
+    (instance (Additive-Semigroup ComplexExact))
+    (instance (Additive-Unital-Magma ComplexExact)
+      (define zero (racket ComplexExact () #f)))
+    (instance (Additive-Loop ComplexExact)
+      (define (negate x) (racket ComplexExact (x) #f))
+      (define (- x y) (racket ComplexExact (x y) #f)))
+    (instance (Additive-Commutative-Loop ComplexExact))
+    (instance (Multiplicative-Magma ComplexExact)
+      (define (* x y) (racket ComplexExact (x y) #f)))
+    (instance (Multiplicative-Semigroup ComplexExact))
+    (instance (Multiplicative-Unital-Magma ComplexExact)
+      (define one (racket ComplexExact () #f)))
+    (instance (Multiplicative-Commutative-Unital-Magma ComplexExact))
+    (instance (Abs ComplexExact)
+      (define (abs x) (racket ComplexExact (x) #f)))
 
     ;; --- Integral class ----------------------------
 
-    (protocol (Integral [a => Num])
+    (protocol (Integral [a => Additive-Commutative-Loop
+                               Multiplicative-Commutative-Unital-Magma Abs])
       (: div  (-> a (-> a a)))
       (: mod  (-> a (-> a a)))
       (: quot (-> a (-> a a)))
@@ -1551,7 +1691,8 @@
 
     ;; --- Real class --------------------------------
 
-    (protocol (Real [a => Num Ord])
+    (protocol (Real [a => Additive-Commutative-Loop
+                           Multiplicative-Commutative-Unital-Magma Abs Ord])
       (: to-rational (-> a Rational))
       ;; `to-rational` is order-preserving (monotone): it embeds the type
       ;; into the rationals respecting `<=`.  Only monotonicity is stated

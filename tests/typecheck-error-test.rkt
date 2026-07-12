@@ -221,3 +221,22 @@
               (: ok (-> Integer Integer))
               (define (ok x) (+ x 1)))
            (variable-reference->namespace (#%variable-reference))))))
+
+;; Float is a commutative LOOP additively (identity + inverse, but its
+;; IEEE `+` is not associative), so it instantiates no
+;; Additive-Semigroup.  A function that demands associativity must reject
+;; Float, while accepting an exact type like Integer.
+(test-case "Float is rejected where Additive-Semigroup is required"
+  (check-rackton-compile-error
+   (: needs-assoc ((Additive-Semigroup a) => (-> a a)))
+   (define (needs-assoc x) x)
+   (define bad (needs-assoc 1.0))))       ; Float has no Additive-Semigroup
+
+(test-case "an exact type satisfies Additive-Semigroup"
+  (check-not-exn
+   (lambda ()
+     (eval #'(rackton
+              (: needs-assoc ((Additive-Semigroup a) => (-> a a)))
+              (define (needs-assoc x) x)
+              (define good (needs-assoc 1)))   ; Integer is a semigroup
+           (variable-reference->namespace (#%variable-reference))))))

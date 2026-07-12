@@ -23,6 +23,23 @@
 (: gen-list-int (Gen (List Integer)))
 (define gen-list-int (gen-list gi))
 
+;; Rational generator: n/d with a non-zero denominator.
+(: gr (Gen Rational))
+(define gr
+  (fmap (lambda (p) (match p [(Pair n d) (make-rational n (if (== d 0) 1 d))]))
+        (gen-pair gi gi)))
+
+;; Float generator.  Integer-valued floats suffice for the loop laws
+;; below (identity / inverse / commutativity hold exactly for every
+;; finite float); non-associativity is pinned separately by a fixed
+;; fractional counterexample, since these floats never trigger rounding.
+(: gf (Gen Float))
+(define gf (fmap integer->float gi))
+
+;; Conjunction over a list (prelude `and` is binary/curried).
+(: andl (-> (List Boolean) Boolean))
+(define (andl xs) (foldr (lambda (a b) (if a b #f)) #t xs))
+
 ;; ----- local equalities (Identity has no prelude Eq instance) -------
 
 (: eq-id (-> (Identity Integer) (-> (Identity Integer) Boolean)))
@@ -83,6 +100,72 @@
                       (lambda (n)
                         (eq-id3 (duplicate (duplicate (Identity n)))
                                 (fmap duplicate (duplicate (Identity n)))))))
+
+    ;; ===== Numeric lattice laws ====================================
+    ;; The `:laws` on the additive/multiplicative protocols are only
+    ;; type-checked at prelude-build time; these drive them as runnable
+    ;; properties over concrete instances.
+
+    ;; --- Integer: additive abelian group -----------------------
+    (it-prop "Integer + associative"
+             (for-all (gen-pair gi (gen-pair gi gi))
+                      (lambda (p) (match p [(Pair x (Pair y z))
+                        (== (+ (+ x y) z) (+ x (+ y z)))]))))
+    (it-prop "Integer + identity (both sides) and inverse"
+             (for-all gi (lambda (x)
+                (andl (list (== (+ zero x) x) (== (+ x zero) x)
+                            (== (+ (negate x) x) zero) (== (+ x (negate x)) zero))))))
+    (it-prop "Integer subtract-negate"
+             (for-all (gen-pair gi gi)
+                      (lambda (p) (match p [(Pair x y) (== (- x y) (+ x (negate y)))]))))
+    (it-prop "Integer + commutative"
+             (for-all (gen-pair gi gi)
+                      (lambda (p) (match p [(Pair x y) (== (+ x y) (+ y x))]))))
+    ;; --- Integer: multiplicative commutative monoid ------------
+    (it-prop "Integer * associative"
+             (for-all (gen-pair gi (gen-pair gi gi))
+                      (lambda (p) (match p [(Pair x (Pair y z))
+                        (== (* (* x y) z) (* x (* y z)))]))))
+    (it-prop "Integer * identity (both sides) and commutative"
+             (for-all (gen-pair gi gi)
+                      (lambda (p) (match p [(Pair x y)
+                        (andl (list (== (* one x) x) (== (* x one) x) (== (* x y) (* y x))))]))))
+
+    ;; --- Rational: additive abelian group, multiplicative comm monoid ---
+    (it-prop "Rational + associative and commutative"
+             (for-all (gen-pair gr (gen-pair gr gr))
+                      (lambda (p) (match p [(Pair x (Pair y z))
+                        (andl (list (== (+ (+ x y) z) (+ x (+ y z))) (== (+ x y) (+ y x))))]))))
+    (it-prop "Rational + identity and inverse; subtract-negate"
+             (for-all (gen-pair gr gr)
+                      (lambda (p) (match p [(Pair x y)
+                        (andl (list (== (+ zero x) x) (== (+ x (negate x)) zero)
+                                    (== (- x y) (+ x (negate y)))))]))))
+    (it-prop "Rational * associative, identity, commutative"
+             (for-all (gen-pair gr (gen-pair gr gr))
+                      (lambda (p) (match p [(Pair x (Pair y z))
+                        (andl (list (== (* (* x y) z) (* x (* y z)))
+                                    (== (* one x) x) (== (* x y) (* y x))))]))))
+
+    ;; --- Float: commutative LOOP (identity + inverse + commutativity,
+    ;; but NOT associativity) and commutative unital magma on * ----
+    (it-prop "Float + identity, inverse, commutative (loop, not semigroup)"
+             (for-all (gen-pair gf gf)
+                      (lambda (p) (match p [(Pair x y)
+                        (andl (list (== (+ zero x) x) (== (+ x zero) x)
+                                    (== (+ (negate x) x) zero) (== (+ x (negate x)) zero)
+                                    (== (- x y) (+ x (negate y)))
+                                    (== (+ x y) (+ y x))))]))))
+    (it-prop "Float * identity (both sides) and commutative"
+             (for-all (gen-pair gf gf)
+                      (lambda (p) (match p [(Pair x y)
+                        (andl (list (== (* one x) x) (== (* x one) x) (== (* x y) (* y x))))]))))
+    ;; The design's central claim: Float `+` is NOT associative, which is
+    ;; why Float instantiates no Additive-Semigroup.  A fixed fractional
+    ;; counterexample (an example test, per ADD) pins that omission.
+    (it "Float + is not associative (justifies no semigroup instance)"
+        (all-checks
+          (list (check-false (== (+ (+ 0.1 0.2) 0.3) (+ 0.1 (+ 0.2 0.3)))))))
 
     ;; Semigroup/Monoid laws on SHIPPED instances.  Until now the only
     ;; semigroup-laws invocation was against a deliberately-broken test

@@ -36,22 +36,35 @@
 (instance (Show Natural)
   (define (show x) (match x [(Natural n) (show n)])))
 
-;; --- Num -----------------------------------------------------------
-;; Addition and multiplication stay within the naturals; subtraction
-;; and negate are partial and panic on underflow (Haskell semantics).
-
-(instance (Num Natural)
+;; --- Num (decomposed into the algebraic lattice) -------------------
+;; Addition and multiplication stay within the naturals and are exact,
+;; so Natural reaches the additive abelian-group and multiplicative
+;; commutative-monoid nodes; subtraction and negate are partial and
+;; panic on underflow (Haskell semantics), which is a lawful (if partial)
+;; inverse.
+(instance (Additive-Magma Natural)
   (define (+ a b)
-    (match a [(Natural x) (match b [(Natural y) (Natural (+ x y))])]))
-  (define (* a b)
-    (match a [(Natural x) (match b [(Natural y) (Natural (* x y))])]))
+    (match a [(Natural x) (match b [(Natural y) (Natural (+ x y))])])))
+(instance (Additive-Semigroup Natural))
+(instance (Additive-Unital-Magma Natural)
+  (define zero (Natural 0)))
+(instance (Additive-Loop Natural)
+  (define (negate x)
+    (match x [(Natural n)
+              (if (== n 0) (Natural 0) (panic "negate of a positive Natural"))]))
   (define (- a b)
     (match a [(Natural x)
               (match b [(Natural y)
                         (if (< x y)
                             (panic "Natural subtraction below zero")
-                            (Natural (- x y)))])]))
-  (define (abs x) x)
-  (define (negate x)
-    (match x [(Natural n)
-              (if (== n 0) (Natural 0) (panic "negate of a positive Natural"))])))
+                            (Natural (- x y)))])])))
+(instance (Additive-Commutative-Loop Natural))
+(instance (Multiplicative-Magma Natural)
+  (define (* a b)
+    (match a [(Natural x) (match b [(Natural y) (Natural (* x y))])])))
+(instance (Multiplicative-Semigroup Natural))
+(instance (Multiplicative-Unital-Magma Natural)
+  (define one (Natural 1)))
+(instance (Multiplicative-Commutative-Unital-Magma Natural))
+(instance (Abs Natural)
+  (define (abs x) x))

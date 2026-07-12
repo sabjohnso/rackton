@@ -154,6 +154,7 @@
  ;; other modules register their pure / mempty / … here and call sites
  ;; look them up by result-type tag (Enabler A).
  $dispatch:pure $dispatch:mempty $dispatch:pi $dispatch:integer->enum
+ $dispatch:zero $dispatch:one
  $dispatch:get-st $dispatch:put-st $dispatch:modify-st
  $dispatch:ask-en $dispatch:tell-w $dispatch:throw-e
  $dispatch:await-c $dispatch:yield-c $dispatch:lift-io $dispatch:lift
@@ -164,6 +165,9 @@
  ;; (transformer $pure / $flatmap / mtl impls are regenerated in the
  ;; carved rackton/control/monad/* modules.)
  $mempty:String $mempty:List
+ ;; Additive/multiplicative identities (return-typed, like mempty/pi).
+ $zero:Integer $zero:Float $zero:Rational $zero:Complex $zero:ComplexExact
+ $one:Integer  $one:Float  $one:Rational  $one:Complex  $one:ComplexExact
  $integer->enum:Integer
  $ident:-> $arr:-> $arrow-app:->
  $mk-prod:Pair $inj-left:Either $inj-right:Either
@@ -879,6 +883,8 @@
 (define $dispatch:pure      (make-hasheq))
 (define $dispatch:mempty    (make-hasheq))
 (define $dispatch:pi        (make-hasheq))
+(define $dispatch:zero      (make-hasheq))  ; Additive-Unital-Magma.zero
+(define $dispatch:one       (make-hasheq))  ; Multiplicative-Unital-Magma.one
 (define $dispatch:get-st    (make-hasheq))
 (define $dispatch:put-st    (make-hasheq))
 (define $dispatch:modify-st (make-hasheq))
@@ -918,6 +924,21 @@
 ;; Sum / Product moved to rackton/data/monoid (Phase 2 slim).
 (define $mempty:String  "")
 (define $mempty:List    Nil)
+
+;; ----- Additive/multiplicative identities (return-typed) ----------
+;; `zero` / `one`, resolved at each call site by the expected type, like
+;; `pi` / `mempty`.  Registrations are with the other return-typed
+;; methods at the end of the file.
+(define $zero:Integer      0)
+(define $one:Integer       1)
+(define $zero:Float        0.0)
+(define $one:Float         1.0)
+(define $zero:Rational     0)
+(define $one:Rational      1)
+(define $zero:Complex      (rkt:make-rectangular 0.0 0.0))
+(define $one:Complex       (rkt:make-rectangular 1.0 0.0))
+(define $zero:ComplexExact 0)
+(define $one:ComplexExact  1)
 
 ;; ----- Enum integer->enum (return-typed) --------------------------
 ;; For Integer the integer→value direction is the identity.
@@ -2500,6 +2521,17 @@
 (register-instance-method! $dispatch:mempty 'String  $mempty:String)
 (register-instance-method! $dispatch:mempty 'List    $mempty:List)
 ;; Sum / Product mempty register themselves from rackton/data/monoid.
+
+(register-instance-method! $dispatch:zero 'Integer      $zero:Integer)
+(register-instance-method! $dispatch:zero 'Float        $zero:Float)
+(register-instance-method! $dispatch:zero 'Rational     $zero:Rational)
+(register-instance-method! $dispatch:zero 'Complex      $zero:Complex)
+(register-instance-method! $dispatch:zero 'ComplexExact $zero:ComplexExact)
+(register-instance-method! $dispatch:one  'Integer      $one:Integer)
+(register-instance-method! $dispatch:one  'Float        $one:Float)
+(register-instance-method! $dispatch:one  'Rational     $one:Rational)
+(register-instance-method! $dispatch:one  'Complex      $one:Complex)
+(register-instance-method! $dispatch:one  'ComplexExact $one:ComplexExact)
 
 (register-instance-method! $dispatch:integer->enum 'Integer $integer->enum:Integer)
 
