@@ -901,8 +901,14 @@
           [(None)   z]
           [(Some x) (f x z)])))
 
-    (: sum ((Foldable t) => (-> (t Integer) Integer)))
-    (define (sum xs) (foldr (lambda (a b) (+ a b)) 0 xs))
+    ;; `sum` seeds a fold from the additive identity `zero`, so it works
+    ;; over any additive unital magma, not only Integer.  Like `mconcat`,
+    ;; the polymorphic seed makes this a needs-dict free function: the
+    ;; elaborator prepends the resolved `zero` for `a`, and the runtime
+    ;; impl (prelude-runtime) receives it as a leading argument.  No body
+    ;; is given here because Rackton cannot yet rewrite a user-written
+    ;; needs-dict body (a bare `zero` in the fold seed mis-threads).
+    (: sum ((Additive-Unital-Magma a) (Foldable t) => (-> (t a) a)))
 
     ;; --- Traversable -------------------------------------------
     ;;

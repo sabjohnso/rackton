@@ -167,6 +167,18 @@
         (all-checks
           (list (check-false (== (+ (+ 0.1 0.2) 0.3) (+ 0.1 (+ 0.2 0.3)))))))
 
+    ;; --- sum: monoid homomorphism from ++ to + -----------------
+    ;; `sum` seeds a fold from the polymorphic `zero`.  Over an
+    ;; associative element type it is a homomorphism from list
+    ;; concatenation to `+`, which subsumes the empty-seed case
+    ;; (xs = Nil gives sum ys = zero + sum ys) and the singleton case.
+    ;; Stated over Integer (genuinely associative); Float `+` is not
+    ;; associative, so Float's sum stays an example test elsewhere.
+    (it-prop "sum (xs ++ ys) = sum xs + sum ys over Integer"
+             (for-all (gen-pair gen-list-int gen-list-int)
+                      (lambda (p) (match p [(Pair xs ys)
+                        (== (sum (append xs ys)) (+ (sum xs) (sum ys)))]))))
+
     ;; Semigroup/Monoid laws on SHIPPED instances.  Until now the only
     ;; semigroup-laws invocation was against a deliberately-broken test
     ;; type (to prove the bundle catches failure); associativity of

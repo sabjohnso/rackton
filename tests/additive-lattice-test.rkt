@@ -71,6 +71,41 @@
 (: gprod-int Integer)
 (define gprod-int (gprod 6 7))
 
+;; `sum` seeds from the polymorphic `zero`, so it admits any additive
+;; unital magma — Float as well as Integer — not just Integer.
+(: float-sum Float)
+(define float-sum (sum (Cons 1.0 (Cons 2.0 (Cons 3.0 Nil)))))
+
+(: int-sum Integer)
+(define int-sum (sum (Cons 1 (Cons 2 (Cons 3 Nil)))))
+
+;; The empty fold returns the threaded seed directly, so it witnesses
+;; that the elaborator prepended the CORRECT polymorphic `zero` (Float's
+;; 0.0, not a stray Integer 0) — a non-empty list's inner `+` would mask
+;; a wrong seed.
+(: empty-float-sum Float)
+(define empty-float-sum (sum (ann Nil (List Float))))
+
+(: empty-int-sum Integer)
+(define empty-int-sum (sum (ann Nil (List Integer))))
+
+;; sum reaches an exact non-Integer tower member (Rational), backing the
+;; "any additive unital magma" claim beyond Float/Integer.
+(: rat-sum Rational)
+(define rat-sum (sum (Cons (make-rational 1 2) (Cons (make-rational 1 3) Nil))))
+
+;; A polymorphic wrapper keeps `a` open and re-calls `sum`, so the
+;; resolved `zero` must thread through a second needs-dict boundary
+;; rather than resolve at a leaf literal.
+(: total ((Additive-Unital-Magma a) (Foldable t) => (-> (t a) a)))
+(define (total xs) (sum xs))
+
+(: multihop-int Integer)
+(define multihop-int (total (Cons 4 (Cons 5 Nil))))
+
+(: multihop-float Float)
+(define multihop-float (total (Cons 1.5 (Cons 2.5 Nil))))
+
 (: suite (List Test))
 (define suite
   (list
@@ -98,7 +133,18 @@
         (all-checks
           (list (check-equal? gsum-int 7)
                 (check-equal? gsum-rat (make-rational 5 6))
-                (check-equal? gprod-int 42))))))
+                (check-equal? gprod-int 42))))
+    (it "sum seeds from zero, admitting Float and Integer"
+        (all-checks
+          (list (check-equal? float-sum 6.0)
+                (check-equal? int-sum 6)
+                (check-equal? empty-float-sum 0.0)
+                (check-equal? empty-int-sum 0)
+                (check-equal? rat-sum (make-rational 5 6)))))
+    (it "sum's zero threads through a polymorphic wrapper (multi-hop)"
+        (all-checks
+          (list (check-equal? multihop-int 9)
+                (check-equal? multihop-float 4.0))))))
 
 (: test-main (IO Unit))
 (define test-main (run-suite "additive lattice" suite))

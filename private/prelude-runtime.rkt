@@ -2187,15 +2187,19 @@
   (foldr (lambda (_x n) (rkt:+ n 1)) 0 xs))
 (define (default-to-list xs)
   (foldr (lambda (x acc) (Cons x acc)) Nil xs))
-(define (sum xs)
-  (foldr (lambda (a b) (rkt:+ a b)) 0 xs))
+;; `sum` is a needs-dict free function (like `mconcat`): the elaborator
+;; prepends the resolved additive identity `zero` for `a` as a leading
+;; argument, and the inner `+` dispatches on its first argument (the fold
+;; element) so it stays generic over the numeric tower.
+(define/curried (sum zero-impl xs)
+  (foldr (lambda (a b) (+ a b)) zero-impl xs))
 
 ;; ----- mconcat (free function with needs-dict signature) ----------
 ;; Receives the resolved `mempty` for `a` as a leading argument (the
 ;; elaborator inserts it at every call site based on the free-
 ;; function detection in var-dict-requirements).  Inner `mappend`
-;; calls dispatch on the running accumulator's tag and remain
-;; generic.
+;; calls dispatch on their first argument (the fold element) and
+;; remain generic.
 (define/curried (mconcat mempty-impl xs)
   (foldr (lambda (x acc) (mappend x acc)) mempty-impl xs))
 
