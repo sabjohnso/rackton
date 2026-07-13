@@ -24,7 +24,7 @@
 
 (: todo-file (IO String))
 (define todo-file
-  (do [maybe <- (getenv "TODO_FILE")]
+  (let& ([maybe (getenv "TODO_FILE")])
     (pure (match maybe
             [(None)   "./todos.txt"]
             [(Some s) s]))))
@@ -55,7 +55,7 @@
 
 (: read-items (-> String (IO (List Item))))
 (define (read-items path)
-  (do [r <- (try (read-file path))]
+  (let& ([r (try (read-file path))])
     (match r
       [(Err _)        (pure Nil)]            ; missing file = empty
       [(Ok contents)
@@ -84,16 +84,16 @@
 (: cmd-clear       (IO Unit))
 
 (define cmd-list
-  (do [path  <- todo-file]
-    [items <- (read-items path)]
+  (let& ([path  todo-file]
+         [items (read-items path)])
     (print-items items 1)))
 
 (define (print-items items n)
   (match items
     [(Nil) (pure Unit)]
     [(Cons it rest)
-     (do [_ <- (println (mappend (integer->string n)
-                                 (mappend ". " (render-item it))))]
+     (let& ([_ (println (mappend (integer->string n)
+                                 (mappend ". " (render-item it))))])
        (print-items rest (+ n 1)))]))
 
 (define (cmd-add args)
@@ -102,9 +102,9 @@
     [_
       (let* ([text   (string-join " " args)]
              [new-it (Item #f text)])
-        (do [path  <- todo-file]
-          [items <- (read-items path)]
-          [_     <- (write-items path (snoc items new-it))]
+        (let& ([path  todo-file]
+               [items (read-items path)]
+               [_     (write-items path (snoc items new-it))])
           (println (mappend "added: " text))))]))
 
 ;; snoc — append a single element on the right.
@@ -119,12 +119,12 @@
      (match (string->integer s)
        [(None)   (println (mappend "not a number: " s))]
        [(Some n)
-        (do [path  <- todo-file]
-          [items <- (read-items path)]
+        (let& ([path  todo-file]
+               [items (read-items path)])
           (match (mark-done items n)
             [(Err msg) (println msg)]
             [(Ok new)
-             (do [_ <- (write-items path new)]
+             (let& ([_ (write-items path new)])
                (println (mappend "marked done: #" (integer->string n))))]))])]
     [(Nil) (println "usage: todo done <N>")]))
 
@@ -144,13 +144,13 @@
        [(Ok new) (Ok (Cons h new))])]))
 
 (define cmd-clear
-  (do [path  <- todo-file]
-    [items <- (read-items path)]
+  (let& ([path  todo-file]
+         [items (read-items path)])
     (let* ([keep (filter (lambda (it)
                            (match it [(Item done _) (not done)]))
                          items)]
            [dropped (- (length items) (length keep))])
-      (do [_ <- (write-items path keep)]
+      (let& ([_ (write-items path keep)])
         (println (mappend "cleared "
                           (mappend (integer->string dropped)
                                    " items")))))))
@@ -159,17 +159,17 @@
 
 (: usage (IO Unit))
 (define usage
-  (do [_ <- (println "Usage:")]
-    [_ <- (println "  todo add <task>")]
-    [_ <- (println "  todo list")]
-    [_ <- (println "  todo done <N>")]
+  (let& ([_ (println "Usage:")]
+         [_ (println "  todo add <task>")]
+         [_ (println "  todo list")]
+         [_ (println "  todo done <N>")])
     (println "  todo clear")))
 
 ;; ----- entry point ---------------------------------------------
 
 (: main (IO Unit))
 (define main
-  (do [args <- argv]
+  (let& ([args argv])
     (match args
       [(Cons "add"   rest) (cmd-add  rest)]
       [(Cons "list"  _)    cmd-list]

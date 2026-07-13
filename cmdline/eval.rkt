@@ -223,8 +223,8 @@
   (match vars
     [(Nil) (pure Nil)]
     [(Cons v rest)
-     (do [mv   <- (getenv v)]
-         [more <- (read-envmap rest)]
+     (let& ([mv   (getenv v)]
+            [more (read-envmap rest)])
        (pure (match mv [(Some val) (Cons (Pair v val) more)] [(None) more])))]))
 
 (: eval-error-message (-> EvalError String))
@@ -233,17 +233,17 @@
 ;; Get the parsed outcome: read argv + declared env vars, run eval-core.
 (: eval-value (-> (Cmd a) (IO (EvalOutcome a))))
 (define (eval-value cmd)
-  (do [args <- argv]
-      [env  <- (read-envmap (collect-env-vars cmd))]
+  (let& ([args argv]
+         [env  (read-envmap (collect-env-vars cmd))])
     (pure (eval-core cmd env args))))
 
 ;; Run a command whose term yields an IO action; print help/version/
 ;; errors and return a conventional exit code.
 (: eval (-> (Cmd (IO Unit)) (IO Integer)))
 (define (eval cmd)
-  (do [outcome <- (eval-value cmd)]
+  (let& ([outcome (eval-value cmd)])
     (match outcome
-      [(OkValue act)    (do [_ <- act] (pure 0))]
-      [(HelpText t)     (do [_ <- (println t)] (pure 0))]
-      [(VersionText v)  (do [_ <- (println v)] (pure 0))]
-      [(EvalFail e)     (do [_ <- (println (eval-error-message e))] (pure 124))])))
+      [(OkValue act)    (let& ([_ act]) (pure 0))]
+      [(HelpText t)     (let& ([_ (println t)]) (pure 0))]
+      [(VersionText v)  (let& ([_ (println v)]) (pure 0))]
+      [(EvalFail e)     (let& ([_ (println (eval-error-message e))]) (pure 124))])))

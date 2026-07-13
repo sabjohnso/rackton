@@ -11,39 +11,39 @@
 ;; int write/read round-trip
 (: int-rt (IO Integer))
 (define int-rt
-  (do [p <- (malloc-bytes size-of-int)]
-    [_ <- (poke-int p 4242)]
-    [v <- (peek-int p)]
-    [_ <- (free-ptr p)]
+  (let& ([p (malloc-bytes size-of-int)]
+         [_ (poke-int p 4242)]
+         [v (peek-int p)]
+         [_ (free-ptr p)])
     (pure v)))
 
 ;; pointer arithmetic: a two-int buffer
 (: arith (IO Integer))
 (define arith
-  (do [p <- (malloc-bytes (* 2 size-of-int))]
-    [_ <- (poke-int p 10)]
-    [_ <- (poke-int (ptr-plus p size-of-int) 20)]
-    [a <- (peek-int p)]
-    [b <- (peek-int (ptr-plus p size-of-int))]
-    [_ <- (free-ptr p)]
+  (let& ([p (malloc-bytes (* 2 size-of-int))]
+         [_ (poke-int p 10)]
+         [_ (poke-int (ptr-plus p size-of-int) 20)]
+         [a (peek-int p)]
+         [b (peek-int (ptr-plus p size-of-int))]
+         [_ (free-ptr p)])
     (pure (+ a b))))
 
 ;; double round-trip
 (: dbl-rt (IO Float))
 (define dbl-rt
-  (do [p <- (malloc-bytes size-of-double)]
-    [_ <- (poke-double p 3.5)]
-    [v <- (peek-double p)]
-    [_ <- (free-ptr p)]
+  (let& ([p (malloc-bytes size-of-double)]
+         [_ (poke-double p 3.5)]
+         [v (peek-double p)]
+         [_ (free-ptr p)])
     (pure v)))
 
 ;; single-byte round-trip
 (: byte-rt (IO Integer))
 (define byte-rt
-  (do [p <- (malloc-bytes 1)]
-    [_ <- (poke-byte p 200)]
-    [v <- (peek-byte p)]
-    [_ <- (free-ptr p)]
+  (let& ([p (malloc-bytes 1)]
+         [_ (poke-byte p 200)]
+         [v (peek-byte p)]
+         [_ (free-ptr p)])
     (pure v)))
 
 ;; NULL pointer
@@ -52,9 +52,9 @@
 ;; C string round-trip
 (: cstr-rt (IO String))
 (define cstr-rt
-  (do [p <- (string->c-string "hello")]
-    [s <- (c-string->string p)]
-    [_ <- (free-ptr p)]
+  (let& ([p (string->c-string "hello")]
+         [s (c-string->string p)]
+         [_ (free-ptr p)])
     (pure s)))
 
 ;; ---------- assertions ---------------------------------------

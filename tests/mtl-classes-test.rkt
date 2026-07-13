@@ -16,7 +16,7 @@
   ;; ----- MonadState polymorphic increment -----------------
   (: incr-by ((MonadState Integer m) => (-> Integer (m Unit))))
   (define (incr-by n)
-    (do [k <- get-st]
+    (let& ([k get-st])
       (put-st (+ k n))))
 
   ;; Against plain State
@@ -43,7 +43,7 @@
   ;; ----- MonadEnv polymorphic reader -----------------------
   (: greet-env ((MonadEnv String m) => (m String)))
   (define greet-env
-    (do [name <- ask-en]
+    (let& ([name ask-en])
       (pure (mappend "hello, " name))))
 
   ;; Against plain Env
@@ -81,9 +81,9 @@
   (: stateful-greet ((MonadState Integer m) (MonadEnv String m) =>
                      (m String)))
   (define stateful-greet
-    (do [_    <- (incr-by 1)]
-        [n    <- get-st]
-        [name <- ask-en]
+    (let& ([_    (incr-by 1)]
+           [n    get-st]
+           [name ask-en])
       (pure (mappend name (mappend ": " (integer->string n))))))
 
   (: nested-stack-result (IO (Pair Integer String)))

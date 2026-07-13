@@ -17,8 +17,8 @@
 (define (map-m f xs)
   (match xs
     [(Nil)      (pure Nil)]
-    [(Cons h t) (do [b  <- (f h)]
-                    [bs <- (map-m f t)]
+    [(Cons h t) (let& ([b  (f h)]
+                       [bs (map-m f t)])
                   (pure (Cons b bs)))]))
 
 ;; for-m: map-m with arguments flipped.
@@ -30,8 +30,8 @@
 (define (sequence-m ms)
   (match ms
     [(Nil)      (pure Nil)]
-    [(Cons h t) (do [x  <- h]
-                    [xs <- (sequence-m t)]
+    [(Cons h t) (let& ([x  h]
+                       [xs (sequence-m t)])
                   (pure (Cons x xs)))]))
 
 ;; fold-m: left fold with a monadic step (Haskell @tt{foldM}).
@@ -39,7 +39,7 @@
 (define (fold-m f z xs)
   (match xs
     [(Nil)      (pure z)]
-    [(Cons h t) (do [z2 <- (f z h)]
+    [(Cons h t) (let& ([z2 (f z h)])
                   (fold-m f z2 t))]))
 
 ;; replicate-m: run an action n times, collecting results.
@@ -47,8 +47,8 @@
 (define (replicate-m n act)
   (if (<= n 0)
       (pure Nil)
-      (do [x  <- act]
-          [xs <- (replicate-m (- n 1) act)]
+      (let& ([x  act]
+             [xs (replicate-m (- n 1) act)])
         (pure (Cons x xs)))))
 
 ;; filter-m: keep elements whose monadic predicate yields #t.
@@ -56,6 +56,6 @@
 (define (filter-m p xs)
   (match xs
     [(Nil)      (pure Nil)]
-    [(Cons h t) (do [keep <- (p h)]
-                    [rest <- (filter-m p t)]
+    [(Cons h t) (let& ([keep (p h)]
+                       [rest (filter-m p t)])
                   (pure (if keep (Cons h rest) rest)))]))

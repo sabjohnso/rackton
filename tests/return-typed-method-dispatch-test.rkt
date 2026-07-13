@@ -25,8 +25,8 @@
   ;; ----- pure inside a do-block where context fixes f ------
   (: do-with-pure (IO Integer))
   (define do-with-pure
-    (do [_ <- (pure 1)]
-        (pure 2)))
+    (let& ([_ (pure 1)])
+      (pure 2)))
 
   ;; ----- pure with explicit ascription -------------------
   (: ascribed (Maybe String))

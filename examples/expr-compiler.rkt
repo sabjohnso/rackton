@@ -121,7 +121,7 @@
 (define (print-instrs instrs)
   (match instrs
     [(Nil)         (pure Unit)]
-    [(Cons i rest) (do [_ <- (println (string-append "    " i))]
+    [(Cons i rest) (let& ([_ (println (string-append "    " i))])
                      (print-instrs rest))]))
 
 ;; ----- Demo ------------------------------------------------------
@@ -142,14 +142,15 @@
 (: demo (-> String (-> Expr (IO Unit))))
 (define (demo label e)
   (let ([code (compile e HALT)])
-    (do [_ <- (println (string-append label
+    (let& ([_ (println (string-append label
                                       (string-append " = " (integer->string (top-result code)))))]
-      [_ <- (print-instrs (disasm code))]
+           [_ (print-instrs (disasm code))])
       (println ""))))
 
 (: main (IO Unit))
-(define main (do [_ <- (println "compiling expressions to a typed stack machine:")]
-               [_ <- (demo "(2 + 3) * 4    " e1)]
-               [_ <- (demo "10 - (2 * 3)   " e2)]
-               [_ <- (demo "(7 - 2)*(1 + 4)" e3)]
-               (println "done.")))
+(define main
+  (let& ([_ (println "compiling expressions to a typed stack machine:")]
+         [_ (demo "(2 + 3) * 4    " e1)]
+         [_ (demo "10 - (2 * 3)   " e2)]
+         [_ (demo "(7 - 2)*(1 + 4)" e3)])
+    (println "done.")))

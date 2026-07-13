@@ -33,7 +33,7 @@
   ;; Monadic / applicative binding forms, over Maybe.  The outer `let` binds
   ;; `x` to 99; the inner monadic binder must shadow it (unwrapped value 2).
   (: r-do (Maybe Integer))
-  (define r-do (let ([x 99]) (do [x <- (Some 2)] (Some x))))
+  (define r-do (let ([x 99]) (let& ([x (Some 2)]) (Some x))))
 
   (: r-let& (Maybe Integer))
   (define r-let& (let ([x 99]) (let& ([x (Some 2)]) (Some x))))

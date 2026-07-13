@@ -53,18 +53,18 @@
 
 ;; ===== run =========================================================
 (: main (IO Unit))
-(define main (do [_ <- (println "Wiring diagrams with rackton/linear")]
-               [_ <- (println "")]
-               [_ <- (println "LINEAR (route / permute / transform — never copy or drop):")]
-               [_ <- (println (string-append "  braid >>> (inc *** dbl)  on (3, 5)  =  "
-                                             (lin-out (at cross-transform (LinTen 3 5)))))]
-               [_ <- (println "")]
-               [_ <- (println "CARTESIAN (additionally copy via dup, drop via discard):")]
-               [_ <- (println (string-append "  fanout (inc &&& dbl)     on 5       =  "
-                                             (fn-out (at-fn fanout 5))))]
-               [_ <- (println (string-append "  keep-first (drop 2nd)    on (7, 9)  =  "
-                                             (drop-out (at-fn keep-first (FnTen 7 9)))))]
-               [_ <- (println "")]
-               [_ <- (println "fanout and keep-first need dup / discard, which Lin")]
-               [_ <- (println "does not provide — they are type errors on a linear wire.")]
+(define main (let& ([_ (println "Wiring diagrams with rackton/linear")]
+                    [_ (println "")]
+                    [_ (println "LINEAR (route / permute / transform — never copy or drop):")]
+                    [_ (println (string-append "  braid >>> (inc *** dbl)  on (3, 5)  =  "
+                                               (lin-out (at cross-transform (LinTen 3 5)))))]
+                    [_ (println "")]
+                    [_ (println "CARTESIAN (additionally copy via dup, drop via discard):")]
+                    [_ (println (string-append "  fanout (inc &&& dbl)     on 5       =  "
+                                               (fn-out (at-fn fanout 5))))]
+                    [_ (println (string-append "  keep-first (drop 2nd)    on (7, 9)  =  "
+                                               (drop-out (at-fn keep-first (FnTen 7 9)))))]
+                    [_ (println "")]
+                    [_ (println "fanout and keep-first need dup / discard, which Lin")]
+                    [_ (println "does not provide — they are type errors on a linear wire.")])
                (pure Unit)))

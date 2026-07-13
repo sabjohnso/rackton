@@ -63,7 +63,7 @@
 ;; ----- Run it --------------------------------------------------------
 
 (: main (IO Unit))
-(define main (do [s <- (run-tests suite)]
+(define main (let& ([s (run-tests suite)])
                (println (string-append "passed="
                                        (string-append (integer->string (summary-passed s))
                                                       (string-append "  failed="

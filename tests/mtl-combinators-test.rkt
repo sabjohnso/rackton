@@ -34,8 +34,8 @@
   (: ask-then-incr ((MonadState Integer m) (MonadEnv String m) =>
                     (m String)))
   (define ask-then-incr
-    (do [r <- ask-en]
-        [_ <- (put-st (string-length r))]
+    (let& ([r ask-en]
+           [_ (put-st (string-length r))])
       (pure r)))
 
   (: stacked-local
@@ -72,8 +72,8 @@
   (: greet-and-log
      ((MonadWriter String m) (Monad m) => (m String)))
   (define greet-and-log
-    (do [_ <- (tell-w "step1.")]
-        [_ <- (tell-w "step2.")]
+    (let& ([_ (tell-w "step1.")]
+           [_ (tell-w "step2.")])
       (pure "done")))
 
   ;; The carrier of `WriterT w m a` is `(m (Pair w a))` (log first),

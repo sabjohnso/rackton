@@ -10,8 +10,8 @@
 ;; ----- the motivating example: madd over any Monad -------
 ;; No `(: madd ...)` — inference should generalize and skolemize.
 (define (madd mx my)
-  (do [x <- mx]
-    [y <- my]
+  (let& ([x mx]
+         [y my])
     (pure (+ x y))))
 
 (: madd-maybe-some (Maybe Integer))
@@ -50,8 +50,8 @@
 (define (replicate-pure n x)
   (if (== n 0)
     (pure x)
-    (do [y <- (pure x)]
-      [rest <- (replicate-pure (- n 1) x)]
+    (let& ([y (pure x)]
+           [rest (replicate-pure (- n 1) x)])
       (pure y))))
 
 (: rep-maybe (Maybe Integer))

@@ -17,8 +17,8 @@
 
 (: ok-then  (ExceptT String IO Integer))
 (define ok-then
-  (do [x <- (pure 1)]
-    [y <- (pure 2)]
+  (let& ([x (pure 1)]
+         [y (pure 2)])
     (pure (+ x y))))
 
 (: ok-then-result (IO (Result String Integer)))
@@ -31,7 +31,7 @@
 
 (: nested-ok (ExceptT String (ExceptT String IO) Integer))
 (define nested-ok
-  (do [x <- (pure 10)]
+  (let& ([x (pure 10)])
     (pure (+ x 5))))
 
 (: nested-ok-result (IO (Result String (Result String Integer))))
@@ -43,9 +43,9 @@
 
 (: thrower-st (StateT Integer (ExceptT String IO) Integer))
 (define thrower-st
-  (do [_ <- (put-st 99)]
-    [_ <- (ann (throw-e "boom")
-               (StateT Integer (ExceptT String IO) Integer))]
+  (let& ([_ (put-st 99)]
+         [_ (ann (throw-e "boom")
+                 (StateT Integer (ExceptT String IO) Integer))])
     get-st))
 
 (: recover-st

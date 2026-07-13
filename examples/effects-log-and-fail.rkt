@@ -59,12 +59,13 @@
                              (string-append (outcome->str r) (log->str log))))]))
 
 (: main (IO Unit))
-(define main (do [_ <- (println "Typed algebraic effects (rackton/effects): log + may-fail")]
-               [_ <- (println "")]
-               [_ <- (report "100 / 5 / 2  =>  " pipeline-ok)]
-               [_ <- (println "")]
-               [_ <- (report "100 / 5 / 0  =>  " pipeline-bad)]
-               [_ <- (println "")]
-               [_ <- (println "Both effects are in each pipeline's TYPE; run-eff accepts")]
-               [_ <- (println "only the empty row, so a forgotten handler is a type error.")]
-               (pure Unit)))
+(define main
+  (let& ([_ (println "Typed algebraic effects (rackton/effects): log + may-fail")]
+         [_ (println "")]
+         [_ (report "100 / 5 / 2  =>  " pipeline-ok)]
+         [_ (println "")]
+         [_ (report "100 / 5 / 0  =>  " pipeline-bad)]
+         [_ (println "")]
+         [_ (println "Both effects are in each pipeline's TYPE; run-eff accepts")]
+         [_ (println "only the empty row, so a forgotten handler is a type error.")])
+    (pure Unit)))

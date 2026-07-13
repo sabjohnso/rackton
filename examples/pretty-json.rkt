@@ -69,11 +69,11 @@
 
 (: demo (-> String Integer Doc (IO Unit)))
 (define (demo label w d)
-  (do [_ <- (banner label w)] (println (pretty w d))))
+  (let& ([_ (banner label w)]) (println (pretty w d))))
 
 (: main (IO Unit))
-(define main (do [_ <- (demo "json" 60 (json->doc sample))]
-               [_ <- (demo "json" 28 (json->doc sample))]
-               [_ <- (println "")]
-               [_ <- (demo "grid" 50 (<> (text "exports: ") (fill-grid idents)))]
+(define main (let& ([_ (demo "json" 60 (json->doc sample))]
+                    [_ (demo "json" 28 (json->doc sample))]
+                    [_ (println "")]
+                    [_ (demo "grid" 50 (<> (text "exports: ") (fill-grid idents)))])
                (demo "grid" 30 (<> (text "exports: ") (fill-grid idents)))))

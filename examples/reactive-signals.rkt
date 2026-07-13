@@ -52,13 +52,13 @@
   (println (string-append label (ints->str (sig-take 8 s)))))
 
 (: main (IO Unit))
-(define main (do [_ <- (println "Guarded reactive streams (rackton/temporal)")]
-               [_ <- (println "")]
-               [_ <- (show-sig "nats        : " nats)]
-               [_ <- (show-sig "squares     : " squares)]
-               [_ <- (show-sig "fibonacci   : " fibs)]
-               [_ <- (show-sig "nats + fibs : " summed)]
-               [_ <- (show-sig "running sum : " (running-sum nats))]
-               [_ <- (println "")]
-               [_ <- (println "All infinite and productive — sig-take 8 forces only the prefix.")]
+(define main (let& ([_ (println "Guarded reactive streams (rackton/temporal)")]
+                    [_ (println "")]
+                    [_ (show-sig "nats        : " nats)]
+                    [_ (show-sig "squares     : " squares)]
+                    [_ (show-sig "fibonacci   : " fibs)]
+                    [_ (show-sig "nats + fibs : " summed)]
+                    [_ (show-sig "running sum : " (running-sum nats))]
+                    [_ (println "")]
+                    [_ (println "All infinite and productive — sig-take 8 forces only the prefix.")])
                (pure Unit)))

@@ -35,8 +35,8 @@
 
 (: main (IO Unit))
 (define main
-  (do [_ <- (println (labelled "ones (×8)"  (stream-take 8 ones)))]
-    [_ <- (println (labelled "nats (×8)"  (stream-take 8 nats)))]
+  (let& ([_ (println (labelled "ones (×8)"  (stream-take 8 ones)))]
+         [_ (println (labelled "nats (×8)"  (stream-take 8 nats)))])
     (println (labelled "fibs (×12)" (stream-take 12 fibs)))))
 
 ;; ----- the self-referential streams ---------------------------------

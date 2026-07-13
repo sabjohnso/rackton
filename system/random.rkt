@@ -33,8 +33,8 @@
 ;; random-r-float lo hi: uniform Float in [lo, hi].
 (: random-r-float (-> Float (-> Float (IO Float))))
 (define (random-r-float lo hi)
-  (do [u <- random-float]
-      (pure (+ lo (* (- hi lo) u)))))
+  (let& ([u random-float])
+    (pure (+ lo (* (- hi lo) u)))))
 
 ;; --- pure splittable StdGen (SplitMix64) ---------------------------
 

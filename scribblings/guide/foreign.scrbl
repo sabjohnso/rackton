@@ -94,12 +94,12 @@ usually an @racket[ann].
 
 (: round-trip (IO Integer))
 (define round-trip
-  (do [p <- (malloc-bytes size-of-int)]
-      [_ <- (poke p 99)]
-      [v <- (ann (peek p) (IO Integer))]
-      [_ <- (free-ptr p)]
-      (println (string-append "round-trip: " (show v)))
-      (pure v)))
+  (let& ([p (malloc-bytes size-of-int)]
+         [_ (poke p 99)]
+         [v (ann (peek p) (IO Integer))]
+         [_ (free-ptr p)]
+         [_ (println (string-append "round-trip: " (show v)))])
+    (pure v)))
 }
 
 This layer is @bold{thoroughly unsafe}: there is no bounds checking, no

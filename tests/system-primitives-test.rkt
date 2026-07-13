@@ -16,7 +16,7 @@
 ;; Read an environment variable, defaulting to "default"
 (: env-or-default (-> String (-> String (IO String))))
 (define (env-or-default name fallback)
-  (do [maybe-v <- (getenv name)]
+  (let& ([maybe-v (getenv name)])
     (pure-io
       (match maybe-v
         [(None)   fallback]
@@ -25,8 +25,8 @@
 ;; Round-trip createDirectoryIfMissing + list-directory (idempotent)
 (: dir-roundtrip (-> String (IO Integer)))
 (define (dir-roundtrip path)
-  (do [_       <- (create-directory-if-missing path)]
-    [entries <- (list-directory path)]
+  (let& ([_       (create-directory-if-missing path)]
+         [entries (list-directory path)])
     (pure-io (length entries))))
 
 ;; ----- value-level smoke checks --------------------------------

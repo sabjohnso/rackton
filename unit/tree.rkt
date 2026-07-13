@@ -141,37 +141,37 @@
 (define (report-unit d name a)
   (match (assertion-result a)
     [(CheckPass)
-     (do [_ <- (emit d (string-append "ok - " name))]
+     (let& ([_ (emit d (string-append "ok - " name))])
        (pure-io one-pass))]
     [(CheckFail m)
-     (do [_ <- (emit d (string-append "FAIL - "
+     (let& ([_ (emit d (string-append "FAIL - "
                                       (string-append name
-                                                     (string-append ": " m))))]
+                                                     (string-append ": " m))))])
        (pure-io one-fail))]))
 
 (: report-prop (-> Integer (-> String (-> Property (IO Summary)))))
 (define (report-prop d name p)
-  (do [res <- (try (defer-io (lambda (u) (run-property prop-cases default-seed p))))]
+  (let& ([res (try (defer-io (lambda (u) (run-property prop-cases default-seed p))))])
     (match res
       [(Err emsg)
-       (do [_ <- (emit d (string-append "FAIL - "
+       (let& ([_ (emit d (string-append "FAIL - "
                                         (string-append name
-                                                       (string-append ": panicked: " emsg))))]
+                                                       (string-append ": panicked: " emsg))))])
          (pure-io one-fail))]
       [(Ok (PropPassed n))
-       (do [_ <- (emit d (string-append "ok - "
+       (let& ([_ (emit d (string-append "ok - "
                                         (string-append name
                                                        (string-append " ("
                                                                       (string-append (integer->string n)
-                                                                                     " cases)")))))]
+                                                                                     " cases)")))))])
          (pure-io one-pass))]
       [(Ok (PropFailed shown seed))
-       (do [_ <- (emit d (string-append "FAIL - "
+       (let& ([_ (emit d (string-append "FAIL - "
                                         (string-append name
                                                        (string-append ": counterexample="
                                                                       (string-append shown
                                                                                      (string-append " seed="
-                                                                                                    (integer->string seed)))))))]
+                                                                                                    (integer->string seed)))))))])
          (pure-io one-fail))])))
 
 (: run-at (-> Integer (-> Test (IO Summary))))
@@ -180,7 +180,7 @@
     [(TLeaf name (Unit-test a)) (report-unit d name a)]
     [(TLeaf name (Prop-test p)) (report-prop d name p)]
     [(TGroup name kids)
-     (do [_ <- (emit d name)]
+     (let& ([_ (emit d name)])
        (run-group (+ d 1) kids))]))
 
 (: run-group (-> Integer (-> (List Test) (IO Summary))))
@@ -188,8 +188,8 @@
   (match kids
     [(Nil) (pure-io (Summary 0 0))]
     [(Cons t rest)
-     (do [s1 <- (run-at d t)]
-       [s2 <- (run-group d rest)]
+     (let& ([s1 (run-at d t)]
+            [s2 (run-group d rest)])
        (pure-io (summary-add s1 s2)))]))
 
 (: run-tests (-> Test (IO Summary)))
@@ -213,29 +213,29 @@
   (match (assertion-result a)
     [(CheckPass)   (pure-io one-pass)]
     [(CheckFail m)
-     (do [_ <- (println (string-append "FAIL - "
+     (let& ([_ (println (string-append "FAIL - "
                                        (string-append path
-                                                      (string-append name (string-append ": " m)))))]
+                                                      (string-append name (string-append ": " m)))))])
        (pure-io one-fail))]))
 
 (: qreport-prop (-> String (-> String (-> Property (IO Summary)))))
 (define (qreport-prop path name p)
-  (do [res <- (try (defer-io (lambda (u) (run-property prop-cases default-seed p))))]
+  (let& ([res (try (defer-io (lambda (u) (run-property prop-cases default-seed p))))])
     (match res
       [(Err emsg)
-       (do [_ <- (println (string-append "FAIL - "
+       (let& ([_ (println (string-append "FAIL - "
                                          (string-append path
-                                                        (string-append name (string-append ": panicked: " emsg)))))]
+                                                        (string-append name (string-append ": panicked: " emsg)))))])
          (pure-io one-fail))]
       [(Ok (PropPassed _)) (pure-io one-pass)]
       [(Ok (PropFailed shown seed))
-       (do [_ <- (println (string-append "FAIL - "
+       (let& ([_ (println (string-append "FAIL - "
                                          (string-append path
                                                         (string-append name
                                                                        (string-append ": counterexample="
                                                                                       (string-append shown
                                                                                                      (string-append " seed="
-                                                                                                                    (integer->string seed))))))))]
+                                                                                                                    (integer->string seed))))))))])
          (pure-io one-fail))])))
 
 (: qrun-at (-> String (-> Test (IO Summary))))
@@ -251,8 +251,8 @@
   (match kids
     [(Nil) (pure-io (Summary 0 0))]
     [(Cons t rest)
-     (do [s1 <- (qrun-at path t)]
-       [s2 <- (qrun-group path rest)]
+     (let& ([s1 (qrun-at path t)]
+            [s2 (qrun-group path rest)])
        (pure-io (summary-add s1 s2)))]))
 
 (: run-tests-quiet (-> Test (IO Summary)))
@@ -271,7 +271,7 @@
 ;; `(define test-main (run-suite-tree (describe "…" …)))`.
 (: run-suite-tree (-> Test (IO Unit)))
 (define (run-suite-tree t)
-  (do [s <- (run-tests-quiet t)]
+  (let& ([s (run-tests-quiet t)])
     (if (> (summary-failed s) 0)
       (panic (string-append (test-label t)
                             (string-append ": "

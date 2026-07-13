@@ -30,5 +30,5 @@
 
 (: main (IO Unit))
 (define main
-  (do [_ <- (println (string-append "integer set size  = " (show (int-count ints))))]
+  (let& ([_ (println (string-append "integer set size  = " (show (int-count ints))))])
     (println (string-append "boolean set bits  = " (show (bool-bits bools))))))

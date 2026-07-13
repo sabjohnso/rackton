@@ -113,9 +113,9 @@ module — @racketmodname[rackton/control/monad/state],
 ;; a StateT computation over Maybe
 (: bump (StateT Integer Maybe Integer))
 (define bump
-  (do [n <- get-st]
-      [_ <- (put-st (+ n 1))]
-      (pure n)))
+  (let& ([n get-st]
+         [_ (put-st (+ n 1))])
+    (pure n)))
 }
 
 @section{@tt{numeric} — beyond the tower}
@@ -174,10 +174,10 @@ random generator.  Everything is in @racket[IO]:
 
 (: greet (IO Unit))
 (define greet
-  (do [name <- (getenv "USER")]
-      (println (match name
-                 [(Some u) (mappend "hi " u)]
-                 [(None)   "hi stranger"]))))
+  (let& ([name (getenv "USER")])
+    (println (match name
+               [(Some u) (mappend "hi " u)]
+               [(None)   "hi stranger"]))))
 }
 
 @section{Laziness}

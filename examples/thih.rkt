@@ -201,8 +201,8 @@
 (define (mgu t1 t2)
   (match (Pair t1 t2)
     [(Pair (TFun a1 r1) (TFun a2 r2))
-     (do [s1 <- (mgu a1 a2)]
-       [s2 <- (mgu (apply-type s1 r1) (apply-type s1 r2))]
+     (let& ([s1 (mgu a1 a2)]
+            [s2 (mgu (apply-type s1 r1) (apply-type s1 r2))])
        (pure (compose-subst s2 s1)))]
     [(Pair (TVar a) _)  (var-bind a t2)]
     [(Pair _ (TVar a))  (var-bind a t1)]
@@ -213,8 +213,8 @@
 ;; Unify under the current substitution and record the result.
 (: unify (-> Type (-> Type (Infer Unit))))
 (define (unify t1 t2)
-  (do [s <- get-subst]
-    [u <- (mgu (apply-type s t1) (apply-type s t2))]
+  (let& ([s get-subst]
+         [u (mgu (apply-type s t1) (apply-type s t2))])
     (ext-subst u)))
 
 ;; ===== Generalize / instantiate ====================================
@@ -225,8 +225,8 @@
   (match xs
     [(Nil) (pure Nil)]
     [(Cons h t)
-     (do [y  <- (f h)]
-       [ys <- (infer-mapM f t)]
+     (let& ([y  (f h)]
+            [ys (infer-mapM f t)])
        (pure (Cons y ys)))]))
 
 ;; Replace a scheme's quantified variables with fresh ones.
@@ -234,7 +234,7 @@
 (define (instantiate sch)
   (match sch
     [(Forall vars t)
-     (do [fresh-tys <- (infer-mapM (lambda (_) fresh) vars)]
+     (let& ([fresh-tys (infer-mapM (lambda (_) fresh) vars)])
        (pure (apply-type (map-from-list (zip vars fresh-tys)) t)))]))
 
 ;; Quantify over the type's free variables that are not also free in
@@ -255,39 +255,39 @@
     [(ELit (LInt _))  (pure (TCon "Int"))]
     [(ELit (LBool _)) (pure (TCon "Bool"))]
     [(ELam x body)
-     (do [tv <- fresh]
-       [tb <- (infer (map-insert x (Forall Nil tv) env) body)]
-       [s  <- get-subst]
+     (let& ([tv fresh]
+            [tb (infer (map-insert x (Forall Nil tv) env) body)]
+            [s  get-subst])
        (pure (apply-type s (TFun tv tb))))]
     [(EApp f a)
-     (do [tf <- (infer env f)]
-       [ta <- (infer env a)]
-       [tv <- fresh]
-       [_  <- (unify tf (TFun ta tv))]
-       [s  <- get-subst]
+     (let& ([tf (infer env f)]
+            [ta (infer env a)]
+            [tv fresh]
+            [_  (unify tf (TFun ta tv))]
+            [s  get-subst])
        (pure (apply-type s tv)))]
     [(ELet x e1 e2)
-     (do [t1 <- (infer env e1)]
-       [s  <- get-subst]
+     (let& ([t1 (infer env e1)]
+            [s  get-subst])
        ;; Generalize e1's type under the solved substitution, then bind
        ;; the resulting scheme while inferring the body.
        (infer (map-insert x (generalize (apply-env s env) (apply-type s t1)) env)
               e2))]
     [(EIf c th el)
-     (do [tc <- (infer env c)]
-       [_  <- (unify tc (TCon "Bool"))]
-       [tt <- (infer env th)]
-       [te <- (infer env el)]
-       [_  <- (unify tt te)]
-       [s  <- get-subst]
+     (let& ([tc (infer env c)]
+            [_  (unify tc (TCon "Bool"))]
+            [tt (infer env th)]
+            [te (infer env el)]
+            [_  (unify tt te)]
+            [s  get-subst])
        (pure (apply-type s tt)))]))
 
 ;; Infer a closed expression's principal type scheme.
 (: type-of (-> Expr (Result String Scheme)))
 (define (type-of e)
   (run-infer
-    (do [t <- (infer empty-map e)]
-      [s <- get-subst]
+    (let& ([t (infer empty-map e)]
+           [s get-subst])
       (pure (generalize empty-map (apply-type s t))))))
 
 ;; ===== Pretty-printing =============================================
@@ -392,19 +392,19 @@
 (define e-omega (ELam "x" (EApp (EVar "x") (EVar "x"))))
 
 (: main (IO Unit))
-(define main (do [_ <- (println "Hindley–Milner inference for a small lambda calculus:")]
-               [_ <- (println "")]
-               [_ <- (println "well-typed:")]
-               [_ <- (report "  \\x. x                       " e-id)]
-               [_ <- (report "  \\x. \\y. x                    " e-const)]
-               [_ <- (report "  \\f. \\g. \\x. f (g x)          " e-compose)]
-               [_ <- (report "  let id=\\x.x in id id        " e-id-id)]
-               [_ <- (report "  let id=.. in if id#t..      " e-let-poly)]
-               [_ <- (report "  if #t then 1 else 0         " e-if)]
-               [_ <- (println "")]
-               [_ <- (println "ill-typed:")]
-               [_ <- (report "  (1 2)                       " e-apply-int)]
-               [_ <- (report "  if #t then 1 else #f        " e-bad-if)]
-               [_ <- (report "  \\x. x x                      " e-omega)]
-               [_ <- (println "")]
+(define main (let& ([_ (println "Hindley–Milner inference for a small lambda calculus:")]
+                    [_ (println "")]
+                    [_ (println "well-typed:")]
+                    [_ (report "  \\x. x                       " e-id)]
+                    [_ (report "  \\x. \\y. x                    " e-const)]
+                    [_ (report "  \\f. \\g. \\x. f (g x)          " e-compose)]
+                    [_ (report "  let id=\\x.x in id id        " e-id-id)]
+                    [_ (report "  let id=.. in if id#t..      " e-let-poly)]
+                    [_ (report "  if #t then 1 else 0         " e-if)]
+                    [_ (println "")]
+                    [_ (println "ill-typed:")]
+                    [_ (report "  (1 2)                       " e-apply-int)]
+                    [_ (report "  if #t then 1 else #f        " e-bad-if)]
+                    [_ (report "  \\x. x x                      " e-omega)]
+                    [_ (println "")])
                (println "done.")))

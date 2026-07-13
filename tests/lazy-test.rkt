@@ -20,14 +20,14 @@
 ;; (before . after) counter readings around two forces of one Lazy.
 (: defer+memo (IO (Pair Integer Integer)))
 (define defer+memo
-  (do [r <- (make-ref 0)]
-    (let ([lz (delay (run-io (do [n <- (read-ref r)]
-                               [_ <- (write-ref r (+ n 1))]
+  (let& ([r (make-ref 0)])
+    (let ([lz (delay (run-io (let& ([n (read-ref r)]
+                                    [_ (write-ref r (+ n 1))])
                                (pure n))))])
-      (do [before <- (read-ref r)]      ; 0: built but not forced (deferral)
-        [_ <- (pure (force lz))]       ; force #1 — runs the effect
-        [_ <- (pure (force lz))]       ; force #2 — cached, no effect
-        [after <- (read-ref r)]        ; 1: memoized (non-memo would be 2)
+      (let& ([before (read-ref r)]      ; 0: built but not forced (deferral)
+             [_ (pure (force lz))]       ; force #1 — runs the effect
+             [_ (pure (force lz))]       ; force #2 — cached, no effect
+             [after (read-ref r)])        ; 1: memoized (non-memo would be 2)
         (pure (Pair before after))))))
 
 (: suite (List Test))

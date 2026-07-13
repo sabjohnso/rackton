@@ -42,10 +42,10 @@
 (define (recv-exactly sock need)
   (if (<= need 0)
     (pure-io (Some bytes-empty))
-    (do [chunk <- (recv-bytes sock need)]
+    (let& ([chunk (recv-bytes sock need)])
       (match chunk
         [(None)   (pure-io None)]
-        [(Some b) (do [rest <- (recv-exactly sock (- need (bytes-length b)))]
+        [(Some b) (let& ([rest (recv-exactly sock (- need (bytes-length b)))])
                     (pure-io (match rest
                                [(None)   None]
                                [(Some r) (Some (bytes-append b r))])))]))))
@@ -57,7 +57,7 @@
 
 (: recv-frame (-> Socket (IO (Maybe Bytes))))
 (define (recv-frame sock)
-  (do [hdr <- (recv-exactly sock 4)]
+  (let& ([hdr (recv-exactly sock 4)])
     (match hdr
       [(None)   (pure-io None)]
       [(Some h) (recv-exactly sock (bytes->u32 h))])))
@@ -67,31 +67,31 @@
 ;; Accept one client, log who it is, echo one frame back, and close.
 (: serve-one (-> Listener (IO Unit)))
 (define (serve-one lst)
-  (do [sock <- (accept lst)]
-    [addr <- (peer-address sock)]
-    [_    <- (match addr
-               [(tuple host port)
-                (println (string-append "server: client from "
-                                        (string-append host
-                                                       (string-append ":" (show port)))))])]
-    [msg  <- (recv-frame sock)]
-    [_    <- (match msg
-               [(Some b) (send-frame sock b)]
-               [(None)   (pure-io Unit)])]
+  (let& ([sock (accept lst)]
+         [addr (peer-address sock)]
+         [_    (match addr
+                 [(tuple host port)
+                  (println (string-append "server: client from "
+                                          (string-append host
+                                                         (string-append ":" (show port)))))])]
+         [msg  (recv-frame sock)]
+         [_    (match msg
+                 [(Some b) (send-frame sock b)]
+                 [(None)   (pure-io Unit)])])
     (close sock)))
 
 (: tcp-demo (IO Unit))
 (define tcp-demo
-  (do [lst  <- (listen-on 0)]
-    [port <- (listener-port lst)]
-    [_    <- (fork-io (serve-one lst))]
-    [sock <- (connect "127.0.0.1" port)]
-    [_    <- (send-frame sock (string->bytes "Hello, framed world!"))]
-    [echo <- (recv-frame sock)]
-    [_    <- (println (match echo
-                        [(Some b) (string-append "client: got back " (bytes->string-lossy b))]
-                        [(None)   "client: connection closed early"]))]
-    [_    <- (close sock)]
+  (let& ([lst  (listen-on 0)]
+         [port (listener-port lst)]
+         [_    (fork-io (serve-one lst))]
+         [sock (connect "127.0.0.1" port)]
+         [_    (send-frame sock (string->bytes "Hello, framed world!"))]
+         [echo (recv-frame sock)]
+         [_    (println (match echo
+                          [(Some b) (string-append "client: got back " (bytes->string-lossy b))]
+                          [(None)   "client: connection closed early"]))]
+         [_    (close sock)])
     (close-listener lst)))
 
 ;; ----- UDP: request / reply with a client-side timeout -------------
@@ -99,29 +99,29 @@
 ;; Bind a responder; reply to whoever sends, addressed back to them.
 (: respond-once (-> UDPSocket (IO Unit)))
 (define (respond-once sock)
-  (do [req <- (udp-recv-from sock 1024)]
+  (let& ([req (udp-recv-from sock 1024)])
     (match req
       [(tuple msg (tuple host port))
        (udp-send-to sock host port (string-append "ack:" msg))])))
 
 (: udp-demo (IO Unit))
 (define udp-demo
-  (do [server <- udp-open]
-    [_      <- (udp-bind server "127.0.0.1" 0)]
-    [port   <- (udp-local-port server)]
-    [_      <- (fork-io (respond-once server))]
-    [client <- udp-open]
-    [_      <- (udp-send-to client "127.0.0.1" port "ping")]
-    ;; wait up to a second for the reply; None would mean it was lost.
-    [reply  <- (udp-recv-from-timeout client 1024 1000)]
-    [_      <- (println (match reply
-                          [(Some (tuple b _)) (string-append "udp: server said " (bytes->string-lossy b))]
-                          [(None)             "udp: no reply within 1s"]))]
-    [_      <- (udp-close client)]
+  (let& ([server udp-open]
+         [_      (udp-bind server "127.0.0.1" 0)]
+         [port   (udp-local-port server)]
+         [_      (fork-io (respond-once server))]
+         [client udp-open]
+         [_      (udp-send-to client "127.0.0.1" port "ping")]
+         ;; wait up to a second for the reply; None would mean it was lost.
+         [reply  (udp-recv-from-timeout client 1024 1000)]
+         [_      (println (match reply
+                            [(Some (tuple b _)) (string-append "udp: server said " (bytes->string-lossy b))]
+                            [(None)             "udp: no reply within 1s"]))]
+         [_      (udp-close client)])
     (udp-close server)))
 
 ;; ----- main --------------------------------------------------------
 
 (: main (IO Unit))
-(define main (do [_ <- tcp-demo]
+(define main (let& ([_ tcp-demo])
                udp-demo))

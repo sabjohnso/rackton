@@ -11,15 +11,15 @@
   ;; ----- State: a counter ----------------------------------
   (: tick (State Integer Integer))
   (define tick
-    (do [n <- get-state]
-        [_ <- (put-state (+ n 1))]
+    (let& ([n get-state]
+           [_ (put-state (+ n 1))])
       (pure n)))
 
   (: three-ticks (State Integer (List Integer)))
   (define three-ticks
-    (do [a <- tick]
-        [b <- tick]
-        [c <- tick]
+    (let& ([a tick]
+           [b tick]
+           [c tick])
       (pure (Cons a (Cons b (Cons c Nil))))))
 
   (: ticked (Pair Integer (List Integer)))
@@ -28,7 +28,7 @@
   ;; ----- Env: read + transform env -------------------------
   (: greet (Env String String))
   (define greet
-    (do [name <- ask]
+    (let& ([name ask])
       (pure (mappend "hello, " name))))
 
   (: shouted (Env String String))
@@ -45,28 +45,28 @@
   (define (safe-div num den)
     (if (== den 0)
         (lift-state-t None)
-        (do [acc <- get-state-t]
-            [_   <- (put-state-t (+ acc 1))]
+        (let& ([acc get-state-t]
+               [_   (put-state-t (+ acc 1))])
           (pure (div num den)))))
 
   (: ok-chain (Maybe (Pair Integer Integer)))
   (define ok-chain
-    ((run-state-t (do [a <- (safe-div 20 4)]
-                      [b <- (safe-div 10 a)]
+    ((run-state-t (let& ([a (safe-div 20 4)]
+                         [b (safe-div 10 a)])
                     (pure (+ a b))))
      0))
 
   (: bad-chain (Maybe (Pair Integer Integer)))
   (define bad-chain
-    ((run-state-t (do [a <- (safe-div 20 4)]
-                      [_ <- (safe-div 1 0)]
+    ((run-state-t (let& ([a (safe-div 20 4)]
+                         [_ (safe-div 1 0)])
                     (pure a)))
      0))
 
   ;; ----- EnvT over IO: read config in IO ------------------
   (: shouted-io (EnvT String IO String))
   (define shouted-io
-    (do [name <- ask-t]
+    (let& ([name ask-t])
       (pure (mappend "[CONFIG] " name))))
 
   ;; ----- lift-state-t round-trip --------------------------

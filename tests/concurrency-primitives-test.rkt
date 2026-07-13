@@ -11,20 +11,20 @@
 
 (: child-writes (IO Integer))
 (define child-writes
-  (do [box  <- new-empty-mvar]
-    [tid  <- (fork-io (put-mvar box 42))]
-    [val  <- (take-mvar box)]
-    [_    <- (wait-thread tid)]
+  (let& ([box  new-empty-mvar]
+         [tid  (fork-io (put-mvar box 42))]
+         [val  (take-mvar box)]
+         [_    (wait-thread tid)])
     (pure val)))
 
 ;; ----- 36.B Channel producer/consumer round-trip -------------
 
 (: chan-roundtrip (IO Integer))
 (define chan-roundtrip
-  (do [ch  <- new-chan]
-    [tid <- (fork-io (send-chan ch 99))]
-    [v   <- (recv-chan ch)]
-    [_   <- (wait-thread tid)]
+  (let& ([ch  new-chan]
+         [tid (fork-io (send-chan ch 99))]
+         [v   (recv-chan ch)]
+         [_   (wait-thread tid)])
     (pure v)))
 
 ;; ----- 36.C multi-thread atomic counter ----------------------
@@ -40,26 +40,26 @@
 
 (: five-increments (IO Integer))
 (define five-increments
-  (do [counter <- (new-mvar 0)]
-    [t1 <- (spawn-increment counter)]
-    [t2 <- (spawn-increment counter)]
-    [t3 <- (spawn-increment counter)]
-    [t4 <- (spawn-increment counter)]
-    [t5 <- (spawn-increment counter)]
-    [_  <- (wait-thread t1)]
-    [_  <- (wait-thread t2)]
-    [_  <- (wait-thread t3)]
-    [_  <- (wait-thread t4)]
-    [_  <- (wait-thread t5)]
+  (let& ([counter (new-mvar 0)]
+         [t1 (spawn-increment counter)]
+         [t2 (spawn-increment counter)]
+         [t3 (spawn-increment counter)]
+         [t4 (spawn-increment counter)]
+         [t5 (spawn-increment counter)]
+         [_  (wait-thread t1)]
+         [_  (wait-thread t2)]
+         [_  (wait-thread t3)]
+         [_  (wait-thread t4)]
+         [_  (wait-thread t5)])
     (read-mvar counter)))
 
 ;; ----- 36.D read-mvar is non-destructive ---------------------
 
 (: read-twice (IO (Pair Integer Integer)))
 (define read-twice
-  (do [box <- (new-mvar 7)]
-    [a   <- (read-mvar box)]
-    [b   <- (read-mvar box)]
+  (let& ([box (new-mvar 7)]
+         [a   (read-mvar box)]
+         [b   (read-mvar box)])
     (pure (Pair a b))))
 
 ;; ---------- assertions ---------------------------------------

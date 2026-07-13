@@ -12,8 +12,8 @@
 (: simple-mutate (IO Integer))
 (define simple-mutate
   (atomically
-    (do [tv <- (new-tvar 41)]
-      [_  <- (write-tvar tv 42)]
+    (let& ([tv (new-tvar 41)]
+           [_  (write-tvar tv 42)])
       (read-tvar tv))))
 
 ;; ----- 41.B two-threaded shared counter ---------------------
@@ -23,23 +23,23 @@
 
 (: increment-tvar (-> (TVar Integer) (STM Unit)))
 (define (increment-tvar tv)
-  (do [v <- (read-tvar tv)]
+  (let& ([v (read-tvar tv)])
     (write-tvar tv (+ v 1))))
 
 (: bump-n-times (-> (TVar Integer) (-> Integer (IO Unit))))
 (define (bump-n-times tv n)
   (if (== n 0)
     (pure Unit)
-    (do [_ <- (atomically (increment-tvar tv))]
+    (let& ([_ (atomically (increment-tvar tv))])
       (bump-n-times tv (- n 1)))))
 
 (: concurrent-counter (IO Integer))
 (define concurrent-counter
-  (do [tv  <- (atomically (new-tvar 0))]
-    [t1  <- (fork-io (bump-n-times tv 100))]
-    [t2  <- (fork-io (bump-n-times tv 100))]
-    [_   <- (wait-thread t1)]
-    [_   <- (wait-thread t2)]
+  (let& ([tv  (atomically (new-tvar 0))]
+         [t1  (fork-io (bump-n-times tv 100))]
+         [t2  (fork-io (bump-n-times tv 100))]
+         [_   (wait-thread t1)]
+         [_   (wait-thread t2)])
     (atomically (read-tvar tv))))
 
 ;; ----- 41.C or-else falls back on retry --------------------
@@ -55,12 +55,12 @@
 (: do-chain-result (IO Integer))
 (define do-chain-result
   (atomically
-    (do [a <- (new-tvar 1)]
-      [b <- (new-tvar 2)]
-      [_ <- (write-tvar a 10)]
-      [_ <- (write-tvar b 20)]
-      [av <- (read-tvar a)]
-      [bv <- (read-tvar b)]
+    (let& ([a (new-tvar 1)]
+           [b (new-tvar 2)]
+           [_ (write-tvar a 10)]
+           [_ (write-tvar b 20)]
+           [av (read-tvar a)]
+           [bv (read-tvar b)])
       (pure (+ av bv)))))
 
 (: suite (List Test))

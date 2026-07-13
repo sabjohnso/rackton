@@ -121,8 +121,8 @@
 ;; ----- run ----------------------------------------------------------
 
 (: test-main (IO Unit))
-(define test-main (do [_ <- (run-suite-tree suite-arrow)]
-                    [_ <- (run-suite-tree suite-choice)]
-                    [_ <- (run-suite-tree suite-apply)]
-                    [_ <- (run-suite-tree suite-loop)]
+(define test-main (let& ([_ (run-suite-tree suite-arrow)]
+                         [_ (run-suite-tree suite-choice)]
+                         [_ (run-suite-tree suite-apply)]
+                         [_ (run-suite-tree suite-loop)])
                     (pure Unit)))

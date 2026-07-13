@@ -45,7 +45,7 @@
 
 (: main (IO Unit))
 (define main
-  (do [_ <- (println (string-append "When On  ⇒ " (show chosen-int)))]
-    [_ <- (println (string-append "When Off ⇒ " chosen-str))]
-    [_ <- (println (string-append "Cell NameCol = " a-name))]
+  (let& ([_ (println (string-append "When On  ⇒ " (show chosen-int)))]
+         [_ (println (string-append "When Off ⇒ " chosen-str))]
+         [_ (println (string-append "Cell NameCol = " a-name))])
     (println (string-append "Cell AgeCol  = " (show an-age)))))

@@ -26,13 +26,13 @@
 
   ;; single layer: ExceptT over the user monad
   (: one (ExceptT String Box Integer))
-  (define one (do [x <- (pure 5)] [y <- (pure 37)] (pure (+ x y))))
+  (define one (let& ([x (pure 5)] [y (pure 37)]) (pure (+ x y))))
   (: one-shown String)
   (define one-shown (show (unbox-box (run-except-t one))))
 
   ;; nested: ExceptT over ExceptT over the user monad (witness path)
   (: two (ExceptT String (ExceptT String Box) Integer))
-  (define two (do [x <- (pure 5)] [y <- (pure 37)] (pure (+ x y))))
+  (define two (let& ([x (pure 5)] [y (pure 37)]) (pure (+ x y))))
   (: two-shown String)
   (define two-shown (show (unbox-box (run-except-t (run-except-t two))))))
 

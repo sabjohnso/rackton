@@ -63,9 +63,9 @@
 ;; udp-recv-from-bytes for byte-exact reads.
 (: udp-recv-from (-> UDPSocket (-> Integer (IO (Tuple String (Tuple String Integer))))))
 (define (udp-recv-from sock n)
-  (do [r <- (udp-recv-from-bytes sock n)]
-      (pure (match r
-              [(tuple b addr) (tuple (bytes->string-lossy b) addr)]))))
+  (let& ([r (udp-recv-from-bytes sock n)])
+    (pure (match r
+            [(tuple b addr) (tuple (bytes->string-lossy b) addr)]))))
 
 (foreign udp-close (-> UDPSocket (IO Unit))
          :from rackton/private/prelude-runtime :as udp-close-prim)

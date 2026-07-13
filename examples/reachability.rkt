@@ -100,17 +100,17 @@
                                                                                  (string-append "?  " (if (reaches? x z) "yes" "no")))))))
 
 (: main (IO Unit))
-(define main (do [_ <- (println "Graph reachability via a monotone least fixpoint (rackton/mono)")]
-               [_ <- (println "")]
-               [_ <- (println "edges:")]
-               [_ <- (print (relation->block graph))]
-               [_ <- (println "")]
-               [_ <- (println (string-append "reachable (transitive closure), "
-                                             (string-append (integer->string (set-size (edges-of reach))) " pairs:")))]
-               [_ <- (print (relation->block reach))]
-               [_ <- (println "")]
-               [_ <- (println "queries:")]
-               [_ <- (println (query-line "a" "d"))]
-               [_ <- (println (query-line "a" "a"))]
-               [_ <- (println (query-line "e" "d"))]
+(define main (let& ([_ (println "Graph reachability via a monotone least fixpoint (rackton/mono)")]
+                    [_ (println "")]
+                    [_ (println "edges:")]
+                    [_ (print (relation->block graph))]
+                    [_ (println "")]
+                    [_ (println (string-append "reachable (transitive closure), "
+                                               (string-append (integer->string (set-size (edges-of reach))) " pairs:")))]
+                    [_ (print (relation->block reach))]
+                    [_ (println "")]
+                    [_ (println "queries:")]
+                    [_ (println (query-line "a" "d"))]
+                    [_ (println (query-line "a" "a"))]
+                    [_ (println (query-line "e" "d"))])
                (pure Unit)))

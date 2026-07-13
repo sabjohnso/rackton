@@ -47,8 +47,8 @@ actions:
 
 (: counter-up (-> (Ref Integer) (IO Integer)))
 (define (counter-up r)
-  (do [n <- (read-ref r)]
-      (write-ref r (+ n 1))
+  (let& ([n (read-ref r)]
+         [_ (write-ref r (+ n 1))])
     (read-ref r)))
 }
 
@@ -64,7 +64,7 @@ context.
 
 (: read-greeting (-> String (IO String)))
 (define (read-greeting path)
-  (do [body <- (read-file path)]
+  (let& ([body (read-file path)])
     (pure-io (string-append "from file: " body))))
 }
 
@@ -120,8 +120,8 @@ section of the reference.
 
 (: prompt-and-greet (IO Unit))
 (define prompt-and-greet
-  (do (print "name? ")
-      [name <- read-line]
+  (let& ([_ (print "name? ")]
+         [name read-line])
     (println (string-append "hi, " name))))
 
 (define _ (run-io prompt-and-greet))

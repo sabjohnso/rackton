@@ -79,9 +79,9 @@
 ;; `try` so the close always runs; a captured error is re-raised after.
 (: with-file (-> String (-> IOMode (-> (-> Handle (IO r)) (IO r)))))
 (define (with-file path mode action)
-  (do [h <- (open-file path mode)]
-      [r <- (try (action h))]
-      [_ <- (h-close h)]
-      (match r
-        [(Ok v)  (pure v)]
-        [(Err e) (raise-io e)])))
+  (let& ([h (open-file path mode)]
+         [r (try (action h))]
+         [_ (h-close h)])
+    (match r
+      [(Ok v)  (pure v)]
+      [(Err e) (raise-io e)])))

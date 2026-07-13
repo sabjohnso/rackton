@@ -21,7 +21,7 @@
 
   (: log-and-add ((MonadWriter String m) => (-> Integer (m Integer))))
   (define (log-and-add n)
-    (do [_ <- (tell-w "added.")]
+    (let& ([_ (tell-w "added.")])
       (pure (+ n 1))))
 
   (: wt-add (WriterT String IO Integer))
@@ -39,8 +39,8 @@
      ((MonadWriter String m) => (m (Pair Integer String))))
   (define traced-then-listen
     (listen
-     (do [_ <- (tell-w "x.")]
-         [_ <- (tell-w "y.")]
+     (let& ([_ (tell-w "x.")]
+            [_ (tell-w "y.")])
        (pure 7))))
 
   (: listen-result (IO (Pair String (Pair Integer String))))
@@ -53,7 +53,7 @@
      ((MonadWriter String m) => (m Integer)))
   (define censored-trace
     (censor prefix-bang
-            (do [_ <- (tell-w "step.")]
+            (let& ([_ (tell-w "step.")])
               (pure 99))))
 
   (: censor-result (IO (Pair String Integer)))
@@ -65,9 +65,9 @@
 
   (: thrower-wt (WriterT String (ExceptT String IO) Integer))
   (define thrower-wt
-    (do [_ <- (tell-w "before-throw.")]
-        [_ <- (ann (throw-e "boom")
-                   (WriterT String (ExceptT String IO) Integer))]
+    (let& ([_ (tell-w "before-throw.")]
+           [_ (ann (throw-e "boom")
+                   (WriterT String (ExceptT String IO) Integer))])
         (pure 1)))
 
   (: recover-wt
@@ -87,7 +87,7 @@
 
   (: announce-env ((MonadEnv String m) => (m String)))
   (define announce-env
-    (do [r <- ask-en]
+    (let& ([r ask-en])
       (pure (mappend "hi " r))))
 
   (: local-stack (StateT Integer (Env String) String))

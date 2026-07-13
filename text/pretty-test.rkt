@@ -106,16 +106,16 @@
 (define (gen-doc depth)
   (if (<= depth 0)
     gen-leaf
-    (do [c <- (int-range 0 3)]
+    (let& ([c (int-range 0 3)])
       (cond
         [(== c 0) gen-leaf]
-        [(== c 1) (do [a <- (gen-doc (- depth 1))]
-                    [b <- (gen-doc (- depth 1))]
+        [(== c 1) (let& ([a (gen-doc (- depth 1))]
+                         [b (gen-doc (- depth 1))])
                     (constant (<> a b)))]
-        [(== c 2) (do [i <- (int-range 0 4)]
-                    [x <- (gen-doc (- depth 1))]
+        [(== c 2) (let& ([i (int-range 0 4)]
+                         [x (gen-doc (- depth 1))])
                     (constant (nest i x)))]
-        [else     (do [x <- (gen-doc (- depth 1))]
+        [else     (let& ([x (gen-doc (- depth 1))])
                     (constant (group x)))]))))
 
 (: g1 (Gen Doc))

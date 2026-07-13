@@ -9,32 +9,32 @@
 ;; createDirectoryIfMissing is idempotent
 (: mkdir-res (IO Boolean))
 (define mkdir-res
-  (do [_ <- (create-directory-if-missing "/tmp/rackton-leftover-dir")]
-    [_ <- (create-directory-if-missing "/tmp/rackton-leftover-dir")]
-    [b <- (does-directory-exist? "/tmp/rackton-leftover-dir")]
+  (let& ([_ (create-directory-if-missing "/tmp/rackton-leftover-dir")]
+         [_ (create-directory-if-missing "/tmp/rackton-leftover-dir")]
+         [b (does-directory-exist? "/tmp/rackton-leftover-dir")])
     (pure b)))
 
 ;; renameFile: old gone, new has the content
 (: rename-res (IO Boolean))
 (define rename-res
-  (do [_   <- (write-file "/tmp/rackton-ren-a.txt" "data")]
-    [_   <- (rename-file "/tmp/rackton-ren-a.txt" "/tmp/rackton-ren-b.txt")]
-    [old <- (file-exists? "/tmp/rackton-ren-a.txt")]
-    [s   <- (read-file "/tmp/rackton-ren-b.txt")]
+  (let& ([_   (write-file "/tmp/rackton-ren-a.txt" "data")]
+         [_   (rename-file "/tmp/rackton-ren-a.txt" "/tmp/rackton-ren-b.txt")]
+         [old (file-exists? "/tmp/rackton-ren-a.txt")]
+         [s   (read-file "/tmp/rackton-ren-b.txt")])
     (pure (if old #f (== s "data")))))
 
 ;; copyFile: source remains, copy has the content
 (: copy-res (IO Boolean))
 (define copy-res
-  (do [_   <- (write-file "/tmp/rackton-cp-src.txt" "copyme")]
-    [_   <- (copy-file "/tmp/rackton-cp-src.txt" "/tmp/rackton-cp-dst.txt")]
-    [src <- (file-exists? "/tmp/rackton-cp-src.txt")]
-    [d   <- (read-file "/tmp/rackton-cp-dst.txt")]
+  (let& ([_   (write-file "/tmp/rackton-cp-src.txt" "copyme")]
+         [_   (copy-file "/tmp/rackton-cp-src.txt" "/tmp/rackton-cp-dst.txt")]
+         [src (file-exists? "/tmp/rackton-cp-src.txt")]
+         [d   (read-file "/tmp/rackton-cp-dst.txt")])
     (pure (if src (== d "copyme") #f))))
 
 ;; clocks
-(: now-pos    (IO Boolean)) (define now-pos    (do [t <- get-current-time-millis] (pure (> t 1000000000000))))
-(: cpu-nonneg (IO Boolean)) (define cpu-nonneg (do [t <- get-cpu-time-millis]     (pure (>= t 0))))
+(: now-pos    (IO Boolean)) (define now-pos    (let& ([t get-current-time-millis]) (pure (> t 1000000000000))))
+(: cpu-nonneg (IO Boolean)) (define cpu-nonneg (let& ([t get-cpu-time-millis])     (pure (>= t 0))))
 
 (: r-mkdir Boolean) (define r-mkdir (run-io mkdir-res))
 (: r-rename Boolean) (define r-rename (run-io rename-res))

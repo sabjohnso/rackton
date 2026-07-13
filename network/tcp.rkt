@@ -87,11 +87,11 @@
 
 (: recv-bytes-timeout (-> Socket (-> Integer (-> Integer (IO (RecvResult Bytes))))))
 (define (recv-bytes-timeout sock n ms)
-  (do [r <- (recv-bytes-timeout-prim sock n ms)]
-      (pure (match r
-              [(None)          RecvTimeout]
-              [(Some (None))   PeerClosed]
-              [(Some (Some b)) (Got b)]))))
+  (let& ([r (recv-bytes-timeout-prim sock n ms)])
+    (pure (match r
+            [(None)          RecvTimeout]
+            [(Some (None))   PeerClosed]
+            [(Some (Some b)) (Got b)]))))
 
 ;; --- transfer (String convenience layer) ---------------------------
 
@@ -104,17 +104,17 @@
 ;; lossily); None at end-of-file.  Use recv-bytes for byte-exact reads.
 (: recv (-> Socket (-> Integer (IO (Maybe String)))))
 (define (recv sock n)
-  (do [mb <- (recv-bytes sock n)]
-      (pure (fmap bytes->string-lossy mb))))
+  (let& ([mb (recv-bytes sock n)])
+    (pure (fmap bytes->string-lossy mb))))
 
 ;; recv-timeout sock n ms: the String view of recv-bytes-timeout.
 (: recv-timeout (-> Socket (-> Integer (-> Integer (IO (RecvResult String))))))
 (define (recv-timeout sock n ms)
-  (do [r <- (recv-bytes-timeout sock n ms)]
-      (pure (match r
-              [(Got b)       (Got (bytes->string-lossy b))]
-              [(PeerClosed)  PeerClosed]
-              [(RecvTimeout) RecvTimeout]))))
+  (let& ([r (recv-bytes-timeout sock n ms)])
+    (pure (match r
+            [(Got b)       (Got (bytes->string-lossy b))]
+            [(PeerClosed)  PeerClosed]
+            [(RecvTimeout) RecvTimeout]))))
 
 ;; --- closing -------------------------------------------------------
 
@@ -129,9 +129,9 @@
 ;; system/io's with-file).
 (: with-connect (-> String (-> Integer (-> (-> Socket (IO r)) (IO r)))))
 (define (with-connect host port action)
-  (do [s <- (connect host port)]
-      [r <- (try (action s))]
-      [_ <- (close s)]
-      (match r
-        [(Ok v)  (pure v)]
-        [(Err e) (raise-io e)])))
+  (let& ([s (connect host port)]
+         [r (try (action s))]
+         [_ (close s)])
+    (match r
+      [(Ok v)  (pure v)]
+      [(Err e) (raise-io e)])))

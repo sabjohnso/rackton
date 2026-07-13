@@ -16,8 +16,8 @@
 
 (: logged-greeting (WriterT String IO Integer))
 (define logged-greeting
-  (do [_ <- (tell "hello, ")]
-    [_ <- (tell "world")]
+  (let& ([_ (tell "hello, ")]
+         [_ (tell "world")])
     (pure 42)))
 
 (: greeting-result (IO (Pair String Integer)))
@@ -31,9 +31,9 @@
 
 (: traced-counter (WriterT (List Integer) IO Integer))
 (define traced-counter
-  (do [_ <- (trace-step 1)]
-    [_ <- (trace-step 2)]
-    [_ <- (trace-step 3)]
+  (let& ([_ (trace-step 1)]
+         [_ (trace-step 2)]
+         [_ (trace-step 3)])
     (pure 6)))
 
 (: traced-result (IO (Pair (List Integer) Integer)))
@@ -43,8 +43,8 @@
 ;; with a non-IO inner monad ---------------------------------
 (: maybe-pair (WriterT String Maybe Integer))
 (define maybe-pair
-  (do [_ <- (tell "step-1 ")]
-    [_ <- (tell "step-2")]
+  (let& ([_ (tell "step-1 ")]
+         [_ (tell "step-2")])
     (pure 7)))
 
 (: maybe-pair-result (Maybe (Pair String Integer)))

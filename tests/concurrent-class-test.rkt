@@ -9,10 +9,10 @@
 
 (: parallel-sum (IO Integer))
 (define parallel-sum
-  (do [f1 <- (fork-c (pure 10))]
-    [f2 <- (fork-c (pure 32))]
-    [a  <- (await-c f1)]
-    [b  <- (await-c f2)]
+  (let& ([f1 (fork-c (pure 10))]
+         [f2 (fork-c (pure 32))]
+         [a  (await-c f1)]
+         [b  (await-c f2)])
     (pure (+ a b))))
 
 ;; ----- 43.B polymorphic-monad parallelization ----------------
@@ -22,10 +22,10 @@
 
 (: par-pair ((Concurrent m) => (-> (m a) (-> (m b) (m (Pair a b))))))
 (define (par-pair ma mb)
-  (do [fa <- (fork-c ma)]
-    [fb <- (fork-c mb)]
-    [a  <- (await-c fa)]
-    [b  <- (await-c fb)]
+  (let& ([fa (fork-c ma)]
+         [fb (fork-c mb)]
+         [a  (await-c fa)]
+         [b  (await-c fb)])
     (pure (Pair a b))))
 
 (: par-pair-result (IO (Pair Integer String)))

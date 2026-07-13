@@ -53,9 +53,9 @@
   (: bound Integer)
   (define bound
     (tree-value
-     (gen-tree (do [x <- (int-range 5 5)]
-                  [y <- (int-range 3 3)]
-                (constant (+ x y)))
+     (gen-tree (let& ([x (int-range 5 5)]
+                      [y (int-range 3 3)])
+                 (constant (+ x y)))
               0 (seed-from 2)))))
 
 (test-case "same size+seed produces the same draw"

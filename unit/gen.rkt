@@ -181,8 +181,8 @@
 ;; A pair, from two component generators.
 (: gen-pair (-> (Gen a) (-> (Gen b) (Gen (Pair a b)))))
 (define (gen-pair ga gb)
-  (do [x <- ga]
-      [y <- gb]
+  (let& ([x ga]
+         [y gb])
     (constant (Pair x y))))
 
 ;; Exactly `n` elements drawn from `g`.
@@ -190,8 +190,8 @@
 (define (replicate-gen n g)
   (if (<= n 0)
       (constant Nil)
-      (do [x  <- g]
-          [xs <- (replicate-gen (- n 1) g)]
+      (let& ([x  g]
+             [xs (replicate-gen (- n 1) g)])
         (constant (Cons x xs)))))
 
 ;; A list of 0–8 elements from `g`.  Shrinks both length (toward 0, via
@@ -199,7 +199,7 @@
 ;; by the generator's monadic bind.
 (: gen-list (-> (Gen a) (Gen (List a))))
 (define (gen-list g)
-  (do [n <- (int-range 0 8)]
+  (let& ([n (int-range 0 8)])
     (replicate-gen n g)))
 
 (: list-index (-> (List a) (-> Integer a)))

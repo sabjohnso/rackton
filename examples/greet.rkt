@@ -32,7 +32,7 @@
 (define (print-n n s)
   (if (<= n 0)
     (pure Unit)
-    (do [_ <- (println s)] (print-n (- n 1) s))))
+    (let& ([_ (println s)]) (print-n (- n 1) s))))
 
 ;; build the greeting from the parsed arguments and emit it.
 (: run-greet (-> Boolean Integer String (IO Unit)))
@@ -67,4 +67,4 @@
 ;; eval parses argv, runs the action (or prints help/version/error),
 ;; and returns the exit code; exit-with-code makes it the process status.
 (: main (IO Unit))
-(define main (do [code <- (eval greet-cmd)] (exit-with-code code)))
+(define main (let& ([code (eval greet-cmd)]) (exit-with-code code)))

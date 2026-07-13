@@ -16,8 +16,8 @@
   ;; Sequence two greetings via do-notation; bind chain over IO.
   (: greet-both (-> String (-> String (IO Unit))))
   (define (greet-both a b)
-    (do [_ <- (greet a)]
-        [_ <- (greet b)]
+    (let& ([_ (greet a)]
+           [_ (greet b)])
       (pure-io Unit)))
 
   ;; Numeric helpers + integer->string.

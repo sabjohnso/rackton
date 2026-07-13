@@ -29,9 +29,9 @@
 ;; ----- bind short-circuits on Err -----------------------
 (: chained (ExceptT String IO Integer))
 (define chained
-  (do [a <- (divide-safely 100 5)]
-    [b <- (divide-safely a 0)]    ;; throws — rest skipped
-    [c <- (divide-safely a 2)]
+  (let& ([a (divide-safely 100 5)]
+         [b (divide-safely a 0)]    ;; throws — rest skipped
+         [c (divide-safely a 2)])
     (pure (+ b c))))
 
 (: chained-result (IO (Result String Integer)))
@@ -67,7 +67,7 @@
 ;; ----- ExceptT do-chain over Maybe with bind short-circuit
 (: maybe-chained (ExceptT String Maybe Integer))
 (define maybe-chained
-  (do [_ <- (throw-error "from-mid")]
+  (let& ([_ (throw-error "from-mid")])
     (pure 99)))
 
 (: maybe-chained-result (Maybe (Result String Integer)))

@@ -28,11 +28,11 @@ on empty, put blocks on full.
 
 (: ping-pong (IO Unit))
 (define ping-pong
-  (do [m <- new-empty-mvar]
-      (fork-io
-        (do (put-mvar m 42)
-            (println "sent")))
-      [v <- (take-mvar m)]
+  (let& ([m new-empty-mvar]
+         [_ (fork-io
+              (let& ([_ (put-mvar m 42)])
+                (println "sent")))]
+         [v (take-mvar m)])
     (println (string-append "got: " (show v)))))
 }
 
@@ -49,14 +49,14 @@ receives block on empty.
 
 (: producer-consumer (IO Unit))
 (define producer-consumer
-  (do [ch <- new-chan]
-      (fork-io
-        (do (send-chan ch 1)
-            (send-chan ch 2)
-            (send-chan ch 3)))
-      [a <- (recv-chan ch)]
-      [b <- (recv-chan ch)]
-      [c <- (recv-chan ch)]
+  (let& ([ch new-chan]
+         [_ (fork-io
+              (let& ([_ (send-chan ch 1)]
+                     [_ (send-chan ch 2)])
+                (send-chan ch 3)))]
+         [a (recv-chan ch)]
+         [b (recv-chan ch)]
+         [c (recv-chan ch)])
     (println (show (+ a (+ b c))))))
 }
 
@@ -72,10 +72,10 @@ and the @racket[STM] monad:
 
 (: transfer (-> (TVar Integer) (-> (TVar Integer) (-> Integer (STM Unit)))))
 (define (transfer from to amount)
-  (do [src <- (read-tvar from)]
-      [dst <- (read-tvar to)]
-      (write-tvar from (- src amount))
-      (write-tvar to   (+ dst amount))
+  (let& ([src (read-tvar from)]
+         [dst (read-tvar to)]
+         [_ (write-tvar from (- src amount))]
+         [_ (write-tvar to   (+ dst amount))])
     (pure Unit)))
 
 (: do-transfer (-> (TVar Integer) (-> (TVar Integer) (IO Unit))))
@@ -103,7 +103,7 @@ second is tried.
 
 (: wait-for-positive (-> (TVar Integer) (STM Integer)))
 (define (wait-for-positive t)
-  (do [n <- (read-tvar t)]
+  (let& ([n (read-tvar t)])
     (if (> n 0) (pure n) retry)))
 }
 
@@ -117,17 +117,17 @@ so the final balance is the sum of both deposits:
 
 (: deposit (-> (TVar Integer) (-> Integer (STM Unit))))
 (define (deposit acct amount)
-  (do [balance <- (read-tvar acct)]
+  (let& ([balance (read-tvar acct)])
     (write-tvar acct (+ balance amount))))
 
 (: demo (IO Unit))
 (define demo
-  (do [acct <- (atomically (new-tvar 0))]
-      [t1   <- (fork-io (atomically (deposit acct 100)))]
-      [t2   <- (fork-io (atomically (deposit acct 25)))]
-      (wait-thread t1)
-      (wait-thread t2)
-      [final <- (atomically (read-tvar acct))]
+  (let& ([acct (atomically (new-tvar 0))]
+         [t1   (fork-io (atomically (deposit acct 100)))]
+         [t2   (fork-io (atomically (deposit acct 25)))]
+         [_ (wait-thread t1)]
+         [_ (wait-thread t2)]
+         [final (atomically (read-tvar acct))])
     (println (string-append "balance: " (show final)))))
 }
 
@@ -140,10 +140,10 @@ deterministic mock, the @racket[Concurrent] protocol abstracts
 @rackton-example[#:eval ev #:mode 'defs #:context? #t]{
 (: par-add ((Concurrent m) => (-> Integer (-> Integer (m Integer)))))
 (define (par-add x y)
-  (do [fx <- (fork-c (pure (+ x x)))]
-      [fy <- (fork-c (pure (+ y y)))]
-      [a  <- (await-c fx)]
-      [b  <- (await-c fy)]
+  (let& ([fx (fork-c (pure (+ x x)))]
+         [fy (fork-c (pure (+ y y)))]
+         [a  (await-c fx)]
+         [b  (await-c fy)])
     (pure (+ a b))))
 }
 

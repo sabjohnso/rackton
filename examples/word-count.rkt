@@ -42,8 +42,8 @@
 
 (: main (IO Unit))
 (define main
-  (do [args <- argv]
+  (let& ([args argv])
     (match args
       [(Nil)         (println (report 5 sample))]
-      [(Cons file _) (do [text <- (read-file file)]
+      [(Cons file _) (let& ([text (read-file file)])
                        (println (report 5 text)))])))

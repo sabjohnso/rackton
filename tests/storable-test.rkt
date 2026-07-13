@@ -9,19 +9,19 @@
 ;; poke (dispatches on the Integer value) then peek (return-typed at Integer)
 (: int-rt (IO Integer))
 (define int-rt
-  (do [p <- (malloc-bytes size-of-int)]
-    [_ <- (poke p 99)]
-    [v <- (ann (peek p) (IO Integer))]
-    [_ <- (free-ptr p)]
+  (let& ([p (malloc-bytes size-of-int)]
+         [_ (poke p 99)]
+         [v (ann (peek p) (IO Integer))]
+         [_ (free-ptr p)])
     (pure v)))
 
 ;; the same polymorphic peek / poke at Float
 (: flt-rt (IO Float))
 (define flt-rt
-  (do [p <- (malloc-bytes size-of-double)]
-    [_ <- (poke p 2.5)]
-    [v <- (ann (peek p) (IO Float))]
-    [_ <- (free-ptr p)]
+  (let& ([p (malloc-bytes size-of-double)]
+         [_ (poke p 2.5)]
+         [v (ann (peek p) (IO Float))]
+         [_ (free-ptr p)])
     (pure v)))
 
 (: suite (List Test))

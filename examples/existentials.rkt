@@ -73,6 +73,7 @@
                                                  (string-append "\n" (bullet-lines rest))))]))
 
 (: main (IO Unit))
-(define main (do [_ <- (println "A heterogeneous list, described uniformly:")]
-               [_ <- (println "")]
-               (println (bullet-lines (pretty-all things)))))
+(define main
+  (let& ([_ (println "A heterogeneous list, described uniformly:")]
+         [_ (println "")])
+    (println (bullet-lines (pretty-all things)))))

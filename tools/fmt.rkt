@@ -36,20 +36,20 @@
   (match files
     [(Nil) (pure #f)]
     [(Cons f rest)
-     (do [src <- (read-file f)]
+     (let& ([src (read-file f)])
        (let ([out (format-src reindent? width src)])
-         (do [_ <- (cond
+         (let& ([_ (cond
                      [write (write-file f out)]
                      [check (pure Unit)]
                      [else  (print out)])]
-           [rest-changed <- (process-files reindent? width check write rest)]
+                [rest-changed (process-files reindent? width check write rest)])
            (pure (if (and check (not (== out src))) #t rest-changed)))))]))
 
 (: run-fmt (-> Boolean Integer Boolean Boolean (List String) (IO Unit)))
 (define (run-fmt reindent? width check write files)
   (match files
-    [(Nil) (do [src <- get-contents] (print (format-src reindent? width src)))]
-    [_     (do [changed <- (process-files reindent? width check write files)]
+    [(Nil) (let& ([src get-contents]) (print (format-src reindent? width src)))]
+    [_     (let& ([changed (process-files reindent? width check write files)])
              (if (and check changed) (exit-with-code 1) (pure Unit)))]))
 
 ;; ----- the command-line interface -----------------------------------
@@ -80,4 +80,4 @@
          fmt-term))
 
 (: main (IO Unit))
-(define main (do [code <- (eval fmt-cmd)] (exit-with-code code)))
+(define main (let& ([code (eval fmt-cmd)]) (exit-with-code code)))

@@ -11,16 +11,16 @@
 ;; Mutable counter via Ref.  loop-step must precede its caller.
 (: loop-step (-> (Ref Integer) (-> Integer (IO Unit))))
 (define (loop-step r stop)
-  (do [n <- (read-ref r)]
+  (let& ([n (read-ref r)])
     (if (< n stop)
-      (do [_ <- (write-ref r (+ n 1))]
+      (let& ([_ (write-ref r (+ n 1))])
         (loop-step r stop))
       (pure-io Unit))))
 
 (: count-from-to (-> Integer (-> Integer (IO Integer))))
 (define (count-from-to start stop)
-  (do [r <- (make-ref start)]
-    [_ <- (loop-step r stop)]
+  (let& ([r (make-ref start)]
+         [_ (loop-step r stop)])
     (read-ref r)))
 
 ;; List helpers
@@ -50,7 +50,7 @@
 ;; File round-trip on a fixed temp path.
 (: file-roundtrip (IO String))
 (define file-roundtrip
-  (do [_ <- (write-file "/tmp/rackton-fileio-test.txt" "rackton file io rules")]
+  (let& ([_ (write-file "/tmp/rackton-fileio-test.txt" "rackton file io rules")])
     (read-file "/tmp/rackton-fileio-test.txt")))
 
 ;; ----- assertions -------------------------------------------------

@@ -154,11 +154,11 @@
 
 (: repl-step (IO Unit))
 (define repl-step
-  (do [_  <- (print "calc> ")]
-    [ln <- read-line]
+  (let& ([_  (print "calc> ")]
+         [ln read-line])
     (if (== ln "")
       (println "bye!")
-      (do [_ <- (println (process ln))]
+      (let& ([_ (println (process ln))])
         repl-step))))
 
 (: main (IO Unit))

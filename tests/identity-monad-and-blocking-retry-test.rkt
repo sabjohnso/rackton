@@ -17,7 +17,7 @@
 
 (: positive-then-double (-> (TVar Integer) (STM Integer)))
 (define (positive-then-double tv)
-  (do [n <- (read-tvar tv)]
+  (let& ([n (read-tvar tv)])
     (if (> n 0)
       (pure (* n 2))
       retry)))
@@ -25,27 +25,27 @@
 (: bump-once (-> (TVar Integer) (IO Unit)))
 (define (bump-once tv)
   (atomically
-    (do [n <- (read-tvar tv)]
+    (let& ([n (read-tvar tv)])
       (write-tvar tv (+ n 1)))))
 
 (: blocking-retry-result (IO Integer))
 (define blocking-retry-result
-  (do [tv <- (atomically (new-tvar 0))]
-    ;; Spawn a thread that bumps the TVar past zero.  The main
-    ;; thread's atomically blocks on retry until that happens.
-    [t  <- (fork-io (bump-once tv))]
-    [v  <- (atomically (positive-then-double tv))]
-    [_  <- (wait-thread t)]
+  (let& ([tv (atomically (new-tvar 0))]
+         ;; Spawn a thread that bumps the TVar past zero.  The main
+         ;; thread's atomically blocks on retry until that happens.
+         [t  (fork-io (bump-once tv))]
+         [v  (atomically (positive-then-double tv))]
+         [_  (wait-thread t)])
     (pure v)))
 
 ;; ----- 44.4 Mock Concurrent via Identity --------------------
 
 (: par-pair ((Concurrent m) => (-> (m a) (-> (m b) (m (Pair a b))))))
 (define (par-pair ma mb)
-  (do [fa <- (fork-c ma)]
-    [fb <- (fork-c mb)]
-    [a  <- (await-c fa)]
-    [b  <- (await-c fb)]
+  (let& ([fa (fork-c ma)]
+         [fb (fork-c mb)]
+         [a  (await-c fa)]
+         [b  (await-c fb)])
     (pure (Pair a b))))
 
 (: id-par-pair (Identity (Pair Integer String)))

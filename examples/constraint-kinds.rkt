@@ -40,6 +40,6 @@
 
 (: main (IO Unit))
 (define main
-  (do [_ <- (println (tell 7 7))]
-    [_ <- (println (tell 7 9))]
+  (let& ([_ (println (tell 7 7))]
+         [_ (println (tell 7 9))])
     (println (all-showable pr))))

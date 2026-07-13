@@ -45,5 +45,5 @@
 
 (: main (IO Unit))
 (define main
-  (do [_ <- (println (string-append "payload sum   = " (show (amount three))))]
+  (let& ([_ (println (string-append "payload sum   = " (show (amount three))))])
     (println "size index (Plus 1 2) reduced to 3 at compile time")))

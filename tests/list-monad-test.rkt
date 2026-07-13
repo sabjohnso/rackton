@@ -24,8 +24,8 @@
 ;; do-notation over List == cartesian product
 (: pairs (List (Pair Integer Integer)))
 (define pairs
-  (do [x <- (list 1 2)]
-    [y <- (list 10 20)]
+  (let& ([x (list 1 2)]
+         [y (list 10 20)])
     (pure (Pair x y))))
 
 ;; flatmap to the empty list short-circuits that branch

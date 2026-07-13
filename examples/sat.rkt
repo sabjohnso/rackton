@@ -161,16 +161,16 @@
 
 (: report (-> String (-> Formula (IO Unit))))
 (define (report label f)
-  (do [_ <- (println (string-append label (string-append ":  " (formula->string f))))]
+  (let& ([_ (println (string-append label (string-append ":  " (formula->string f))))])
     (match (solve f)
       [(Some asn) (println (string-append "    SAT   " (assignment->string asn)))]
       [(None)     (println "    UNSAT")])))
 
 (: main (IO Unit))
-(define main (do [_ <- (println "DPLL SAT solver:")]
-               [_ <- (println "")]
-               [_ <- (report "formula 1" sat-formula)]
-               [_ <- (report "formula 2" unsat-unit)]
-               [_ <- (report "formula 3" unsat-all)]
-               [_ <- (println "")]
+(define main (let& ([_ (println "DPLL SAT solver:")]
+                    [_ (println "")]
+                    [_ (report "formula 1" sat-formula)]
+                    [_ (report "formula 2" unsat-unit)]
+                    [_ (report "formula 3" unsat-all)]
+                    [_ (println "")])
                (println "done.")))
