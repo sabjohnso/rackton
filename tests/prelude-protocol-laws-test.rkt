@@ -178,6 +178,11 @@
              (for-all (gen-pair gen-list-int gen-list-int)
                       (lambda (p) (match p [(Pair xs ys)
                         (== (sum (append xs ys)) (+ (sum xs) (sum ys)))]))))
+    ;; Same homomorphism over Rational — also exact and associative.
+    (it-prop "sum (xs ++ ys) = sum xs + sum ys over Rational"
+             (for-all (gen-pair (gen-list gr) (gen-list gr))
+                      (lambda (p) (match p [(Pair xs ys)
+                        (== (sum (append xs ys)) (+ (sum xs) (sum ys)))]))))
 
     ;; Semigroup/Monoid laws on SHIPPED instances.  Until now the only
     ;; semigroup-laws invocation was against a deliberately-broken test
