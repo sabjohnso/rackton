@@ -4,10 +4,15 @@
 ;; newtype with Eq/Ord/Show/Num instances and checked construction.
 
 (require rackton/numeric/natural
+         rackton/data/coerce
          "../unit.rkt")
 
 ;; round-trip construction
 (: rt Integer) (define rt (num-from-natural (Natural 5)))
+
+;; A generator of Naturals (non-negative by construction).
+(: gen-natural (Gen Natural))
+(define gen-natural (fmap (lambda (n) (Natural n)) (int-range 0 100000)))
 
 ;; checked construction
 (: to-ok-flag  Boolean) (define to-ok-flag  (match (num-to-natural 5)  [(Some _) #t] [(None) #f]))
@@ -64,7 +69,16 @@
         (all-checks
           (list (check-true  eq-t)
                 (check-true  lt-t)
-                (check-equal? shown "42"))))))
+                (check-equal? shown "42"))))
+    ;; `coerce : Natural -> Integer` is the encode half of an
+    ;; encode/decode pair with `num-to-natural`; decoding the coerced
+    ;; Integer round-trips back to the original Natural.
+    (it-prop "num-to-natural (coerce n) = Some n"
+             (for-all gen-natural
+                      (lambda (n)
+                        (match (num-to-natural (ann (coerce n) Integer))
+                          [(Some m) (== m n)]
+                          [(None)   #f]))))))
 
 (: test-main (IO Unit))
 (define test-main (run-suite "numeric-natural" suite))

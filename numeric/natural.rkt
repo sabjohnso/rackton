@@ -11,6 +11,8 @@
 
 (provide (all-defined-out))
 
+(require rackton/data/coerce)
+
 (newtype Natural (Natural Integer))
 
 ;; --- construction / projection -------------------------------------
@@ -68,3 +70,11 @@
 (instance (Multiplicative-Commutative-Unital-Magma Natural))
 (instance (Abs Natural)
   (define (abs x) x))
+
+;; --- Coerce --------------------------------------------------------
+;; Natural -> Integer is total and lossless.  The reverse (Integer ->
+;; Natural) is partial (negatives have no Natural), and a coercion
+;; cannot signal failure, so that direction stays with the checked
+;; `num-to-natural : Integer -> (Maybe Natural)`.
+(instance (Coerce Natural Integer)
+  (define (coerce x) (num-from-natural x)))

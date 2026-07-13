@@ -1566,6 +1566,21 @@
     [(eq? head-tcon 'Boolean) '(Boolean)]
     [(eq? head-tcon 'String)  '(String)]
     [(eq? head-tcon 'Float)   '(Float)]
+    ;; The rest of the numeric tower dispatches by value predicate too
+    ;; (see dict.rkt's dispatch-tag): exact non-integer rationals tag as
+    ;; `Rational`, non-real numbers as `Complex` / `ComplexExact`.  These
+    ;; are opaque `(data …)` types with no constructors, so without this
+    ;; case a user/stdlib instance headed on one would register under no
+    ;; tag and miss at runtime across a module boundary.
+    [(eq? head-tcon 'Rational)     '(Rational)]
+    [(eq? head-tcon 'Complex)      '(Complex)]
+    [(eq? head-tcon 'ComplexExact) '(ComplexExact)]
+    ;; Likewise the other value-predicate-dispatched, constructor-less
+    ;; prelude scalars (dispatch-tag maps their host values to these
+    ;; tags): Char / Bytes / Symbol.
+    [(eq? head-tcon 'Char)         '(Char)]
+    [(eq? head-tcon 'Bytes)        '(Bytes)]
+    [(eq? head-tcon 'Symbol)       '(Symbol)]
     ;; `Array` values are prefab `rkt-array` structs (see array-runtime);
     ;; an Array-headed instance (Functor / Comonad) registers under that
     ;; tag, which is what dispatch-tag returns for an array value.
