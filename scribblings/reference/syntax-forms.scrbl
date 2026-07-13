@@ -843,20 +843,29 @@ type is a monad of the same shape as the preceding clauses.
     [y <- (Some 4)]
   (Some (+ x y)))]}
 
-@defform[(let& ([var expr] ...) body)]{
+@defform[(let& ([var expr] ...) body ...+)]{
 
 Sequential monadic binding (in the spirit of OCaml's @tt{let*}, with a
 different introducer since @racket[let*] already has a meaning in
 Scheme).  Each @racket[expr] is a monadic value @racket[(m a)]; @racket[var]
 binds the unwrapped @racket[a] and is in scope for the later
-@racket[expr]s and @racket[body].  Desugars to a nested @racket[flatmap]
-chain — the same family as @racket[do], in binding-list shape.  The
-trailing @racket[body] is the final monadic computation.
+@racket[expr]s and the @racket[body].  Desugars to a nested @racket[flatmap]
+chain — the same family as @racket[do], in binding-list shape.
+
+The @racket[body] is a statement sequence: every form but the last is a
+bare monadic effect whose result is discarded (sequenced with
+@racket[flatmap], the same way a bare-expression clause works in
+@racket[do]); the last form is the final monadic computation.
 
 @racketblock[
 (let& ([a (Some 1)]
        [b (Some (+ a 1))])
-  (Some (+ a b)))]}
+  (Some (+ a b)))]
+
+@racketblock[
+(let& ([r (make-ref 0)])
+  (write-ref r 42)
+  (read-ref r))]}
 
 @defform*[[(let% ([var expr] ...) body)
            (let% loop ([var expr] ...) body)]]{

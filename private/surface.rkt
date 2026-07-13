@@ -673,15 +673,19 @@
                               stx)]
 
     ;; let& — sequential monad bind (deps allowed); nested flatmap, same
-    ;; family as `do`.  Body is the final monadic expression.
-    [(let& ([x:id rhs] ...+) body)
+    ;; family as `do`.  The body is a statement sequence: every form but
+    ;; the last is a bare monadic effect whose result is discarded; the
+    ;; last is the final monadic expression.
+    [(let& ([x:id rhs] ...+) body ...+)
      ;; Sequential: each RHS sees the binders before it; the body sees all.
      (let loop ([ids (syntax->list #'(x ...))]
                 [rhss (syntax->list #'(rhs ...))]
                 [acc '()])
        (cond
          [(null? ids)
-          (build-sequential-let (reverse acc) (parse-expr #'body) stx)]
+          (build-sequential-let (reverse acc)
+                                 (build-effect-seq (syntax->list #'(body ...)) stx)
+                                 stx)]
          [else
           (define rhs-ast (parse-expr (car rhss)))
           (parameterize ([current-local-binders (extend-local-binders (list (car ids)))])
@@ -1379,6 +1383,16 @@
                         (parse-expr body-stx)
                         stx)))
 
+;; One monadic-bind node: `(flatmap (lambda (binder) cont) effect)`.  The
+;; single shape every sequential-bind desugaring emits — `do` (both its
+;; `[v <- e]` and bare-effect clauses), `let&`'s binding list, and
+;; `let&`'s body-effect sequence all route through here, so the node's
+;; representation has one reason to change.
+(define (flatmap-bind binder effect-ast cont-ast stx)
+  (e:app (sugar-ref 'flatmap stx)
+         (list (e:lam (list binder) cont-ast stx) effect-ast)
+         stx))
+
 ;; let& — sequential nested flatmap.  Each later binding's RHS sits
 ;; inside the earlier bindings' lambdas, so it sees them in scope.
 (define (build-sequential-let binds body-ast stx)
@@ -1387,12 +1401,23 @@
     [else
      (define name (car (car binds)))
      (define rhs  (cdr (car binds)))
-     (e:app (sugar-ref 'flatmap stx)
-            (list (e:lam (list name)
-                         (build-sequential-let (cdr binds) body-ast stx)
-                         stx)
-                  rhs)
-            stx)]))
+     (flatmap-bind name rhs
+                   (build-sequential-let (cdr binds) body-ast stx)
+                   stx)]))
+
+;; A body statement sequence (used by `let&`).  Every form but the last
+;; is a bare monadic effect: it is sequenced with `flatmap` and its
+;; result discarded into a fresh, unreferenceable binder — the same
+;; desugaring `do` uses for a bare-expression clause (see `parse-do`).
+;; The last form is the final monadic expression.  `forms` is non-empty.
+(define (build-effect-seq forms stx)
+  (cond
+    [(null? (cdr forms)) (parse-expr (car forms))]
+    [else
+     (define effect (parse-expr (car forms)))
+     (flatmap-bind (gensym '_seq) effect
+                   (build-effect-seq (cdr forms) stx)
+                   stx)]))
 
 ;; Named pure let — `(letrec ([loop (lambda (x ...) body)]) (loop i ...))`.
 (define (build-named-let loop-name binds body-ast stx)
@@ -1429,24 +1454,16 @@
         ;; for the rest of the chain and the body.
         (define rhs (parse-expr #'expr))
         (parameterize ([current-local-binders (extend-local-binders (list #'v))])
-          (e:app (sugar-ref 'flatmap stx)
-                 (list (e:lam (list (resolve-id #'v))
-                              (parse-do (cdr stmts) body-stx stx)
-                              stx)
-                       rhs)
-                 stx))]
+          (flatmap-bind (resolve-id #'v) rhs
+                        (parse-do (cdr stmts) body-stx stx)
+                        stx))]
        [expr
         ;; Bare-expression clause: sequence `expr` for its monadic
         ;; effect, discard the result, then continue.  Desugars to the
         ;; same shape as `[_fresh <- expr]` but with a fresh
         ;; identifier so the wildcard isn't a binder.
-        (define fresh (gensym '_do))
-        (e:app (sugar-ref 'flatmap stx)
-               (list (e:lam (list fresh)
-                            (parse-do (cdr stmts) body-stx stx)
-                            stx)
-                     (parse-expr #'expr))
-               stx)])]))
+        (define cont (parse-do (cdr stmts) body-stx stx))
+        (flatmap-bind (gensym '_do) (parse-expr #'expr) cont stx)])]))
 
 ;; ----- proc / arrow notation ---------------------------------------
 ;;

@@ -27,6 +27,53 @@
          [b (Some 2)])
     (Some (+ a b))))
 
+;; --- let& : bare effect statements in the body sequence ---
+;; The body may be a sequence: every form but the last is a bare monadic
+;; effect whose result is discarded; the last is the final expression.
+(: seq-effects (Maybe Integer))
+(define seq-effects
+  (let& ([a (Some 1)])
+    (Some 99)                    ;; bare effect — result discarded
+    (Some (+ a 1))))             ;; final expression
+
+(: seq-effects-ref (Maybe Integer))
+(define seq-effects-ref
+  (let& ([a (Some 1)]
+         [b (Some 2)])
+    (Some (+ a b))               ;; bare effect referencing binders
+    (Some (+ a 100))))           ;; final expression
+
+(: seq-effects-short (Maybe Integer))
+(define seq-effects-short
+  (let& ([a (Some 1)])
+    None                         ;; bare effect short-circuits
+    (Some (+ a 1))))
+
+(: seq-effects-three (Maybe Integer))
+(define seq-effects-three
+  (let& ([a (Some 1)])
+    (Some 10)                    ;; bare effect 1 — discarded
+    (Some 20)                    ;; bare effect 2 — discarded
+    (Some (+ a 5))))             ;; final expression
+
+;; A short-circuit in the SECOND interior position: proves each interior
+;; bare effect is sequenced, not just the first (a "drop interior effects
+;; past the first" bug would yield (Some 6) and pass seq-effects-three).
+(: seq-effects-second-short (Maybe Integer))
+(define seq-effects-second-short
+  (let& ([a (Some 1)])
+    (Some 10)                    ;; first interior — passes
+    None                         ;; second interior — short-circuits
+    (Some (+ a 5))))             ;; final expression
+
+;; Over List a bare effect fans out (its element count multiplies the
+;; result), a behaviour the Maybe cases cannot reach.
+(: seq-effects-list (List Integer))
+(define seq-effects-list
+  (let& ([a (list 1)])
+    (list 10 20)                 ;; bare effect: two elements, discarded
+    (list a)))                   ;; final — runs once per fan-out element
+
 ;; --- let% : independent monad bind over Maybe ---
 (: par-add (Maybe Integer))
 (define par-add
@@ -91,6 +138,14 @@
           (list (check-equal? (seq-add 1) (Some 6))    ;; 1 + 2 + 3
                 (check-equal? (seq-add 5) (Some 18))   ;; 5 + 6 + 7
                 (check-equal? seq-short None))))
+    (it "let& body sequence with bare effect statements"
+        (all-checks
+          (list (check-equal? seq-effects (Some 2))
+                (check-equal? seq-effects-ref (Some 101))
+                (check-equal? seq-effects-short None)
+                (check-equal? seq-effects-three (Some 6))
+                (check-equal? seq-effects-second-short None)
+                (check-equal? seq-effects-list (Cons 1 (Cons 1 Nil))))))
     (it "let% independent bindings over Maybe"
         (all-checks
           (list (check-equal? par-add (Some 60))
