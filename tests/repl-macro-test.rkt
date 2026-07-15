@@ -64,6 +64,36 @@
   (check-regexp-match #rx"7" (last outs))
   (check-regexp-match #rx"Integer" (last outs)))
 
+(test-case "REPL: a local binder forwarded through a macro resolves"
+  ;; The macro forwards the function parameter `n` (a LOCAL binder defined
+  ;; outside the macro call) into its output.  `expand-once` stamps the
+  ;; forwarded reference with a use-site scope the parameter binder lacks,
+  ;; so the parser's `bound-identifier=?` resolution must not be defeated by
+  ;; it.  `(double-it 21)` should be 42, not an unbound-identifier error.
+  (define-values (_ outs)
+    (drive-session
+     '((define-syntax-rule (add-self x) (+ x x))
+       (define (double-it n) (add-self n))
+       (double-it 21))))
+  (check-regexp-match #rx"42" (last outs))
+  (check-regexp-match #rx"Integer" (last outs)))
+
+(test-case "REPL: a procedural macro forwarding a local binder resolves"
+  ;; Same failure as above, but via a `syntax-parser` macro that forwards
+  ;; the parameter `xs` — the originally-reported reproduction.
+  (define-values (_ outs)
+    (drive-session
+     '((require (for-syntax racket racket/syntax syntax/parse))
+       (define-syntax elementwise
+         (syntax-parser
+          [(_ n:nat op:expr arg:expr)
+           (with-syntax ([(index ...) (for/list ([i (in-range (syntax->datum #'n))]) i)])
+             #'(op (aref arg index) ...))]))
+       (define (sum2 xs) (elementwise 2 + xs))
+       (sum2 (array 10 20)))))
+  (check-regexp-match #rx"30" (last outs))
+  (check-regexp-match #rx"Integer" (last outs)))
+
 (test-case "REPL: macro persists across a later unrelated input"
   (define-values (_ outs)
     (drive-session
