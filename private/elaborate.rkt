@@ -24,6 +24,7 @@
                      "codegen.rkt"
                      "prelude.rkt"
                      "scheme-codec.rkt"
+                     "sidecar-read.rkt"
                      "env.rkt"
                      ;; tcon/tapp/scheme — building and comparing the
                      ;; `(IO Unit)` type reserved entry points must have.
@@ -154,7 +155,27 @@
                               (eq? (syntax-e (car sl)) 'for-syntax))))
        spec)]))
 
-;; Lift every block-internal `(for-syntax …)` require to the top of the module
+;; The block's own `(for-syntax …)` require specs, in order.
+(define-for-syntax (block-for-syntax-specs forms)
+  (append-map require-form-for-syntax-specs
+              (filter require-form? forms)))
+
+;; The `(for-syntax …)` require specs a required Rackton library recorded in
+;; its sidecar — the phase-1 imports ITS transformer bodies need.  An importer
+;; reconstructs and re-evaluates those bodies (see `import-macros-from!`), so
+;; it must inherit these specs; it does not write them itself.  Libraries that
+;; export no macros contribute nothing (the gate lives in sidecar-read.rkt).
+;; Each spec datum is re-anchored at the require spec that names the library,
+;; so it resolves in the importer.
+(define-for-syntax (sidecar-for-syntax-specs forms)
+  (for*/list ([req      (in-list (filter require-form? forms))]
+              [spec-stx (in-list (cdr (syntax->list req)))]
+              [submod   (in-value (require-spec->submod-spec spec-stx))]
+              #:when submod
+              [r (in-list (sidecar-macro-for-syntax-requires submod))])
+    (datum->syntax spec-stx r spec-stx)))
+
+;; Lift every given `(for-syntax …)` require spec to the top of the module
 ;; being compiled, so the imports are live while transformer bodies are
 ;; evaluated here.  Each lift adds a fresh scope carrying the imported phase-1
 ;; bindings, and — because the lift happens mid-expansion of the enclosing
@@ -163,11 +184,12 @@
 ;; `syntax-local-introduce` toggles the macro-introduction scope (the block
 ;; forms are macro *arguments*, so they lack it and the lifted bindings have
 ;; it), and each delta introducer adds the fresh lifted-require scope.  A #f
-;; result means the block has no for-syntax requires — leave the forms untouched.
-(define-for-syntax (lift-block-for-syntax-requires forms)
-  (define specs
-    (append-map require-form-for-syntax-specs
-                (filter require-form? forms)))
+;; result means there are no for-syntax requires — leave the forms untouched.
+(define-for-syntax (lift-for-syntax-specs specs-in)
+  ;; Dedup by datum: the same spec arriving twice (block + sidecar, or two
+  ;; libraries) would otherwise lift twice and stamp two scopes carrying the
+  ;; same phase-1 bindings.
+  (define specs (remove-duplicates specs-in #:key syntax->datum))
   (cond
     [(null? specs) #f]
     [else
@@ -214,16 +236,23 @@
       (define ctx-id (list (gensym 'rackton-macros)))
       (define registered '())          ; bound macro-name identifiers
 
-      ;; When the block both defines a procedural transformer and requires its
-      ;; phase-1 toolbox `(require (for-syntax racket/base))`, lift that require
-      ;; now and stamp its scope onto every form.  The transformer bodies are
-      ;; evaluated below (`syntax-local-bind-syntaxes`); without the lift their
-      ;; `syntax-case`/`datum->syntax` references are unbound, because the
-      ;; compiled-output require arrives only after elaboration is over.  A
-      ;; #f introducer means no for-syntax requires — leave the forms untouched.
+      ;; Lift the phase-1 requires the transformer bodies evaluated below
+      ;; (`syntax-local-bind-syntaxes`) will need, and stamp their scope onto
+      ;; every form.  Two sources: the block's own
+      ;; `(require (for-syntax racket/base))` — needed when the block defines
+      ;; a procedural transformer — and the `(for-syntax …)` specs each
+      ;; required macro-exporting library recorded in its sidecar, needed to
+      ;; re-evaluate that library's transformer definitions here.  Without the
+      ;; lift, `syntax-case`/`syntax-parser`/… references in those bodies are
+      ;; unbound, because the compiled-output require arrives only after
+      ;; elaboration is over.  A #f introducer means no for-syntax requires —
+      ;; leave the forms untouched.
       (define add-fs-scope
-        (and (ormap macro-def-form? forms)
-             (lift-block-for-syntax-requires forms)))
+        (lift-for-syntax-specs
+         (append (if (ormap macro-def-form? forms)
+                     (block-for-syntax-specs forms)
+                     '())
+                 (sidecar-for-syntax-specs forms))))
       (define forms*
         (if add-fs-scope (map (lambda (f) (add-fs-scope f 'add)) forms) forms))
 
@@ -256,9 +285,7 @@
            (for ([spec-stx (in-list (syntax->list #'(spec ...)))])
              (define submod (require-spec->submod-spec spec-stx))
              (when submod
-               (define entries
-                 (with-handlers ([exn:fail? (lambda (_) '())])
-                   (dynamic-require submod 'rackton-macros)))
+               (define entries (sidecar-macro-entries submod))
                (for ([entry (in-list entries)])
                  (bind-macro-def!
                    (datum->syntax spec-stx (cdr entry) spec-stx)))))]))

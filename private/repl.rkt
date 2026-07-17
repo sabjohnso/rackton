@@ -55,7 +55,9 @@
          (only-in "installed-scan.rkt" rackton-workspace-entries)
          (only-in "analyze.rkt" index-entry-name index-entry-scheme)
          (only-in "macro-expand.rkt"
-                  macro-def-names head-macro? expand-macro-walk))
+                  macro-def-names head-macro? expand-macro-walk)
+         (only-in "sidecar-read.rkt"
+                  sidecar-macro-entries sidecar-macro-for-syntax-requires))
 
 ;; ----- session state ----------------------------------------------
 
@@ -745,7 +747,11 @@
 ;; Each library's `rackton-schemes` sidecar carries `rackton-macros` — a
 ;; list of (name . definition-datum), one entry per provided macro name.
 ;; Evaluate each definition into the session namespace (so later uses
-;; expand) and record the name.  A
+;; expand) and record the name.  A procedural definition's transformer body
+;; needs the library's own `(for-syntax …)` requires at phase 1 — the
+;; session namespace has none of its own — so first replay those specs
+;; (recorded in the sidecar's `rackton-requires`) as a session-level
+;; require, exactly as if the user had typed it.  A
 ;; spec with no sidecar, or a library that exports no macros, contributes
 ;; nothing.  References inside a macro's template resolve in the session
 ;; namespace, so a macro built only from prelude/exported names works; one
@@ -759,12 +765,20 @@
     (cond
       [(not submod) macros]
       [else
-       (define entries
-         (with-handlers ([exn:fail? (lambda (_) '())])
-           (dynamic-require submod 'rackton-macros)))
-       (for/fold ([macros macros]) ([entry (in-list entries)])
+       (replay-sidecar-for-syntax-requires! state submod)
+       (for/fold ([macros macros])
+                 ([entry (in-list (sidecar-macro-entries submod))])
          (eval-in state (datum->syntax #f (cdr entry)))
          (cons (car entry) macros))])))
+
+;; Require a macro-exporting library's `(for-syntax …)` specs into the
+;; session namespace — the phase-1 imports its transformer definitions
+;; need — exactly as if the user had typed the require.  A library with
+;; no macros (or no for-syntax requires) is a no-op.
+(define (replay-sidecar-for-syntax-requires! state submod)
+  (define fs-specs (sidecar-macro-for-syntax-requires submod))
+  (unless (null? fs-specs)
+    (eval-in state (datum->syntax #f (cons 'require fs-specs)))))
 
 ;; Establish `dynamic-rerequire` ownership of a require's on-disk (file
 ;; path) modules in the session namespace.  `dynamic-rerequire` reloads

@@ -123,6 +123,19 @@
   (check-regexp-match #rx"42" (last outs))
   (check-regexp-match #rx"Integer" (last outs)))
 
+(test-case "REPL: a required library's procedural macro is usable"
+  ;; macro-export-procedural-lib.rkt's `splice-sum` is a `syntax-parser`
+  ;; transformer.  Evaluating its imported definition needs the library's
+  ;; own (for-syntax …) requires, which the session must replay from the
+  ;; sidecar — the session namespace has no phase-1 bindings of its own.
+  (define-values (_ outs)
+    (parameterize ([current-directory here-dir])
+      (drive-session
+       '((require "macro-export-procedural-lib.rkt")
+         (splice-sum 2 10)))))
+  (check-regexp-match #rx"21" (last outs))
+  (check-regexp-match #rx"Integer" (last outs)))
+
 (test-case "REPL: non-macro session is unaffected"
   ;; A session that never defines a macro must behave exactly as before.
   (define-values (_ outs)
