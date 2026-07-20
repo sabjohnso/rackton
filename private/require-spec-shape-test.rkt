@@ -28,11 +28,6 @@
     (for ([form '(combine-in lib file submod not-a-require-form)])
       (check-false (require-wrapper-base-index form))))
 
-  (test-case "require-wrapper-form? is the table's membership test"
-    (check-true (require-wrapper-form? 'only-in))
-    (check-true (require-wrapper-form? 'prefix-in))
-    (check-false (require-wrapper-form? 'combine-in)))
-
   (test-case "base datum: a bare module reference is itself"
     (check-equal? (require-spec-base-datum 'rackton/data/list) 'rackton/data/list)
     (check-equal? (require-spec-base-datum "helpers.rkt") "helpers.rkt"))

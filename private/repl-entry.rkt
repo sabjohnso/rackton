@@ -32,6 +32,10 @@
          marked->entry
          entry->marked
          string-span-at
+         ;; The token-taking forms, for a client that needs several of
+         ;; these answers about one text and should lex it only once.
+         string-span-at/tokens
+         openers-before/tokens
          entry-in-string?
          entry-in-comment?
          entry-enclosing-openers
@@ -179,7 +183,10 @@
 ;; interiority rule as entry-in-string?), as (list start end
 ;; terminated?), or #f.
 (define (string-span-at text pos)
-  (for/first ([t (in-list (tokenize text))]
+  (string-span-at/tokens (tokenize text) text pos))
+
+(define (string-span-at/tokens toks text pos)
+  (for/first ([t (in-list toks)]
               #:when (and (string-tok? text t)
                           (> pos (tok-start t))
                           (or (< pos (tok-end t))
@@ -213,8 +220,11 @@
   (openers-before (entry-text en) (entry-point en)))
 
 (define (openers-before text pos)
+  (openers-before/tokens (tokenize text) text pos))
+
+(define (openers-before/tokens toks text pos)
   (for/fold ([stack '()])
-            ([t (in-list (tokenize text))]
+            ([t (in-list toks)]
              #:when (<= (tok-end t) pos))
     (cond [(opener? t) (cons (cons (string-ref text (tok-start t)) (tok-start t))
                              stack)]

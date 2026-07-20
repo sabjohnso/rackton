@@ -20,11 +20,9 @@
 ;;
 ;; Public API:
 ;;   require-wrapper-base-index : symbol -> (or/c exact-nonnegative-integer #f)
-;;   require-wrapper-form?      : symbol -> boolean
 ;;   require-spec-base-datum    : any -> (or/c string? symbol? #f)
 
 (provide require-wrapper-base-index
-         require-wrapper-form?
          require-spec-base-datum)
 
 ;; The sub-forms that wrap exactly one module reference, mapped to that
@@ -49,9 +47,6 @@
 ;; not a wrapper we handle.
 (define (require-wrapper-base-index form)
   (and (symbol? form) (hash-ref wrapper-base-index form #f)))
-
-(define (require-wrapper-form? form)
-  (and (require-wrapper-base-index form) #t))
 
 ;; Peel wrapper sub-forms off `d` down to the module reference they wrap:
 ;; a relative-path string or a collection-path symbol.  An unhandled shape

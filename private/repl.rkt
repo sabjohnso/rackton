@@ -53,7 +53,7 @@
          "repl-source.rkt"
          "repl-search.rkt"
          "repl-doc.rkt"
-         (only-in "complete-context.rkt" completion-context)
+         (only-in "complete.rkt" completion-answer)
          (only-in "module-complete.rkt"
                   collection-path-completions relative-path-completions)
          (only-in "installed-scan.rkt" rackton-workspace-entries)
@@ -1000,21 +1000,17 @@
         string<?))
 
 ;; Completion for a point in an entry: the region a candidate replaces,
-;; and the candidates.  What may be completed depends on where the point
-;; is — a `require` spec names a module, not a value — so the position is
-;; classified first and the answer comes from the matching universe.
-;; This is what the terminal editor's Tab calls.
+;; and the candidates.  This is what the terminal editor's Tab calls.  A
+;; REPL entry has no source file, so a relative path is anchored where
+;; `require` itself would anchor it: the working directory (as in
+;; `show-module`).
 (define (rackton-repl-completions-at state text pos)
-  (define-values (kind start) (completion-context text pos))
-  (define prefix (substring text start pos))
-  (values start
-          (case kind
-            [(module-path) (collection-path-completions prefix)]
-            ;; A REPL entry has no source file, so a relative path is
-            ;; anchored where `require` itself would anchor it: the
-            ;; working directory (see `show-module`).
-            [(relative-path) (relative-path-completions prefix (current-directory))]
-            [else (rackton-repl-completions state prefix)])))
+  (define-values (_kind start candidates)
+    (completion-answer text pos
+                       #:identifiers (lambda (pfx)
+                                       (rackton-repl-completions state pfx))
+                       #:base-dir (current-directory)))
+  (values start candidates))
 
 ;; The `,complete PREFIX` family: the pipe transport for editor
 ;; completion.  Each command prints its candidates one per line (empty

@@ -40,22 +40,48 @@
          (only-in setup/dirs get-collects-search-dirs)
          (only-in setup/link links))
 
+;; ----- the shared shape -------------------------------------------------
+
+;; Complete `prefix` against whatever `entries-of` says its leading
+;; segments contain.  The two universes differ only in how a segment list
+;; resolves and in what counts as a segment at all; the rest — split the
+;; prefix, filter by its final segment, re-attach what was already typed —
+;; is common.
+;;
+;; Every candidate extends `prefix` literally, which is what the editor
+;; relies on when it inserts the candidates' common prefix.  A prefix
+;; whose leading segments cannot name anything (an empty segment, from a
+;; leading or doubled slash) therefore completes to nothing rather than to
+;; something that silently drops the offending characters.
+(define (complete-under prefix entries-of segment-ok?)
+  (define-values (segments leaf) (split-prefix prefix))
+  (cond
+    [(not (andmap segment-ok? segments)) '()]
+    [else
+     (define kept (string-append* (for/list ([s (in-list segments)])
+                                    (string-append s "/"))))
+     (sorted-candidates
+      (for/list ([name (in-list (entries-of segments))]
+                 #:when (string-prefix? name leaf))
+        (string-append kept name)))]))
+
 ;; ----- collection paths -------------------------------------------------
 
 ;; The module paths that extend `prefix`, a partially typed collection
 ;; path such as "rackton/da".  Its leading segments name the directories
 ;; to read; its final segment filters their contents.
 (define (collection-path-completions prefix)
-  (define-values (segments leaf) (split-prefix prefix))
-  (define kept (string-append* (for/list ([s (in-list segments)])
-                                 (string-append s "/"))))
-  (sorted-candidates
-   (for/list ([name (in-list (if (null? segments)
-                                 (top-level-collection-entries)
-                                 (append* (map directory-entries
-                                               (collection-dirs segments)))))]
-              #:when (string-prefix? name leaf))
-     (string-append kept name))))
+  (complete-under prefix collection-entries collection-segment?))
+
+;; A collection path is a sequence of collection names; `.` and `..` are
+;; filesystem notation, not collection names.
+(define (collection-segment? s)
+  (and (non-empty-string? s) (not (member s '("." "..")))))
+
+(define (collection-entries segments)
+  (if (null? segments)
+      (top-level-collection-entries)
+      (append* (map directory-entries (collection-dirs segments)))))
 
 ;; Every directory a collection path names.  A collection may be spliced
 ;; across roots, so all of them are consulted, not just the first:
@@ -88,19 +114,20 @@
 ;; collection path, the `.rkt` extension is part of what is written, so
 ;; entries are offered under their own file names.
 (define (relative-path-completions prefix base-dir)
-  (define-values (segments leaf) (split-prefix prefix))
-  (define kept (string-append* (for/list ([s (in-list segments)])
-                                 (string-append s "/"))))
+  (complete-under prefix
+                  (lambda (segments) (relative-entries base-dir segments))
+                  ;; `.` and `..` are ordinary here — a string spec may
+                  ;; well reach a sibling directory.
+                  non-empty-string?))
+
+(define (relative-entries base-dir segments)
   (define dir
     (guarded #f (lambda ()
                   (define d (if (null? segments)
                                 (if (path? base-dir) base-dir (string->path base-dir))
                                 (apply build-path base-dir segments)))
                   (and (directory-exists? d) d))))
-  (sorted-candidates
-   (for/list ([name (in-list (if dir (directory-entries dir #:keep-extension? #t) '()))]
-              #:when (string-prefix? name leaf))
-     (string-append kept name))))
+  (if dir (directory-entries dir #:keep-extension? #t) '()))
 
 ;; ----- directory reading ------------------------------------------------
 
@@ -135,13 +162,14 @@
 
 ;; Split a partially typed path into the complete segments before the
 ;; last slash and the partial segment after it.  A prefix ending in a
-;; slash has an empty final segment, which matches every entry.
+;; slash has an empty final segment, which matches every entry.  Empty
+;; leading segments are kept, not dropped: the caller rejects them, so
+;; that re-joining the segments always reproduces the text typed.
 (define (split-prefix prefix)
   (define parts (string-split prefix "/" #:trim? #f))
   (cond
     [(null? parts) (values '() "")]
-    [else (values (filter non-empty-string? (drop-right parts 1))
-                  (last parts))]))
+    [else (values (drop-right parts 1) (last parts))]))
 
 (define (sorted-candidates cs)
   (sort (remove-duplicates cs) string<?))

@@ -39,14 +39,17 @@
          (only-in "repl-entry.rkt"
                   tokenize tok tok-start tok-end
                   tok-opener? tok-closer? tok-skippable?
-                  string-span-at enclosing-delimiters)
+                  string-span-at/tokens openers-before/tokens)
          (only-in "require-spec-shape.rkt" require-wrapper-base-index))
 
 ;; ----- the category ---------------------------------------------------
 
 (define (completion-context text pos)
-  (define frames (enclosing-frames text pos))
-  (define span (string-span-at text pos))
+  ;; Lexed once and threaded: a completion request runs on every
+  ;; keystroke a client triggers it on, over the whole buffer.
+  (define toks (tokenize text))
+  (define frames (enclosing-frames toks text pos))
+  (define span (string-span-at/tokens toks text pos))
   (cond
     ;; A string literal is a module reference only where a bare path
     ;; would be; the prefix is then its contents up to the point.
@@ -81,11 +84,12 @@
 ;; — 0 being the head itself.
 (struct frame (head index) #:transparent)
 
-;; Every list enclosing `pos`, innermost first.
-(define (enclosing-frames text pos)
-  (define toks (tokenize text))
-  (for/list ([d (in-list (enclosing-delimiters text pos))])
-    (frame-of toks text (cadr d) pos)))
+;; Every list enclosing `pos`, innermost first.  `openers-before/tokens`
+;; rather than `enclosing-delimiters`: the closing delimiter each frame
+;; would carry is a scan per frame whose result is never read here.
+(define (enclosing-frames toks text pos)
+  (for/list ([opener (in-list (openers-before/tokens toks text pos))])
+    (frame-of toks text (cdr opener) pos)))
 
 (define (frame-of toks text open-pos pos)
   (define children (direct-children toks text open-pos))
@@ -105,9 +109,7 @@
 ;; whitespace, comments, `#;` — are not children.  A child left
 ;; unterminated by the point of editing runs to the end of the text.
 (define (direct-children toks text open-pos)
-  (let loop ([ts (for/list ([t (in-list toks)]
-                            #:when (> (tok-start t) open-pos))
-                   t)]
+  (let loop ([ts (dropf toks (lambda (t) (<= (tok-start t) open-pos)))]
              [depth 0]
              [start #f]
              [acc '()])

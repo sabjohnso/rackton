@@ -37,9 +37,7 @@
          "types.rkt"
          "prelude.rkt"
          (only-in "repl-term.rkt" rackton-keyword-names)
-         (only-in "complete-context.rkt" completion-context)
-         (only-in "module-complete.rkt"
-                  collection-path-completions relative-path-completions))
+         (only-in "complete.rkt" completion-answer))
 
 ;; ----- framing -----------------------------------------------------------
 
@@ -297,26 +295,29 @@
      (define pos (position->offset text
                                    (ref params 'position 'line)
                                    (ref params 'position 'character)))
-     (define-values (kind start) (completion-context text pos))
-     (define prefix (substring text start pos))
-     (case kind
-       [(module-path)
-        (path-items (collection-path-completions prefix) text start pos)]
-       [(relative-path)
-        (path-items (relative-path-completions prefix (document-dir params))
-                    text start pos)]
-       [else (identifier-items a prefix)])]))
+     (define-values (kind start candidates)
+       (completion-answer text pos
+                          #:identifiers (lambda (pfx) (identifier-names a pfx))
+                          #:base-dir (document-dir params)))
+     (if (eq? kind 'identifier)
+         (identifier-items a candidates)
+         (path-items candidates text start pos))]))
 
-(define (identifier-items a prefix)
+;; The environment names completing `prefix`: the buffer's own
+;; definitions, the analyzed env (or the prelude, mid-edit), and the
+;; surface keywords.
+(define (identifier-names a prefix)
   (define env (or (analysis-env a) prelude-env))
-  (define candidates
-    (sort
-     (remove-duplicates
-      (filter (lambda (s) (string-prefix? s prefix))
-              (append rackton-keyword-names
-                      (map symbol->string (hash-keys (analysis-defs a)))
-                      (names-of env))))
-     string<?))
+  (sort
+   (remove-duplicates
+    (filter (lambda (s) (string-prefix? s prefix))
+            (append rackton-keyword-names
+                    (map symbol->string (hash-keys (analysis-defs a)))
+                    (names-of env))))
+   string<?))
+
+(define (identifier-items a candidates)
+  (define env (or (analysis-env a) prelude-env))
   (for/list ([c (in-list candidates)])
     (hasheq 'label c 'kind (candidate-kind a env (string->symbol c)))))
 

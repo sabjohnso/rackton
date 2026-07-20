@@ -61,6 +61,7 @@
          (only-in racket/system system)
          (only-in racket/file get-preference put-preferences)
          "repl-entry.rkt"
+         (only-in "complete-context.rkt" completion-word-char?)
          "repl-paredit.rkt"
          (only-in "term.rkt" detect-display-columns))
 
@@ -392,10 +393,10 @@
     (entry-insert-at (entry-delete en ls content)
                      ls (make-string target #\space))))
 
-;; Word motion: a word is a run of non-delimiter, non-space characters.
-(define (word-char? c)
-  (not (or (char-whitespace? c)
-           (memv c '(#\( #\) #\[ #\] #\{ #\} #\" #\; #\' #\` #\,)))))
+;; Word motion: a word is a run of non-delimiter, non-space characters —
+;; the same run a completion candidate replaces, so the rule has one
+;; definition (complete-context.rkt) and the two cannot drift.
+(define word-char? completion-word-char?)
 
 (define (forward-word-position text pos)
   (define len (string-length text))

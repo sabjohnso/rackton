@@ -12,8 +12,11 @@
 
 (module+ test
   (require rackunit
+           rackcheck
+           racket/list
            racket/string
            "repl-entry.rkt"
+           (only-in "require-spec-shape.rkt" require-spec-base-datum)
            "complete-context.rkt")
 
   ;; The category at the `|` in `marked`.
@@ -115,4 +118,78 @@
                   'module-path))
 
   (test-case "a comment inside the form does not disturb the category"
-    (check-equal? (kind-at "(require ; a note\n rackton/te|)") 'module-path)))
+    (check-equal? (kind-at "(require ; a note\n rackton/te|)") 'module-path))
+
+  ;; ----- properties ------------------------------------------------------
+
+  ;; Text over the characters that carry structure, so a generated case
+  ;; is as likely to be unbalanced, half-quoted, or comment-ridden as
+  ;; anything a user passes through while typing.
+  (define gen:text
+    (gen:let ([cs (gen:list (gen:one-of (string->list "()[]\"; ab/#\\,'\n"))
+                            #:max-length 40)])
+      (list->string cs)))
+
+  (define gen:text+pos
+    (gen:let ([text gen:text]
+              [n (gen:integer-in 0 40)])
+      (cons text (min n (string-length text)))))
+
+  (check-property
+   (property the-region-lies-behind-the-point ([tp gen:text+pos])
+     ;; The clients slice [start, point) and the editor replaces it, so a
+     ;; start outside that range is a crash, not a bad suggestion.  This
+     ;; must hold for text no reader would accept.
+     (define-values (kind start) (completion-context (car tp) (cdr tp)))
+     (and (memq kind '(identifier module-path relative-path))
+          (<= 0 start (cdr tp)))))
+
+  (check-property
+   (property the-text-after-the-point-is-irrelevant ([tp gen:text+pos])
+     ;; What justifies asking mid-entry at all: the classification of a
+     ;; position cannot depend on text not yet typed.
+     (define-values (k1 s1) (completion-context (car tp) (cdr tp)))
+     (define-values (k2 s2)
+       (completion-context (substring (car tp) 0 (cdr tp)) (cdr tp)))
+     (and (eq? k1 k2) (= s1 s2))))
+
+  ;; Require specs built from the wrapper grammar, to any nesting depth.
+  (define (gen:spec depth)
+    (if (zero? depth)
+        (gen:one-of '(rackton/data/list "helpers.rkt"))
+        (gen:let ([inner (gen:spec (sub1 depth))]
+                  [shape (gen:one-of '(only-in except-in rename-in
+                                       prefix-in qualified-in))])
+          (case shape
+            [(only-in except-in) (list shape inner 'foo)]
+            [(rename-in) (list shape inner '(foo bar))]
+            [else (list shape 'p: inner)]))))
+
+  (check-property
+   (property the-classification-agrees-with-the-spec-grammar
+             ([spec (gen:let ([d (gen:integer-in 0 3)]) (gen:spec d))])
+     ;; The point of the shared table: wherever inference peels a spec
+     ;; down to its module reference, completion classifies that same
+     ;; position as a module reference.  Adding a sub-form to the table
+     ;; must keep the two in step.
+     (define base (require-spec-base-datum spec))
+     (define text (format "(require ~s)" spec))
+     (define shown (format "~s" base))
+     (define end (cdar (regexp-match-positions (regexp (regexp-quote shown)) text)))
+     ;; For a string base the reference is the text inside the quotes, so
+     ;; the point goes before the closing one.
+     (define pos (if (string? base) (sub1 end) end))
+     (define-values (kind _start) (completion-context text pos))
+     (eq? kind (if (string? base) 'relative-path 'module-path))))
+
+  (check-property
+   (property the-region-is-a-run-of-name-characters ([tp gen:text+pos])
+     ;; What `completion-word-start` means, stated where clients can see
+     ;; it: the region is exactly the name characters behind the point.
+     (define text (car tp))
+     (define pos (cdr tp))
+     (define start (completion-word-start text pos))
+     (and (for/and ([i (in-range start pos)])
+            (completion-word-char? (string-ref text i)))
+          (or (zero? start)
+              (not (completion-word-char? (string-ref text (sub1 start)))))))))

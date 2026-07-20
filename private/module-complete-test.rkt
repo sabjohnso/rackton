@@ -53,6 +53,14 @@
     (check-equal? (collection-path-completions "no-such-collection-xyz/deep/") '())
     (check-equal? (collection-path-completions "rackton/no-such-dir-xyz/") '()))
 
+  (test-case "a prefix with an unusable segment completes to nothing"
+    ;; Completing it would mean silently dropping the characters that
+    ;; make it unusable, and the editor would then insert a candidate
+    ;; that is not an extension of what was typed.
+    (check-equal? (collection-path-completions "/rackton/da") '())
+    (check-equal? (collection-path-completions "rackton//data/l") '())
+    (check-equal? (collection-path-completions "rackton/./data/l") '()))
+
   (test-case "candidates are sorted and free of duplicates"
     (define cs (collection-path-completions "rackton/"))
     (check-equal? cs (sort (remove-duplicates cs) string<?)))
@@ -83,12 +91,31 @@
   ;; ----- properties ----------------------------------------------------
 
   ;; Prefixes drawn from the shape a user actually types: real segments of
-  ;; an installed collection, truncated at an arbitrary point.
+  ;; an installed collection, truncated at an arbitrary point — and the
+  ;; malformed shapes a half-typed path passes through on the way there, a
+  ;; leading or doubled slash among them.  The editor extends whatever is
+  ;; typed, so the laws below must hold for those too.
   (define gen:module-prefix
     (gen:let ([full (gen:one-of '("rackton/data/maybe" "rackton/text/pretty"
                                   "rackton/control/monad" "racket/list"
-                                  "rackton" "zzz/nope"))]
+                                  "rackton" "zzz/nope"
+                                  "/rackton/data" "rackton//data/li"
+                                  "rackton/./data" "//" "rackton/data//"))]
               [n (gen:integer-in 0 18)])
+      (substring full 0 (min n (string-length full)))))
+
+  ;; A small tree on disk for the relative-path laws, with the same
+  ;; shapes: a nested directory, a module, a non-module.
+  (define tree (make-temporary-directory))
+  (make-directory* (build-path tree "sub" "deep"))
+  (display-to-file "" (build-path tree "helpers.rkt"))
+  (display-to-file "" (build-path tree "notes.txt"))
+  (display-to-file "" (build-path tree "sub" "inner.rkt"))
+
+  (define gen:relative-prefix
+    (gen:let ([full (gen:one-of '("helpers.rkt" "sub/inner.rkt" "sub/deep/"
+                                  "notes.txt" "/sub" "sub//inner" "nope/x"))]
+              [n (gen:integer-in 0 14)])
       (substring full 0 (min n (string-length full)))))
 
   (check-property
@@ -105,6 +132,18 @@
            (not (string-suffix? c ".rkt"))))))
 
   (check-property
+   (property a-relative-candidate-extends-the-prefix ([pfx gen:relative-prefix])
+     ;; The same law over the other universe, which shares the splitting
+     ;; and re-joining that the collection paths exercise above.
+     (for/and ([c (in-list (relative-path-completions pfx tree))])
+       (string-prefix? c pfx))))
+
+  (check-property
+   (property a-relative-candidate-is-a-file-or-a-directory ([pfx gen:relative-prefix])
+     (for/and ([c (in-list (relative-path-completions pfx tree))])
+       (or (string-suffix? c "/") (string-suffix? c ".rkt")))))
+
+  (check-property
    (property a-module-candidate-is-a-fixed-point ([pfx gen:module-prefix])
      ;; Accepting a module candidate and completing again re-offers it, so
      ;; a second TAB never silently drops what the first one inserted.  A
@@ -112,4 +151,6 @@
      ;; its contents, which is the point of the slash.
      (for/and ([c (in-list (collection-path-completions pfx))]
                #:unless (string-suffix? c "/"))
-       (and (member c (collection-path-completions c)) #t)))))
+       (and (member c (collection-path-completions c)) #t))))
+
+  (delete-directory/files tree))

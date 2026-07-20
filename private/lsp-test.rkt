@@ -210,6 +210,17 @@
                     3
                     "the sidecar's line 4, 0-based")))
 
+  ;; a string spec completes to file paths, anchored at the document's own
+  ;; directory — where `require` would resolve it — not the server's
+  ;; working directory
+  (let ([text "#lang rackton\n(require \"li"])
+    (let-values ([(_st outs) (drive (list (open-msg text)
+                                          (at-msg 24 "textDocument/completion" 1 25)))])
+      (define items (hash-ref (response-for outs 24) 'result))
+      (check-not-false
+       (for/or ([i (in-list items)]) (equal? (hash-ref i 'label) "lib.rkt"))
+       "the sibling module beside this document is offered")))
+
   ;; unknown request → MethodNotFound; shutdown/exit
   (let-values ([(st outs) (drive (list (req 9 "workspace/zap")
                                        (req 10 "shutdown")
