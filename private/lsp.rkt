@@ -9,8 +9,9 @@
 ;;
 ;; Capabilities (v1): diagnostics on open/change (whole-module
 ;; re-analysis via analyze-text — buffer contents, not disk), hover
-;; (schemes), completion (env names + keywords; falls back to the
-;; prelude when the buffer is mid-edit and unanalyzable), definition
+;; (schemes), completion (env names + keywords, or module paths in a
+;; `require` spec; falls back to the prelude when the buffer is mid-edit
+;; and unanalyzable), definition
 ;; (local from the analysis; imported through required modules'
 ;; sidecar defs tables), and document symbols.
 ;;
@@ -35,7 +36,10 @@
          "env.rkt"
          "types.rkt"
          "prelude.rkt"
-         (only-in "repl-term.rkt" rackton-keyword-names))
+         (only-in "repl-term.rkt" rackton-keyword-names)
+         (only-in "complete-context.rkt" completion-context)
+         (only-in "module-complete.rkt"
+                  collection-path-completions relative-path-completions))
 
 ;; ----- framing -----------------------------------------------------------
 
@@ -277,23 +281,60 @@
 ;; Completion works mid-edit: when the buffer doesn't currently
 ;; analyze, candidates come from the last parse's definition sites,
 ;; the prelude, and the keywords — never nothing.
+;;
+;; What may be completed depends on where the point is: a `require` spec
+;; names a module, not a value.  The position is classified first
+;; (complete-context.rkt, shared with the REPL) and the answer comes from
+;; the matching universe.  A module path carries an explicit `textEdit`,
+;; because a client's own idea of a word stops at the slashes and would
+;; otherwise insert the whole path after the part already typed.
 (define (completion st params)
   (define a (doc-of st params))
   (cond
     [(not a) '()]
     [else
-     (define prefix (prefix-at a params))
-     (define env (or (analysis-env a) prelude-env))
-     (define candidates
-       (sort
-        (remove-duplicates
-         (filter (lambda (s) (string-prefix? s prefix))
-                 (append rackton-keyword-names
-                         (map symbol->string (hash-keys (analysis-defs a)))
-                         (names-of env))))
-        string<?))
-     (for/list ([c (in-list candidates)])
-       (hasheq 'label c 'kind (candidate-kind a env (string->symbol c))))]))
+     (define text (analysis-text a))
+     (define pos (position->offset text
+                                   (ref params 'position 'line)
+                                   (ref params 'position 'character)))
+     (define-values (kind start) (completion-context text pos))
+     (define prefix (substring text start pos))
+     (case kind
+       [(module-path)
+        (path-items (collection-path-completions prefix) text start pos)]
+       [(relative-path)
+        (path-items (relative-path-completions prefix (document-dir params))
+                    text start pos)]
+       [else (identifier-items a prefix)])]))
+
+(define (identifier-items a prefix)
+  (define env (or (analysis-env a) prelude-env))
+  (define candidates
+    (sort
+     (remove-duplicates
+      (filter (lambda (s) (string-prefix? s prefix))
+              (append rackton-keyword-names
+                      (map symbol->string (hash-keys (analysis-defs a)))
+                      (names-of env))))
+     string<?))
+  (for/list ([c (in-list candidates)])
+    (hasheq 'label c 'kind (candidate-kind a env (string->symbol c)))))
+
+;; A path candidate replaces [start, pos) outright.  Kind 19 is Folder
+;; (a directory to descend into), 9 is Module.
+(define (path-items candidates text start pos)
+  (define range (offset-range text start pos))
+  (for/list ([c (in-list candidates)])
+    (hasheq 'label c
+            'kind (if (string-suffix? c "/") 19 9)
+            'textEdit (hasheq 'range range 'newText c))))
+
+;; The directory a relative path in this document is anchored at.
+(define (document-dir params)
+  (with-handlers ([exn:fail? (lambda (_) (current-directory))])
+    (define p (uri->path (ref params 'textDocument 'uri)))
+    (define-values (dir _name _dir?) (split-path p))
+    (if (path? dir) dir (current-directory))))
 
 (define (names-of env)
   (for/list ([n (in-list (append (hash-keys (env-vars env))
@@ -313,27 +354,25 @@
     [(env-ref-tcon env sym) 22]                                 ; Struct
     [else 12]))                                                 ; Value
 
-;; The word being typed: characters before the cursor up to a
-;; delimiter.
-(define (prefix-at a params)
-  (define text (analysis-text a))
-  (define line (ref params 'position 'line))
-  (define char (ref params 'position 'character))
-  (define l (list-ref-safe (string-split text "\n" #:trim? #f) line))
+;; LSP speaks 0-based line and character; the context and completion
+;; modules speak offsets into the whole buffer.  A position past the end
+;; of its line clamps to the line's end, as a client's stale position may.
+(define (position->offset text line char)
+  (define lines (string-split text "\n" #:trim? #f))
   (cond
-    [(not l) ""]
+    [(or (not line) (< line 0) (>= line (length lines))) (string-length text)]
     [else
-     (define upto (substring l 0 (min char (string-length l))))
-     (define start
-       (let loop ([i (string-length upto)])
-         (if (and (> i 0) (word-char? (string-ref upto (sub1 i))))
-             (loop (sub1 i))
-             i)))
-     (substring upto start)]))
+     (define before
+       (for/sum ([l (in-list (take lines line))]) (add1 (string-length l))))
+     (+ before (min (or char 0) (string-length (list-ref lines line))))]))
 
-(define (list-ref-safe lst i)
-  (and (>= i 0) (< i (length lst)) (list-ref lst i)))
-
-(define (word-char? c)
-  (not (or (char-whitespace? c)
-           (memv c '(#\( #\) #\[ #\] #\{ #\} #\" #\; #\' #\` #\,)))))
+;; The inverse, for the range an edit replaces: both ends lie on one
+;; line, since no candidate's prefix spans a newline.
+(define (offset-range text start end)
+  (define line (for/sum ([c (in-string text 0 start)] #:when (char=? c #\newline)) 1))
+  (define line-start
+    (let loop ([i start]) (if (or (= i 0) (char=? (string-ref text (sub1 i)) #\newline))
+                              i
+                              (loop (sub1 i)))))
+  (hasheq 'start (hasheq 'line line 'character (- start line-start))
+          'end   (hasheq 'line line 'character (- end line-start))))

@@ -38,6 +38,11 @@
          entry-balanced?
          tokenize
          (struct-out tok)
+         ;; Token classification, shared with any client that walks the
+         ;; token stream itself (complete-context.rkt).
+         (rename-out [opener?    tok-opener?]
+                     [closer?    tok-closer?]
+                     [skippable? tok-skippable?])
          forward-sexp-position
          backward-sexp-position
          up-list-position

@@ -306,6 +306,29 @@ max
 …
 }|}
 
+@deftogether[(@defidform[#:kind "REPL command" complete-module]
+              @defidform[#:kind "REPL command" complete-path])]{
+
+@litchar{,complete-module} @racket[_prefix] prints the collection paths
+that complete @racket[_prefix] — what a @racket[require] spec may name.
+A candidate ending in a slash is a directory to descend into; the rest
+are module paths.  @litchar{,complete-path} @racket[_prefix] does the
+same for the relative file paths a string spec may name, anchored at the
+working directory.
+
+The structural editor needs neither command: its Tab decides from the
+position itself, offering module paths inside a @racket[require] and
+names everywhere else.  A piped client, which tracks its own point,
+selects the universe by choosing the command.
+
+@verbatim|{
+λ> ,complete-module rackton/data/l
+rackton/data/lazy
+rackton/data/lens
+rackton/data/list
+rackton/data/list/
+}|}
+
 @defidform[#:kind "REPL command" keys]{
 
 @litchar{,keys} prints the structural editor's key bindings —

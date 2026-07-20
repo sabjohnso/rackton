@@ -20,6 +20,7 @@
          rackton-read-form
          rackton-parse-command-line
          rackton-repl-completions
+         rackton-repl-completions-at
          rackton-name-kind
          (rename-out [rackton-repl-state-quit? rackton-repl-quit?]))
 
@@ -52,6 +53,9 @@
          "repl-source.rkt"
          "repl-search.rkt"
          "repl-doc.rkt"
+         (only-in "complete-context.rkt" completion-context)
+         (only-in "module-complete.rkt"
+                  collection-path-completions relative-path-completions)
          (only-in "installed-scan.rkt" rackton-workspace-entries)
          (only-in "analyze.rkt" index-entry-name index-entry-scheme)
          (only-in "macro-expand.rkt"
@@ -197,6 +201,14 @@
     [(list 'unquote 'returns ty)  (values state (show-search state ty 'returns))]
     [(list 'unquote 'complete pfx) (values state (show-completions state pfx))]
     [(list 'unquote 'complete)    (values state (show-completions state ""))]
+    [(list 'unquote 'complete-module pfx)
+     (values state (show-module-completions pfx))]
+    [(list 'unquote 'complete-module)
+     (values state (show-module-completions ""))]
+    [(list 'unquote 'complete-path pfx)
+     (values state (show-path-completions pfx))]
+    [(list 'unquote 'complete-path)
+     (values state (show-path-completions ""))]
     [(list 'unquote 'colors)      (values state (colors-summary))]
     [(list 'unquote 'colors (? symbol? scheme))
      (values state
@@ -234,6 +246,8 @@
    ",search SIG   search by whole signature; a string searches names\n"
    ",returns TYPE list functions returning TYPE\n"
    ",complete PFX list names completing PFX (editor transport)\n"
+   ",complete-module PFX list module paths completing PFX\n"
+   ",complete-path PFX   list file paths completing PFX\n"
    ",keys        editor key bindings (terminal sessions)\n"
    ",doc         open the Rackton documentation in a browser\n"
    ",colors      show or set the editor color scheme\n"
@@ -985,14 +999,46 @@
          (filter (lambda (s) (string-prefix? s prefix)) all-names))
         string<?))
 
-;; The `,complete PREFIX` command: the pipe transport for editor
-;; completion.  Prints the candidates one per line (empty output when
-;; there are none), so a piped client — e.g. the Emacs inferior REPL —
-;; can offer completion-at-point.  PFX is the command argument datum;
-;; `~a' renders a symbol prefix as its text and "" (no argument) as the
-;; empty prefix, which matches every name.
+;; Completion for a point in an entry: the region a candidate replaces,
+;; and the candidates.  What may be completed depends on where the point
+;; is — a `require` spec names a module, not a value — so the position is
+;; classified first and the answer comes from the matching universe.
+;; This is what the terminal editor's Tab calls.
+(define (rackton-repl-completions-at state text pos)
+  (define-values (kind start) (completion-context text pos))
+  (define prefix (substring text start pos))
+  (values start
+          (case kind
+            [(module-path) (collection-path-completions prefix)]
+            ;; A REPL entry has no source file, so a relative path is
+            ;; anchored where `require` itself would anchor it: the
+            ;; working directory (see `show-module`).
+            [(relative-path) (relative-path-completions prefix (current-directory))]
+            [else (rackton-repl-completions state prefix)])))
+
+;; The `,complete PREFIX` family: the pipe transport for editor
+;; completion.  Each command prints its candidates one per line (empty
+;; output when there are none), so a piped client — e.g. the Emacs
+;; inferior REPL — can offer completion-at-point.  A piped client tracks
+;; its own point, so it selects the universe by choosing the command;
+;; only the terminal editor needs `rackton-repl-completions-at` to
+;; classify a position for it.
+;;
+;; PFX is the command argument datum; `~a` renders a symbol prefix as its
+;; text, a string prefix as its contents (a path fragment need not read
+;; as a symbol), and "" (no argument) as the empty prefix, which matches
+;; everything.
 (define (show-completions state pfx)
-  (define cs (rackton-repl-completions state (format "~a" pfx)))
+  (render-completions (rackton-repl-completions state (format "~a" pfx))))
+
+(define (show-module-completions pfx)
+  (render-completions (collection-path-completions (format "~a" pfx))))
+
+(define (show-path-completions pfx)
+  (render-completions
+   (relative-path-completions (format "~a" pfx) (current-directory))))
+
+(define (render-completions cs)
   (if (null? cs) "" (string-append (string-join cs "\n") "\n")))
 
 ;; ----- interactive loop -------------------------------------------
@@ -1032,8 +1078,9 @@
        th
        #:prompt "λ> "
        #:ready? (lambda (s) (rackton-editor-ready? (open-input-string s)))
-       #:completions (lambda (prefix)
-                       (rackton-repl-completions (unbox current-state) prefix))
+       #:completions (lambda (text pos)
+                       (rackton-repl-completions-at (unbox current-state)
+                                                    text pos))
        ;; Coloring: only the env can tell a type from a constructor.
        #:name-kind (lambda (sym)
                      (rackton-name-kind (unbox current-state) sym))))

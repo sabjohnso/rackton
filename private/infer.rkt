@@ -59,6 +59,8 @@
          "impl-symbols.rkt"
          "codegen-plan.rkt"
          "scheme-codec.rkt"
+         (only-in "require-spec-shape.rkt"
+                  require-wrapper-base-index require-spec-base-datum)
          ;; The Environment monad threads the type-resolution context
          ;; (alias table + expansion guard) — replaces current-aliases /
          ;; current-expanding.
@@ -5303,21 +5305,11 @@
     [(symbol? base) base]
     [else #f]))
 
-;; Peel the standard wrapper sub-forms — only-in / except-in / rename-in
-;; (inner spec is the second element) and prefix-in (the third) — down to
-;; the inner module reference (a path string or a collection symbol).  An
-;; unhandled shape (e.g. combine-in, which names several modules) yields #f
-;; and is skipped, exactly as a bare unrecognised spec was before.
-(define (require-spec-base-datum d)
-  (cond
-    [(string? d) d]
-    [(symbol? d) d]
-    [(pair? d)
-     (case (car d)
-       [(only-in except-in rename-in) (require-spec-base-datum (cadr d))]
-       [(prefix-in qualified-in)      (require-spec-base-datum (caddr d))]
-       [else #f])]
-    [else #f]))
+;; The module reference a wrapper sub-form wraps — its position comes from
+;; the shared table in require-spec-shape.rkt, so the wrapper grammar is
+;; described in exactly one place.
+(define (require-spec-inner d)
+  (list-ref d (require-wrapper-base-index (car d))))
 
 ;; The name transform a require spec imposes on the importee's exported
 ;; names: a (symbol -> (or/c symbol #f)) where #f means "not imported".
@@ -5329,20 +5321,20 @@
     [(pair? d)
      (case (car d)
        [(only-in)
-        (define inner (require-spec->name-transform (cadr d)))
+        (define inner (require-spec->name-transform (require-spec-inner d)))
         (define table (require-rename-table (cddr d)))
         (lambda (n) (let ([m (inner n)]) (and m (hash-ref table m #f))))]
        [(rename-in)
-        (define inner (require-spec->name-transform (cadr d)))
+        (define inner (require-spec->name-transform (require-spec-inner d)))
         (define table (require-rename-table (cddr d)))
         (lambda (n) (let ([m (inner n)]) (and m (hash-ref table m m))))]
        [(except-in)
-        (define inner (require-spec->name-transform (cadr d)))
+        (define inner (require-spec->name-transform (require-spec-inner d)))
         (define dropped (list->seteq (cddr d)))
         (lambda (n)
           (let ([m (inner n)]) (and m (not (set-member? dropped m)) m)))]
        [(prefix-in)
-        (define inner (require-spec->name-transform (caddr d)))
+        (define inner (require-spec->name-transform (require-spec-inner d)))
         (define pfx (symbol->string (cadr d)))
         (lambda (n)
           (let ([m (inner n)])
@@ -5351,7 +5343,7 @@
        ;; `(qualified-in p mod)` imports each `name` as `p:name`, matching
        ;; the codegen rewrite to `(prefix-in p: mod)`.
        [(qualified-in)
-        (define inner (require-spec->name-transform (caddr d)))
+        (define inner (require-spec->name-transform (require-spec-inner d)))
         (define pfx (format "~a:" (cadr d)))
         (lambda (n)
           (let ([m (inner n)])
@@ -5370,7 +5362,7 @@
 (define (require-spec->type-name-transform d)
   (cond
     [(and (pair? d) (eq? (car d) 'qualified-in))
-     (require-spec->name-transform (caddr d))]
+     (require-spec->name-transform (require-spec-inner d))]
     [else (require-spec->name-transform d)]))
 
 ;; Rewrite a tcon-info's `ctors` list through the term-level name

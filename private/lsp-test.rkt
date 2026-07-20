@@ -152,6 +152,45 @@
       (check-true (for/or ([i (in-list items)])
                     (equal? (hash-ref i 'label) "define")))))
 
+  ;; completion inside a require offers module paths, not env names, and
+  ;; says which text it replaces — the client's own idea of a word would
+  ;; stop at the slashes.
+  (let ([text (string-append clean-text "\n(require rackton/data/may")])
+    (let-values ([(_st outs) (drive (list (open-msg text)
+                                          (at-msg 20 "textDocument/completion" 6 25)))])
+      (define items (hash-ref (response-for outs 20) 'result))
+      (define item
+        (for/first ([i (in-list items)]
+                    #:when (equal? (hash-ref i 'label) "rackton/data/maybe"))
+          i))
+      (check-not-false item "the module path is offered")
+      (check-false (for/or ([i (in-list items)])
+                     (equal? (hash-ref i 'label) "define"))
+                   "environment names are not offered in a module position")
+      (define range (hash-ref (hash-ref item 'textEdit) 'range))
+      (check-equal? (hash-ref (hash-ref range 'start) 'character) 9
+                    "the edit replaces the whole path, from just after `require`")
+      (check-equal? (hash-ref (hash-ref range 'end) 'character) 25)
+      (check-equal? (hash-ref (hash-ref item 'textEdit) 'newText)
+                    "rackton/data/maybe")))
+
+  ;; a require sub-form wraps a module reference; the wrapped position
+  ;; completes the same way
+  (let ([text (string-append clean-text "\n(require (only-in rackton/data/may")])
+    (let-values ([(_st outs) (drive (list (open-msg text)
+                                          (at-msg 21 "textDocument/completion" 6 34)))])
+      (define items (hash-ref (response-for outs 21) 'result))
+      (check-true (for/or ([i (in-list items)])
+                    (equal? (hash-ref i 'label) "rackton/data/maybe")))))
+
+  ;; outside a require the same text is an ordinary name again
+  (let ([text (string-append clean-text "\n(defi")])
+    (let-values ([(_st outs) (drive (list (open-msg text)
+                                          (at-msg 22 "textDocument/completion" 6 5)))])
+      (define items (hash-ref (response-for outs 22) 'result))
+      (check-true (for/or ([i (in-list items)])
+                    (equal? (hash-ref i 'label) "define")))))
+
   ;; cross-module definition through the sidecar defs table
   (define lib-path (build-path dir "lib.rkt"))
   (call-with-output-file lib-path #:exists 'truncate

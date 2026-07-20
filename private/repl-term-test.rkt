@@ -12,6 +12,7 @@
            racket/file
            (only-in racket/port with-output-to-string)
            "repl-entry.rkt"
+           (only-in "complete-context.rkt" completion-word-start)
            "repl-term.rkt")
 
   ;; ----- key decoding -------------------------------------------------
@@ -168,9 +169,18 @@
      (lambda (text)            ; ready?: balanced and non-blank
        (and (entry-balanced? (entry text 0))
             (not (string=? (string-trim text) ""))))
-     (lambda (prefix)          ; completions
-       (filter (lambda (s) (string-prefix? s prefix))
-               '("define" "define-alias" "define-struct")))
+     ;; completions: the whole entry and the point, so the source — not
+     ;; the editor — decides both the region to replace and what may
+     ;; replace it.  This stand-in answers module paths inside a require
+     ;; and definition keywords everywhere else.
+     (lambda (text pos)
+       (define start (completion-word-start text pos))
+       (define prefix (substring text start pos))
+       (define pool
+         (if (regexp-match? #rx"\\(require" (substring text 0 start))
+             '("rackton/data/list" "rackton/data/maybe")
+             '("define" "define-alias" "define-struct")))
+       (values start (filter (lambda (s) (string-prefix? s prefix)) pool)))
      "λ> "
      (lambda (_sym) #f)))
 
@@ -248,4 +258,14 @@
                 "Tab extends to the common prefix")
   (check-regexp-match #rx"define-alias"
                       (or (editor-state-message (typed "define\t")) "")
-                      "an ambiguous Tab lists candidates in the message"))
+                      "an ambiguous Tab lists candidates in the message")
+
+  ;; The candidate source sees the whole entry, so it can answer a
+  ;; different universe of names depending on where the point is — and
+  ;; the region it reports is what gets replaced, slashes included.
+  (check-equal? (entry-of (typed "(require rackton/data/m\t"))
+                "(require rackton/data/maybe|)"
+                "Tab inside a require completes a whole module path")
+  (check-regexp-match #rx"rackton/data/list"
+                      (or (editor-state-message (typed "(require rackton/data/\t")) "")
+                      "an ambiguous module path lists its candidates"))

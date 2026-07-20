@@ -255,7 +255,14 @@
 ;; ----- the editor state machine --------------------------------------------
 
 ;; ready?: text → boolean (is this acceptable input);
-;; completions: prefix string → candidate strings; prompt: string;
+;; completions: text × point → (values start candidate-strings).  The
+;;     source is handed the whole entry, not a prefix the editor guessed
+;;     at, because what may be completed depends on where the point is —
+;;     a module path inside a `require`, a name elsewhere — and so does
+;;     the extent of the text a candidate replaces.  It returns that
+;;     extent's start, and the candidates are complete replacements for
+;;     [start, point).
+;; prompt: string;
 ;; name-kind: symbol → 'type | 'constructor | #f (the kernel's
 ;; env-backed classifier, for coloring).
 (struct editor-config (ready? completions prompt name-kind) #:transparent)
@@ -448,16 +455,15 @@
                   [stash (or (editor-state-stash st)
                              (editor-state-entry st))])]))
 
-;; Completion: extend the name before the cursor to the candidates'
-;; common prefix; when it cannot be extended, list the candidates.
+;; Completion: extend the text before the cursor to the candidates'
+;; common prefix; when it cannot be extended, list the candidates.  The
+;; region to extend is the source's to choose — see `editor-config`.
 (define (complete-at st cfg)
   (define text (entry-text-of st))
   (define p (point-of st))
-  (define start
-    (let loop ([i p])
-      (if (and (> i 0) (word-char? (string-ref text (sub1 i)))) (loop (sub1 i)) i)))
+  (define-values (start candidates)
+    ((editor-config-completions cfg) text p))
   (define prefix (substring text start p))
-  (define candidates ((editor-config-completions cfg) prefix))
   (cond
     [(null? candidates) (with-msg st "no completions")]
     [else
@@ -756,7 +762,8 @@
 (define (rackton-term-read h
                            #:prompt [prompt "λ> "]
                            #:ready? [ready? (lambda (_) #t)]
-                           #:completions [completions (lambda (_) '())]
+                           #:completions [completions (lambda (_text pos)
+                                                        (values pos '()))]
                            #:name-kind [name-kind (lambda (_) #f)])
   (define cfg (editor-config ready? completions prompt name-kind))
   (define in (current-input-port))
