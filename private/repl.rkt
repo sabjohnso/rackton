@@ -342,8 +342,9 @@
                                 (binding-type-datum env (car h) (cdr h)))))])])))
 
 ;; List the functions (and data constructors) in scope that accept an
-;; argument of the queried type.  Bare-type-variable argument
-;; positions never match — see repl-search.rkt.
+;; argument of the queried type.  Unconstrained-type-variable argument
+;; positions never match; a constrained query variable such as
+;; `((Num a) => a)` searches by its constraints — see repl-search.rkt.
 (define (show-accepts state type-datum)
   (with-handlers
    ([exn:fail?

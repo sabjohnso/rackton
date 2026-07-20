@@ -12,12 +12,26 @@
 ;; `a` in `(Num a) => (-> a (-> a a))` matches `Integer` exactly when
 ;; the constraints remain satisfiable under the match — so `,accepts
 ;; Integer` lists `+`, but not the method of a class with no Integer
-;; instance.
+;; instance.  The same holds of the *query*: `((Num a) => a)` is not a
+;; bare variable but "some type having a `Num` instance", and its
+;; constraints filter the candidates the same way.
 ;;
 ;; Public API:
 ;;   accepts-search — env × type datum →
 ;;                    'bare-query | (listof (cons name scheme)), sorted
 ;;                    (raises exn:fail on an unparsable type)
+;;   search-entries — (listof (cons name scheme)) × query →
+;;                    'bare-query | (listof (cons name scheme)), best
+;;                    rank first.  The query is a type datum searched
+;;                    under #:kind ('signature, 'returns, or 'accepts),
+;;                    or a string searched against names.  See the
+;;                    comment on the definition for the per-kind rules.
+;;   env-search-entries — env → (listof (cons name scheme)), the
+;;                    candidates an env contributes (values and data
+;;                    constructors, minus the REPL's synthetic names).
+;;
+;; 'bare-query means the query was a type variable carrying no
+;; constraints, which every candidate would match.
 
 (provide accepts-search
          search-entries
@@ -35,34 +49,99 @@
          (only-in "infer.rkt" resolve-scheme))
 
 (define (accepts-search env type-datum)
-  ;; A query's own constraints are dropped: `,accepts ((Num a) => a)`
-  ;; searches for the bare `a` (and is then rejected as bare).
-  (define query
-    (qual-body-type
+  (define q (parse-query env type-datum))
+  (cond
+    [(bare-query? q) 'bare-query]
+    [else
+     (sort (append (var-matches env q) (ctor-matches env q))
+           symbol<? #:key car)]))
+
+;; ----- query parsing --------------------------------------------------
+;;
+;; A query keeps its own constraints: `((Num a) => a)` is not the bare
+;; variable `a` but "some type having a `Num` instance".  The
+;; constraints travel with the body type and are re-checked against
+;; each candidate's match substitution.  They ride in one struct so a
+;; further query attribute does not re-thread every match rule.
+(struct search-query (type preds) #:transparent)
+
+(define (parse-query env type-datum)
+  (define-values (t preds)
+    (split-quals
      (instantiate (resolve-scheme (parse-type (datum->syntax #f type-datum))
                                   env))))
-  (cond
-    [(tvar? query) 'bare-query]
-    [else
-     (sort (append (var-matches env query)
-                   (ctor-matches env query))
-           symbol<? #:key car)]))
+  ;; Synonyms expand once here rather than per candidate: expansion
+  ;; substitutes the synonym's parameters by the predicate's arguments,
+  ;; so it commutes with the match substitution applied later.
+  (search-query t (expand-synonyms env preds)))
+
+(define (expand-synonyms env preds)
+  (append*
+   (for/list ([p (in-list preds)])
+     (cond
+       [(expand-constraint-syn env p)
+        => (lambda (comps) (expand-synonyms env comps))]
+       [else (list p)]))))
+
+;; A variable with no constraints matches everything, so it is not a
+;; useful query; a constrained one narrows the candidates.
+(define (bare-query? q)
+  (and (tvar? (search-query-type q)) (null? (search-query-preds q))))
+
+;; A qualified type can nest — `(MonadTrans t) => ((Monad m) => (-> …))`
+;; — so peel every layer, not just the outermost, and gather all the
+;; constraints.  Stopping at the first layer would leave a `qual` struct
+;; where the arrow is, hiding the argument positions from every match
+;; rule below.
+(define (split-quals t)
+  (let loop ([t t] [preds '()])
+    (cond
+      [(qual? t) (loop (qual-body t) (append preds (qual-constraints t)))]
+      [else (values t preds)])))
+
+;; `split-quals` is internal, but its flattening law is what the nested
+;; `=>` fix rests on, so the property tests in repl-search-test.rkt
+;; reach it here rather than through the module's interface.
+(module+ private-for-test
+  (provide split-quals))
+
+;; The query's constraints and the candidate's, under the substitution
+;; that matched them, must hold together of some type the environment
+;; knows.  A search with no session env judges the query against the
+;; prelude's instances, since a query names classes the user typed and
+;; expects to mean something.
+(define (constraints-satisfiable? env query-preds cand-preds σ)
+  (define e (or env prelude-env))
+  (define (under-σ ps) (for/list ([p (in-list ps)]) (apply-subst σ p)))
+  (define cs (expand-synonyms e (under-σ cand-preds)))
+  (and
+   ;; A candidate's class the env cannot see has no instance the search
+   ;; can reach.  A query's is passed instead: the user may name a class
+   ;; the session has not imported, and refuting it would silently empty
+   ;; the result list rather than report the unfamiliar name.
+   (for/and ([p (in-list cs)]) (and (env-ref-class e (pred-class p)) #t))
+   (let ([ps (append (for/list ([p (in-list (under-σ query-preds))]
+                                #:when (env-ref-class e (pred-class p)))
+                       p)
+                     cs)])
+     (and (for/and ([p (in-list ps)]) (pred-has-instance? e p))
+          (variables-have-a-common-type? e ps)))))
 
 ;; ----- candidate enumeration ----------------------------------------
 
 ;; Session and prelude values.  `$`-prefixed names are the REPL's own
 ;; synthetic expression bindings — not part of the user's vocabulary.
-(define (var-matches env query)
+(define (var-matches env q)
   (for/list ([(name sch) (in-hash (env-vars env))]
              #:unless (synthetic-name? name)
-             #:when (scheme-accepts? env sch query))
+             #:when (scheme-accepts? env sch q))
     (cons name sch)))
 
 ;; Data constructors are functions too: `,accepts Integer` should find
 ;; a ctor with an Integer field.
-(define (ctor-matches env query)
+(define (ctor-matches env q)
   (for/list ([(name di) (in-hash (env-data-ctors env))]
-             #:when (scheme-accepts? env (data-info-scheme di) query))
+             #:when (scheme-accepts? env (data-info-scheme di) q))
     (cons name (data-info-scheme di))))
 
 (define (synthetic-name? name)
@@ -81,40 +160,83 @@
 ;; A variable argument position is skipped only when no constraint
 ;; mentions it — a constrained one (the `a` of `(Num a) => …`) binds
 ;; to the query and stands or falls with its constraints.
-(define (scheme-accepts? env sch query)
-  (define body (instantiate sch))
-  (define t (qual-body-type body))
-  (define preds (if (qual? body) (qual-constraints body) '()))
-  (define constrained
-    (for*/seteq ([p (in-list preds)] [v (in-set (pred-vars p))]) v))
+(define (scheme-accepts? env sch q)
+  (define-values (t preds constrained) (candidate-shape sch))
   (for/or ([arg (in-list (arrow-arguments t))]
            #:unless (unconstrained-tvar? arg constrained))
-    (define σ (try-unify arg query))
-    (and σ
-         (for/and ([p (in-list preds)])
-           (pred-possibly-satisfiable? env (apply-subst σ p))))))
+    (define σ (try-unify arg (search-query-type q)))
+    (and σ (constraints-satisfiable? env (search-query-preds q) preds σ))))
+
+;; A candidate's type as the match rules need it: the arrow under every
+;; qualifier layer, the constraints gathered from those layers, and the
+;; variables those constraints mention.
+(define (candidate-shape sch)
+  (define-values (t preds) (split-quals (instantiate sch)))
+  (values t preds
+          (for*/seteq ([p (in-list preds)] [v (in-set (pred-vars p))]) v)))
 
 (define (unconstrained-tvar? t constrained)
   (and (tvar? t) (not (set-member? constrained (tvar-name t)))))
 
-;; Conservative satisfiability: refute a predicate only when it
-;; mentions a concrete constructor and no instance head of its class
-;; unifies with it.  A fully variable predicate (e.g. `(Eq a)` with
-;; `a` free) might always be satisfied later, so it passes.  Instance
-;; contexts are not chased — a false positive merely lists an extra
-;; candidate, while a false refutation would hide a real one.
-(define (pred-possibly-satisfiable? env p)
-  (cond
-    [(not (ormap mentions-tcon? (pred-args p))) #t]
-    [else
-     (for/or ([inst (in-list (env-instances env (pred-class p)))])
-       (preds-unify? (freshen-pred (instance-info-head inst)) p))]))
+;; One predicate holds of some instance the env carries.  Instance
+;; contexts are not chased: `(Eq (List a))` counts as satisfiable on the
+;; strength of an `(Eq (List a))` head, without asking whether `(Eq a)`
+;; follows.
+(define (pred-has-instance? env p)
+  (for/or ([inst (in-list (env-instances env (pred-class p)))])
+    (preds-unify? (freshen-pred (instance-info-head inst)) p)))
 
-(define (mentions-tcon? t)
+;; Predicates over a type *variable* are each satisfiable alone — a
+;; variable unifies with every instance head — so they must be judged
+;; together.  `mempty :: (Monoid a) => a` answers a search for
+;; `((Additive-Magma a) (Multiplicative-Magma a) => a)` only if some one
+;; type carries all three classes, and none does.  Search reports what
+;; the environment holds now, so a variable no known type can satisfy is
+;; refuted rather than left open against instances that may be written
+;; later.
+(define (variables-have-a-common-type? env preds)
+  (for/and ([(_v allowed) (in-hash (allowed-types-per-variable env preds))])
+    (or (eq? allowed 'any) (not (set-empty? allowed)))))
+
+;; variable name → the type constructors every class constraining it
+;; admits at that argument position; 'any when no class restricts it.
+(define (allowed-types-per-variable env preds)
+  (for*/fold ([acc (hasheq)])
+             ([p (in-list preds)]
+              [(arg idx) (in-indexed (in-list (pred-args p)))]
+              #:when (tvar? arg))
+    (hash-update acc (tvar-name arg)
+                 (lambda (cur) (meet-allowed cur (allowed-heads env (pred-class p) idx)))
+                 'any)))
+
+;; The type constructors a class's instances admit at argument `idx`.
+;; 'any when some instance head has a variable there, since that head
+;; matches every type.
+(define (allowed-heads env cls idx)
+  (for/fold ([acc (seteq)]) ([inst (in-list (env-instances env cls))])
+    (cond
+      [(eq? acc 'any) 'any]
+      [else
+       (define args (pred-args (instance-info-head inst)))
+       (cond
+         [(>= idx (length args)) acc]
+         [(head-tcon-name (list-ref args idx))
+          => (lambda (n) (set-add acc n))]
+         [else 'any])])))
+
+(define (meet-allowed a b)
+  (cond
+    [(eq? a 'any) b]
+    [(eq? b 'any) a]
+    [else (set-intersect a b)]))
+
+;; The type constructor at the head of a type, or #f when a variable
+;; heads it (`(m a)`) — such a head admits any constructor.
+(define (head-tcon-name t)
   (match t
-    [(tcon _)      #t]
-    [(tapp h args) (or (mentions-tcon? h) (ormap mentions-tcon? args))]
-    [_             #f]))
+    [(tcon n)          n]
+    [(tapp h _args)    (head-tcon-name h)]
+    [_                 #f]))
 
 ;; Unify two same-class predicates argument by argument, threading the
 ;; substitution so a variable bound by one argument constrains the next.
@@ -180,7 +302,9 @@
 ;; filter; #f falls back to the prelude for parsing and skips the
 ;; filter (index entries' instances live outside any env).
 ;; Returns matched (name . scheme) pairs, best rank first, then by
-;; name; 'bare-query when the query is an unconstrained variable.
+;; name; 'bare-query when the query is a variable carrying no
+;; constraints (a constrained one narrows the candidates and searches
+;; normally).
 (define (search-entries entries query
                         #:kind [kind 'signature]
                         #:env [env #f])
@@ -192,16 +316,13 @@
            symbol<? #:key car)]
     [else
      (define parse-env (or env prelude-env))
-     (define qtype
-       (qual-body-type
-        (instantiate (resolve-scheme (parse-type (datum->syntax #f query))
-                                     parse-env))))
+     (define q (parse-query parse-env query))
      (cond
-       [(tvar? qtype) 'bare-query]
+       [(bare-query? q) 'bare-query]
        [else
         (define ranked
           (for*/list ([e (in-list entries)]
-                      [r (in-value (match-rank env kind qtype (cdr e)))]
+                      [r (in-value (match-rank env kind q (cdr e)))]
                       #:when r)
             (cons r e)))
         (map cdr (sort ranked
@@ -211,16 +332,18 @@
                                   (symbol<? (cadr a) (cadr b)))))))])]))
 
 ;; The rank of one candidate against the query type, or #f.
-(define (match-rank env kind qtype sch)
-  (define body (instantiate sch))
-  (define t (qual-body-type body))
-  (define preds (if (qual? body) (qual-constraints body) '()))
-  (define constrained
-    (for*/seteq ([p (in-list preds)] [v (in-set (pred-vars p))]) v))
+(define (match-rank env kind q sch)
+  (define qtype (search-query-type q))
+  (define-values (t preds constrained) (candidate-shape sch))
+  ;; The query's own constraints are judged even with no env (the
+  ;; prelude stands in); a candidate's are judged only against a real
+  ;; session env, since an index entry's instances live outside it.
+  ;; An index entry's own constraints are judged only against a real
+  ;; session env, since the instances discharging them live outside it;
+  ;; the query's are judged either way (the prelude stands in).
   (define (preds-ok? σ)
-    (or (not env)
-        (for/and ([p (in-list preds)])
-          (pred-possibly-satisfiable? env (apply-subst σ p)))))
+    (constraints-satisfiable? env (search-query-preds q)
+                              (if env preds '()) σ))
   (case kind
     [(signature)
      (define-values (qargs qres) (arrow-spine qtype))

@@ -32,6 +32,7 @@
          env-add-tyfam-clause
          env-extend-constraint-syn
          env-ref-constraint-syn
+         expand-constraint-syn
          env-extend-constraint-fam
          env-ref-constraint-fam
          env-extend-class
@@ -264,6 +265,25 @@
 
 (define (env-ref-constraint-syn e name [default #f])
   (hash-ref (env-constraint-syns e) name default))
+
+;; If `p`'s head names a constraint synonym, return the component
+;; predicates with the synonym's parameters substituted by `p`'s
+;; arguments; otherwise #f.  Lives here, beside the table it reads, so
+;; the `(params . preds)` representation stays private to this module.
+;; Used as a goal (subgoals to discharge), as a hypothesis (components
+;; it provides), and by type-directed search.
+(define (expand-constraint-syn e p)
+  (define syn (env-ref-constraint-syn e (pred-class p) #f))
+  (and syn
+       (let ([params (car syn)] [comps (cdr syn)])
+         (and (= (length params) (length (pred-args p)))
+              (let ([sub (for/fold ([s empty-subst])
+                                   ([param (in-list params)]
+                                    [arg (in-list (pred-args p))])
+                           (subst-extend s param arg))])
+                (for/list ([c (in-list comps)])
+                  (pred (pred-class c)
+                        (map (lambda (a) (apply-subst sub a)) (pred-args c)))))))))
 
 (define (env-extend-constraint-fam e name info)
   (struct-copy env e

@@ -234,22 +234,6 @@
   (pred (if (and bound (tcon? bound)) (tcon-name bound) head)
         (map (lambda (a) (apply-subst σ a)) (pred-args t))))
 
-;; If `p`'s head names a constraint synonym, return the component
-;; predicates with the synonym's parameters substituted by `p`'s
-;; arguments; otherwise #f.  Used both as a goal (subgoals to discharge)
-;; and, via `super-closure`, as a hypothesis (components it provides).
-(define (expand-constraint-syn env p)
-  (define syn (env-ref-constraint-syn env (pred-class p) #f))
-  (and syn
-       (let ([params (car syn)] [comps (cdr syn)])
-         (and (= (length params) (length (pred-args p)))
-              (let ([sub (for/fold ([s empty-subst])
-                                   ([param (in-list params)] [arg (in-list (pred-args p))])
-                           (subst-extend s param arg))])
-                (for/list ([c (in-list comps)])
-                  (pred (pred-class c)
-                        (map (lambda (a) (apply-subst sub a)) (pred-args c)))))))))
-
 ;; The classes whose single method is structural over a product, so a
 ;; variadic `(Tuple t …)` satisfies them iff each element does.  A
 ;; fixed-arity instance can't express this (the arity varies), so the

@@ -26,6 +26,7 @@
            gen:type
            gen:pred
            gen:qual-type
+           gen:nested-qual-type
            gen:scheme
            gen:kind
            gen:kind-scheme
@@ -74,6 +75,17 @@
                [ps (gen:list (gen:pred (max 0 (sub1 depth))) #:max-length 2)]
                [body (gen:type depth)])
        (mqual (cons p0 ps) body))))
+
+  ;; A body under up to `layers` *nested* contexts:
+  ;; `(C a) => ((D b) => τ)`.  `gen:qual-type` only ever produces one
+  ;; layer, so a law about peeling nested contexts needs this.
+  (define (gen:nested-qual-type depth layers)
+    (cond
+      [(<= layers 0) (gen:type depth)]
+      [else
+       (gen:let ([ps (gen:list (gen:pred (max 0 (sub1 depth))) #:max-length 2)]
+                 [body (gen:nested-qual-type depth (sub1 layers))])
+         (mqual ps body))]))
 
   ;; A scheme: a (possibly empty) list of quantified vars over a
   ;; possibly-qualified body.
